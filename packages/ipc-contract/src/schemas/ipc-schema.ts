@@ -176,6 +176,138 @@ export const windowCloseResSchema = z.object({
 export type WindowCloseRes = z.infer<typeof windowCloseResSchema>;
 
 // ============================================================================
+// M6 History
+// ============================================================================
+
+export const historyEntrySchema = z.object({
+  id: z.number().int().positive(),
+  url: urlSchema,
+  title: titleSchema,
+  visitedAt: z.number().int().nonnegative(),
+  visitCount: z.number().int().nonnegative(),
+});
+export type HistoryEntry = z.infer<typeof historyEntrySchema>;
+
+export const historyRecordReqSchema = z.object({
+  url: urlSchema,
+  title: titleSchema.optional(),
+});
+export type HistoryRecordReq = z.infer<typeof historyRecordReqSchema>;
+
+export const historyRecordResSchema = z.object({
+  ok: z.literal(true),
+  entry: historyEntrySchema,
+});
+export type HistoryRecordRes = z.infer<typeof historyRecordResSchema>;
+
+export const historySearchReqSchema = z.object({
+  query: z.string().min(1).max(512),
+  limit: z.number().int().positive().max(100).optional(),
+});
+export type HistorySearchReq = z.infer<typeof historySearchReqSchema>;
+
+export const historySearchResSchema = z.object({
+  entries: z.array(historyEntrySchema),
+});
+export type HistorySearchRes = z.infer<typeof historySearchResSchema>;
+
+export const historyListReqSchema = z.object({
+  limit: z.number().int().positive().max(500).optional(),
+  offset: z.number().int().nonnegative().optional(),
+});
+export type HistoryListReq = z.infer<typeof historyListReqSchema>;
+
+export const historyListResSchema = z.object({
+  entries: z.array(historyEntrySchema),
+  total: z.number().int().nonnegative(),
+});
+export type HistoryListRes = z.infer<typeof historyListResSchema>;
+
+export const historyDeleteReqSchema = z.object({
+  id: z.number().int().positive(),
+});
+export type HistoryDeleteReq = z.infer<typeof historyDeleteReqSchema>;
+
+export const historyDeleteResSchema = z.object({
+  ok: z.literal(true),
+  id: z.number().int().positive(),
+});
+export type HistoryDeleteRes = z.infer<typeof historyDeleteResSchema>;
+
+export const historyClearReqSchema = z.object({});
+export type HistoryClearReq = z.infer<typeof historyClearReqSchema>;
+
+export const historyClearResSchema = z.object({
+  ok: z.literal(true),
+  deleted: z.number().int().nonnegative(),
+});
+export type HistoryClearRes = z.infer<typeof historyClearResSchema>;
+
+// ============================================================================
+// M5 Bookmarks
+// ============================================================================
+
+export const bookmarkTypeSchema = z.enum(['bookmark', 'folder']);
+export type BookmarkType = z.infer<typeof bookmarkTypeSchema>;
+
+export const bookmarkSchema = z.object({
+  id: z.string().min(1),
+  parentId: z.string().nullable(),
+  url: urlSchema.optional(),
+  title: titleSchema,
+  type: bookmarkTypeSchema,
+  position: z.number().int().nonnegative(),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+});
+export type Bookmark = z.infer<typeof bookmarkSchema>;
+
+export const bookmarkCreateReqSchema = z.object({
+  url: urlSchema.optional(),
+  title: titleSchema,
+  parentId: z.string().nullable().optional(),
+  type: bookmarkTypeSchema.optional(),
+});
+export type BookmarkCreateReq = z.infer<typeof bookmarkCreateReqSchema>;
+
+export const bookmarkCreateResSchema = z.object({
+  bookmark: bookmarkSchema,
+});
+export type BookmarkCreateRes = z.infer<typeof bookmarkCreateResSchema>;
+
+export const bookmarkListReqSchema = z.object({
+  parentId: z.string().nullable().optional(),
+});
+export type BookmarkListReq = z.infer<typeof bookmarkListReqSchema>;
+
+export const bookmarkListResSchema = z.object({
+  bookmarks: z.array(bookmarkSchema),
+});
+export type BookmarkListRes = z.infer<typeof bookmarkListResSchema>;
+
+export const bookmarkSearchReqSchema = z.object({
+  query: z.string().min(1).max(512),
+  limit: z.number().int().positive().max(100).optional(),
+});
+export type BookmarkSearchReq = z.infer<typeof bookmarkSearchReqSchema>;
+
+export const bookmarkSearchResSchema = z.object({
+  bookmarks: z.array(bookmarkSchema),
+});
+export type BookmarkSearchRes = z.infer<typeof bookmarkSearchResSchema>;
+
+export const bookmarkDeleteReqSchema = z.object({
+  id: z.string().min(1),
+});
+export type BookmarkDeleteReq = z.infer<typeof bookmarkDeleteReqSchema>;
+
+export const bookmarkDeleteResSchema = z.object({
+  ok: z.literal(true),
+  id: z.string().min(1),
+});
+export type BookmarkDeleteRes = z.infer<typeof bookmarkDeleteResSchema>;
+
+// ============================================================================
 // IPC Schema 总表
 // ============================================================================
 
@@ -196,6 +328,15 @@ export const ipcSchema = {
   'tab.stop': { req: tabStopReqSchema, res: tabStopResSchema },
   'window.create': { req: windowCreateReqSchema, res: windowCreateResSchema },
   'window.close': { req: windowCloseReqSchema, res: windowCloseResSchema },
+  'history.record': { req: historyRecordReqSchema, res: historyRecordResSchema },
+  'history.search': { req: historySearchReqSchema, res: historySearchResSchema },
+  'history.list': { req: historyListReqSchema, res: historyListResSchema },
+  'history.delete': { req: historyDeleteReqSchema, res: historyDeleteResSchema },
+  'history.clear': { req: historyClearReqSchema, res: historyClearResSchema },
+  'bookmark.create': { req: bookmarkCreateReqSchema, res: bookmarkCreateResSchema },
+  'bookmark.list': { req: bookmarkListReqSchema, res: bookmarkListResSchema },
+  'bookmark.search': { req: bookmarkSearchReqSchema, res: bookmarkSearchResSchema },
+  'bookmark.delete': { req: bookmarkDeleteReqSchema, res: bookmarkDeleteResSchema },
 } as const;
 
 /** IPC schema 的类型推导工具：取 channel 名联合。 */

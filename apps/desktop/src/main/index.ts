@@ -15,6 +15,8 @@ import { app, ipcMain } from 'electron';
 import { createLogger } from '@urchin/logger';
 import { WindowManager, createBrowserWindow, registerWindowHandlers } from './windows';
 import { TabManager, createBrowserView, registerTabHandlers } from './tabs';
+import { HistoryManager, registerHistoryHandlers } from './history';
+import { BookmarkManager, registerBookmarkHandlers } from './bookmarks';
 
 const log = createLogger('main');
 
@@ -44,6 +46,18 @@ const windowManager = new WindowManager(createBrowserWindow);
 const tabManager = new TabManager(createBrowserView);
 
 /**
+ * 全局 HistoryManager 实例（M6）。
+ * v0.1 W2 使用内存存储，W3 迁移到 SQLite（M8 Storage Layer）。
+ */
+const historyManager = new HistoryManager();
+
+/**
+ * 全局 BookmarkManager 实例（M5）。
+ * v0.1 W2 使用内存存储，W3 迁移到 SQLite（M8 Storage Layer）。
+ */
+const bookmarkManager = new BookmarkManager();
+
+/**
  * 注册 IPC handlers。
  * W1-D3：tab 域完整实现 + window 域完整实现。
  */
@@ -53,6 +67,12 @@ function registerIpcHandlers(): void {
 
   // M2 tab 域 handler
   registerTabHandlers(ipcMain, tabManager);
+
+  // M6 history 域 handler
+  registerHistoryHandlers(ipcMain, historyManager);
+
+  // M5 bookmark 域 handler
+  registerBookmarkHandlers(ipcMain, bookmarkManager);
 
   log.info('ipc handlers registered');
 }

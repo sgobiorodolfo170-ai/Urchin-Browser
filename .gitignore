@@ -50,3 +50,4 @@ electron-builder.lock
 
 # 临时脚本
 .tmp-*.ps1
+.tmp-*

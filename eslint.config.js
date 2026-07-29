@@ -16,6 +16,7 @@ export default tseslint.config(
       'out/**',
       'release/**',
       'coverage/**',
+      '**/coverage/**',
       'node_modules/**',
       '**/*.config.js',
       '**/*.config.ts',
@@ -77,10 +78,11 @@ export default tseslint.config(
 
   // 测试文件放宽
   {
-    files: ['**/*.test.ts', '**/*.integration.test.ts', '**/*.e2e.ts'],
+    files: ['**/*.test.ts', '**/*.test.tsx', '**/*.integration.test.ts', '**/*.e2e.ts'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/unbound-method': 'off',
     },
   },
 

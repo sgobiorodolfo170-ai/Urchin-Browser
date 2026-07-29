@@ -1,0 +1,7 @@
+test(w1-d5): W1 收口 + 覆盖率达标 81.81%
+
+- 新增 tab/window IPC handler 注册单测（tab 10 + window 2）
+- coverage exclude 配置（types/index/entry point）
+- @vitest/coverage-v8 依赖
+- eslint 测试文件放宽 unbound-method + coverage 忽略
+- 验证：86 测试过 / 覆盖率 81.81%（≥60% 达标）

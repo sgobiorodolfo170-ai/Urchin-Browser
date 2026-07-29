@@ -160,7 +160,6 @@ describe('TabManager', () => {
     const t = mgr.create({ windowId: 1 });
     mgr.remove(t.id);
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(factory._views[0]!._webContents.destroy).toHaveBeenCalled();
   });
 
@@ -353,7 +352,6 @@ describe('TabManager', () => {
     // 停止加载
     mgr.stopLoading(t.id);
     expect(mgr.getTab(t.id)?.loading).toBe(false);
-    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(factory._views[0]!._webContents.stop).toHaveBeenCalled();
   });
 

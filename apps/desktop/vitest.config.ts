@@ -12,6 +12,13 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'html'],
       include: ['src/**/*.ts', 'src/**/*.tsx'],
+      exclude: [
+        'src/**/types.ts',
+        'src/**/index.ts',
+        'src/main/index.ts',
+        'src/preload/**',
+        'src/renderer/main.tsx',
+      ],
     },
   },
   resolve: {

@@ -1,0 +1,3 @@
+# Commit-msg hook（SC9 决策）
+# 校验提交信息结构化（Conventional Commits）
+pnpm commitlint --edit "$1"

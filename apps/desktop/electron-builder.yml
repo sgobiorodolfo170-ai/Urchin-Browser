@@ -1,0 +1,41 @@
+# electron-builder 配置
+# 依据：03-技术栈 §1 T4 / 07-立项准备 §1
+# 首版仅 Windows x64
+
+appId: com.urchin.browser
+productName: Urchin Browser
+copyright: Copyright © 2026 Urchin Browser Contributors
+
+directories:
+  output: release
+  buildResources: build
+
+# 入口：electron-builder 会用 main 字段定位主进程
+files:
+  - dist/main/**/*
+  - dist/preload/**/*
+  - dist/renderer/**/*
+  - package.json
+  - '!**/*.map'
+
+# Windows 配置
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Urchin Browser
+
+# 原生模块重新构建
+npmRebuild: true
+
+# v0.1 暂无代码签名（CON-07：v0.1 不引入签名基础设施依赖）
+# v0.4+ 引入代码签名

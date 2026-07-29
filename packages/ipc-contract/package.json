@@ -1,0 +1,30 @@
+{
+  "name": "@urchin/ipc-contract",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Urchin IPC 契约层：zod schema 单一真源 + 类型生成（M17）",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schemas": "./src/schemas/index.ts",
+    "./client": "./src/client.ts",
+    "./server": "./src/server.ts",
+    "./errors": "./src/errors.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build:dts": "tsup src/index.ts --dts --outDir dist"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "tsup": "^8.3.0"
+  }
+}

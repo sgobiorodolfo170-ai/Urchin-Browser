@@ -1,0 +1,4 @@
+# Pre-commit hook（SC8 决策）
+# 顺序：lint-staged（ESLint + Prettier）
+# 依据：agents.md §九 提交时卡点
+pnpm lint-staged

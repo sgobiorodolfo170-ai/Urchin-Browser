@@ -1,0 +1,51 @@
+{
+  "name": "urchin-browser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI 原生 + 开发者友好的桌面浏览器，基于 Electron / 完整 Chromium 内核",
+  "license": "SEE LICENSE IN LICENSE",
+  "author": "Urchin Browser Contributors",
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.12.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "better-sqlite3",
+      "esbuild"
+    ]
+  },
+  "scripts": {
+    "dev": "pnpm --filter @urchin/desktop dev",
+    "build": "pnpm --filter @urchin/desktop build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm -r test",
+    "test:coverage": "pnpm -r test -- --coverage",
+    "e2e": "pnpm --filter @urchin/desktop e2e",
+    "package:win": "pnpm --filter @urchin/desktop package:win",
+    "prepare": "husky || true"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.5.0",
+    "@commitlint/config-conventional": "^19.5.0",
+    "@eslint/js": "^9.12.0",
+    "@types/node": "^22.7.0",
+    "eslint": "^9.12.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.37.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "husky": "^9.1.6",
+    "lint-staged": "^15.2.10",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.8.0",
+    "vitest": "^2.1.0"
+  }
+}

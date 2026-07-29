@@ -1,15 +1,19 @@
 /**
- * Urchin Browser · 根组件（W1-D2）
+ * Urchin Browser · 根组件（W2-D1）
  *
  * 验证：
  * 1. React 渲染链路通
  * 2. preload 暴露的 window.urchin.invoke 可调用 Main
  * 3. IPC 双向 zod 校验链路通
  * 4. window.create / window.close 链路可用（M1 Window Lifecycle）
+ * 5. M19 主题切换可用
  *
  * D3 起替换为真正的 TabBar + Omnibox + SidePanel 布局。
  */
 import { useEffect, useState } from 'react';
+import { Moon, Sun } from 'lucide-react';
+import { Button } from './components/ui/button';
+import { useTheme } from './theme/theme-provider';
 
 // 渲染层通过 window.urchin 访问 preload 暴露的 API
 declare global {
@@ -27,6 +31,8 @@ declare global {
 }
 
 export function App() {
+  // eslint-disable-next-line @typescript-eslint/unbound-method
+  const { theme, toggleTheme } = useTheme();
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
   const [tabInfo, setTabInfo] = useState<string>('');
   const [error, setError] = useState<string>('');
@@ -63,27 +69,18 @@ export function App() {
   }
 
   return (
-    <div
-      style={{
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-        padding: 32,
-        maxWidth: 800,
-        margin: '0 auto',
-      }}
-    >
-      <h1 style={{ fontSize: 24, marginBottom: 8 }}>Urchin Browser</h1>
-      <p style={{ color: '#666', marginBottom: 24 }}>AI 原生 + 开发者友好的桌面浏览器</p>
+    <div className="mx-auto max-w-2xl p-8">
+      <div className="mb-2 flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Urchin Browser</h1>
+        <Button variant="ghost" size="sm" onClick={toggleTheme} aria-label="切换主题">
+          {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+        </Button>
+      </div>
+      <p className="mb-6 text-text-secondary">AI 原生 + 开发者友好的桌面浏览器</p>
 
-      <div
-        style={{
-          padding: 16,
-          borderRadius: 8,
-          background: '#f5f5f5',
-          marginBottom: 16,
-        }}
-      >
+      <div className="mb-4 rounded-lg bg-surface-secondary p-4">
         <strong>环境信息</strong>
-        <div style={{ marginTop: 8, fontSize: 14 }}>
+        <div className="mt-2 text-sm">
           <div>平台：{window.urchin.platform}</div>
           <div>Electron：{window.urchin.versions.electron}</div>
           <div>Chromium：{window.urchin.versions.chrome}</div>
@@ -92,56 +89,40 @@ export function App() {
       </div>
 
       <div
-        style={{
-          padding: 16,
-          borderRadius: 8,
-          background: status === 'error' ? '#fee' : status === 'ok' ? '#efe' : '#ffe',
-          border: `1px solid ${status === 'error' ? '#c33' : status === 'ok' ? '#3c3' : '#cc3'}`,
-        }}
+        className={`mb-4 rounded-lg border p-4 ${
+          status === 'error'
+            ? 'border-error bg-error/10'
+            : status === 'ok'
+              ? 'border-success bg-success/10'
+              : 'border-warning bg-warning/10'
+        }`}
       >
         <strong>IPC 链路验证</strong>
-        {status === 'loading' && <div style={{ marginTop: 8 }}>正在调用 tab.create...</div>}
+        {status === 'loading' && <div className="mt-2">正在调用 tab.create...</div>}
         {status === 'ok' && (
-          <div style={{ marginTop: 8 }}>
-            <span style={{ color: '#3c3' }}>✓ 通过</span> · {tabInfo}
+          <div className="mt-2">
+            <span className="text-success">✓ 通过</span> · {tabInfo}
           </div>
         )}
         {status === 'error' && (
-          <div style={{ marginTop: 8 }}>
-            <span style={{ color: '#c33' }}>✗ 失败</span> · {error}
+          <div className="mt-2">
+            <span className="text-error">✗ 失败</span> · {error}
           </div>
         )}
       </div>
 
-      <div
-        style={{
-          padding: 16,
-          borderRadius: 8,
-          background: '#f0f4ff',
-          border: '1px solid #88c',
-          marginTop: 16,
-        }}
-      >
+      <div className="mb-4 rounded-lg border border-info/30 bg-info/5 p-4">
         <strong>M1 Window Lifecycle</strong>
-        <div style={{ marginTop: 8 }}>
-          <button
-            onClick={() => void handleCreateWindow()}
-            style={{
-              padding: '6px 16px',
-              borderRadius: 4,
-              border: '1px solid #88c',
-              background: '#fff',
-              cursor: 'pointer',
-            }}
-          >
+        <div className="mt-2">
+          <Button variant="secondary" size="sm" onClick={() => void handleCreateWindow()}>
             创建新窗口
-          </button>
-          {windowCount && <span style={{ marginLeft: 12, fontSize: 14 }}>{windowCount}</span>}
+          </Button>
+          {windowCount && <span className="ml-3 text-sm">{windowCount}</span>}
         </div>
       </div>
 
-      <p style={{ marginTop: 24, fontSize: 12, color: '#999' }}>
-        v0.1.0-dev · W1-D2 M1 Window Lifecycle · 详见 docs/07-立项准备.md
+      <p className="mt-6 text-xs text-text-secondary">
+        v0.1.0-dev · W2-D1 M19 Theme System · 详见 docs/07-立项准备.md
       </p>
     </div>
   );

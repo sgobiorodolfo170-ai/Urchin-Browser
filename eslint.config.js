@@ -20,6 +20,8 @@ export default tseslint.config(
       'node_modules/**',
       '**/*.config.js',
       '**/*.config.ts',
+      '**/*.config.cjs',
+      '**/*.config.mjs',
       '.lintstagedrc.js',
       'docs/**',
     ],

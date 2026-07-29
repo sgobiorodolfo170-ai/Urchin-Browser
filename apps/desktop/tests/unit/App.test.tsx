@@ -1,14 +1,16 @@
 /**
- * App 组件单元测试（W1-D2）
+ * App 组件单元测试（W2-D1）
  *
  * 验证：
  * 1. 标题与环境信息渲染
  * 2. IPC tab.create 链路成功/失败
  * 3. M1 window.create 按钮可触发 IPC
+ * 4. M19 主题切换按钮可用
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { App } from '../../src/renderer/App';
+import { ThemeProvider } from '../../src/renderer/theme/theme-provider';
 
 // Mock window.urchin（preload 在测试环境不存在）
 const mockInvoke = vi.fn();
@@ -23,14 +25,23 @@ beforeEach(() => {
     writable: true,
     configurable: true,
   });
+  localStorage.clear();
 });
+
+function renderApp() {
+  return render(
+    <ThemeProvider defaultTheme="light">
+      <App />
+    </ThemeProvider>,
+  );
+}
 
 describe('App', () => {
   it('should render title and environment info', () => {
     mockInvoke.mockResolvedValue({
       tab: { id: 1, windowId: 1, url: 'about:blank', title: 'Urchin' },
     });
-    render(<App />);
+    renderApp();
     expect(screen.getByText('Urchin Browser')).toBeInTheDocument();
     expect(screen.getByText(/平台：win32/)).toBeInTheDocument();
   });
@@ -39,7 +50,7 @@ describe('App', () => {
     mockInvoke.mockResolvedValue({
       tab: { id: 42, windowId: 1, url: 'about:blank', title: 'Urchin' },
     });
-    render(<App />);
+    renderApp();
     await waitFor(() => {
       expect(screen.getByText(/通过/)).toBeInTheDocument();
       expect(screen.getByText(/Tab #42/)).toBeInTheDocument();
@@ -48,7 +59,7 @@ describe('App', () => {
 
   it('should show IPC error when tab.create fails', async () => {
     mockInvoke.mockRejectedValue(new Error('connection refused'));
-    render(<App />);
+    renderApp();
     await waitFor(() => {
       expect(screen.getByText(/失败/)).toBeInTheDocument();
       expect(screen.getByText(/connection refused/)).toBeInTheDocument();
@@ -59,7 +70,7 @@ describe('App', () => {
     mockInvoke.mockResolvedValue({
       tab: { id: 1, windowId: 1, url: 'about:blank', title: 'Urchin' },
     });
-    render(<App />);
+    renderApp();
     expect(screen.getByText('M1 Window Lifecycle')).toBeInTheDocument();
     expect(screen.getByText('创建新窗口')).toBeInTheDocument();
   });
@@ -70,7 +81,7 @@ describe('App', () => {
     });
     mockInvoke.mockResolvedValueOnce({ windowId: 2 });
 
-    render(<App />);
+    renderApp();
     await waitFor(() => {
       expect(screen.getByText(/通过/)).toBeInTheDocument();
     });
@@ -81,5 +92,21 @@ describe('App', () => {
       expect(mockInvoke).toHaveBeenCalledWith('window.create', { incognito: false });
       expect(screen.getByText(/windowId=2/)).toBeInTheDocument();
     });
+  });
+
+  it('should toggle theme when theme button clicked', () => {
+    mockInvoke.mockResolvedValue({
+      tab: { id: 1, windowId: 1, url: 'about:blank', title: 'Urchin' },
+    });
+    renderApp();
+
+    const themeButton = screen.getByLabelText('切换主题');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+
+    fireEvent.click(themeButton);
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+
+    fireEvent.click(themeButton);
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
   });
 });

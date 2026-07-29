@@ -17,6 +17,8 @@ import { WindowManager, createBrowserWindow, registerWindowHandlers } from './wi
 import { TabManager, createBrowserView, registerTabHandlers } from './tabs';
 import { HistoryManager, registerHistoryHandlers } from './history';
 import { BookmarkManager, registerBookmarkHandlers } from './bookmarks';
+import { SettingsManager, registerSettingsHandlers } from './settings';
+import { DownloadManager, registerDownloadHandlers } from './downloads';
 
 const log = createLogger('main');
 
@@ -58,6 +60,18 @@ const historyManager = new HistoryManager();
 const bookmarkManager = new BookmarkManager();
 
 /**
+ * 全局 SettingsManager 实例（M7）。
+ * v0.1 W2 使用内存存储，W3 迁移到 SQLite（M8 Storage Layer）。
+ */
+const settingsManager = new SettingsManager();
+
+/**
+ * 全局 DownloadManager 实例（M23）。
+ * v0.1 W2 基础实现：下载项状态管理 + 进度跟踪。
+ */
+const downloadManager = new DownloadManager();
+
+/**
  * 注册 IPC handlers。
  * W1-D3：tab 域完整实现 + window 域完整实现。
  */
@@ -73,6 +87,12 @@ function registerIpcHandlers(): void {
 
   // M5 bookmark 域 handler
   registerBookmarkHandlers(ipcMain, bookmarkManager);
+
+  // M7 settings 域 handler
+  registerSettingsHandlers(ipcMain, settingsManager);
+
+  // M23 download 域 handler
+  registerDownloadHandlers(ipcMain, downloadManager);
 
   log.info('ipc handlers registered');
 }

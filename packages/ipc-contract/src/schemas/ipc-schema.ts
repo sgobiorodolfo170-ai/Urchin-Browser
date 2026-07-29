@@ -308,6 +308,133 @@ export const bookmarkDeleteResSchema = z.object({
 export type BookmarkDeleteRes = z.infer<typeof bookmarkDeleteResSchema>;
 
 // ============================================================================
+// M7 Settings
+// ============================================================================
+
+export const settingKeySchema = z.string().min(1).max(256);
+export type SettingKey = z.infer<typeof settingKeySchema>;
+
+export const settingValueSchema = z.unknown();
+export type SettingValue = z.infer<typeof settingValueSchema>;
+
+export const settingEntrySchema = z.object({
+  key: settingKeySchema,
+  value: settingValueSchema,
+});
+export type SettingEntry = z.infer<typeof settingEntrySchema>;
+
+export const settingsGetReqSchema = z.object({
+  key: settingKeySchema,
+});
+export type SettingsGetReq = z.infer<typeof settingsGetReqSchema>;
+
+export const settingsGetResSchema = z.object({
+  value: settingValueSchema.nullable(),
+});
+export type SettingsGetRes = z.infer<typeof settingsGetResSchema>;
+
+export const settingsSetReqSchema = z.object({
+  key: settingKeySchema,
+  value: settingValueSchema,
+});
+export type SettingsSetReq = z.infer<typeof settingsSetReqSchema>;
+
+export const settingsSetResSchema = z.object({
+  ok: z.literal(true),
+});
+export type SettingsSetRes = z.infer<typeof settingsSetResSchema>;
+
+export const settingsGetAllReqSchema = z.object({});
+export type SettingsGetAllReq = z.infer<typeof settingsGetAllReqSchema>;
+
+export const settingsGetAllResSchema = z.object({
+  entries: z.array(settingEntrySchema),
+});
+export type SettingsGetAllRes = z.infer<typeof settingsGetAllResSchema>;
+
+// ============================================================================
+// M23 Download Manager
+// ============================================================================
+
+export const downloadIdSchema = z.string().min(1);
+export type DownloadId = z.infer<typeof downloadIdSchema>;
+
+export const downloadStateSchema = z.enum([
+  'progressing',
+  'completed',
+  'cancelled',
+  'interrupted',
+  'paused',
+]);
+export type DownloadState = z.infer<typeof downloadStateSchema>;
+
+export const downloadItemSchema = z.object({
+  id: downloadIdSchema,
+  filename: z.string().min(1),
+  url: urlSchema,
+  state: downloadStateSchema,
+  receivedBytes: z.number().int().nonnegative(),
+  totalBytes: z.number().int().nonnegative(),
+  savePath: z.string(),
+  startTime: z.number().int().nonnegative(),
+  endTime: z.number().int().nonnegative().optional(),
+  mimeType: z.string().optional(),
+});
+export type DownloadItem = z.infer<typeof downloadItemSchema>;
+
+export const downloadListReqSchema = z.object({});
+export type DownloadListReq = z.infer<typeof downloadListReqSchema>;
+
+export const downloadListResSchema = z.object({
+  downloads: z.array(downloadItemSchema),
+});
+export type DownloadListRes = z.infer<typeof downloadListResSchema>;
+
+export const downloadCancelReqSchema = z.object({
+  id: downloadIdSchema,
+});
+export type DownloadCancelReq = z.infer<typeof downloadCancelReqSchema>;
+
+export const downloadCancelResSchema = z.object({
+  ok: z.literal(true),
+  id: downloadIdSchema,
+});
+export type DownloadCancelRes = z.infer<typeof downloadCancelResSchema>;
+
+export const downloadPauseReqSchema = z.object({
+  id: downloadIdSchema,
+});
+export type DownloadPauseReq = z.infer<typeof downloadPauseReqSchema>;
+
+export const downloadPauseResSchema = z.object({
+  ok: z.literal(true),
+  id: downloadIdSchema,
+});
+export type DownloadPauseRes = z.infer<typeof downloadPauseResSchema>;
+
+export const downloadResumeReqSchema = z.object({
+  id: downloadIdSchema,
+});
+export type DownloadResumeReq = z.infer<typeof downloadResumeReqSchema>;
+
+export const downloadResumeResSchema = z.object({
+  ok: z.literal(true),
+  id: downloadIdSchema,
+});
+export type DownloadResumeRes = z.infer<typeof downloadResumeResSchema>;
+
+export const downloadClearReqSchema = z.object({
+  id: downloadIdSchema.optional(),
+});
+export type DownloadClearReq = z.infer<typeof downloadClearReqSchema>;
+
+export const downloadClearResSchema = z.object({
+  ok: z.literal(true),
+  deleted: z.number().int().nonnegative(),
+});
+export type DownloadClearRes = z.infer<typeof downloadClearResSchema>;
+
+// ============================================================================
 // IPC Schema 总表
 // ============================================================================
 
@@ -337,6 +464,14 @@ export const ipcSchema = {
   'bookmark.list': { req: bookmarkListReqSchema, res: bookmarkListResSchema },
   'bookmark.search': { req: bookmarkSearchReqSchema, res: bookmarkSearchResSchema },
   'bookmark.delete': { req: bookmarkDeleteReqSchema, res: bookmarkDeleteResSchema },
+  'settings.get': { req: settingsGetReqSchema, res: settingsGetResSchema },
+  'settings.set': { req: settingsSetReqSchema, res: settingsSetResSchema },
+  'settings.getAll': { req: settingsGetAllReqSchema, res: settingsGetAllResSchema },
+  'download.list': { req: downloadListReqSchema, res: downloadListResSchema },
+  'download.cancel': { req: downloadCancelReqSchema, res: downloadCancelResSchema },
+  'download.pause': { req: downloadPauseReqSchema, res: downloadPauseResSchema },
+  'download.resume': { req: downloadResumeReqSchema, res: downloadResumeResSchema },
+  'download.clear': { req: downloadClearReqSchema, res: downloadClearResSchema },
 } as const;
 
 /** IPC schema 的类型推导工具：取 channel 名联合。 */

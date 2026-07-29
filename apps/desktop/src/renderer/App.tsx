@@ -1,12 +1,13 @@
 /**
- * Urchin Browser · 根组件（W1-D1 最小骨架）
+ * Urchin Browser · 根组件（W1-D2）
  *
  * 验证：
  * 1. React 渲染链路通
  * 2. preload 暴露的 window.urchin.invoke 可调用 Main
  * 3. IPC 双向 zod 校验链路通
+ * 4. window.create / window.close 链路可用（M1 Window Lifecycle）
  *
- * D2 起替换为真正的 TabBar + Omnibox + SidePanel 布局。
+ * D3 起替换为真正的 TabBar + Omnibox + SidePanel 布局。
  */
 import { useEffect, useState } from 'react';
 
@@ -29,6 +30,7 @@ export function App() {
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
   const [tabInfo, setTabInfo] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [windowCount, setWindowCount] = useState<string>('');
 
   useEffect(() => {
     async function verifyIpc() {
@@ -47,6 +49,18 @@ export function App() {
     }
     void verifyIpc();
   }, []);
+
+  /** 测试创建新窗口 */
+  async function handleCreateWindow() {
+    try {
+      const result = (await window.urchin.invoke('window.create', {
+        incognito: false,
+      })) as { windowId: number };
+      setWindowCount(`新窗口已创建 · windowId=${result.windowId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   return (
     <div
@@ -99,8 +113,35 @@ export function App() {
         )}
       </div>
 
+      <div
+        style={{
+          padding: 16,
+          borderRadius: 8,
+          background: '#f0f4ff',
+          border: '1px solid #88c',
+          marginTop: 16,
+        }}
+      >
+        <strong>M1 Window Lifecycle</strong>
+        <div style={{ marginTop: 8 }}>
+          <button
+            onClick={() => void handleCreateWindow()}
+            style={{
+              padding: '6px 16px',
+              borderRadius: 4,
+              border: '1px solid #88c',
+              background: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            创建新窗口
+          </button>
+          {windowCount && <span style={{ marginLeft: 12, fontSize: 14 }}>{windowCount}</span>}
+        </div>
+      </div>
+
       <p style={{ marginTop: 24, fontSize: 12, color: '#999' }}>
-        v0.1.0-dev · W1-D1 脚手架验证 · 详见 docs/07-立项准备.md
+        v0.1.0-dev · W1-D2 M1 Window Lifecycle · 详见 docs/07-立项准备.md
       </p>
     </div>
   );

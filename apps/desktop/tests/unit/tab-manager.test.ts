@@ -303,4 +303,64 @@ describe('TabManager', () => {
     mgr.create({ windowId: 1 });
     expect(listener).not.toHaveBeenCalled();
   });
+
+  // ===== M3 Navigation Stack 测试 =====
+
+  it('should load URL via loadUrl method', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+
+    const t = mgr.create({ windowId: 1 });
+    mgr.loadUrl(t.id, 'https://example.com');
+
+    expect(factory._views[0]!._webContents._loadURLCalls).toContain('https://example.com');
+    expect(mgr.getTab(t.id)?.url).toBe('https://example.com');
+    expect(mgr.getTab(t.id)?.loading).toBe(true);
+  });
+
+  it('should emit updated event on loadUrl', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    const listener = vi.fn();
+    mgr.on('updated', listener);
+
+    const t = mgr.create({ windowId: 1 });
+    listener.mockClear();
+
+    mgr.loadUrl(t.id, 'https://example.com');
+
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({ id: t.id, url: 'https://example.com', loading: true }),
+    );
+  });
+
+  it('should throw when loadUrl on non-existent tab', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+
+    expect(() => mgr.loadUrl(999, 'https://example.com')).toThrow(/not found/i);
+  });
+
+  it('should stop loading via stopLoading method', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+
+    const t = mgr.create({ windowId: 1 });
+    // 模拟加载中
+    mgr.loadUrl(t.id, 'https://example.com');
+    expect(mgr.getTab(t.id)?.loading).toBe(true);
+
+    // 停止加载
+    mgr.stopLoading(t.id);
+    expect(mgr.getTab(t.id)?.loading).toBe(false);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(factory._views[0]!._webContents.stop).toHaveBeenCalled();
+  });
+
+  it('should throw when stopLoading on non-existent tab', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+
+    expect(() => mgr.stopLoading(999)).toThrow(/not found/i);
+  });
 });

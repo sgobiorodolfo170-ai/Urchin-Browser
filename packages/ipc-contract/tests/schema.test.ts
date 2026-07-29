@@ -118,6 +118,8 @@ describe('ipcSchema', () => {
     expect(channels).toContain('tab.reload');
     expect(channels).toContain('tab.goBack');
     expect(channels).toContain('tab.goForward');
+    expect(channels).toContain('tab.loadUrl');
+    expect(channels).toContain('tab.stop');
     expect(channels).toContain('window.create');
     expect(channels).toContain('window.close');
   });

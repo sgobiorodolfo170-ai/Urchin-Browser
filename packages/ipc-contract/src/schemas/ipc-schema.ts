@@ -126,6 +126,30 @@ export const tabGoForwardResSchema = z.object({
 });
 export type TabGoForwardRes = z.infer<typeof tabGoForwardResSchema>;
 
+export const tabLoadUrlReqSchema = z.object({
+  tabId: tabIdSchema,
+  url: urlSchema,
+});
+export type TabLoadUrlReq = z.infer<typeof tabLoadUrlReqSchema>;
+
+export const tabLoadUrlResSchema = z.object({
+  ok: z.literal(true),
+  tabId: tabIdSchema,
+  url: urlSchema,
+});
+export type TabLoadUrlRes = z.infer<typeof tabLoadUrlResSchema>;
+
+export const tabStopReqSchema = z.object({
+  tabId: tabIdSchema,
+});
+export type TabStopReq = z.infer<typeof tabStopReqSchema>;
+
+export const tabStopResSchema = z.object({
+  ok: z.literal(true),
+  tabId: tabIdSchema,
+});
+export type TabStopRes = z.infer<typeof tabStopResSchema>;
+
 // ============================================================================
 // Window 域
 // ============================================================================
@@ -168,6 +192,8 @@ export const ipcSchema = {
   'tab.reload': { req: tabReloadReqSchema, res: tabReloadResSchema },
   'tab.goBack': { req: tabGoBackReqSchema, res: tabGoBackResSchema },
   'tab.goForward': { req: tabGoForwardReqSchema, res: tabGoForwardResSchema },
+  'tab.loadUrl': { req: tabLoadUrlReqSchema, res: tabLoadUrlResSchema },
+  'tab.stop': { req: tabStopReqSchema, res: tabStopResSchema },
   'window.create': { req: windowCreateReqSchema, res: windowCreateResSchema },
   'window.close': { req: windowCloseReqSchema, res: windowCloseResSchema },
 } as const;

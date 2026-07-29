@@ -190,6 +190,47 @@ export class TabManager {
   }
 
   /**
+   * 导航到指定 URL（M3 Navigation Stack）。
+   *
+   * 包装 webContents.loadURL，更新 tab 状态。
+   * 实际的 navigation history 由 Electron webContents 内部管理。
+   *
+   * @param tabId 目标 tab ID
+   * @param url 要加载的 URL
+   * @throws 若 tab 不存在
+   */
+  loadUrl(tabId: number, url: string): void {
+    const tab = this.tabs.get(tabId);
+    if (!tab) {
+      throw new Error(`Tab not found: ${tabId}`);
+    }
+
+    // 立即更新 URL（did-navigate 事件会确认最终 URL，含重定向）
+    tab.url = url;
+    tab.loading = true;
+    this.emit('updated', this.toSnapshot(tab));
+
+    tab.webContents.loadURL(url);
+  }
+
+  /**
+   * 停止加载当前页面（M3 Navigation Stack）。
+   *
+   * @param tabId 目标 tab ID
+   * @throws 若 tab 不存在
+   */
+  stopLoading(tabId: number): void {
+    const tab = this.tabs.get(tabId);
+    if (!tab) {
+      throw new Error(`Tab not found: ${tabId}`);
+    }
+
+    tab.webContents.stop();
+    tab.loading = false;
+    this.emit('updated', this.toSnapshot(tab));
+  }
+
+  /**
    * 查询 Tab 快照列表。
    *
    * @param info 查询条件（windowId 可选）

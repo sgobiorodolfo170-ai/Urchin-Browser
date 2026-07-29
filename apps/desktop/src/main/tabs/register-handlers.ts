@@ -126,5 +126,23 @@ export function registerTabHandlers(ipcMain: IpcMain, tabManager: TabManager): v
     return { ok: true as const, tabId: req.tabId };
   });
 
+  // tab.loadUrl：导航到指定 URL（M3 Navigation Stack）
+  registerHandler(ipcMain, 'tab.loadUrl', (req) => {
+    log.info('tab.loadUrl', { tabId: req.tabId, url: req.url });
+
+    tabManager.loadUrl(req.tabId, req.url);
+
+    return { ok: true as const, tabId: req.tabId, url: req.url };
+  });
+
+  // tab.stop：停止加载（M3 Navigation Stack）
+  registerHandler(ipcMain, 'tab.stop', (req) => {
+    log.info('tab.stop', { tabId: req.tabId });
+
+    tabManager.stopLoading(req.tabId);
+
+    return { ok: true as const, tabId: req.tabId };
+  });
+
   log.info('tab ipc handlers registered');
 }

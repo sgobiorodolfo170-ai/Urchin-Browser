@@ -37,11 +37,11 @@ jobs:
       - name: Unit tests with coverage
         run: pnpm test:coverage
 
+      - name: Build for E2E
+        run: pnpm --filter @urchin/desktop build
+
       - name: E2E tests
         run: pnpm e2e
-        env:
-          # Playwright Electron 测试需要 display
-          DISPLAY: ':99'
 
       - name: Upload coverage
         if: always()

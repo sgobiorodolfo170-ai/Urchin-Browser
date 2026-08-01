@@ -12,9 +12,12 @@ export default tseslint.config(
   {
     ignores: [
       'dist/**',
+      '**/dist/**',
       'build/**',
+      '**/build/**',
       'out/**',
       'release/**',
+      '**/release/**',
       'coverage/**',
       '**/coverage/**',
       'node_modules/**',
@@ -24,6 +27,24 @@ export default tseslint.config(
       '**/*.config.mjs',
       '.lintstagedrc.js',
       'docs/**',
+      '.electron-cache/**',
+      'apps/desktop/tests/fixtures/**',
+      // vendor：内置第三方 pi monorepo，自带 biome/lint 工具链，不纳入本项目 eslint
+      'vendor/**',
+      // 本地运行数据与调试残留（已被 .gitignore 排除，eslint 亦不扫描）
+      '.test-user-data/**',
+      'temp-test/**',
+      'test-output/**',
+      '*.cjs',
+      '*.mjs',
+      '_*.{js,cjs,mjs}',
+      'brc.js',
+      'generator.cjs',
+      'apps/desktop/cdp-inspect.cjs',
+      'apps/desktop/cdp-test-actions.cjs',
+      // 纯 JS 构建/开发脚本（不属于 TS 工程，不参与类型感知 lint）
+      'scripts/**',
+      'apps/desktop/ico/**',
     ],
   },
 

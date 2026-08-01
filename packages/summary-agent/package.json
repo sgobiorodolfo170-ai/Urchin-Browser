@@ -1,0 +1,20 @@
+{
+  "name": "@urchin/summary-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Urchin 摘要 Agent 模块：单 Agent AI 助手，提取网页关键信息并生成为本地网页格式文档。与 pi 模块相互隔离。",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

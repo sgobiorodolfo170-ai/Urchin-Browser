@@ -233,4 +233,59 @@ describe('SettingsManager', () => {
 
     expect(listener).toHaveBeenCalledWith('newKey', { nested: 'object' });
   });
+
+  // ===== persistence 测试 =====
+
+  it('set: persists via persistence when provided', () => {
+    const persistSet = vi.fn();
+    const mgr = new SettingsManager({ get: vi.fn().mockReturnValue(null), set: persistSet });
+
+    mgr.set('theme', 'dark');
+
+    expect(persistSet).toHaveBeenCalledWith('settings:theme', 'dark');
+  });
+
+  it('set: swallows persistence error gracefully', () => {
+    const persistSet = vi.fn().mockImplementation(() => {
+      throw new Error('disk full');
+    });
+    const mgr = new SettingsManager({ get: vi.fn().mockReturnValue(null), set: persistSet });
+
+    expect(() => mgr.set('theme', 'dark')).not.toThrow();
+    expect(mgr.get('theme')).toBe('dark');
+  });
+
+  it('delete: persists deletion when persistence has delete method', () => {
+    const persistDelete = vi.fn();
+    const mgr = new SettingsManager({
+      get: vi.fn().mockReturnValue(null),
+      set: vi.fn(),
+      delete: persistDelete,
+    });
+
+    mgr.delete('theme');
+
+    expect(persistDelete).toHaveBeenCalledWith('settings:theme');
+  });
+
+  it('delete: swallows persistence delete error gracefully', () => {
+    const persistDelete = vi.fn().mockImplementation(() => {
+      throw new Error('disk full');
+    });
+    const mgr = new SettingsManager({
+      get: vi.fn().mockReturnValue(null),
+      set: vi.fn(),
+      delete: persistDelete,
+    });
+
+    expect(() => mgr.delete('theme')).not.toThrow();
+    expect(mgr.has('theme')).toBe(false);
+  });
+
+  it('delete: does not call persistence.delete when method absent', () => {
+    const persistSet = vi.fn();
+    const mgr = new SettingsManager({ get: vi.fn().mockReturnValue(null), set: persistSet });
+
+    expect(() => mgr.delete('theme')).not.toThrow();
+  });
 });

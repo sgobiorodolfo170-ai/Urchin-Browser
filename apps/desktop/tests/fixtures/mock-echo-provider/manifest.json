@@ -1,0 +1,11 @@
+{
+  "id": "mock-echo",
+  "name": "Mock Echo Provider",
+  "version": "1.0.0",
+  "apiVersion": "urchin-ai-provider/v1",
+  "capabilities": ["chat.completion", "chat.completion.streaming"],
+  "authMethod": "none",
+  "rateLimit": {
+    "requestsPerMin": 120
+  }
+}

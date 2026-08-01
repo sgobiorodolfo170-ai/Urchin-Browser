@@ -99,16 +99,30 @@ describe('SettingsManager', () => {
 
     const entries = mgr.getAll();
 
-    // 默认 6 项 + 自定义 1 项
-    expect(entries).toHaveLength(7);
+    // 默认 18 项（theme/language/searchEngine/homepage/downloadsPath/blockTrackers/doNotTrack/links.openInNewTab/
+    //   ai.model/ai.apiKey/ai.providerId/ai.baseUrl/
+    //   summary.model/summary.apiKey/summary.providerId/summary.baseUrl/summary.saveDirectory/
+    //   debug.sidebarHoverDelay） + 自定义 1 项
+    expect(entries).toHaveLength(19);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('theme');
+    expect(keys).toContain('language');
     expect(keys).toContain('searchEngine');
     expect(keys).toContain('homepage');
     expect(keys).toContain('downloadsPath');
     expect(keys).toContain('blockTrackers');
     expect(keys).toContain('doNotTrack');
+    expect(keys).toContain('links.openInNewTab');
+    expect(keys).toContain('ai.model');
+    expect(keys).toContain('ai.apiKey');
+    expect(keys).toContain('ai.providerId');
+    expect(keys).toContain('ai.baseUrl');
+    expect(keys).toContain('summary.model');
+    expect(keys).toContain('summary.apiKey');
+    expect(keys).toContain('summary.providerId');
+    expect(keys).toContain('summary.baseUrl');
+    expect(keys).toContain('summary.saveDirectory');
     expect(keys).toContain('customKey');
   });
 

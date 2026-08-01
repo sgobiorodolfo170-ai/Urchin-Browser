@@ -39,7 +39,7 @@ function createMockTabManager(): TabManager & {
   const tab: Tab = {
     ...snapshot,
     webContents: {
-      loadURL: vi.fn(),
+      loadURL: vi.fn().mockResolvedValue(undefined),
       reload: vi.fn(),
       reloadIgnoringCache: vi.fn(),
       stop: vi.fn(),
@@ -50,6 +50,8 @@ function createMockTabManager(): TabManager & {
       destroy: vi.fn(),
       on: vi.fn(),
       once: vi.fn(),
+      executeJavaScript: vi.fn().mockResolvedValue(null),
+      getURL: vi.fn().mockReturnValue('about:blank'),
     },
     view: {
       webContents: {} as never,

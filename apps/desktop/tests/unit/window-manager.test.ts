@@ -22,10 +22,12 @@ function createMockBrowserWindow(): BrowserWindowLike & {
   const calls: string[] = [];
   const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
   return {
-    webContents: { id: Math.floor(Math.random() * 100000) },
+    webContents: { id: Math.floor(Math.random() * 100000), send: () => undefined },
     show: () => calls.push('show'),
     hide: () => calls.push('hide'),
     close: () => calls.push('close'),
+    destroy: () => calls.push('destroy'),
+    isDestroyed: () => false,
     minimize: () => calls.push('minimize'),
     maximize: () => calls.push('maximize'),
     unmaximize: () => calls.push('unmaximize'),
@@ -33,6 +35,10 @@ function createMockBrowserWindow(): BrowserWindowLike & {
     setFullScreen: (flag: boolean) => calls.push(`setFullScreen:${flag}`),
     isFullScreen: () => false,
     restore: () => calls.push('restore'),
+    getBounds: () => ({ x: 0, y: 0, width: 1280, height: 800 }),
+    getContentBounds: () => ({ x: 0, y: 0, width: 1280, height: 770 }),
+    setBrowserView: (view: unknown) =>
+      calls.push(`setBrowserView:${view === null ? 'null' : 'view'}`),
     on: (event: string, handler: (...args: unknown[]) => void) => {
       const arr = listeners.get(event) ?? [];
       arr.push(handler);

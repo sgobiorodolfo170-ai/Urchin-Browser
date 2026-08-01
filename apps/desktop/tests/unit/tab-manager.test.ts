@@ -27,7 +27,10 @@ function createMockWebContents(): WebContentsLike & {
   const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
   const loadURLCalls: string[] = [];
   return {
-    loadURL: (url: string) => loadURLCalls.push(url),
+    loadURL: (url: string) => {
+      loadURLCalls.push(url);
+      return Promise.resolve();
+    },
     reload: vi.fn(),
     reloadIgnoringCache: vi.fn(),
     stop: vi.fn(),
@@ -46,6 +49,8 @@ function createMockWebContents(): WebContentsLike & {
       arr.push(handler);
       listeners.set(event, arr);
     },
+    executeJavaScript: vi.fn().mockResolvedValue(null),
+    getURL: vi.fn().mockReturnValue('about:blank'),
     _emitEvent: (event: string, ...args: unknown[]) => {
       const arr = listeners.get(event) ?? [];
       arr.forEach((fn) => fn(...args));

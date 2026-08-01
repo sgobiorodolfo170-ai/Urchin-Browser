@@ -17,9 +17,17 @@ export default {
     if (eslintTargets.length > 0) {
       tasks.push(`eslint --fix ${eslintTargets.join(' ')}`);
     }
-    tasks.push(`prettier --write ${prettierTargets.join(' ')}`);
+    if (prettierTargets.length > 0) {
+      tasks.push(`prettier --write ${prettierTargets.join(' ')}`);
+    }
     return tasks;
   },
-  '*.{js,cjs,mjs}': ['prettier --write'],
-  '*.{json,md,yml,yaml}': ['prettier --write'],
+  '*.{js,cjs,mjs}': (files) => {
+    const targets = files.filter((f) => !isVendorFile(f));
+    return targets.length > 0 ? [`prettier --write ${targets.join(' ')}`] : [];
+  },
+  '*.{json,md,yml,yaml}': (files) => {
+    const targets = files.filter((f) => !isVendorFile(f));
+    return targets.length > 0 ? [`prettier --write ${targets.join(' ')}`] : [];
+  },
 };

@@ -10,11 +10,14 @@ out/
 
 # Electron 打包
 release/
+release-v*/
+apps/desktop/release-v*/
 *.exe
 *.app
 *.deb
 *.snap
 *.dmg
+*.asar
 
 # 测试与覆盖率
 coverage/
@@ -51,3 +54,40 @@ electron-builder.lock
 # 临时脚本
 .tmp-*.ps1
 .tmp-*
+
+# 本地调试残留（一次性脚本 / 测试产物 / 运行数据）
+.electron-cache/
+.test-user-data/
+temp-test/
+test-output/
+scripts/_test.txt
+_ai_test_runner.cjs
+_cdp-ai-test.js
+_cdp_list.cjs
+_check_elec.cjs
+_check_ws.cjs
+_clean_runner.cjs
+_find_port.cjs
+_fix.cjs
+_gen1.cjs
+_guitest_cleanup.cjs
+_hello_out.txt
+_hello_test.cjs
+_proc_cmd.cjs
+_runner.cjs
+_runner_full.cjs
+_supp.js
+_tmp_test_write.cjs
+brc.js
+generator.cjs
+apps/desktop/cdp-inspect.cjs
+apps/desktop/cdp-inspect.ps1
+apps/desktop/cdp-test-actions.cjs
+apps/desktop/check-sizes.ps1
+apps/desktop/delete-old-releases.ps1
+apps/desktop/find-lock.ps1
+apps/desktop/inspect-v8-asar.ps1
+apps/desktop/launch-v8-debug.ps1
+apps/desktop/launch-v8-logged.ps1
+apps/desktop/verify-asar.ps1
+apps/desktop/v8-launch.log

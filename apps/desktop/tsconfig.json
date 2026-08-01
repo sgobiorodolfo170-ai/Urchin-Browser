@@ -12,8 +12,12 @@
       "@renderer/*": ["src/renderer/*"],
       "@preload/*": ["src/preload/*"],
       "@urchin/ipc-contract": ["../../packages/ipc-contract/src/index.ts"],
+      "@urchin/ai-provider-contract": ["../../packages/ai-provider-contract/src/index.ts"],
       "@urchin/chrome-types": ["../../packages/chrome-types/src/index.ts"],
-      "@urchin/logger": ["../../packages/logger/src/index.ts"]
+      "@urchin/logger": ["../../packages/logger/src/index.ts"],
+      "@urchin/provider-sdk": ["../../packages/provider-sdk/src/index.ts"],
+      "@urchin/browser-host": ["../../packages/browser-host/src/index.ts"],
+      "@urchin/ai-extension": ["../../packages/ai-extension/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "vitest.setup.ts"],

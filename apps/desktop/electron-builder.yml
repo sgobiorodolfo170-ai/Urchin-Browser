@@ -7,7 +7,7 @@ productName: Urchin Browser
 copyright: Copyright © 2026 Urchin Browser Contributors
 
 directories:
-  output: release
+  output: release-v24
   buildResources: build
 
 # 入口：electron-builder 会用 main 字段定位主进程
@@ -17,6 +17,13 @@ files:
   - dist/renderer/**/*
   - package.json
   - '!**/*.map'
+
+# 额外资源：图标文件复制到 resources 目录（运行时窗口图标用）
+extraResources:
+  - from: build/icon.ico
+    to: icon.ico
+  - from: build/icon.png
+    to: icon.png
 
 # Windows 配置
 win:
@@ -39,3 +46,6 @@ npmRebuild: true
 
 # v0.1 暂无代码签名（CON-07：v0.1 不引入签名基础设施依赖）
 # v0.4+ 引入代码签名
+
+# v0.1 不启用自动更新（避免 electron-builder update-info 创建失败）
+publish: null

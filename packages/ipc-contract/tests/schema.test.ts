@@ -122,6 +122,11 @@ describe('ipcSchema', () => {
     expect(channels).toContain('tab.stop');
     expect(channels).toContain('window.create');
     expect(channels).toContain('window.close');
+    // AI 域（W4）
+    expect(channels).toContain('ai.chat.start');
+    expect(channels).toContain('ai.chat.abort');
+    expect(channels).toContain('provider.list');
+    expect(channels).toContain('provider.rescan');
   });
 
   it('should have req and res schema for each channel', () => {

@@ -353,6 +353,31 @@ export const settingsGetAllResSchema = z.object({
 export type SettingsGetAllRes = z.infer<typeof settingsGetAllResSchema>;
 
 // ============================================================================
+// UI Layout (SidePanels state)
+// ============================================================================
+
+export const uiLayoutSetStateReqSchema = z.object({
+  leftWidth: z.number().int().min(0).max(400).optional(),
+  rightWidth: z.number().int().min(0).max(600).optional(),
+  bottomHeight: z.number().int().min(0).max(200).optional(),
+  /** 内容区 BrowserView 是否隐藏（AI 模式下为 true） */
+  contentHidden: z.boolean().optional(),
+  /** 临时隐藏 BrowserView（如收藏夹面板弹出时），避免 BrowserView 遮挡 React 渲染的弹出层。
+   *  Electron BrowserView 始终渲染在主窗口 webContents 之上，不隐藏则弹出层被遮挡且不可点击。 */
+  browserViewHidden: z.boolean().optional(),
+});
+export type UiLayoutSetStateReq = z.infer<typeof uiLayoutSetStateReqSchema>;
+
+export const uiLayoutSetStateResSchema = z.object({
+  leftWidth: z.number().int(),
+  rightWidth: z.number().int(),
+  bottomHeight: z.number().int(),
+  contentHidden: z.boolean(),
+  browserViewHidden: z.boolean(),
+});
+export type UiLayoutSetStateRes = z.infer<typeof uiLayoutSetStateResSchema>;
+
+// ============================================================================
 // M23 Download Manager
 // ============================================================================
 
@@ -435,6 +460,509 @@ export const downloadClearResSchema = z.object({
 export type DownloadClearRes = z.infer<typeof downloadClearResSchema>;
 
 // ============================================================================
+// Dialog 域（原生对话框：目录选择器）
+// ============================================================================
+
+export const dialogSelectDirectoryReqSchema = z.object({
+  title: z.string().max(256).optional(),
+});
+export type DialogSelectDirectoryReq = z.infer<typeof dialogSelectDirectoryReqSchema>;
+
+export const dialogSelectDirectoryResSchema = z.object({
+  /** 选中的目录路径，用户取消时为 null */
+  path: z.string().nullable(),
+});
+export type DialogSelectDirectoryRes = z.infer<typeof dialogSelectDirectoryResSchema>;
+
+// ============================================================================
+// AI 域（W4：M13 Side Panel + M11 Orchestrator UI 接线）
+// ============================================================================
+
+/** 对话消息角色 */
+const messageRoleSchema = z.enum(['system', 'user', 'assistant']);
+export type MessageRole = z.infer<typeof messageRoleSchema>;
+
+/** 对话消息 */
+const chatMessageSchema = z.object({
+  role: messageRoleSchema,
+  content: z.string().max(1_000_000),
+});
+export type ChatMessage = z.infer<typeof chatMessageSchema>;
+
+/** 会话 ID：非空字符串 */
+const conversationIdSchema = z.string().min(1).max(256);
+export type ConversationId = z.infer<typeof conversationIdSchema>;
+
+/** Provider ID：非空字符串 */
+const providerIdSchema = z.string().min(1).max(128);
+export type ProviderId = z.infer<typeof providerIdSchema>;
+
+/** ai.chat.start：启动一次 AI 对话（流式） */
+export const aiChatStartReqSchema = z.object({
+  providerId: providerIdSchema,
+  conversationId: conversationIdSchema.optional(),
+  messages: z.array(chatMessageSchema).min(1),
+  model: z.string().min(1).max(128),
+  temperature: z.number().min(0).max(2).optional(),
+  maxTokens: z.number().int().positive().max(1_000_000).optional(),
+  stream: z.literal(true).default(true),
+});
+export type AiChatStartReq = z.infer<typeof aiChatStartReqSchema>;
+
+export const aiChatStartResSchema = z.object({
+  conversationId: conversationIdSchema,
+});
+export type AiChatStartRes = z.infer<typeof aiChatStartResSchema>;
+
+/** ai.chat.abort：中止进行中的流式对话 */
+export const aiChatAbortReqSchema = z.object({
+  conversationId: conversationIdSchema,
+});
+export type AiChatAbortReq = z.infer<typeof aiChatAbortReqSchema>;
+
+export const aiChatAbortResSchema = z.object({
+  ok: z.literal(true),
+  conversationId: conversationIdSchema,
+});
+export type AiChatAbortRes = z.infer<typeof aiChatAbortResSchema>;
+
+/**
+ * ai.agent.start：启动一次 Agent 模式对话（pi 适配层，带工具能力）。
+ *
+ * 与 ai.chat.start 的区别：
+ * - 使用 pi 的 Agent 实例（createPiAgent），支持工具调用循环（bash/read/edit/write）
+ * - 工具执行事件通过 stream.chunk 提示性输出
+ * - 流式输出格式与 ai.chat.start 一致（StreamMessage），渲染层无需改动
+ *
+ * 设计依据：方案 A（直接 import coding-agent/tools）+ ADR-008 v0.1 范围
+ */
+export const aiAgentStartReqSchema = z.object({
+  providerId: providerIdSchema,
+  conversationId: conversationIdSchema.optional(),
+  messages: z.array(chatMessageSchema).min(1),
+  model: z.string().min(1).max(128),
+  /** 是否启用 coding 工具（bash/read/edit/write），默认 false */
+  enableTools: z.boolean().default(false),
+  /** 工作目录（启用工具时必填） */
+  cwd: z.string().max(1024).optional(),
+  /** 可选 Base URL（OpenAI 兼容端点覆盖） */
+  baseUrl: z.string().max(2048).optional(),
+  temperature: z.number().min(0).max(2).optional(),
+  maxTokens: z.number().int().positive().max(1_000_000).optional(),
+  stream: z.literal(true).default(true),
+});
+export type AiAgentStartReq = z.infer<typeof aiAgentStartReqSchema>;
+
+export const aiAgentStartResSchema = z.object({
+  conversationId: conversationIdSchema,
+});
+export type AiAgentStartRes = z.infer<typeof aiAgentStartResSchema>;
+
+/** ai.agent.abort：中止进行中的 Agent 对话（复用 ai.chat.abort 的 schema 结构） */
+export const aiAgentAbortReqSchema = z.object({
+  conversationId: conversationIdSchema,
+});
+export type AiAgentAbortReq = z.infer<typeof aiAgentAbortReqSchema>;
+
+export const aiAgentAbortResSchema = z.object({
+  ok: z.literal(true),
+  conversationId: conversationIdSchema,
+});
+export type AiAgentAbortRes = z.infer<typeof aiAgentAbortResSchema>;
+
+/**
+ * pi.providers：列出 pi 内置 Provider 元信息（方案 A 适配层）
+ *
+ * 与 provider.list 不同，本通道返回 pi 仓库内置的 39 个 provider 的静态元信息
+ * （id/name/baseUrl/apiKeyEnvVar），用于 pi 设置对话框的 provider 下拉选择。
+ * 不涉及 Urchin 自身的 Provider 子进程注册表。
+ */
+export const piProvidersReqSchema = z.object({}).default({});
+export type PiProvidersReq = z.infer<typeof piProvidersReqSchema>;
+
+/** pi 内置 Provider 元信息 */
+export const piProviderInfoSchema = z.object({
+  /** Provider ID（如 'openai' / 'anthropic'） */
+  id: z.string().min(1).max(64),
+  /** 显示名（如 'OpenAI' / 'Anthropic'） */
+  name: z.string().min(1).max(128),
+  /** 默认 Base URL（如 'https://api.openai.com/v1'） */
+  baseUrl: z.string().max(2048).optional(),
+  /** 推荐 API Key 环境变量名（如 'OPENAI_API_KEY'），用于 UI 提示 */
+  apiKeyEnvVar: z.string().max(64).optional(),
+  /** 是否支持 OAuth（如 anthropic 支持 Claude Pro/Max 订阅） */
+  supportsOAuth: z.boolean().default(false),
+});
+export type PiProviderInfo = z.infer<typeof piProviderInfoSchema>;
+
+export const piProvidersResSchema = z.object({
+  providers: z.array(piProviderInfoSchema),
+  /** 数据生成时间戳（pi 内置目录的生成时间） */
+  generatedAt: z.number().int().optional(),
+});
+export type PiProvidersRes = z.infer<typeof piProvidersResSchema>;
+
+// ============================================================================
+// ai.screenshot / ai.uploadFile / ai.setWorkdir —— pi 模块前端加号菜单三项
+// ============================================================================
+
+/** 截图请求：无参数，主进程调用 desktopCapturer 截取全屏 */
+export const aiScreenshotReqSchema = z.object({}).default({});
+export type AiScreenshotReq = z.infer<typeof aiScreenshotReqSchema>;
+
+/** 截图响应：返回 base64 编码的 PNG 图片数据（含 MIME 前缀，可直接用于 data URI） */
+export const aiScreenshotResSchema = z.object({
+  /** data URI 格式：data:image/png;base64,xxxx */
+  dataUri: z.string().min(1),
+  /** 图片 MIME 类型，如 image/png */
+  mimeType: z.string().min(1),
+  /** 原始 base64 数据（不含 data: 前缀），便于构造 ImageContent */
+  base64: z.string().min(1),
+  /** 截图来源显示器名称 */
+  displayId: z.string().optional(),
+});
+export type AiScreenshotRes = z.infer<typeof aiScreenshotResSchema>;
+
+/** 上传文件请求：弹出原生文件选择器，返回所选文件内容 */
+export const aiUploadFileReqSchema = z
+  .object({
+    /** 文件选择器标题 */
+    title: z.string().max(256).optional(),
+    /** 允许的扩展名（不含点，如 ['png','jpg','txt']）。空数组或不传表示不限制 */
+    filters: z.array(z.string().max(32)).default([]),
+    /** 是否允许多选 */
+    multiple: z.boolean().default(false),
+  })
+  .default({});
+export type AiUploadFileReq = z.infer<typeof aiUploadFileReqSchema>;
+
+/** 单个文件信息 */
+export const aiFileInfoSchema = z.object({
+  /** 文件名（不含路径） */
+  name: z.string().min(1).max(256),
+  /** 文件绝对路径 */
+  path: z.string().min(1).max(2048),
+  /** 文件大小（字节） */
+  size: z.number().int().nonnegative(),
+  /** MIME 类型（通过 magic-byte 嗅探或扩展名推断） */
+  mimeType: z.string().min(1).max(128),
+  /** base64 编码的文件内容（图片类直接构造 ImageContent；文本类可选展示） */
+  base64: z.string(),
+  /** 是否为图片（image/*） */
+  isImage: z.boolean(),
+});
+export type AiFileInfo = z.infer<typeof aiFileInfoSchema>;
+
+/** 上传文件响应 */
+export const aiUploadFileResSchema = z.object({
+  files: z.array(aiFileInfoSchema),
+});
+export type AiUploadFileRes = z.infer<typeof aiUploadFileResSchema>;
+
+/** 设置工作目录请求：弹出原生目录选择器 */
+export const aiSetWorkdirReqSchema = z
+  .object({
+    /** 目录选择器标题 */
+    title: z.string().max(256).optional(),
+  })
+  .default({});
+export type AiSetWorkdirReq = z.infer<typeof aiSetWorkdirReqSchema>;
+
+/** 设置工作目录响应 */
+export const aiSetWorkdirResSchema = z.object({
+  /** 选中的目录绝对路径，用户取消时为 null */
+  path: z.string().max(2048).nullable(),
+  /** 目录是否存在 */
+  exists: z.boolean(),
+  /** 目录下的条目数（用于提示用户） */
+  entryCount: z.number().int().nonnegative().optional(),
+});
+export type AiSetWorkdirRes = z.infer<typeof aiSetWorkdirResSchema>;
+
+/** Provider 鉴权方式（与 ai-provider-contract AuthMethod 对齐） */
+const authMethodSchema = z.enum(['api_key', 'oauth', 'none', 'local']);
+export type AuthMethod = z.infer<typeof authMethodSchema>;
+
+/** Provider 信息（序列化给渲染层） */
+const providerInfoSchema = z.object({
+  id: providerIdSchema,
+  name: z.string().min(1).max(128),
+  version: z.string().min(1).max(64),
+  apiVersion: z.string().min(1).max(32),
+  capabilities: z.array(z.string()).default([]),
+  authMethod: authMethodSchema.default('api_key'),
+  rateLimit: z
+    .object({
+      requestsPerMin: z.number().int().positive(),
+      tokensPerMin: z.number().int().positive().optional(),
+    })
+    .optional(),
+});
+export type ProviderInfo = z.infer<typeof providerInfoSchema>;
+
+/** provider.list：列出所有已注册 Provider */
+export const providerListReqSchema = z.object({}).default({});
+export type ProviderListReq = z.infer<typeof providerListReqSchema>;
+
+export const providerListResSchema = z.object({
+  providers: z.array(providerInfoSchema),
+});
+export type ProviderListRes = z.infer<typeof providerListResSchema>;
+
+/** provider.rescan：重新扫描 providers 目录，返回扫描结果 */
+export const providerRescanReqSchema = z.object({}).default({});
+export type ProviderRescanReq = z.infer<typeof providerRescanReqSchema>;
+
+export const providerRescanResSchema = z.object({
+  count: z.number().int(),
+  providers: z.array(providerInfoSchema),
+});
+export type ProviderRescanRes = z.infer<typeof providerRescanResSchema>;
+
+/**
+ * provider.install：安装第三方 Provider（IP8 决策）。
+ *
+ * source 支持：
+ * - 本地绝对路径（复制到 providers/ 目录）
+ * - npm 包名（v0.1 暂不支持，留待后续）
+ *
+ * confirm：IP8 决策，用户必须通过 warning 确认对话框输入「我确认」才能继续。
+ * Main 端收到 confirm=false 时返回 warning 文案，不执行安装。
+ */
+export const providerInstallReqSchema = z.object({
+  /** 来源：本地路径或 npm 包名 */
+  source: z.string().min(1).max(1024),
+  /** IP8：用户是否已通过 warning 确认 */
+  confirm: z.boolean().default(false),
+});
+export type ProviderInstallReq = z.infer<typeof providerInstallReqSchema>;
+
+/** provider.install 未确认时返回的 warning payload */
+export const providerInstallWarningResSchema = z.object({
+  /** 是否需要用户确认 */
+  confirmationRequired: z.literal(true),
+  /** IP8 warning 文案 */
+  warning: z.string(),
+  /** 用户需输入的确认字符串 */
+  confirmPhrase: z.literal('我确认'),
+});
+export type ProviderInstallWarningRes = z.infer<typeof providerInstallWarningResSchema>;
+
+/** provider.install 确认后成功安装的响应 */
+export const providerInstallSuccessResSchema = z.object({
+  confirmationRequired: z.literal(false),
+  providerId: providerIdSchema,
+  /** 安装来源 */
+  source: z.string(),
+});
+export type ProviderInstallSuccessRes = z.infer<typeof providerInstallSuccessResSchema>;
+
+/** provider.install 响应（联合类型：warning 或 success） */
+export const providerInstallResSchema = z.discriminatedUnion('confirmationRequired', [
+  providerInstallWarningResSchema,
+  providerInstallSuccessResSchema,
+]);
+export type ProviderInstallRes = z.infer<typeof providerInstallResSchema>;
+
+/** provider.remove：卸载 Provider */
+export const providerRemoveReqSchema = z.object({
+  providerId: providerIdSchema,
+});
+export type ProviderRemoveReq = z.infer<typeof providerRemoveReqSchema>;
+
+export const providerRemoveResSchema = z.object({
+  ok: z.literal(true),
+  providerId: providerIdSchema,
+});
+export type ProviderRemoveRes = z.infer<typeof providerRemoveResSchema>;
+
+/**
+ * provider.config.get：读取 Provider 用户配置（W5-D2）。
+ *
+ * 配置存储在 ai.db 的 settings 表，key = `provider_config:<id>`。
+ * 返回 null 表示未配置。
+ */
+export const providerConfigGetReqSchema = z.object({
+  providerId: providerIdSchema,
+});
+export type ProviderConfigGetReq = z.infer<typeof providerConfigGetReqSchema>;
+
+export const providerConfigGetResSchema = z.object({
+  providerId: providerIdSchema,
+  config: z.unknown().nullable(),
+});
+export type ProviderConfigGetRes = z.infer<typeof providerConfigGetResSchema>;
+
+/** provider.config.set：写入 Provider 用户配置 */
+export const providerConfigSetReqSchema = z.object({
+  providerId: providerIdSchema,
+  config: z.unknown(),
+});
+export type ProviderConfigSetReq = z.infer<typeof providerConfigSetReqSchema>;
+
+export const providerConfigSetResSchema = z.object({
+  ok: z.literal(true),
+  providerId: providerIdSchema,
+});
+export type ProviderConfigSetRes = z.infer<typeof providerConfigSetResSchema>;
+
+/** ai.chat.port 事件 payload（MessagePort 下发，非 RPC） */
+export const aiChatPortEventSchema = z.object({
+  conversationId: conversationIdSchema,
+  providerId: providerIdSchema,
+});
+export type AiChatPortEvent = z.infer<typeof aiChatPortEventSchema>;
+
+// ============================================================================
+// W5-D4：Provider 事件推送（单向事件，非 RPC）
+// ============================================================================
+
+/**
+ * Provider 事件类型（W5-D4）。
+ *
+ * 通过 `webContents.send('provider:event', payload)` 推送给渲染进程，
+ * 用于 UI 显示 Provider 状态变更 / crash warning banner。
+ */
+export const providerEventSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('state-changed'),
+    providerId: providerIdSchema,
+    /** Provider 运行时状态 */
+    state: z.enum(['initializing', 'ready', 'crashed', 'disposed']),
+  }),
+  z.object({
+    type: z.literal('crashed'),
+    providerId: providerIdSchema,
+    /** crash 原因（心跳超时 / 异常退出等） */
+    reason: z.string(),
+  }),
+]);
+export type ProviderEvent = z.infer<typeof providerEventSchema>;
+
+/** provider:event 事件通道名 */
+export const PROVIDER_EVENT_CHANNEL = 'provider:event';
+
+// ============================================================================
+// M14 Page Context Extractor（W4-D4 demo）
+// ============================================================================
+
+/** 抽取方法 */
+export const extractionMethodSchema = z.enum(['readability', 'dom-simplified', 'raw-text']);
+export type ExtractionMethod = z.infer<typeof extractionMethodSchema>;
+
+/** 抽取出的页面上下文（契约 F §3 ExtractedPageContext） */
+export const extractedPageContextSchema = z.object({
+  url: urlSchema,
+  title: titleSchema,
+  extractedAt: z.string().min(1),
+  byline: z.string().optional(),
+  excerpt: z.string().optional(),
+  textContent: z.string(),
+  markdown: z.string(),
+  length: z.number().int().nonnegative(),
+  language: z.string().optional(),
+  siteName: z.string().optional(),
+  extraction_method: extractionMethodSchema,
+  warnings: z.array(z.string()).default([]),
+});
+export type ExtractedPageContext = z.infer<typeof extractedPageContextSchema>;
+
+/** page.extract：抽取当前激活 tab 的页面正文 */
+export const pageExtractReqSchema = z.object({
+  tabId: tabIdSchema,
+  /** 最大字符数（PC3 默认 50_000） */
+  maxLength: z.number().int().positive().max(200_000).optional(),
+});
+export type PageExtractReq = z.infer<typeof pageExtractReqSchema>;
+
+export const pageExtractResSchema = z.object({
+  context: extractedPageContextSchema,
+});
+export type PageExtractRes = z.infer<typeof pageExtractResSchema>;
+
+// ============================================================================
+// Summary 域（摘要 Agent · 与 pi 模块隔离的独立 AI 助手）
+// ============================================================================
+
+/** 目录树节点：目录或文件（递归类型，需显式标注 ZodType 以避免循环推断失败） */
+export interface SummaryTreeNode {
+  readonly type: 'directory' | 'file';
+  readonly name: string;
+  readonly relativePath: string;
+  readonly children?: readonly SummaryTreeNode[];
+  readonly absolutePath?: string;
+  readonly size?: number;
+  readonly modifiedAt?: number;
+}
+
+export const summaryTreeNodeSchema: z.ZodType<SummaryTreeNode> = z.object({
+  type: z.enum(['directory', 'file']),
+  name: z.string(),
+  relativePath: z.string(),
+  children: z
+    .lazy(() => summaryTreeNodeSchema)
+    .array()
+    .readonly()
+    .optional(),
+  absolutePath: z.string().optional(),
+  size: z.number().int().nonnegative().optional(),
+  modifiedAt: z.number().int().nonnegative().optional(),
+});
+
+/** summary.listTree：列出保存目录下的文档目录树 */
+export const summaryListTreeReqSchema = z.object({});
+export type SummaryListTreeReq = z.infer<typeof summaryListTreeReqSchema>;
+
+export const summaryListTreeResSchema = z.object({
+  tree: z.array(summaryTreeNodeSchema),
+  /** 保存根目录绝对路径（用于 UI 显示） */
+  rootPath: z.string(),
+});
+export type SummaryListTreeRes = z.infer<typeof summaryListTreeResSchema>;
+
+/** summary.run：对指定 tab 执行摘要生成 */
+export const summaryRunReqSchema = z.object({
+  tabId: tabIdSchema,
+});
+export type SummaryRunReq = z.infer<typeof summaryRunReqSchema>;
+
+export const summaryRunResSchema = z.object({
+  /** 保存的文件绝对路径 */
+  filePath: z.string(),
+  /** 相对于保存根目录的路径 */
+  relativePath: z.string(),
+  /** 文档标题 */
+  documentTitle: z.string(),
+});
+export type SummaryRunRes = z.infer<typeof summaryRunResSchema>;
+
+/** summary.open：在浏览器中打开已保存的摘要文档 */
+export const summaryOpenReqSchema = z.object({
+  /** 文件绝对路径 */
+  absolutePath: z.string().min(1),
+});
+export type SummaryOpenReq = z.infer<typeof summaryOpenReqSchema>;
+
+export const summaryOpenResSchema = z.object({
+  ok: z.literal(true),
+  /** 打开的 tab ID */
+  tabId: tabIdSchema,
+});
+export type SummaryOpenRes = z.infer<typeof summaryOpenResSchema>;
+
+/** summary.delete：删除已保存的摘要文档 */
+export const summaryDeleteReqSchema = z.object({
+  absolutePath: z.string().min(1),
+});
+export type SummaryDeleteReq = z.infer<typeof summaryDeleteReqSchema>;
+
+export const summaryDeleteResSchema = z.object({
+  ok: z.literal(true),
+  absolutePath: z.string(),
+});
+export type SummaryDeleteRes = z.infer<typeof summaryDeleteResSchema>;
+
+// ============================================================================
 // IPC Schema 总表
 // ============================================================================
 
@@ -467,11 +995,36 @@ export const ipcSchema = {
   'settings.get': { req: settingsGetReqSchema, res: settingsGetResSchema },
   'settings.set': { req: settingsSetReqSchema, res: settingsSetResSchema },
   'settings.getAll': { req: settingsGetAllReqSchema, res: settingsGetAllResSchema },
+  'ui.layout.setState': { req: uiLayoutSetStateReqSchema, res: uiLayoutSetStateResSchema },
   'download.list': { req: downloadListReqSchema, res: downloadListResSchema },
   'download.cancel': { req: downloadCancelReqSchema, res: downloadCancelResSchema },
   'download.pause': { req: downloadPauseReqSchema, res: downloadPauseResSchema },
   'download.resume': { req: downloadResumeReqSchema, res: downloadResumeResSchema },
   'download.clear': { req: downloadClearReqSchema, res: downloadClearResSchema },
+  'dialog.selectDirectory': {
+    req: dialogSelectDirectoryReqSchema,
+    res: dialogSelectDirectoryResSchema,
+  },
+  'ai.chat.start': { req: aiChatStartReqSchema, res: aiChatStartResSchema },
+  'ai.chat.abort': { req: aiChatAbortReqSchema, res: aiChatAbortResSchema },
+  'ai.agent.start': { req: aiAgentStartReqSchema, res: aiAgentStartResSchema },
+  'ai.agent.abort': { req: aiAgentAbortReqSchema, res: aiAgentAbortResSchema },
+  'pi.providers': { req: piProvidersReqSchema, res: piProvidersResSchema },
+  'ai.screenshot': { req: aiScreenshotReqSchema, res: aiScreenshotResSchema },
+  'ai.uploadFile': { req: aiUploadFileReqSchema, res: aiUploadFileResSchema },
+  'ai.setWorkdir': { req: aiSetWorkdirReqSchema, res: aiSetWorkdirResSchema },
+  'provider.list': { req: providerListReqSchema, res: providerListResSchema },
+  'provider.rescan': { req: providerRescanReqSchema, res: providerRescanResSchema },
+  'provider.install': { req: providerInstallReqSchema, res: providerInstallResSchema },
+  'provider.remove': { req: providerRemoveReqSchema, res: providerRemoveResSchema },
+  'provider.config.get': { req: providerConfigGetReqSchema, res: providerConfigGetResSchema },
+  'provider.config.set': { req: providerConfigSetReqSchema, res: providerConfigSetResSchema },
+  'page.extract': { req: pageExtractReqSchema, res: pageExtractResSchema },
+  // Summary 域（摘要 Agent · 与 pi 模块隔离）
+  'summary.listTree': { req: summaryListTreeReqSchema, res: summaryListTreeResSchema },
+  'summary.run': { req: summaryRunReqSchema, res: summaryRunResSchema },
+  'summary.open': { req: summaryOpenReqSchema, res: summaryOpenResSchema },
+  'summary.delete': { req: summaryDeleteReqSchema, res: summaryDeleteResSchema },
 } as const;
 
 /** IPC schema 的类型推导工具：取 channel 名联合。 */

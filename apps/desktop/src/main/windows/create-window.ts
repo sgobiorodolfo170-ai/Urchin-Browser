@@ -11,7 +11,7 @@
  * webSecurity:true 防止渲染进程直接访问 file:// 协议绕过 preload。
  * nodeIntegration:false 确保渲染进程无 Node.js 能力。
  */
-import { BrowserWindow, app } from 'electron';
+import { BrowserWindow, Menu, app } from 'electron';
 import { join } from 'node:path';
 import { createLogger } from '@urchin/logger';
 import type { BrowserWindowLike, CreateWindowOptions } from './types';
@@ -36,6 +36,14 @@ export function createBrowserWindow(opts: CreateWindowOptions): BrowserWindowLik
 
   log.info('creating browser window', { width, height, incognito: opts.incognito ?? false });
 
+  // 应用图标路径：
+  // - 打包后：extraResources 把图标复制到 resources 目录
+  // - 开发模式：从 apps/desktop/build 引用
+  const iconName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+  const iconPath = app.isPackaged
+    ? join(process.resourcesPath, iconName)
+    : join(app.getAppPath(), 'build', iconName);
+
   const win = new BrowserWindow({
     width,
     height,
@@ -44,6 +52,11 @@ export function createBrowserWindow(opts: CreateWindowOptions): BrowserWindowLik
     show: false,
     title: 'Urchin Browser',
     backgroundColor: '#ffffff',
+    icon: iconPath,
+    // 隐藏菜单栏（File/Edit/View/Window/Help）。
+    // autoHideMenuBar 让菜单栏默认隐藏（Alt 可临时唤起），
+    // setMenuBarVisibility(false) 则彻底关闭，两者结合确保菜单栏不出现。
+    autoHideMenuBar: true,
     webPreferences: {
       // M18 安全边界：sandbox + contextIsolation + preload
       preload: join(__dirname, '..', 'preload', 'index.js'),
@@ -54,8 +67,14 @@ export function createBrowserWindow(opts: CreateWindowOptions): BrowserWindowLik
     },
   });
 
+  // 彻底关闭菜单栏：setMenuBarVisibility(false) 隐藏当前窗口菜单，
+  // Menu.setApplicationMenu(null) 移除全局默认菜单（防止新窗口继承）。
+  win.setMenuBarVisibility(false);
+  Menu.setApplicationMenu(null);
+
   // 开发模式加载 dev server，生产模式加载打包文件
-  const isDev = !app.isPackaged;
+  // E2E 测试时通过 NODE_ENV=production 强制加载打包文件（app.isPackaged 在未打包时为 false）
+  const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
   if (isDev) {
     const url = process.env.URCHIN_RENDERER_URL ?? 'http://localhost:5173';
     void win.loadURL(url);

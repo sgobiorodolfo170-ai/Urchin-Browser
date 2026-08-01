@@ -23,6 +23,8 @@ import type {
   TabEvent,
   TabEventListener,
   TabSnapshot,
+  WindowOpenHandlerDetails,
+  WindowOpenHandlerResponse,
 } from './types';
 
 /** 默认 URL */
@@ -30,6 +32,9 @@ const DEFAULT_URL = 'about:blank';
 
 /** 默认标题 */
 const DEFAULT_TITLE = '';
+
+/** 链接打开行为 */
+export type LinkOpenBehavior = 'new-tab' | 'current';
 
 export class TabManager {
   /** Tab 集合：tabId → Tab */
@@ -47,7 +52,25 @@ export class TabManager {
   /** 下一个分配的 tabId（单调递增，从 1 开始） */
   private nextId = 1;
 
+  /**
+   * 链接打开行为解析器（由外部注入，读取设置决定新标签/当前标签打开）。
+   * 未注入时默认 'current'（当前标签页打开）。
+   */
+  private linkBehaviorResolver?: (url: string) => LinkOpenBehavior;
+
   constructor(private readonly factory: BrowserViewFactory) {}
+
+  /**
+   * 注入链接打开行为解析器。
+   *
+   * 当用户点击网页内链接（window.open / target=_blank）时调用，
+   * 返回 'new-tab' 在新标签页打开，返回 'current' 在当前标签页打开。
+   *
+   * @param resolver 解析器函数
+   */
+  setLinkBehaviorResolver(resolver: (url: string) => LinkOpenBehavior): void {
+    this.linkBehaviorResolver = resolver;
+  }
 
   /**
    * 创建新 Tab。
@@ -102,7 +125,9 @@ export class TabManager {
 
     // 加载 URL
     if (url !== DEFAULT_URL) {
-      webContents.loadURL(url);
+      webContents.loadURL(url).catch((err: unknown) => {
+        console.error(`[tab ${id}] initial loadURL failed:`, err);
+      });
     }
 
     this.emit('created', this.toSnapshot(tab));
@@ -195,6 +220,9 @@ export class TabManager {
    * 包装 webContents.loadURL，更新 tab 状态。
    * 实际的 navigation history 由 Electron webContents 内部管理。
    *
+   * 固化教训：loadURL 失败时必须重置 loading 状态，否则 tab 永久卡在 loading。
+   * did-fail-load 事件会处理大部分情况，但 Promise 拒绝也需要兜底。
+   *
    * @param tabId 目标 tab ID
    * @param url 要加载的 URL
    * @throws 若 tab 不存在
@@ -210,7 +238,13 @@ export class TabManager {
     tab.loading = true;
     this.emit('updated', this.toSnapshot(tab));
 
-    tab.webContents.loadURL(url);
+    // 处理 loadURL 的 Promise 拒绝（防止 unhandled rejection）
+    // 固化：失败时重置 loading 状态，避免 tab 永久卡在 loading
+    tab.webContents.loadURL(url).catch((err: unknown) => {
+      console.error(`[tab ${tabId}] loadURL failed:`, err);
+      tab.loading = false;
+      this.emit('updated', this.toSnapshot(tab));
+    });
   }
 
   /**
@@ -277,6 +311,33 @@ export class TabManager {
   private bindWebContentsEvents(tab: Tab): void {
     const wc = tab.webContents;
 
+    // 拦截 window.open / target=_blank 链接点击
+    // 根据设置决定在当前标签页打开还是新标签页打开（默认当前标签页）
+    if (typeof wc.setWindowOpenHandler === 'function') {
+      wc.setWindowOpenHandler(({ url }: WindowOpenHandlerDetails): WindowOpenHandlerResponse => {
+        // 忽略空 URL 和 about:blank
+        if (!url || url === 'about:blank') {
+          return { action: 'deny' };
+        }
+
+        const behavior = this.linkBehaviorResolver?.(url) ?? 'current';
+        if (behavior === 'new-tab') {
+          // 在新标签页打开
+          this.create({ windowId: tab.windowId, url, active: true });
+        } else {
+          // 在当前标签页打开
+          tab.url = url;
+          tab.loading = true;
+          this.emit('updated', this.toSnapshot(tab));
+          wc.loadURL(url).catch((err: unknown) => {
+            console.error(`[tab ${tab.id}] window-open loadURL failed:`, err);
+          });
+        }
+        // 总是 deny，阻止 Electron 创建新 BrowserWindow
+        return { action: 'deny' };
+      });
+    }
+
     wc.on('did-start-loading', () => {
       tab.loading = true;
       this.emit('updated', this.toSnapshot(tab));
@@ -287,6 +348,39 @@ export class TabManager {
       tab.canGoBack = wc.canGoBack();
       tab.canGoForward = wc.canGoForward();
       this.emit('updated', this.toSnapshot(tab));
+    });
+
+    // 加载失败：重置 loading 状态，记录错误（防止 tab 永久卡在 loading）
+    wc.on('did-fail-load', (...args: unknown[]) => {
+      const errorCode = args[1];
+      const errorDescription = args[2];
+      const validatedUrl = args[3];
+
+      // ERR_ABORTED (-3) 是导航被中断（如用户点击了另一个链接），不算真正的失败
+      if (errorCode === -3) return;
+
+      tab.loading = false;
+      tab.canGoBack = wc.canGoBack();
+      tab.canGoForward = wc.canGoForward();
+      this.emit('updated', this.toSnapshot(tab));
+
+      // 记录加载失败详情（便于调试）
+      console.error(`[tab ${tab.id}] did-fail-load:`, {
+        errorCode,
+        errorDescription:
+          typeof errorDescription === 'string' ? errorDescription : String(errorDescription),
+        url: typeof validatedUrl === 'string' ? validatedUrl : tab.url,
+      });
+    });
+
+    // 加载停止兜底：确保 loading 状态最终被清理
+    wc.on('did-stop-loading', () => {
+      if (tab.loading) {
+        tab.loading = false;
+        tab.canGoBack = wc.canGoBack();
+        tab.canGoForward = wc.canGoForward();
+        this.emit('updated', this.toSnapshot(tab));
+      }
     });
 
     wc.on('did-navigate', (...args: unknown[]) => {
@@ -320,6 +414,25 @@ export class TabManager {
       tab.loading = false;
       this.emit('crashed', this.toSnapshot(tab));
     });
+  }
+
+  /**
+   * 销毁所有 tab 的 webContents（进程退出清理用）。
+   *
+   * BrowserView 的 webContents 不会被 BrowserWindow.destroy() 自动回收，
+   * 需显式 destroy 以释放底层渲染进程线程与 GPU 资源，避免退出后残留进程。
+   */
+  disposeAll(): void {
+    for (const tab of this.tabs.values()) {
+      try {
+        tab.webContents.destroy();
+      } catch {
+        // 忽略：webContents 可能已销毁
+      }
+    }
+    this.tabs.clear();
+    this.windowTabs.clear();
+    this.activeTabPerWindow.clear();
   }
 
   /** 取消同窗口其他 tab 的激活态。 */

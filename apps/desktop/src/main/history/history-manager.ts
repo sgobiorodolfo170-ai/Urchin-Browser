@@ -7,10 +7,11 @@
  * 2. URL 索引（Map<url, id>）实现 O(1) 查重
  * 3. record / search / list / delete / clear 方法
  * 4. 事件分发（recorded / deleted / cleared）
+ * 5. 持久化到 SQLite（history 表）
  *
  * 设计理由（agents.md §七.2 + §六 项目特化审查点「Single Source of Truth」）：
  * - 主进程是历史状态的唯一权威源，渲染层 store 只是镜像
- * - 全部方法同步执行（内存操作），持久化由后续 wave 叠加
+ * - 内存操作为主，变更时同步写入 SQLite 持久化
  * - visitedAt 为 readonly，更新访问时间通过创建新对象替换实现（不可变优先）
  */
 import type { HistoryEntry, HistoryEvent, HistoryEventListener } from './types';
@@ -23,6 +24,18 @@ const DEFAULT_LIST_LIMIT = 100;
 
 /** 默认偏移量。 */
 const DEFAULT_LIST_OFFSET = 0;
+
+/** 持久化存储接口（基于 SQLite history 表，便于测试 mock） */
+export interface HistoryPersistence {
+  /** 加载所有历史记录（启动时调用） */
+  loadAll(): HistoryEntry[];
+  /** 插入或替换一条历史记录 */
+  upsert(entry: HistoryEntry): void;
+  /** 删除一条历史记录 */
+  remove(id: number): void;
+  /** 清空所有历史记录 */
+  clearAll(): void;
+}
 
 export class HistoryManager {
   /** 历史记录集合：id → HistoryEntry */
@@ -37,11 +50,35 @@ export class HistoryManager {
   /** 下一个分配的 id（单调递增，从 1 开始） */
   private nextId = 1;
 
+  /** 持久化存储（可选，注入后变更时自动写入 SQLite） */
+  private readonly persistence?: HistoryPersistence;
+
+  /**
+   * 构造时可选注入持久化存储。注入后从 SQLite 加载已有历史记录到内存，
+   * 并将 nextId 初始化为已有最大 id + 1。
+   *
+   * @param persistence 可选的持久化存储（StorageLayer.mainStore 的 SQL facade）
+   */
+  constructor(persistence?: HistoryPersistence) {
+    this.persistence = persistence;
+    if (persistence) {
+      const rows = persistence.loadAll();
+      for (const entry of rows) {
+        this.entries.set(entry.id, entry);
+        this.urlIndex.set(entry.url, entry.id);
+        if (entry.id >= this.nextId) {
+          this.nextId = entry.id + 1;
+        }
+      }
+    }
+  }
+
   /**
    * 记录一次 URL 访问。
    *
    * 若 URL 已存在，递增 visitCount、更新 visitedAt 与 title（若提供）；
    * 若为新 URL，创建条目，visitCount=1。触发 'recorded' 事件。
+   * 持久化到 SQLite（若注入了 persistence）。
    *
    * @param url 访问的 URL
    * @param title 页面标题（可选）
@@ -61,6 +98,7 @@ export class HistoryManager {
           visitCount: existing.visitCount + 1,
         };
         this.entries.set(existingId, updated);
+        this.persistence?.upsert(updated);
         this.emit('recorded', updated);
         return updated;
       }
@@ -77,6 +115,7 @@ export class HistoryManager {
     };
     this.entries.set(id, entry);
     this.urlIndex.set(url, id);
+    this.persistence?.upsert(entry);
     this.emit('recorded', entry);
     return entry;
   }
@@ -142,6 +181,7 @@ export class HistoryManager {
     }
     this.entries.delete(id);
     this.urlIndex.delete(entry.url);
+    this.persistence?.remove(id);
     this.emit('deleted', entry);
   }
 
@@ -154,6 +194,7 @@ export class HistoryManager {
     const count = this.entries.size;
     this.entries.clear();
     this.urlIndex.clear();
+    this.persistence?.clearAll();
     this.emit('cleared');
     return count;
   }

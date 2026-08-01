@@ -6,6 +6,8 @@
 export { TabManager } from './tab-manager';
 export { createBrowserView } from './create-browser-view';
 export { registerTabHandlers } from './register-handlers';
+export { installTabViewIntegration, getLayoutState, setLayoutState } from './view-integration';
+export type { TabEventPayload, TabViewIntegrationHandle, LayoutState } from './view-integration';
 export type {
   WebContentsLike,
   BrowserViewLike,

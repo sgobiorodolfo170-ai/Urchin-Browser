@@ -7,10 +7,11 @@
  * 2. create / list / search / delete / getCount 方法
  * 3. 文件夹级联删除（递归删除所有后代）
  * 4. 事件分发（created / deleted）
+ * 5. 持久化到 SQLite（bookmarks 表）
  *
  * 设计理由（agents.md §七.2 + §六 项目特化审查点「Single Source of Truth」）：
  * - 主进程是书签状态的唯一权威源，渲染层 store 只是镜像
- * - 全部方法同步执行（内存操作），持久化由后续 wave 叠加
+ * - 内存操作为主，变更时同步写入 SQLite 持久化
  * - id / type / createdAt 为 readonly，创建后不可变
  */
 import { randomUUID } from 'node:crypto';
@@ -25,12 +26,40 @@ import type {
 /** 默认搜索结果上限。 */
 const DEFAULT_SEARCH_LIMIT = 10;
 
+/** 持久化存储接口（基于 SQLite bookmarks 表，便于测试 mock） */
+export interface BookmarkPersistence {
+  /** 加载所有书签（启动时调用） */
+  loadAll(): Bookmark[];
+  /** 插入或替换一条书签 */
+  upsert(bookmark: Bookmark): void;
+  /** 删除一条书签 */
+  remove(id: string): void;
+}
+
 export class BookmarkManager {
   /** 书签集合：id → Bookmark */
   private readonly entries = new Map<string, Bookmark>();
 
   /** 事件监听器：event → listeners[] */
   private readonly listeners = new Map<BookmarkEvent, BookmarkEventListener[]>();
+
+  /** 持久化存储（可选，注入后变更时自动写入 SQLite） */
+  private readonly persistence?: BookmarkPersistence;
+
+  /**
+   * 构造时可选注入持久化存储。注入后从 SQLite 加载已有书签到内存。
+   *
+   * @param persistence 可选的持久化存储（StorageLayer.mainStore 的 SQL facade）
+   */
+  constructor(persistence?: BookmarkPersistence) {
+    this.persistence = persistence;
+    if (persistence) {
+      const rows = persistence.loadAll();
+      for (const bookmark of rows) {
+        this.entries.set(bookmark.id, bookmark);
+      }
+    }
+  }
 
   /**
    * 创建书签 / 文件夹。
@@ -39,6 +68,7 @@ export class BookmarkManager {
    * - type 未提供时按 url 推导：有 url 为 'bookmark'，否则 'folder'
    * - position = 同 parentId 下的兄弟节点数（追加到末尾）
    * - 触发 'created' 事件
+   * - 持久化到 SQLite（若注入了 persistence）
    *
    * @param opts 创建选项
    * @returns 新建的 Bookmark
@@ -61,6 +91,7 @@ export class BookmarkManager {
     };
 
     this.entries.set(bookmark.id, bookmark);
+    this.persistence?.upsert(bookmark);
     this.emit('created', bookmark);
     return bookmark;
   }
@@ -187,6 +218,7 @@ export class BookmarkManager {
     const bookmark = this.entries.get(id);
     if (bookmark) {
       this.entries.delete(id);
+      this.persistence?.remove(id);
       this.emit('deleted', bookmark);
     }
   }

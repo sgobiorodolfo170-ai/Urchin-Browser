@@ -14,14 +14,18 @@
  * 完整实现由 Electron 在运行时提供。
  */
 export interface BrowserWindowLike {
-  /** Electron 内部 webContents id（用于 IPC 事件推送） */
-  readonly webContents: { readonly id: number };
+  /** Electron 内部 webContents（用于 IPC 事件推送 + send） */
+  readonly webContents: WebContentsLike;
   /** 显示窗口 */
   show(): void;
   /** 隐藏窗口 */
   hide(): void;
   /** 关闭窗口（触发 'closed' 事件） */
   close(): void;
+  /** 强制销毁窗口（不触发 close 事件，直接释放资源，退出清理用） */
+  destroy(): void;
+  /** 窗口是否已销毁 */
+  isDestroyed(): boolean;
   /** 最小化 */
   minimize(): void;
   /** 最大化 */
@@ -36,9 +40,25 @@ export interface BrowserWindowLike {
   isFullScreen(): boolean;
   /** 从最小化/最大化恢复 */
   restore(): void;
+  /** 获取窗口外边界（含标题栏/边框，用于窗口管理） */
+  getBounds(): { x: number; y: number; width: number; height: number };
+  /** 获取窗口内容区域边界（排除标题栏/边框，用于计算 BrowserView 的 bounds） */
+  getContentBounds(): { x: number; y: number; width: number; height: number };
+  /** 挂载 BrowserView 到窗口（传 null 移除） */
+  setBrowserView(view: unknown): void;
   /** 注册事件监听 */
   on(event: string, handler: (...args: unknown[]) => void): void;
   once(event: string, handler: (...args: unknown[]) => void): void;
+}
+
+/**
+ * WebContents 的最小依赖接口（用于 IPC 事件推送）。
+ */
+export interface WebContentsLike {
+  /** Electron 内部 id */
+  readonly id: number;
+  /** 向渲染进程推送消息（main → renderer 单向推送） */
+  send(channel: string, ...args: readonly unknown[]): void;
 }
 
 /**

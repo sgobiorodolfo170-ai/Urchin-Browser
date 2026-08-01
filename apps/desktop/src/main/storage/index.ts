@@ -5,6 +5,7 @@
  */
 export { StorageLayer } from './storage-layer';
 export { SecretStoreImpl } from './secret-store';
+export { ElectronSafeStorage } from './electron-safe-storage';
 export { runMigrations, MIGRATIONS_MAIN, MIGRATIONS_AI } from './migrations';
 export { createSqliteDatabase } from './sqlite-factory';
 export type {

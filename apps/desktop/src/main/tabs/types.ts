@@ -9,12 +9,22 @@
  * - BrowserViewLike / WebContentsLike 接口将 TabManager 与 Electron 解耦，使核心逻辑可单测
  */
 
+/** window-open handler 详情（Electron HandlerDetails 的简化子集） */
+export interface WindowOpenHandlerDetails {
+  readonly url: string;
+  readonly frameName: string;
+  readonly disposition: string;
+}
+
+/** window-open handler 响应（Electron WindowOpenHandlerResponse 的简化子集） */
+export type WindowOpenHandlerResponse = { action: 'deny' } | { action: 'allow' };
+
 /**
  * WebContents 的最小依赖接口（便于测试 mock）。
  */
 export interface WebContentsLike {
-  /** 加载 URL */
-  loadURL(url: string): void;
+  /** 加载 URL（Electron 实际返回 Promise<void>） */
+  loadURL(url: string): Promise<void>;
   /** 重新加载 */
   reload(): void;
   /** 忽略缓存重新加载 */
@@ -34,6 +44,14 @@ export interface WebContentsLike {
   /** 注册事件监听 */
   on(event: string, handler: (...args: unknown[]) => void): void;
   once(event: string, handler: (...args: unknown[]) => void): void;
+  /** 在页面上下文执行脚本并返回结果（M14 PageContextExtractor 用） */
+  executeJavaScript<T = unknown>(code: string, userGesture?: boolean): Promise<T>;
+  /** 获取当前 URL（M14 用） */
+  getURL(): string;
+  /** 拦截 window.open / target=_blank（可选，Electron webContents 才有） */
+  setWindowOpenHandler?(
+    handler: (details: WindowOpenHandlerDetails) => WindowOpenHandlerResponse,
+  ): void;
 }
 
 /**

@@ -319,7 +319,7 @@ type StreamMessage = z.infer<typeof StreamMessageSchema>;
 ### 6.3 Provider Child 端写入
 
 ```typescript
-// packages/ai-orchestrator/src/provider-host.ts
+// apps/desktop/src/main/orchestrator/provider-host.ts（实际位于 apps/desktop/src/main/orchestrator/）
 async function pipeProviderStreamToPort(
   provider: UrchinAIProvider,
   req: CompletionRequest,

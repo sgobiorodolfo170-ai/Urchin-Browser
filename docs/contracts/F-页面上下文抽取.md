@@ -53,7 +53,7 @@ User question: 总结这段内容
 ## 3. 抽取接口
 
 ```typescript
-// packages/page-context/src/extractor.ts
+// apps/desktop/src/main/page-context/extractor.ts
 // READABILITY_BUNDLE：构建期由打包器内联的 @mozilla/readability 产物字符串（PC8）
 import type { WebContents } from 'electron';
 
@@ -152,7 +152,7 @@ LLM 上下文窗口有上限（如 GPT-4 ~128k token / Claude 200k token）。Pr
 ## 5. 注入到 Provider prompt 的格式（PC5 决策：XML 包裹）
 
 ```typescript
-// packages/page-context/src/prompt-builder.ts
+// apps/desktop/src/main/page-context/prompt-builder.ts
 export function buildContextPrompt(
   ctx: ExtractedPageContext,
   userQuestion: string,

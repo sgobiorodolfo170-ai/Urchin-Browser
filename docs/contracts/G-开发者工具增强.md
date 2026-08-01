@@ -188,7 +188,7 @@ async function summarizeErrors(): Promise<void> {
 ## 6. 自定义 Panel 注册（DT4 决策：v0.1 仅内部）
 
 ```typescript
-// packages/devtools-contract/src/panel.ts
+// M15 未在 v0.1 实现，此文件仅为占位契约
 export interface DevToolsPanelManifest {
   id: string;                        // 'panel-network-summary'
   title: string;                     // 显示在 tab 标题

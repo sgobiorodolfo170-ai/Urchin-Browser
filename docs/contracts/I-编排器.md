@@ -18,7 +18,7 @@ OR1 决策落地：1 主 Orchestrator + N Provider 子进程的两级 utility fo
 ## 2. 子进程生命周期
 
 ```typescript
-// packages/ai-orchestrator/src/provider-host.ts
+// apps/desktop/src/main/orchestrator/provider-host.ts
 import { utilityProcess, MessageChannelMain, MessagePortMain } from 'electron';
 import type { ProviderManifest } from '@urchin/ai-provider-contract';
 

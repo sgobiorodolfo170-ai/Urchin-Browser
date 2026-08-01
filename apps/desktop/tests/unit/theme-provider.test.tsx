@@ -8,7 +8,7 @@
  * 4. useTheme 在 Provider 外抛异常
  * 5. localStorage 持久化
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, renderHook, fireEvent, screen } from '@testing-library/react';
 import { ThemeProvider, useTheme } from '../../src/renderer/theme/theme-provider';
 
@@ -96,5 +96,49 @@ describe('ThemeProvider', () => {
 
   it('should throw when useTheme is used outside provider', () => {
     expect(() => renderHook(() => useTheme())).toThrow(/must be used within ThemeProvider/);
+  });
+
+  it('should fallback to light when no defaultTheme and no stored preference', () => {
+    render(
+      <ThemeProvider>
+        <div>test</div>
+      </ThemeProvider>,
+    );
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
+
+  it('should use localStorage value when no defaultTheme', () => {
+    localStorage.setItem('urchin-theme', 'dark');
+
+    render(
+      <ThemeProvider>
+        <div>test</div>
+      </ThemeProvider>,
+    );
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+
+  it('should respect prefers-color-scheme dark when no defaultTheme and no stored', () => {
+    Object.defineProperty(window, 'matchMedia', {
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(prefers-color-scheme: dark)',
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+      writable: true,
+      configurable: true,
+    });
+
+    render(
+      <ThemeProvider>
+        <div>test</div>
+      </ThemeProvider>,
+    );
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });
 });

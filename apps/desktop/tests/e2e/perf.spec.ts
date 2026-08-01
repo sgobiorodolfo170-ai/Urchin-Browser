@@ -31,6 +31,9 @@ test('内存：10 标签场景 ≤500MB', async () => {
   try {
     const window = await electronApp.firstWindow();
     await window.waitForLoadState('domcontentloaded');
+
+    // W7+ UI：标签列表在右侧栏内默认折叠，先展开以暴露「新建标签」按钮
+    await window.getByRole('button', { name: '展开右侧栏' }).first().click();
     await window
       .getByRole('button', { name: '新建标签' })
       .waitFor({ state: 'visible', timeout: 15_000 });

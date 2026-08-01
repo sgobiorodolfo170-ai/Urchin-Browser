@@ -48,6 +48,13 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
   const window = await electronApp.firstWindow();
   await window.waitForLoadState('domcontentloaded');
 
+  // W7+ UI：标签列表在右侧栏内，默认折叠为图标条。
+  // E2E 关键路径依赖「新建标签」按钮，先展开右侧栏暴露标签操作区。
+  await window.getByRole('button', { name: '展开右侧栏' }).first().click();
+  await window
+    .getByRole('button', { name: '新建标签' })
+    .waitFor({ state: 'visible', timeout: 15_000 });
+
   return { electronApp, window };
 }
 

@@ -23,9 +23,34 @@
 import type { TabManager } from './tab-manager';
 import type { TabSnapshot } from './types';
 import type { WindowManager } from '../windows/window-manager';
+import type { BrowserView } from 'electron';
 import { createLogger } from '@urchin/logger';
 
 const log = createLogger('view-integration');
+
+/** 网页区左上角圆角半径（px）——BrowserView 不支持 CSS 圆角，用同色角盖视图切出圆弧 */
+const CORNER_RADIUS = 10;
+/** 角盖颜色：与窗口标题栏/左侧边栏同色（--color-surface 浅色/深色） */
+const CORNER_MASK_LIGHT = '#ffffff';
+const CORNER_MASK_DARK = '#0f172a';
+
+/** 惰性获取 electron 模块（测试环境无真实 BrowserView 时返回 null，角盖降级不显示） */
+let electronModule: typeof import('electron') | null | undefined;
+function getElectron(): typeof import('electron') | null {
+  if (electronModule === undefined) {
+    try {
+      // 惰性 require：view-integration 可被单测在无 electron 环境下加载，
+      // 运行时（main 进程打包为 CJS）才能访问真实 electron。
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mod = require('electron') as typeof import('electron');
+      // 能力检测：无 BrowserView 构造器（vitest 环境）视为不可用
+      electronModule = typeof mod.BrowserView === 'function' ? mod : null;
+    } catch {
+      electronModule = null;
+    }
+  }
+  return electronModule;
+}
 
 /** 默认布局尺寸（px）
  *  左右侧栏启动默认折叠（与渲染进程 App.tsx 的 leftExpanded/rightExpanded 初始值保持同步），
@@ -146,6 +171,72 @@ export function installTabViewIntegration(
    *  反复重新布局，严重阻塞网页加载。仅在 URL 真正变化时才需要重新评估可见性。 */
   const lastBoundsUrlPerTab = new Map<number, string>();
 
+  /** 各窗口的左上角圆角角盖（BrowserView，盖在网页之上切出圆弧） */
+  const cornerMasks = new Map<number, BrowserView>();
+  /** 各角盖当前颜色（主题切换时刷新，保持与标题栏/侧栏同色） */
+  const cornerMaskColor = new Map<number, string>();
+
+  /** 当前主题色（浅色/深色） */
+  function maskColor(): string {
+    return getElectron()?.nativeTheme.shouldUseDarkColors ? CORNER_MASK_DARK : CORNER_MASK_LIGHT;
+  }
+
+  /** 角盖 HTML：主题色圆角块（右下 10px 弧），其余透明——弧区透出下层网页 */
+  function maskHtml(color: string): string {
+    const radius = CORNER_RADIUS;
+    return (
+      'data:text/html,' +
+      `<style>html,body{margin:0;width:100%;height:100%;background:transparent}` +
+      `#c{width:100%;height:100%;background:${color};border-radius:0 0 ${radius}px 0}</style>` +
+      '<div id="c"></div>'
+    );
+  }
+
+  /** 创建并挂载窗口的角盖（幂等；测试环境无 electron 时跳过） */
+  function ensureCornerMask(windowId: number): BrowserView | null {
+    const existing = cornerMasks.get(windowId);
+    if (existing) return existing;
+    const managed = windowManager.getWindow(windowId);
+    if (!managed) return null;
+    const electron = getElectron();
+    if (!electron) return null; // 测试环境无真实 BrowserView，角盖降级不显示
+    const mask = new electron.BrowserView({
+      webPreferences: { sandbox: true, contextIsolation: true },
+    });
+    // 透明背景：圆弧区（div 圆角切掉处）透出下层网页 view
+    mask.setBackgroundColor('#00000000');
+    const color = maskColor();
+    cornerMaskColor.set(windowId, color);
+    void mask.webContents.loadURL(maskHtml(color));
+    managed.browserWindow.addBrowserView?.(mask);
+    cornerMasks.set(windowId, mask);
+    return mask;
+  }
+
+  /** 更新角盖：外部网页显示时盖在网页区左上角，其余场景归零隐藏 */
+  function updateCornerMask(windowId: number, visible: boolean): void {
+    const mask = ensureCornerMask(windowId);
+    if (!mask) return;
+    const managed = windowManager.getWindow(windowId);
+    if (!managed) return;
+    if (!visible) {
+      mask.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+      return;
+    }
+    // 主题切换时刷新角盖颜色（与标题栏/侧栏同色，避免色差）
+    const color = maskColor();
+    if (cornerMaskColor.get(windowId) !== color) {
+      cornerMaskColor.set(windowId, color);
+      void mask.webContents.loadURL(maskHtml(color));
+    }
+    mask.setBounds({
+      x: layoutState.leftWidth,
+      y: 0,
+      width: CORNER_RADIUS * 2,
+      height: CORNER_RADIUS * 2,
+    });
+  }
+
   /** 为指定窗口的活跃 tab 设置 BrowserView bounds。
    *  优先级（从高到低）：
    *  1. isRendererManagedUrl（urchin://settings / urchin://ai）→ ZERO_BOUNDS（让 React 渲染内部页面）
@@ -175,6 +266,7 @@ export function installTabViewIntegration(
     // 弹出层（收藏夹/历史面板）被遮挡且不可点击。面板关闭后 browserViewHidden 恢复 false。
     if (layoutState.browserViewHidden) {
       tab.view.setBounds(ZERO_BOUNDS);
+      updateCornerMask(windowId, false);
       return;
     }
 
@@ -185,12 +277,14 @@ export function installTabViewIntegration(
     if (tab.htmlFullscreen) {
       const full = managed.browserWindow.getContentBounds();
       tab.view.setBounds({ x: 0, y: 0, width: full.width, height: full.height });
+      updateCornerMask(windowId, false);
       return;
     }
 
     // React 渲染的内部页面（settings / ai）：隐藏 BrowserView，让 React 组件可见
     if (isRendererManagedUrl(activeTab.url)) {
       tab.view.setBounds(ZERO_BOUNDS);
+      updateCornerMask(windowId, false);
       return;
     }
 
@@ -205,6 +299,8 @@ export function installTabViewIntegration(
       });
     }
     tab.view.setBounds(bounds);
+    // 左上角圆角角盖：盖在网页区左上角（切出 10px 圆弧，圆心在网页区内）
+    updateCornerMask(windowId, true);
   }
 
   /** 刷新所有窗口的 BrowserView bounds（SidePanel 状态变更后调用） */

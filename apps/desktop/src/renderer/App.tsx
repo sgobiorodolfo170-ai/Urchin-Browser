@@ -1095,14 +1095,7 @@ export function App() {
       {/* === 中间列：ContentArea + 下侧地址栏 === */}
       <main className="flex flex-1 flex-col overflow-hidden">
         {/* ContentArea */}
-        <div className="relative flex-1 overflow-hidden bg-white">
-          {/* 网页区左上角 10px 圆角遮罩：BrowserView 是原生合成层，不支持 CSS 圆角。
-           *  夹角 = 左侧边栏 border-r（垂直）与窗口标题栏底边（水平）在网页左上角相交。
-           *  圆心在网页区内、半径 10px：用同底色（surface，与侧栏/标题栏一体）的
-           *  圆角块遮挡网页左上直角，弧线自然衔接两条分割线。仅真实网页显示。 */}
-          {!isInternalPage && (
-            <div className="pointer-events-none absolute left-0 top-0 z-10 h-[10px] w-[10px] rounded-tl-[10px] bg-surface" />
-          )}
+        <div className="flex-1 overflow-hidden bg-white">
           {
             isSettingsTab ? (
               /* 设置页：React 组件渲染 */

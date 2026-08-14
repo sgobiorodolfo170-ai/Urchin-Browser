@@ -21,7 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { lookupBuiltinSite, builtinIconUrl } from './site-directory';
+import { lookupBuiltinSite, builtinIconUrl } from './site-directory-lookup';
 
 /** 常用网站条目（仅根网址） */
 export interface FrequentSite {

@@ -603,11 +603,44 @@ describe('App (Browser Shell)', () => {
     expect(mockInvoke).not.toHaveBeenCalledWith('tab.create', expect.anything());
   });
 
-  it('should open external website in new tab when navigating from homepage', async () => {
+  it('should open external website in new tab when clicking homepage card', async () => {
     mockInvoke.mockImplementation((channel: string) => {
       if (channel === 'tab.list') {
         return Promise.resolve({
           tabs: [makeTab({ id: 1, title: '主页', url: 'urchin://newtab' })],
+        });
+      }
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: [] });
+      if (channel === 'history.list') {
+        return Promise.resolve({
+          entries: [{ url: 'https://github.com', title: 'GitHub', visitedAt: 100 }],
+        });
+      }
+      return Promise.resolve({});
+    });
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    // 主页（urchin://newtab 内部页）→ 点击最近浏览卡片 → 跨站新建标签
+    await waitFor(() => expect(screen.getByText('GitHub')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('GitHub'));
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
+        windowId: 1,
+        url: 'https://github.com',
+        active: true,
+      }),
+    );
+  });
+
+  it('should navigate in current tab from address bar (no new tab for every input)', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({
+          tabs: [makeTab({ id: 1, title: 'A', url: 'https://a.com/' })],
         });
       }
       if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
@@ -618,18 +651,22 @@ describe('App (Browser Shell)', () => {
     renderApp();
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
 
-    // 内部页（主页）→ 外部网站：跨站，新建标签
+    // 地址栏输入跨站网址 → 当前标签导航（不新建标签）
     const omniboxInput = screen.getByRole('textbox', { name: '地址栏' });
-    fireEvent.change(omniboxInput, { target: { value: 'https://github.com' } });
+    fireEvent.change(omniboxInput, { target: { value: 'https://b.com' } });
     fireEvent.keyDown(omniboxInput, { key: 'Enter' });
 
     await waitFor(() =>
-      expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
-        windowId: 1,
-        url: 'https://github.com',
-        active: true,
+      expect(mockInvoke).toHaveBeenCalledWith('tab.loadUrl', {
+        tabId: 1,
+        url: 'https://b.com',
       }),
     );
+    expect(mockInvoke).not.toHaveBeenCalledWith('tab.create', {
+      windowId: 1,
+      url: 'https://b.com',
+      active: true,
+    });
   });
 
   it('should mark crashed tab with error icon', async () => {

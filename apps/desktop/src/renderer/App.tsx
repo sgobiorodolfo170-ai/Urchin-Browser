@@ -725,28 +725,31 @@ export function App() {
   }, []);
 
   const handleNavigate = useCallback(
-    async (url: string) => {
+    async (url: string, options?: { newTabOnCrossSite?: boolean }) => {
       const current = activeTab?.url;
       if (activeTabId && current) {
-        // 站内 / 内部页跳转：当前标签内导航；
-        // 跨站跳转（含从主页/内部页跳往网站）：新建标签页打开
-        const sameSite = url.startsWith('urchin://') || isSameSite(current, url);
-        if (sameSite) {
+        if (
+          options?.newTabOnCrossSite &&
+          !url.startsWith('urchin://') &&
+          !isSameSite(current, url)
+        ) {
+          // 主页卡片/最近浏览跳往外部网站：新建标签页（保留主页/来源页）
           try {
-            await window.urchin.invoke('tab.loadUrl', { tabId: activeTabId, url });
+            await window.urchin.invoke('tab.create', {
+              windowId: 1,
+              url,
+              active: true,
+            });
           } catch (e) {
-            console.error('Failed to navigate:', e);
+            console.error('Failed to navigate (cross-site, create tab):', e);
           }
           return;
         }
+        // 地址栏导航 / 站内跳转 / 内部页：当前标签内导航（浏览器标准行为）
         try {
-          await window.urchin.invoke('tab.create', {
-            windowId: 1,
-            url,
-            active: true,
-          });
+          await window.urchin.invoke('tab.loadUrl', { tabId: activeTabId, url });
         } catch (e) {
-          console.error('Failed to navigate (cross-site, create tab):', e);
+          console.error('Failed to navigate:', e);
         }
         return;
       }
@@ -1137,7 +1140,9 @@ export function App() {
             ) : isNewTab || tabs.length === 0 ? (
               /* 主页：React 组件渲染（内嵌，无法自由更换）。
                * 关闭最后一个标签后 activeTab 为空，此时同样回落到主页 */
-              <NewTabPage onNavigate={(url) => void handleNavigate(url)} />
+              <NewTabPage
+                onNavigate={(url) => void handleNavigate(url, { newTabOnCrossSite: true })}
+              />
             ) : null /* 普通网页：由 Electron BrowserView 渲染，React 仅留空 */
           }
         </div>

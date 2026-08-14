@@ -505,6 +505,43 @@ describe('App (Browser Shell)', () => {
     await waitFor(() => expect(screen.getByText('暂无标签页')).toBeTruthy());
   });
 
+  it('should fall back to homepage and navigate by creating tab when last active tab removed', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({
+          tabs: [makeTab({ id: 1, title: 'One', url: 'https://example.com' })],
+        });
+      }
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    const tabEventHandler = mockOn.mock.calls.find((c) => c[0] === 'tab:event')?.[1] as
+      ((payload: unknown) => void) | undefined;
+
+    // 关闭最后一个激活标签 → activeTabId 清空，ContentArea 回落主页
+    act(() => {
+      tabEventHandler!({ type: 'removed', snapshot: makeTab({ id: 1, active: true }) });
+    });
+    await waitFor(() => expect(screen.getByText('Urchin Browser')).toBeInTheDocument());
+
+    // 无激活标签时导航（主页按钮）→ 新建标签，而非对已删除 tab 调 loadUrl
+    fireEvent.click(screen.getByLabelText('主页'));
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
+        windowId: 1,
+        url: 'urchin://newtab',
+        active: true,
+      }),
+    );
+    expect(mockInvoke).not.toHaveBeenCalledWith('tab.loadUrl', expect.anything());
+  });
+
   it('should mark crashed tab with error icon', async () => {
     mockInvoke.mockImplementation((channel: string) => {
       if (channel === 'tab.list') {

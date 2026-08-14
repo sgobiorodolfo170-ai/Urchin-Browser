@@ -525,6 +525,10 @@ export function App() {
             setActiveTabId(snapshot.id);
             return prev.map((t) => ({ ...t, active: t.id === snapshot.id }));
           case 'removed':
+            // 移除的正是激活标签：清空 activeTabId，避免悬空引用（后续导航报 "Tab not found"）。
+            // 主进程移除激活 tab 后若窗口仍有剩余 tab，会补发 activated 事件重新设置；
+            // 无剩余时仅靠此处清空。用事件快照的 active 标志判断，不依赖异步初始化的 ref。
+            if (snapshot.active) setActiveTabId(null);
             return prev.filter((t) => t.id !== snapshot.id);
           case 'crashed':
             return prev.map((t) => (t.id === snapshot.id ? snapshot : t));
@@ -664,11 +668,23 @@ export function App() {
 
   const handleNavigate = useCallback(
     async (url: string) => {
-      if (!activeTabId) return;
+      if (activeTabId) {
+        try {
+          await window.urchin.invoke('tab.loadUrl', { tabId: activeTabId, url });
+        } catch (e) {
+          console.error('Failed to navigate:', e);
+        }
+        return;
+      }
+      // 无标签页（关闭最后一个标签后）：新建标签并导航，避免导航静默失效
       try {
-        await window.urchin.invoke('tab.loadUrl', { tabId: activeTabId, url });
+        await window.urchin.invoke('tab.create', {
+          windowId: 1,
+          url,
+          active: true,
+        });
       } catch (e) {
-        console.error('Failed to navigate:', e);
+        console.error('Failed to navigate (create tab):', e);
       }
     },
     [activeTabId],
@@ -1044,8 +1060,9 @@ export function App() {
                 activeTabId={aiActiveTabId}
                 onOpenPiSettings={() => setShowPiSettings(true)}
               />
-            ) : isNewTab ? (
-              /* 主页：React 组件渲染（内嵌，无法自由更换） */
+            ) : isNewTab || tabs.length === 0 ? (
+              /* 主页：React 组件渲染（内嵌，无法自由更换）。
+               * 关闭最后一个标签后 activeTab 为空，此时同样回落到主页 */
               <NewTabPage onNavigate={(url) => void handleNavigate(url)} />
             ) : null /* 普通网页：由 Electron BrowserView 渲染，React 仅留空 */
           }
@@ -1094,7 +1111,6 @@ export function App() {
               size="sm"
               className="h-8 w-8 shrink-0 p-0"
               onClick={() => void handleGoHome()}
-              disabled={!activeTabId}
               aria-label="主页"
             >
               <Home className="h-4 w-4" />

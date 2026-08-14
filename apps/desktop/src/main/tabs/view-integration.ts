@@ -29,7 +29,7 @@ import { createLogger } from '@urchin/logger';
 const log = createLogger('view-integration');
 
 /** 网页区左上角圆角半径（px）——BrowserView 不支持 CSS 圆角，用同色角盖视图切出圆弧 */
-const CORNER_RADIUS = 10;
+const CORNER_RADIUS = 20;
 /** 角盖颜色：与窗口标题栏/左侧边栏同色（--color-surface 浅色/深色） */
 const CORNER_MASK_LIGHT = '#ffffff';
 const CORNER_MASK_DARK = '#0f172a';
@@ -181,14 +181,19 @@ export function installTabViewIntegration(
     return getElectron()?.nativeTheme.shouldUseDarkColors ? CORNER_MASK_DARK : CORNER_MASK_LIGHT;
   }
 
-  /** 角盖 HTML：主题色圆角块（右下 10px 弧），其余透明——弧区透出下层网页。
+  /** 角盖 HTML：主题色"左上三角"（弧凸向左上、圆心在网页区内 20px 处），
+   *  其余透明——弧区透出下层网页。
+   *  几何：角盖 20×20 覆盖网页区左上角；clip-path 保留左上三角
+   *  （M0,0 → L0,20 → 弧 A20,20 到 20,0 → 闭合），弧线凸向左上（角焦点外），
+   *  圆心在 (20,20) = 网页区内 —— 网页左上角呈现标准圆角（之前 border-radius
+   *  方案的弧凸向网页内部、圆心在角焦点，方向反了）。
    *  data URL 必须 encodeURIComponent 编码：HTML 中的 # 若不编码会被当作
-   *  URL fragment 分隔符截断，导致页面空白（角盖不可见，网页保持直角）。 */
+   *  URL fragment 分隔符截断，导致页面空白（角盖不可见）。 */
   function maskHtml(color: string): string {
-    const radius = CORNER_RADIUS;
+    const r = CORNER_RADIUS;
     const html =
       '<style>html,body{margin:0;width:100%;height:100%;background:transparent}' +
-      `#c{width:100%;height:100%;background:${color};border-radius:0 0 ${radius}px 0}</style>` +
+      `#c{width:100%;height:100%;background:${color};clip-path:path('M0,0 L0,${r} A${r},${r} 0 0 1 ${r},0 Z')}</style>` +
       '<div id="c"></div>';
     return 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
   }

@@ -60,9 +60,9 @@ test('网页区左上角圆角截图', async () => {
   await window.waitForTimeout(2000);
 
   // 程序化断言：主窗口存在 2 个 BrowserView（网页 view + 角盖 view），
-  // 角盖 bounds 位于网页区左上角（x=leftWidth=44, y=0, 10x10），
-  // 角盖 data URL 经 encodeURIComponent 编码（含 %23 = #、%20 = 空格），
-  // 解码后含右下 10px 圆弧样式（圆心在网页区左上角内 10px）
+  // 角盖 bounds 位于网页区左上角（x=leftWidth=44, y=0, 20x20），
+  // 角盖 data URL 经 encodeURIComponent 编码（含 %23 = #、%20 = 空格、%2C = 逗号），
+  // 含 clip-path 路径：保留左上三角、弧凸左上、圆心在网页区内 (20,20)
   const cornerInfo = await electronApp.evaluate(({ BrowserWindow }) => {
     const win = BrowserWindow.getAllWindows()[0];
     if (!win) return { viewCount: 0, views: [] as { bounds: unknown; url: string }[] };
@@ -78,15 +78,16 @@ test('网页区左上角圆角截图', async () => {
   console.log('=== 角盖信息 ===', JSON.stringify(cornerInfo, null, 2));
   const mask = cornerInfo.views.find((v) => v.url.startsWith('data:text/html'));
   if (!mask) throw new Error('角盖 BrowserView 未创建');
-  expect(mask.bounds).toEqual({ x: 44, y: 0, width: 10, height: 10 });
+  expect(mask.bounds).toEqual({ x: 44, y: 0, width: 20, height: 20 });
   // z-order：getBrowserViews 按 z 升序、最后元素在最上——
   // 角盖必须在最后（盖在网页之上），否则被网页 view 盖住、圆角不可见
   const lastView = cornerInfo.views[cornerInfo.views.length - 1];
   expect(lastView?.url.startsWith('data:text/html')).toBe(true);
-  // encodeURIComponent 全量编码：空格→%20、冒号→%3A、#→%23。
+  // encodeURIComponent 全量编码：空格→%20、冒号→%3A、#→%23、逗号→%2C。
   // 关键：%23（#）已编码说明 HTML 未被 URL fragment 截断（此前空白角盖的根因）。
   expect(mask.url).toContain('%23c%7B'); // #c{
-  expect(mask.url).toContain('%200%2010px%200'); // "0 0 10px 0"（右下弧半径）
+  expect(mask.url).toContain('clip-path%3Apath'); // clip-path:path(
+  expect(mask.url).toContain('%2C0%20Z'); // 路径闭合 ",0 Z"（弧凸左上、圆心 (20,20)）
 
   // DOM 级验证：角盖页面 HTML 完整解析，圆角块元素已渲染
   // （仅查 URL 不够——若 HTML 被截断则页面空白，圆角不可见）
@@ -101,14 +102,16 @@ test('网页区左上角圆角截图', async () => {
       width: el.clientWidth,
       height: el.clientHeight,
       bg: style.backgroundColor,
-      radius: style.borderRadius,
+      clipPath: style.clipPath,
     };
   });
   console.log('=== 角盖 DOM ===', JSON.stringify(maskDom));
   expect(maskDom.rendered).toBe(true);
-  expect(maskDom.width).toBe(10);
-  expect(maskDom.height).toBe(10);
-  expect(maskDom.radius).toContain('10px');
+  expect(maskDom.width).toBe(20);
+  expect(maskDom.height).toBe(20);
+  // clip-path 生效：保留左上三角（弧凸左上、圆心 (20,20) 网页内）
+  expect(maskDom.clipPath).toContain('path(');
+  expect(maskDom.clipPath).toContain('20');
 
   // 截图整个窗口（左上角含圆角）
   const shot = join(__dirname, '..', '..', 'test-results', 'corner-radius.png');

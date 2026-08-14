@@ -116,3 +116,97 @@ describe('NewTabPage', () => {
     );
   });
 });
+
+describe('NewTabPage frequent drag-out removal', () => {
+  it('should remove frequent site when dragged out of the frequent zone', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'settings.get') {
+        return Promise.resolve({
+          value: [
+            { url: 'https://github.com', title: 'GitHub' },
+            { url: 'https://baidu.com', title: '百度' },
+          ],
+        });
+      }
+      if (channel === 'history.list') {
+        return Promise.resolve({
+          entries: [{ url: 'https://github.com', title: 'GitHub', visitedAt: 100 }],
+        });
+      }
+      if (channel === 'settings.set') return Promise.resolve({ ok: true });
+      return Promise.resolve({});
+    });
+    render(<NewTabPage onNavigate={onNavigate} />);
+    await waitFor(() => expect(screen.getAllByText('GitHub').length).toBeGreaterThanOrEqual(2));
+
+    // 拖常用区 GitHub 到常用区外（dragEnd 时未落在常用区内）→ 应从常用区移除
+    const frequentZone = screen.getByTestId('frequent-sites');
+    const githubCards = frequentZone.querySelectorAll('button');
+    const githubInFrequent = Array.from(githubCards).find((b) => b.textContent?.includes('GitHub'));
+    expect(githubInFrequent).toBeTruthy();
+
+    const dtStore: Record<string, string> = {};
+    const dataTransfer = {
+      setData: (t: string, d: string) => {
+        dtStore[t] = d;
+      },
+      getData: (t: string) => dtStore[t] ?? '',
+    };
+    fireEvent.dragStart(githubInFrequent!, { dataTransfer });
+    // 未 drop 到常用区（dragEnd 直接触发）→ 移除
+    fireEvent.dragEnd(githubInFrequent!, { dataTransfer });
+
+    expect(mockInvoke).toHaveBeenCalledWith('settings.set', {
+      key: 'home.frequentSites',
+      value: [{ url: 'https://baidu.com', title: '百度' }],
+    });
+  });
+
+  it('should keep frequent site when dropped within the frequent zone (reorder)', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'settings.get') {
+        return Promise.resolve({
+          value: [
+            { url: 'https://github.com', title: 'GitHub' },
+            { url: 'https://baidu.com', title: '百度' },
+          ],
+        });
+      }
+      if (channel === 'history.list') {
+        return Promise.resolve({
+          entries: [{ url: 'https://github.com', title: 'GitHub', visitedAt: 100 }],
+        });
+      }
+      if (channel === 'settings.set') return Promise.resolve({ ok: true });
+      return Promise.resolve({});
+    });
+    render(<NewTabPage onNavigate={onNavigate} />);
+    await waitFor(() => expect(screen.getAllByText('GitHub').length).toBeGreaterThanOrEqual(2));
+
+    const frequentZone = screen.getByTestId('frequent-sites');
+    const buttons = Array.from(frequentZone.querySelectorAll('button'));
+    const github = buttons.find((b) => b.textContent?.includes('GitHub'))!;
+
+    const dtStore: Record<string, string> = {};
+    const dataTransfer = {
+      setData: (t: string, d: string) => {
+        dtStore[t] = d;
+      },
+      getData: (t: string) => dtStore[t] ?? '',
+    };
+    fireEvent.dragStart(github, { dataTransfer });
+    // 改 drop 到常用区容器空白
+    // （容器 onDrop 处理 frequent 分支 = 拖到末尾重排，结果与拖到指定位置一致）
+    fireEvent.drop(frequentZone, { dataTransfer });
+    fireEvent.dragEnd(github, { dataTransfer });
+
+    // 重排后两个都保留（顺序变化：百度在 GitHub 前）
+    expect(mockInvoke).toHaveBeenCalledWith('settings.set', {
+      key: 'home.frequentSites',
+      value: [
+        { url: 'https://baidu.com', title: '百度' },
+        { url: 'https://github.com', title: 'GitHub' },
+      ],
+    });
+  });
+});

@@ -18,7 +18,7 @@
  * - 常用区卡片可拖拽排序（drop 后持久化）
  * - 点击任意卡片 → 在当前标签页打开该网址
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Compass, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -79,6 +79,8 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
   const [recent, setRecent] = useState<readonly FrequentSite[]>([]);
   const [loading, setLoading] = useState(true);
   const [dragOverFrequent, setDragOverFrequent] = useState(false);
+  /** 拖拽期间是否已落在常用区内（dragend 判断"拖出即删除"用） */
+  const droppedInFrequentRef = useRef(false);
 
   // 加载常用书签 + 最近浏览
   useEffect(() => {
@@ -134,6 +136,7 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
     (e: React.DragEvent, targetIndex: number) => {
       e.preventDefault();
       setDragOverFrequent(false);
+      droppedInFrequentRef.current = true;
       let payload: DragPayload | null = null;
       try {
         payload = JSON.parse(e.dataTransfer.getData('text/plain')) as DragPayload;
@@ -164,7 +167,25 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
   const handleDragStart = useCallback((e: React.DragEvent, payload: DragPayload) => {
     e.dataTransfer.setData('text/plain', JSON.stringify(payload));
     e.dataTransfer.effectAllowed = 'move';
+    // 拖拽开始：重置"已落在常用区"标记
+    droppedInFrequentRef.current = false;
   }, []);
+
+  /**
+   * 常用区书签拖拽结束：若拖出常用区（两条分割线间的矩形区域），将该书签移出常用区。
+   */
+  const handleFrequentDragEnd = useCallback(
+    (url: string) => {
+      // 已落在常用区内（重排或追加）→ 保留；否则视为拖出 → 删除
+      if (droppedInFrequentRef.current) {
+        droppedInFrequentRef.current = false;
+        return;
+      }
+      droppedInFrequentRef.current = false;
+      persistFrequent(frequent.filter((s) => s.url !== url));
+    },
+    [frequent, persistFrequent],
+  );
 
   /** 打开网址（当前标签页） */
   const openSite = useCallback(
@@ -203,7 +224,8 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
           onDrop={(e) => {
             e.preventDefault();
             setDragOverFrequent(false);
-            // 拖到区域空白处：追加到末尾
+            // 拖到区域空白处：标记已落在常用区内（防止 dragend 误删），并处理追加
+            droppedInFrequentRef.current = true;
             const payload = (() => {
               try {
                 return JSON.parse(e.dataTransfer.getData('text/plain')) as DragPayload;
@@ -218,6 +240,14 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
                   { url: payload.site.url, title: payload.site.title },
                 ]);
               }
+            } else if (payload?.kind === 'frequent') {
+              // 常用区内拖到末尾（重排）
+              const next = [...frequent];
+              const [moved] = next.splice(payload.index, 1);
+              if (moved) {
+                next.push(moved);
+                persistFrequent(next);
+              }
             }
           }}
         >
@@ -231,8 +261,16 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
               key={site.url}
               draggable
               onDragStart={(e) => handleDragStart(e, { kind: 'frequent', index: idx })}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => handleFrequentDrop(e, idx)}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                // 阻止冒泡到容器 onDrop（否则事件被重复处理，导致重复 persist）
+                e.stopPropagation();
+                handleFrequentDrop(e, idx);
+              }}
+              onDragEnd={() => handleFrequentDragEnd(site.url)}
               onClick={() => openSite(site.url)}
               className="group flex flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
               title={site.title}

@@ -61,10 +61,6 @@ export interface WebContentsLike {
   setWindowOpenHandler?(
     handler: (details: WindowOpenHandlerDetails) => WindowOpenHandlerResponse,
   ): void;
-  /** 注入 CSS（强制深色模式用；返回可移除的 key） */
-  insertCSS?(css: string): Promise<string>;
-  /** 移除已注入的 CSS（强制深色模式恢复浅色用） */
-  removeInsertedCSS?(key: string): void;
 }
 
 /**

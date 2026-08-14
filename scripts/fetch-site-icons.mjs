@@ -4,9 +4,16 @@
  * 用法：node scripts/fetch-site-icons.mjs
  * 输出：apps/desktop/src/renderer/public/sites/<key>.png
  *
- * 来源优先级：站点域名的 Google favicon 服务（64px PNG）→ 站点 favicon.ico 直连
+ * 来源优先级：站点 favicon.ico 直连 → Google favicon 服务（64px PNG）。
  * 失败跳过（主页运行时该站点回退外部服务/内置图标）。
  */
+
+/** 仅接受 PNG / ICO 魔数，拒绝站点返回的 HTML 错误页（如 <!doctype 开头） */
+function isImage(buf) {
+  if (buf.length < 100) return false;
+  const hex = buf.slice(0, 4).toString('hex');
+  return hex === '89504e47' || hex === '00000100';
+}
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,7 +118,7 @@ async function fetchIcon(key, domain) {
     });
     if (direct.ok) {
       const buf = Buffer.from(await direct.arrayBuffer());
-      if (buf.length > 100 && !buf.slice(0, 4).toString('latin1').includes('<!DO')) {
+      if (isImage(buf)) {
         writeFileSync(out, buf);
         return 'ok(direct)';
       }
@@ -126,7 +133,7 @@ async function fetchIcon(key, domain) {
     const res = await fetch(google, { signal: AbortSignal.timeout(8000) });
     if (res.ok) {
       const buf = Buffer.from(await res.arrayBuffer());
-      if (buf.length > 100 && !buf.slice(0, 4).toString('latin1').includes('<!DO')) {
+      if (isImage(buf)) {
         writeFileSync(out, buf);
         return 'ok(google)';
       }

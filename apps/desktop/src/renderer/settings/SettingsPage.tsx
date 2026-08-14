@@ -112,9 +112,13 @@ const GENERAL_FIELDS: readonly SettingField[] = [
   },
   {
     key: 'ui.rightSidebarAutoExpand',
-    label: '右侧边栏自动展开',
-    desc: '鼠标悬停在折叠的右侧边栏上时自动展开（关闭后需点击按钮展开）',
-    type: 'toggle',
+    label: '右侧边栏展开方式',
+    desc: '切换展开方式：双击展开（默认）/ 悬停自动展开。开启=悬停自动展开，关闭=双击展开',
+    type: 'select',
+    options: [
+      { value: 'false', label: '双击展开' },
+      { value: 'true', label: '悬停自动展开' },
+    ],
   },
 ];
 

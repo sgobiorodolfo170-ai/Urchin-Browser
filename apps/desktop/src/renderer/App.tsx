@@ -29,8 +29,6 @@ import {
   Sparkles,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
   List as ListIcon,
   Folder,
   FolderOpen,
@@ -382,8 +380,13 @@ export function App() {
           setSidebarHoverDelay(delay);
         }
         const auto = (autoRes as { value: unknown }).value;
+        // 兼容 boolean（旧 toggle 存储）与字符串（select 存储 'true'/'false'）
         if (typeof auto === 'boolean') {
           setRightSidebarAutoExpand(auto);
+        } else if (auto === 'true') {
+          setRightSidebarAutoExpand(true);
+        } else if (auto === 'false') {
+          setRightSidebarAutoExpand(false);
         }
       } catch {
         // 使用默认值
@@ -706,6 +709,12 @@ export function App() {
       next ? rightExpandedWidth : RIGHT_COLLAPSED,
     );
   }, [leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout]);
+
+  // 双击右侧边栏空白处：展开/折叠切换（替代已移除的底部折叠/展开按钮）
+  // 与悬停自动展开/自动折叠互斥（右侧栏自动展开开关控制后者）
+  const handleRightDoubleClick = useCallback(() => {
+    handleToggleRight();
+  }, [handleToggleRight]);
 
   // 右侧栏悬停展开：仅当栏处于折叠状态（rightExpanded=false）且设置允许自动展开时触发
   // 使用设置中配置的延迟（debug.sidebarHoverDelay），0 = 立即展开
@@ -1053,6 +1062,8 @@ export function App() {
         style={{ width: rightWidth }}
         onMouseEnter={handleRightMouseEnter}
         onMouseLeave={handleRightMouseLeave}
+        onDoubleClick={handleRightDoubleClick}
+        aria-label="右侧边栏"
       >
         {/* 宽度调节手柄：展开态下渲染于栏左缘内侧（避免与 BrowserView 重叠），
          *  鼠标移入手柄区域变横向调节光标，按住左右拖动调宽 */}
@@ -1151,18 +1162,8 @@ export function App() {
           </div>
         )}
 
-        {/* 底部：折叠/展开按钮 */}
-        <button
-          className="flex h-11 w-full shrink-0 items-center justify-center border-t border-border text-text-secondary hover:bg-surface hover:text-text"
-          onClick={handleToggleRight}
-          aria-label={rightExpanded ? '折叠右侧栏' : '展开右侧栏'}
-        >
-          {rightExpanded ? (
-            <PanelRightClose className="h-4 w-4" />
-          ) : (
-            <PanelRightOpen className="h-4 w-4" />
-          )}
-        </button>
+        {/* 底部折叠/展开按钮已移除（2026-08-14）：改为双击右侧边栏空白处展开/折叠，
+         *  由 aside 的 onDoubleClick 处理；与悬停自动展开互斥（设置开关控制）。 */}
       </aside>
 
       {/* pi 设置对话框：由 AiChatView 中区 header 的齿轮按钮触发 */}

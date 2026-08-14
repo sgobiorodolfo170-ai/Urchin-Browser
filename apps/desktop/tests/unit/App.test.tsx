@@ -79,12 +79,12 @@ function renderApp() {
 
 /**
  * 展开右侧栏（默认折叠态）。
- * 侧边栏启动默认折叠，需点击「展开右侧栏」按钮后才能看到标签列表与新建按钮。
- * 折叠态下有两个「展开右侧栏」按钮（中部图标 + 底部切换），点击任意一个即可。
+ * 2026-08-14：底部折叠/展开按钮已移除，改为双击右侧边栏空白处展开/折叠。
+ * 测试通过双击右侧栏（aside aria-label="右侧边栏"）模拟展开。
  */
 async function expandRightSidebar(): Promise<void> {
-  const expandBtns = await screen.findAllByLabelText('展开右侧栏');
-  fireEvent.click(expandBtns[0]!);
+  const sidebar = await screen.findByLabelText('右侧边栏');
+  fireEvent.doubleClick(sidebar);
 }
 
 describe('App (Browser Shell)', () => {
@@ -242,9 +242,9 @@ describe('App (Browser Shell)', () => {
 
     renderApp();
 
-    // 即使 tab.list 失败，UI 仍应渲染（无崩溃），侧边栏展开按钮仍可用
+    // 即使 tab.list 失败，UI 仍应渲染（无崩溃），右侧边栏仍可交互（双击展开/折叠）
     await waitFor(() => {
-      expect(screen.getAllByLabelText('展开右侧栏').length).toBeGreaterThan(0);
+      expect(screen.getByLabelText('右侧边栏')).toBeInTheDocument();
     });
   });
 
@@ -585,7 +585,7 @@ describe('App (Browser Shell)', () => {
     // 而非固定 RIGHT_EXPANDED（360）——否则主进程 BrowserView 布局与栏显示不一致，
     // 网页滚动条与分割线间出现空白。
     mockInvoke.mockClear();
-    fireEvent.click(screen.getByLabelText('折叠右侧栏'));
+    fireEvent.doubleClick(screen.getByLabelText('右侧边栏')); // 折叠
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith(
         'ui.layout.setState',
@@ -593,7 +593,7 @@ describe('App (Browser Shell)', () => {
       ),
     );
     mockInvoke.mockClear();
-    fireEvent.click(screen.getAllByLabelText('展开右侧栏')[0]!);
+    fireEvent.doubleClick(screen.getByLabelText('右侧边栏')); // 再展开
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith(
         'ui.layout.setState',
@@ -687,5 +687,47 @@ describe('App right sidebar auto-expand + collapsed icons', () => {
     await new Promise((r) => setTimeout(r, 400));
     // 自动展开 → 标题可见
     await waitFor(() => expect(screen.getByText('One')).toBeInTheDocument());
+  });
+});
+
+describe('App right sidebar double-click toggle (替代底部按钮)', () => {
+  function setupTabs() {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({ tabs: [makeTab({ id: 1, title: 'One' })] });
+      }
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      return Promise.resolve({});
+    });
+  }
+
+  it('should expand sidebar on double-click', async () => {
+    setupTabs();
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+    const sidebar = screen.getByLabelText('右侧边栏');
+    fireEvent.doubleClick(sidebar);
+    // 展开 → 标签标题可见
+    await waitFor(() => expect(screen.getByText('One')).toBeInTheDocument());
+  });
+
+  it('should collapse sidebar on double-click when expanded', async () => {
+    setupTabs();
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+    const sidebar = screen.getByLabelText('右侧边栏');
+    fireEvent.doubleClick(sidebar); // 展开
+    await waitFor(() => expect(screen.getByText('One')).toBeInTheDocument());
+    fireEvent.doubleClick(sidebar); // 折叠
+    await waitFor(() => expect(screen.queryByText('One')).toBeNull());
+  });
+
+  it('should not render bottom toggle button', async () => {
+    setupTabs();
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+    // 底部折叠/展开按钮已移除
+    expect(screen.queryByLabelText('折叠右侧栏')).toBeNull();
+    expect(screen.queryByLabelText('展开右侧栏')).toBeNull();
   });
 });

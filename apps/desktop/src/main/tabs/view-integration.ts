@@ -27,15 +27,6 @@ import { createLogger } from '@urchin/logger';
 
 const log = createLogger('view-integration');
 
-/**
- * 网页区左上角圆角高度（px）。
- * 2026-08-15 方案演进：早期用"透明 BrowserView 角盖"切圆角，但常驻透明合成层 +
- * 每帧 z-order 检查（remove/add BrowserView）在 Windows DWM 上触发 GPU 合成压力，
- * 导致整个桌面卡死。改用稳定方案——网页 view 顶部让出 CORNER_HEIGHT，
- * 由渲染层 React 在让出区画左上圆角块（纯 CSS，零 BrowserView 合成风险）。
- */
-const CORNER_HEIGHT = 20;
-
 /** 默认布局尺寸（px）
  *  左右侧栏启动默认折叠（与渲染进程 App.tsx 的 leftExpanded/rightExpanded 初始值保持同步），
  *  折叠宽度为 44px。 */
@@ -86,8 +77,8 @@ const layoutState: LayoutState = {
 
 /**
  * 计算 BrowserView 的 bounds。
- * BrowserView 占据中间区域：x=leftWidth, y=CORNER_HEIGHT（顶部让出给圆角块）,
- * 宽度=windowWidth-leftWidth-rightWidth, 高度=windowHeight-bottomHeight-CORNER_HEIGHT。
+ * BrowserView 占据中间区域：x=leftWidth, y=0,
+ * 宽度=windowWidth-leftWidth-rightWidth, 高度=windowHeight-bottomHeight。
  */
 function computeViewBounds(windowBounds: { width: number; height: number }): {
   x: number;
@@ -97,9 +88,9 @@ function computeViewBounds(windowBounds: { width: number; height: number }): {
 } {
   return {
     x: layoutState.leftWidth,
-    y: CORNER_HEIGHT,
+    y: 0,
     width: Math.max(0, windowBounds.width - layoutState.leftWidth - layoutState.rightWidth),
-    height: Math.max(0, windowBounds.height - layoutState.bottomHeight - CORNER_HEIGHT),
+    height: Math.max(0, windowBounds.height - layoutState.bottomHeight),
   };
 }
 

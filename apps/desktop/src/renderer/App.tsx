@@ -1136,18 +1136,7 @@ export function App() {
       {/* === 中间列：ContentArea + 下侧地址栏 === */}
       <main className="flex flex-1 flex-col overflow-hidden">
         {/* ContentArea */}
-        <div className="flex flex-1 flex-col overflow-hidden bg-white">
-          {/* 网页区左上角圆角（纯 CSS 方案，2026-08-15）：
-           *  主进程 computeViewBounds 已让网页 view 从 y=20 开始（顶部让出区），
-           *  这里在让出区画 surface 色圆角块——rounded-tl-[20px] 的圆弧
-           *  凸向左上、圆心在 (20,20) = 网页区内 20px 处，弧衔接网页顶边与左侧栏。
-           *  仅外部网页显示；内部页（settings/ai/newtab）为 React 渲染，无需让出。 */}
-          {!isInternalPage && (
-            <div className="pointer-events-none flex h-5 w-full shrink-0 bg-surface">
-              <div className="h-5 w-5 shrink-0 rounded-tl-[20px] bg-surface" />
-              <div className="flex-1" />
-            </div>
-          )}
+        <div className="flex-1 overflow-hidden bg-white">
           {
             isSettingsTab ? (
               /* 设置页：React 组件渲染 */

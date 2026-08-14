@@ -288,4 +288,68 @@ describe('SettingsManager', () => {
 
     expect(() => mgr.delete('theme')).not.toThrow();
   });
+
+  // ===== secretStore（safeStorage 加密）测试 =====
+  // 回归：2026-08-14 修复——settings key 含点号（ai.apiKey）不合法 ST6 白名单，
+  // secret name 需做 `settings/<点转下划线>` 映射，否则读写抛 Invalid secret name 导致 apiKey 无法落盘。
+
+  function createSecretStoreMock() {
+    return {
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it('secret: set writes apiKey to secretStore with dot-free mapped name', async () => {
+    const secretStore = createSecretStoreMock();
+    const mgr = new SettingsManager(
+      { get: vi.fn().mockReturnValue(null), set: vi.fn() },
+      secretStore,
+    );
+
+    mgr.set('ai.apiKey', 'sk-test-123');
+    // 等 fire-and-forget 的异步 set 完成
+    await vi.waitFor(() => expect(secretStore.set).toHaveBeenCalled());
+
+    expect(secretStore.set).toHaveBeenCalledWith('settings/ai_apiKey', 'sk-test-123');
+  });
+
+  it('secret: set with dot-free name must not throw (ST6 白名单校验)', () => {
+    const secretStore = createSecretStoreMock();
+    secretStore.set.mockRejectedValue(new Error('boom'));
+    const mgr = new SettingsManager(
+      { get: vi.fn().mockReturnValue(null), set: vi.fn() },
+      secretStore,
+    );
+
+    // 失败仅记日志不抛（fire-and-forget .catch）
+    expect(() => mgr.set('ai.apiKey', 'x')).not.toThrow();
+  });
+
+  it('secret: delete removes mapped name from secretStore', async () => {
+    const secretStore = createSecretStoreMock();
+    const mgr = new SettingsManager(
+      { get: vi.fn().mockReturnValue(null), set: vi.fn() },
+      secretStore,
+    );
+
+    mgr.delete('ai.apiKey');
+    await vi.waitFor(() => expect(secretStore.delete).toHaveBeenCalled());
+    expect(secretStore.delete).toHaveBeenCalledWith('settings/ai_apiKey');
+  });
+
+  it('secret: preload loads apiKey from mapped name', async () => {
+    const secretStore = createSecretStoreMock();
+    secretStore.get.mockResolvedValue('sk-preloaded');
+    const mgr = new SettingsManager(
+      { get: vi.fn().mockReturnValue(null), set: vi.fn() },
+      secretStore,
+    );
+
+    await mgr.ensureSecretsLoaded();
+    expect(secretStore.get).toHaveBeenCalledWith('settings/ai_apiKey');
+    expect(secretStore.get).toHaveBeenCalledWith('settings/summary_apiKey');
+    expect(mgr.get('ai.apiKey')).toBe('sk-preloaded');
+  });
 });

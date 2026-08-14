@@ -118,11 +118,23 @@ export class SettingsManager {
     }
   }
 
+  /**
+   * settings key → SecretStore name 映射。
+   *
+   * ST6 决策（secret-store.ts VALID_NAME_PATTERN）要求 name 仅含字母数字/下划线/
+   * 连字符/斜杠——settings key 中的点号（如 ai.apiKey）不合法，否则读写抛
+   * "Invalid secret name" 导致 apiKey 无法落盘（2026-08-14 修复）。
+   * 约定：`settings/<key 点转下划线>`，settings/ 前缀做命名空间隔离。
+   */
+  private secretNameFor(key: string): string {
+    return `settings/${key.replace(/\./g, '_')}`;
+  }
+
   /** 从 secretStore 加载全部敏感键到内存 entries。 */
   private async preloadSecrets(secretStore: SecretStore): Promise<void> {
     for (const key of SECRET_KEYS) {
       try {
-        const value = await secretStore.get(key);
+        const value = await secretStore.get(this.secretNameFor(key));
         if (value !== null) {
           this.entries.set(key, value);
         }
@@ -172,7 +184,7 @@ export class SettingsManager {
         // 敏感键：写入 safeStorage 加密存储，不落明文 SQLite；同时删除旧的明文条目（迁移）。
         // secretStore.set 内部为同步 fs I/O（async 包装，当轮结算），fire-and-forget 安全。
         const raw = typeof value === 'string' ? value : JSON.stringify(value ?? '');
-        void this.secretStore.set(key, raw).catch((err) => {
+        void this.secretStore.set(this.secretNameFor(key), raw).catch((err) => {
           log.error('failed to persist secret setting', {
             key,
             error: err instanceof Error ? err.message : String(err),
@@ -240,7 +252,7 @@ export class SettingsManager {
       }
       // 敏感键同步从加密存储删除
       if (this.secretStore && SECRET_KEYS.has(key)) {
-        void this.secretStore.delete(key).catch((err) => {
+        void this.secretStore.delete(this.secretNameFor(key)).catch((err) => {
           log.error('failed to delete secret setting', {
             key,
             error: err instanceof Error ? err.message : String(err),

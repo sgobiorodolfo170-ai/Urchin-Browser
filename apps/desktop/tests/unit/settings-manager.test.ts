@@ -102,8 +102,8 @@ describe('SettingsManager', () => {
     // 默认 18 项（theme/language/searchEngine/homepage/downloadsPath/blockTrackers/doNotTrack/links.openInNewTab/
     //   ai.model/ai.apiKey/ai.providerId/ai.baseUrl/
     //   summary.model/summary.apiKey/summary.providerId/summary.baseUrl/summary.saveDirectory/
-    //   debug.sidebarHoverDelay） + 自定义 1 项
-    expect(entries).toHaveLength(19);
+    //   debug.sidebarHoverDelay/ui.rightSidebarAutoExpand） + 自定义 1 项
+    expect(entries).toHaveLength(20);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('theme');

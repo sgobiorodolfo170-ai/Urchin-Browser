@@ -224,6 +224,34 @@ function SummaryTreeItem({
   );
 }
 
+/** 标签页图标（展开态与折叠态共用）：
+ *  加载中 → spinner；崩溃 → 红叉；urchin://ai → Sparkles；urchin://settings → 齿轮；
+ *  普通网页 → 灰点（v0.1 无真实 favicon 源，占位）。 */
+function TabFavicon({ tab, className }: { tab: TabSnapshot; className?: string }) {
+  if (tab.loading) {
+    return (
+      <div
+        className={cn(
+          'shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent',
+          className ?? 'h-3 w-3',
+        )}
+      />
+    );
+  }
+  if (tab.crashed) {
+    return <X className={cn('shrink-0 text-error', className ?? 'h-3 w-3')} />;
+  }
+  if (tab.url?.startsWith('urchin://ai')) {
+    return <Sparkles className={cn('shrink-0 text-primary', className ?? 'h-3 w-3')} />;
+  }
+  if (tab.url?.startsWith('urchin://settings')) {
+    return <SettingsIcon className={cn('shrink-0 text-text-secondary', className ?? 'h-3 w-3')} />;
+  }
+  return (
+    <div className={cn('shrink-0 rounded-full border border-border', className ?? 'h-3 w-3')} />
+  );
+}
+
 export function App() {
   // eslint-disable-next-line @typescript-eslint/unbound-method -- useTheme 返回的 toggleTheme 是稳定引用
   const { theme, toggleTheme } = useTheme();
@@ -330,6 +358,8 @@ export function App() {
 
   // 右侧边栏悬停展开延迟（ms，从设置读取，默认 300）
   const [sidebarHoverDelay, setSidebarHoverDelay] = useState<number>(300);
+  /** 右侧边栏悬停自动展开开关（设置 ui.rightSidebarAutoExpand，默认 true） */
+  const [rightSidebarAutoExpand, setRightSidebarAutoExpand] = useState<boolean>(true);
 
   // 右侧栏悬停展开延迟定时器（未触发前可取消）
   const rightHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -339,29 +369,36 @@ export function App() {
     activeTabIdRef.current = activeTabId;
   }, [activeTabId]);
 
-  // 加载右侧边栏悬停延迟设置，并监听设置页变更实时更新
+  // 加载右侧边栏悬停设置（延迟 + 自动展开开关），并监听设置页变更实时更新
   useEffect(() => {
-    async function loadHoverDelay() {
+    async function loadHoverSettings() {
       try {
-        const res = (await window.urchin.invoke('settings.get', {
-          key: 'debug.sidebarHoverDelay',
-        })) as {
-          value: unknown;
-        };
-        if (typeof res.value === 'number' && Number.isFinite(res.value)) {
-          setSidebarHoverDelay(res.value);
+        const [delayRes, autoRes] = await Promise.all([
+          window.urchin.invoke('settings.get', { key: 'debug.sidebarHoverDelay' }),
+          window.urchin.invoke('settings.get', { key: 'ui.rightSidebarAutoExpand' }),
+        ]);
+        const delay = (delayRes as { value: unknown }).value;
+        if (typeof delay === 'number' && Number.isFinite(delay)) {
+          setSidebarHoverDelay(delay);
+        }
+        const auto = (autoRes as { value: unknown }).value;
+        if (typeof auto === 'boolean') {
+          setRightSidebarAutoExpand(auto);
         }
       } catch {
         // 使用默认值
       }
     }
-    void loadHoverDelay();
+    void loadHoverSettings();
 
-    // 监听设置页保存事件，实时更新悬停延迟
+    // 监听设置页保存事件，实时更新悬停设置
     const onSettingsChanged = (e: Event): void => {
       const detail = (e as CustomEvent<{ keys: string[] }>).detail;
-      if (detail?.keys?.includes('debug.sidebarHoverDelay')) {
-        void loadHoverDelay();
+      if (
+        detail?.keys?.includes('debug.sidebarHoverDelay') ||
+        detail?.keys?.includes('ui.rightSidebarAutoExpand')
+      ) {
+        void loadHoverSettings();
       }
     };
     window.addEventListener('urchin:settings-changed', onSettingsChanged);
@@ -670,10 +707,10 @@ export function App() {
     );
   }, [leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout]);
 
-  // 右侧栏悬停展开：仅当栏处于折叠状态（rightExpanded=false）时触发
+  // 右侧栏悬停展开：仅当栏处于折叠状态（rightExpanded=false）且设置允许自动展开时触发
   // 使用设置中配置的延迟（debug.sidebarHoverDelay），0 = 立即展开
   const handleRightMouseEnter = useCallback(() => {
-    if (rightExpanded) return;
+    if (rightExpanded || !rightSidebarAutoExpand) return;
     // 清除上一个未触发的定时器，避免重复展开
     if (rightHoverTimerRef.current) {
       clearTimeout(rightHoverTimerRef.current);
@@ -694,7 +731,14 @@ export function App() {
         doExpand();
       }, sidebarHoverDelay);
     }
-  }, [rightExpanded, leftExpanded, rightExpandedWidth, notifyLayout, sidebarHoverDelay]);
+  }, [
+    rightExpanded,
+    rightSidebarAutoExpand,
+    leftExpanded,
+    rightExpandedWidth,
+    notifyLayout,
+    sidebarHoverDelay,
+  ]);
 
   // 右侧栏离开回弹：折叠状态下鼠标离开时收起，使用带过冲的弹性缓动
   // 若悬停定时器尚未触发（未展开），则取消定时器不展开
@@ -1033,7 +1077,7 @@ export function App() {
               </div>
             </div>
 
-            {/* 标签列表 */}
+            {/* 标签列表：凸起悬浮感（卡片浮于底色之上，带阴影 + 微光边框 + 顶部高光） */}
             <div className="flex-1 overflow-hidden flex flex-col">
               <div className="flex-1 overflow-y-auto p-2">
                 {tabs.length === 0 && (
@@ -1043,24 +1087,18 @@ export function App() {
                   <div
                     key={tab.id}
                     className={cn(
-                      'group mb-1 flex cursor-default items-center gap-2 rounded-md px-2.5 py-2 text-sm',
+                      // 凸起悬浮感：圆角卡片 + 投影 + 细边框 + 顶部高光线；
+                      // 激活态更亮（主色投影 + 高对比文字）
+                      'group relative mb-1.5 flex cursor-default items-center gap-2 rounded-lg border px-2.5 py-2 text-sm shadow-sm',
+                      'border-border/60 bg-surface',
+                      'before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:rounded-full before:bg-white/70',
                       tab.id === activeTabId
-                        ? 'bg-surface text-text shadow-sm'
-                        : 'text-text-secondary hover:bg-surface hover:text-text',
+                        ? 'border-primary/40 bg-surface text-text shadow-[0_2px_8px_-2px_rgba(37,99,235,0.35)]'
+                        : 'text-text-secondary shadow-[0_1px_4px_-1px_rgba(0,0,0,0.25)] hover:bg-surface-secondary hover:text-text',
                     )}
                     onClick={() => void handleSelectTab(tab.id)}
                   >
-                    {tab.loading ? (
-                      <div className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                    ) : tab.crashed ? (
-                      <X className="h-3 w-3 shrink-0 text-error" />
-                    ) : tab.url?.startsWith('urchin://ai') ? (
-                      <Sparkles className="h-3 w-3 shrink-0 text-primary" />
-                    ) : tab.url?.startsWith('urchin://settings') ? (
-                      <SettingsIcon className="h-3 w-3 shrink-0" />
-                    ) : (
-                      <div className="h-3 w-3 shrink-0 rounded-full border border-border" />
-                    )}
+                    <TabFavicon tab={tab} />
                     <span className="flex-1 truncate">{tab.title || tab.url || '新标签页'}</span>
                     <button
                       className="shrink-0 rounded p-0.5 opacity-0 hover:bg-surface-secondary group-hover:opacity-100"
@@ -1089,15 +1127,28 @@ export function App() {
             </div>
           </>
         ) : (
-          // 折叠状态：居中显示标签图标，点击展开
-          <button
-            className="flex flex-1 items-center justify-center text-text-secondary hover:text-text"
-            onClick={handleToggleRight}
-            aria-label="展开右侧栏"
-            title="展开"
-          >
-            <ListIcon className="h-4 w-4" />
-          </button>
+          // 折叠状态：竖向显示所有标签页的图标（仅图标不展示名称），点击图标切换标签；
+          // 无标签时留空（底部"展开"按钮仍可用）
+          <div className="flex flex-1 flex-col items-center gap-1.5 overflow-y-auto py-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                className={cn(
+                  // 折叠态图标：同样凸起悬浮感，激活态带主色描边
+                  'relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border bg-surface shadow-sm',
+                  'border-border/60 before:pointer-events-none before:absolute before:inset-x-1 before:top-0 before:h-px before:rounded-full before:bg-white/70',
+                  tab.id === activeTabId
+                    ? 'border-primary/50 text-text shadow-[0_2px_6px_-1px_rgba(37,99,235,0.4)]'
+                    : 'text-text-secondary hover:bg-surface-secondary hover:text-text',
+                )}
+                onClick={() => void handleSelectTab(tab.id)}
+                aria-label={`切换到标签 ${tab.title || tab.url || '新标签页'}`}
+                title={tab.title || tab.url || '新标签页'}
+              >
+                <TabFavicon tab={tab} className="h-3.5 w-3.5" />
+              </button>
+            ))}
+          </div>
         )}
 
         {/* 底部：折叠/展开按钮 */}

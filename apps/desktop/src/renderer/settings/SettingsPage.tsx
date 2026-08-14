@@ -110,6 +110,12 @@ const GENERAL_FIELDS: readonly SettingField[] = [
     desc: '点击网页内链接时在新标签页打开（关闭则在当前标签页打开）',
     type: 'toggle',
   },
+  {
+    key: 'ui.rightSidebarAutoExpand',
+    label: '右侧边栏自动展开',
+    desc: '鼠标悬停在折叠的右侧边栏上时自动展开（关闭后需点击按钮展开）',
+    type: 'toggle',
+  },
 ];
 
 const AI_FIELDS: readonly SettingField[] = [

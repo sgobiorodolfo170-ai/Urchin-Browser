@@ -602,3 +602,90 @@ describe('App (Browser Shell)', () => {
     );
   });
 });
+
+describe('App right sidebar auto-expand + collapsed icons', () => {
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
+      configurable: true,
+      value: () => undefined,
+    });
+  });
+
+  function setup(tabs: TabSnapshot[], autoExpand: boolean | null = null) {
+    // settings.get 按 key 区分：自动展开开关用参数、宽度无持久化、hoverDelay 300
+    mockInvoke.mockImplementation((channel: string, req: { key?: string }) => {
+      if (channel === 'tab.list') return Promise.resolve({ tabs });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') {
+        if (req?.key === 'ui.rightSidebarAutoExpand') {
+          return Promise.resolve({ value: autoExpand });
+        }
+        if (req?.key === 'ui.rightSidebarWidth') return Promise.resolve({ value: null });
+        return Promise.resolve({ value: 300 });
+      }
+      return Promise.resolve({});
+    });
+  }
+
+  it('should show collapsed tab icons without title when sidebar collapsed', async () => {
+    setup([
+      {
+        id: 1,
+        windowId: 1,
+        url: 'https://a.com',
+        title: 'Alpha',
+        active: true,
+        loading: false,
+        canGoBack: false,
+        canGoForward: false,
+        crashed: false,
+        indexInWindow: 0,
+      },
+      {
+        id: 2,
+        windowId: 1,
+        url: 'https://b.com',
+        title: 'Beta',
+        active: false,
+        loading: false,
+        canGoBack: false,
+        canGoForward: false,
+        crashed: false,
+        indexInWindow: 1,
+      },
+    ]);
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    // 折叠态：显示图标按钮（aria-label 含切换到标签），不显示标题文本
+    await waitFor(() => expect(screen.getByLabelText('切换到标签 Alpha')).toBeInTheDocument());
+    expect(screen.getByLabelText('切换到标签 Beta')).toBeInTheDocument();
+    expect(screen.queryByText('Alpha')).toBeNull(); // 折叠不显示名称
+  });
+
+  it('should not auto-expand on hover when setting disabled', async () => {
+    setup([makeTab({ id: 1, title: 'One' })], false);
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    // 模拟鼠标悬停折叠栏（应不触发展开）
+    const sidebar = screen.getByLabelText('切换到标签 One').closest('aside')!;
+    fireEvent.mouseEnter(sidebar);
+    await new Promise((r) => setTimeout(r, 400)); // 超过默认 300ms 延迟
+    // 自动展开被禁用 → 仍处于折叠（无折叠按钮、标题未显示）
+    expect(screen.queryByLabelText('折叠右侧栏')).toBeNull();
+    expect(screen.queryByText('One')).toBeNull();
+  });
+
+  it('should auto-expand on hover when setting enabled (default)', async () => {
+    setup([makeTab({ id: 1, title: 'One' })], true);
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    const sidebar = screen.getByLabelText('切换到标签 One').closest('aside')!;
+    fireEvent.mouseEnter(sidebar);
+    await new Promise((r) => setTimeout(r, 400));
+    // 自动展开 → 标题可见
+    await waitFor(() => expect(screen.getByText('One')).toBeInTheDocument());
+  });
+});

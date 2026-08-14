@@ -46,6 +46,8 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   ['doNotTrack', true],
   // 链接行为：点击网页内链接时是否在新标签页打开（默认 false = 当前标签页打开）
   ['links.openInNewTab', false],
+  // 右侧边栏悬停自动展开（默认 true；关闭后需点击按钮展开）
+  ['ui.rightSidebarAutoExpand', true],
   // pi 模块（AI 对话标签页）AI 助手设置：由 PiSettingsDialog 编辑，pi-agent-factory 消费。
   // 注意：此组设置与 summary.* 完全独立，pi 模块与摘要模块互不干扰。
   ['ai.model', 'gpt-4o-mini'],

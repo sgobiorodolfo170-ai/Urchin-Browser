@@ -42,6 +42,7 @@ import { Omnibox } from './omnibox/omnibox';
 import { AiChatView } from '@urchin/ai-extension';
 import { SettingsPage } from './settings/SettingsPage';
 import { NewTabPage } from './home/NewTabPage';
+import { lookupBuiltinSite, builtinIconUrl } from './home/site-directory-lookup';
 import { PiSettingsDialog } from './omnibox/pi-settings-dialog';
 import { useTheme } from './theme/theme-provider';
 import { createHostFromUrchin } from './host-impl';
@@ -226,7 +227,9 @@ function SummaryTreeItem({
 
 /** 标签页图标（展开态与折叠态共用）：
  *  加载中 → spinner；崩溃 → 红叉；urchin://ai → Sparkles；urchin://settings → 齿轮；
- *  普通网页 → 灰点（v0.1 无真实 favicon 源，占位）。 */
+ *  普通网页 → 优先封装库内置图标（site-directory 命中 → 本地 /sites/<key>.png，离线可用），
+ *  未命中内置 → 网页真实 favicon（主进程 page-favicon-updated 抓取）；
+ *  图标加载失败逐级回退，皆不可用 → 灰点占位。 */
 function TabFavicon({ tab, className }: { tab: TabSnapshot; className?: string }) {
   if (tab.loading) {
     return (
@@ -247,8 +250,46 @@ function TabFavicon({ tab, className }: { tab: TabSnapshot; className?: string }
   if (tab.url?.startsWith('urchin://settings')) {
     return <SettingsIcon className={cn('shrink-0 text-text-secondary', className ?? 'h-3 w-3')} />;
   }
+  const builtin = lookupBuiltinSite(tab.url ?? '');
+  const builtinSrc = builtin ? builtinIconUrl(builtin) : undefined;
   return (
-    <div className={cn('shrink-0 rounded-full border border-border', className ?? 'h-3 w-3')} />
+    <TabSiteIcon
+      src={builtinSrc ?? tab.favicon}
+      fallbackSrc={builtinSrc && tab.favicon ? tab.favicon : undefined}
+      className={className}
+    />
+  );
+}
+
+/** 标签页网站图标 <img>：加载失败逐级回退（内置图标 → 网页 favicon → 灰点占位）。
+ *  src 变化（同一标签页导航到新站点）时重置回退状态，重新从最新源尝试。 */
+function TabSiteIcon({
+  src,
+  fallbackSrc,
+  className,
+}: {
+  src?: string;
+  fallbackSrc?: string;
+  className?: string;
+}) {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    setStep(0);
+  }, [src, fallbackSrc]);
+  const current = step === 0 ? src : fallbackSrc;
+  if (!current) {
+    return (
+      <div className={cn('shrink-0 rounded-full border border-border', className ?? 'h-3 w-3')} />
+    );
+  }
+  return (
+    <img
+      src={current}
+      alt=""
+      draggable={false}
+      className={cn('shrink-0 object-contain', className ?? 'h-3 w-3')}
+      onError={() => setStep((s) => s + 1)}
+    />
   );
 }
 
@@ -1095,7 +1136,18 @@ export function App() {
       {/* === 中间列：ContentArea + 下侧地址栏 === */}
       <main className="flex flex-1 flex-col overflow-hidden">
         {/* ContentArea */}
-        <div className="flex-1 overflow-hidden bg-white">
+        <div className="flex flex-1 flex-col overflow-hidden bg-white">
+          {/* 网页区左上角圆角（纯 CSS 方案，2026-08-15）：
+           *  主进程 computeViewBounds 已让网页 view 从 y=20 开始（顶部让出区），
+           *  这里在让出区画 surface 色圆角块——rounded-tl-[20px] 的圆弧
+           *  凸向左上、圆心在 (20,20) = 网页区内 20px 处，弧衔接网页顶边与左侧栏。
+           *  仅外部网页显示；内部页（settings/ai/newtab）为 React 渲染，无需让出。 */}
+          {!isInternalPage && (
+            <div className="pointer-events-none flex h-5 w-full shrink-0 bg-surface">
+              <div className="h-5 w-5 shrink-0 rounded-tl-[20px] bg-surface" />
+              <div className="flex-1" />
+            </div>
+          )}
           {
             isSettingsTab ? (
               /* 设置页：React 组件渲染 */

@@ -23,34 +23,18 @@
 import type { TabManager } from './tab-manager';
 import type { TabSnapshot } from './types';
 import type { WindowManager } from '../windows/window-manager';
-import type { BrowserView } from 'electron';
 import { createLogger } from '@urchin/logger';
 
 const log = createLogger('view-integration');
 
-/** 网页区左上角圆角半径（px）——BrowserView 不支持 CSS 圆角，用同色角盖视图切出圆弧 */
-const CORNER_RADIUS = 20;
-/** 角盖颜色：与窗口标题栏/左侧边栏同色（--color-surface 浅色/深色） */
-const CORNER_MASK_LIGHT = '#ffffff';
-const CORNER_MASK_DARK = '#0f172a';
-
-/** 惰性获取 electron 模块（测试环境无真实 BrowserView 时返回 null，角盖降级不显示） */
-let electronModule: typeof import('electron') | null | undefined;
-function getElectron(): typeof import('electron') | null {
-  if (electronModule === undefined) {
-    try {
-      // 惰性 require：view-integration 可被单测在无 electron 环境下加载，
-      // 运行时（main 进程打包为 CJS）才能访问真实 electron。
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const mod = require('electron') as typeof import('electron');
-      // 能力检测：无 BrowserView 构造器（vitest 环境）视为不可用
-      electronModule = typeof mod.BrowserView === 'function' ? mod : null;
-    } catch {
-      electronModule = null;
-    }
-  }
-  return electronModule;
-}
+/**
+ * 网页区左上角圆角高度（px）。
+ * 2026-08-15 方案演进：早期用"透明 BrowserView 角盖"切圆角，但常驻透明合成层 +
+ * 每帧 z-order 检查（remove/add BrowserView）在 Windows DWM 上触发 GPU 合成压力，
+ * 导致整个桌面卡死。改用稳定方案——网页 view 顶部让出 CORNER_HEIGHT，
+ * 由渲染层 React 在让出区画左上圆角块（纯 CSS，零 BrowserView 合成风险）。
+ */
+const CORNER_HEIGHT = 20;
 
 /** 默认布局尺寸（px）
  *  左右侧栏启动默认折叠（与渲染进程 App.tsx 的 leftExpanded/rightExpanded 初始值保持同步），
@@ -102,8 +86,8 @@ const layoutState: LayoutState = {
 
 /**
  * 计算 BrowserView 的 bounds。
- * BrowserView 占据中间区域：x=leftWidth, y=0,
- * 宽度=windowWidth-leftWidth-rightWidth, 高度=windowHeight-bottomHeight。
+ * BrowserView 占据中间区域：x=leftWidth, y=CORNER_HEIGHT（顶部让出给圆角块）,
+ * 宽度=windowWidth-leftWidth-rightWidth, 高度=windowHeight-bottomHeight-CORNER_HEIGHT。
  */
 function computeViewBounds(windowBounds: { width: number; height: number }): {
   x: number;
@@ -113,9 +97,9 @@ function computeViewBounds(windowBounds: { width: number; height: number }): {
 } {
   return {
     x: layoutState.leftWidth,
-    y: 0,
+    y: CORNER_HEIGHT,
     width: Math.max(0, windowBounds.width - layoutState.leftWidth - layoutState.rightWidth),
-    height: Math.max(0, windowBounds.height - layoutState.bottomHeight),
+    height: Math.max(0, windowBounds.height - layoutState.bottomHeight - CORNER_HEIGHT),
   };
 }
 
@@ -171,85 +155,6 @@ export function installTabViewIntegration(
    *  反复重新布局，严重阻塞网页加载。仅在 URL 真正变化时才需要重新评估可见性。 */
   const lastBoundsUrlPerTab = new Map<number, string>();
 
-  /** 各窗口的左上角圆角角盖（BrowserView，盖在网页之上切出圆弧） */
-  const cornerMasks = new Map<number, BrowserView>();
-  /** 各角盖当前颜色（主题切换时刷新，保持与标题栏/侧栏同色） */
-  const cornerMaskColor = new Map<number, string>();
-
-  /** 当前主题色（浅色/深色） */
-  function maskColor(): string {
-    return getElectron()?.nativeTheme.shouldUseDarkColors ? CORNER_MASK_DARK : CORNER_MASK_LIGHT;
-  }
-
-  /** 角盖 HTML：主题色"左上三角"（弧凸向左上、圆心在网页区内 20px 处），
-   *  其余透明——弧区透出下层网页。
-   *  几何：角盖 20×20 覆盖网页区左上角；clip-path 保留左上三角
-   *  （M0,0 → L0,20 → 弧 A20,20 到 20,0 → 闭合），弧线凸向左上（角焦点外），
-   *  圆心在 (20,20) = 网页区内 —— 网页左上角呈现标准圆角（之前 border-radius
-   *  方案的弧凸向网页内部、圆心在角焦点，方向反了）。
-   *  data URL 必须 encodeURIComponent 编码：HTML 中的 # 若不编码会被当作
-   *  URL fragment 分隔符截断，导致页面空白（角盖不可见）。 */
-  function maskHtml(color: string): string {
-    const r = CORNER_RADIUS;
-    const html =
-      '<style>html,body{margin:0;width:100%;height:100%;background:transparent}' +
-      `#c{width:100%;height:100%;background:${color};clip-path:path('M0,0 L0,${r} A${r},${r} 0 0 1 ${r},0 Z')}</style>` +
-      '<div id="c"></div>';
-    return 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
-  }
-
-  /** 创建并挂载窗口的角盖（幂等；测试环境无 electron 时跳过） */
-  function ensureCornerMask(windowId: number): BrowserView | null {
-    const existing = cornerMasks.get(windowId);
-    if (existing) return existing;
-    const managed = windowManager.getWindow(windowId);
-    if (!managed) return null;
-    const electron = getElectron();
-    if (!electron) return null; // 测试环境无真实 BrowserView，角盖降级不显示
-    const mask = new electron.BrowserView({
-      webPreferences: { sandbox: true, contextIsolation: true },
-    });
-    // 透明背景：圆弧区（div 圆角切掉处）透出下层网页 view
-    mask.setBackgroundColor('#00000000');
-    const color = maskColor();
-    cornerMaskColor.set(windowId, color);
-    void mask.webContents.loadURL(maskHtml(color));
-    managed.browserWindow.addBrowserView?.(mask);
-    cornerMasks.set(windowId, mask);
-    return mask;
-  }
-
-  /** 更新角盖：外部网页显示时盖在网页区左上角，其余场景归零隐藏 */
-  function updateCornerMask(windowId: number, visible: boolean): void {
-    const mask = ensureCornerMask(windowId);
-    if (!mask) return;
-    const managed = windowManager.getWindow(windowId);
-    if (!managed) return;
-    if (!visible) {
-      mask.setBounds({ x: 0, y: 0, width: 0, height: 0 });
-      return;
-    }
-    // 主题切换时刷新角盖颜色（与标题栏/侧栏同色，避免色差）
-    const color = maskColor();
-    if (cornerMaskColor.get(windowId) !== color) {
-      cornerMaskColor.set(windowId, color);
-      void mask.webContents.loadURL(maskHtml(color));
-    }
-    mask.setBounds({
-      x: layoutState.leftWidth,
-      y: 0,
-      width: CORNER_RADIUS,
-      height: CORNER_RADIUS,
-    });
-    // z-order 保障：setBrowserView 等操作可能把角盖挤到网页 view 之下
-    // （getBrowserViews 按 z 升序，最后元素在最上）。不在最上则移除重加提到最上。
-    const views = managed.browserWindow.getBrowserViews?.() ?? [];
-    if (views.length > 0 && views[views.length - 1] !== mask) {
-      managed.browserWindow.removeBrowserView?.(mask);
-      managed.browserWindow.addBrowserView?.(mask);
-    }
-  }
-
   /** 为指定窗口的活跃 tab 设置 BrowserView bounds。
    *  优先级（从高到低）：
    *  1. isRendererManagedUrl（urchin://settings / urchin://ai）→ ZERO_BOUNDS（让 React 渲染内部页面）
@@ -279,7 +184,6 @@ export function installTabViewIntegration(
     // 弹出层（收藏夹/历史面板）被遮挡且不可点击。面板关闭后 browserViewHidden 恢复 false。
     if (layoutState.browserViewHidden) {
       tab.view.setBounds(ZERO_BOUNDS);
-      updateCornerMask(windowId, false);
       return;
     }
 
@@ -290,14 +194,12 @@ export function installTabViewIntegration(
     if (tab.htmlFullscreen) {
       const full = managed.browserWindow.getContentBounds();
       tab.view.setBounds({ x: 0, y: 0, width: full.width, height: full.height });
-      updateCornerMask(windowId, false);
       return;
     }
 
     // React 渲染的内部页面（settings / ai）：隐藏 BrowserView，让 React 组件可见
     if (isRendererManagedUrl(activeTab.url)) {
       tab.view.setBounds(ZERO_BOUNDS);
-      updateCornerMask(windowId, false);
       return;
     }
 
@@ -312,8 +214,6 @@ export function installTabViewIntegration(
       });
     }
     tab.view.setBounds(bounds);
-    // 左上角圆角角盖：盖在网页区左上角（切出 10px 圆弧，圆心在网页区内）
-    updateCornerMask(windowId, true);
   }
 
   /** 刷新所有窗口的 BrowserView bounds（SidePanel 状态变更后调用） */

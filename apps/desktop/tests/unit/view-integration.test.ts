@@ -211,7 +211,7 @@ describe('view-integration', () => {
 
       expect(window.browserWindow.setBrowserView).toHaveBeenCalledWith(tab.view);
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        expect.objectContaining({ x: 44, width: 800 - 88, height: 600 - 48 }),
+        expect.objectContaining({ x: 44, y: 20, width: 800 - 88, height: 600 - 48 - 20 }),
       );
       expect(window.browserWindow.webContents.send).toHaveBeenCalledWith(
         'tab:event',
@@ -278,7 +278,7 @@ describe('view-integration', () => {
       fireTab('updated', { ...tab });
 
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        expect.objectContaining({ width: 800 - 88, height: 600 - 48 }),
+        expect.objectContaining({ width: 800 - 88, height: 600 - 48 - 20, y: 20 }),
       );
     });
 
@@ -521,9 +521,9 @@ describe('HTML5 fullscreen (内嵌视频全屏覆盖 UI 栏)', () => {
     tab.view.setBounds.mockClear();
     tab.htmlFullscreen = false;
     fireTab('updated', tab);
-    // 恢复常规布局（含左右侧栏内缩）
+    // 恢复常规布局（含左右侧栏内缩 + 顶部圆角让出区）
     expect(tab.view.setBounds).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 44, width: 800 - 88, height: 600 - 48 }),
+      expect.objectContaining({ x: 44, y: 20, width: 800 - 88, height: 600 - 48 - 20 }),
     );
   });
 });

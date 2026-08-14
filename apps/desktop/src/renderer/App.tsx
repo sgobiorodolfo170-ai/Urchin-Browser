@@ -382,13 +382,19 @@ export function App() {
   }, []);
 
   // 订阅 tab 事件推送
+  // 性能：did-navigate / did-start-loading 等事件在页面加载高峰期高频触发，
+  // updated 事件做 16ms 去抖合并（对齐一帧），避免每事件全量 setTabs 重渲染导致的卡顿。
   useEffect(() => {
-    const unsubscribe = window.urchin.on('tab:event', (payload) => {
-      const event = payload as TabEventPayload;
-      if (!event?.snapshot) return;
-      const snapshot = event.snapshot;
+    let pending: TabEventPayload | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flush = (): void => {
+      timer = null;
+      const evt = pending;
+      pending = null;
+      if (!evt?.snapshot) return;
+      const snapshot = evt.snapshot;
       setTabs((prev) => {
-        switch (event.type) {
+        switch (evt.type) {
           case 'created':
             if (prev.some((t) => t.id === snapshot.id)) return prev;
             return [...prev, snapshot];
@@ -405,11 +411,34 @@ export function App() {
             return prev;
         }
       });
-      if (event.type === 'created' && snapshot.active) {
+      if (evt.type === 'created' && snapshot.active) {
         setActiveTabId(snapshot.id);
       }
+    };
+    const unsubscribe = window.urchin.on('tab:event', (payload) => {
+      const event = payload as TabEventPayload;
+      if (!event?.snapshot) return;
+      if (event.type !== 'updated') {
+        // 结构性事件（创建/激活/移除/崩溃）立即处理，不做合并
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        pending = event;
+        flush();
+        return;
+      }
+      // updated 事件合并：仅保留同一 tab 的最新快照
+      if (pending && pending.snapshot.id !== event.snapshot.id) {
+        flush();
+      }
+      pending = event;
+      timer ??= setTimeout(flush, 16);
     });
-    return unsubscribe;
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
   }, []);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;

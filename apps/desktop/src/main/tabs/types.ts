@@ -39,6 +39,15 @@ export interface WebContentsLike {
   canGoBack(): boolean;
   /** 是否可前进 */
   canGoForward(): boolean;
+  /**
+   * 导航历史（Electron 27+，替代弃用的 canGoBack/canGoForward）。
+   * 弃用的 webContents.canGoBack 在导航高峰期需跨进程查询渲染进程，
+   * 会阻塞主进程事件循环（卡顿根因）；navigationHistory 为本地同步查询。
+   */
+  navigationHistory?: {
+    canGoBack(): boolean;
+    canGoForward(): boolean;
+  };
   /** 销毁 */
   destroy(): void;
   /** 注册事件监听 */

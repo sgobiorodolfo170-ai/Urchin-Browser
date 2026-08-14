@@ -23,6 +23,7 @@ import type {
   TabEvent,
   TabEventListener,
   TabSnapshot,
+  WebContentsLike,
   WindowOpenHandlerDetails,
   WindowOpenHandlerResponse,
 } from './types';
@@ -35,6 +36,40 @@ const DEFAULT_TITLE = '';
 
 /** 链接打开行为 */
 export type LinkOpenBehavior = 'new-tab' | 'current';
+
+/**
+ * 判定导航错误是否为"导航被中断"（ERR_ABORTED）。
+ *
+ * Electron 在页面自身发起重定向/跳转时会以 ERR_ABORTED (-3) 拒绝上一次
+ * loadURL 的 Promise，属预期行为，不应作为错误记录（与 did-fail-load 分支一致）。
+ */
+function isAbortedError(err: unknown): boolean {
+  if (err && typeof err === 'object' && 'code' in err) {
+    return (err as { code?: unknown }).code === 'ERR_ABORTED';
+  }
+  return false;
+}
+
+/**
+ * 读取 webContents 的导航状态（canGoBack / canGoForward）。
+ *
+ * 优先使用 navigationHistory（Electron 27+ 本地同步查询）；无则回退到
+ * 弃用的 webContents.canGoBack/canGoForward。
+ *
+ * 性能根因（2026-08-14 修复）：Electron 32 中弃用的 webContents.canGoBack
+ * 在导航高峰期需跨进程查询渲染进程导航历史，会阻塞主进程事件循环——
+ * 表现为"打开网页时明显卡顿"。navigationHistory 为本地同步查询，无跨进程开销。
+ */
+function readNavigationState(wc: WebContentsLike): { canGoBack: boolean; canGoForward: boolean } {
+  if (wc.navigationHistory) {
+    return {
+      canGoBack: wc.navigationHistory.canGoBack(),
+      canGoForward: wc.navigationHistory.canGoForward(),
+    };
+  }
+  // 回退：测试 mock 或旧 Electron 未提供 navigationHistory
+  return { canGoBack: wc.canGoBack(), canGoForward: wc.canGoForward() };
+}
 
 export class TabManager {
   /** Tab 集合：tabId → Tab */
@@ -330,6 +365,9 @@ export class TabManager {
           tab.loading = true;
           this.emit('updated', this.toSnapshot(tab));
           wc.loadURL(url).catch((err: unknown) => {
+            // ERR_ABORTED (-3)：本次导航被页面自身导航/重定向中断（如目标页立即跳转），
+            // 属预期行为，静默忽略；其余错误才记录。
+            if (isAbortedError(err)) return;
             console.error(`[tab ${tab.id}] window-open loadURL failed:`, err);
           });
         }
@@ -345,8 +383,9 @@ export class TabManager {
 
     wc.on('did-finish-load', () => {
       tab.loading = false;
-      tab.canGoBack = wc.canGoBack();
-      tab.canGoForward = wc.canGoForward();
+      const nav = readNavigationState(wc);
+      tab.canGoBack = nav.canGoBack;
+      tab.canGoForward = nav.canGoForward;
       this.emit('updated', this.toSnapshot(tab));
     });
 
@@ -360,8 +399,9 @@ export class TabManager {
       if (errorCode === -3) return;
 
       tab.loading = false;
-      tab.canGoBack = wc.canGoBack();
-      tab.canGoForward = wc.canGoForward();
+      const nav = readNavigationState(wc);
+      tab.canGoBack = nav.canGoBack;
+      tab.canGoForward = nav.canGoForward;
       this.emit('updated', this.toSnapshot(tab));
 
       // 记录加载失败详情（便于调试）
@@ -377,8 +417,9 @@ export class TabManager {
     wc.on('did-stop-loading', () => {
       if (tab.loading) {
         tab.loading = false;
-        tab.canGoBack = wc.canGoBack();
-        tab.canGoForward = wc.canGoForward();
+        const nav = readNavigationState(wc);
+        tab.canGoBack = nav.canGoBack;
+        tab.canGoForward = nav.canGoForward;
         this.emit('updated', this.toSnapshot(tab));
       }
     });
@@ -388,8 +429,9 @@ export class TabManager {
       if (typeof url === 'string') {
         tab.url = url;
       }
-      tab.canGoBack = wc.canGoBack();
-      tab.canGoForward = wc.canGoForward();
+      const nav = readNavigationState(wc);
+      tab.canGoBack = nav.canGoBack;
+      tab.canGoForward = nav.canGoForward;
       this.emit('updated', this.toSnapshot(tab));
     });
 

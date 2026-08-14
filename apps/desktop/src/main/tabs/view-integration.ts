@@ -236,6 +236,13 @@ export function installTabViewIntegration(
       width: CORNER_RADIUS,
       height: CORNER_RADIUS,
     });
+    // z-order 保障：setBrowserView 等操作可能把角盖挤到网页 view 之下
+    // （getBrowserViews 按 z 升序，最后元素在最上）。不在最上则移除重加提到最上。
+    const views = managed.browserWindow.getBrowserViews?.() ?? [];
+    if (views.length > 0 && views[views.length - 1] !== mask) {
+      managed.browserWindow.removeBrowserView?.(mask);
+      managed.browserWindow.addBrowserView?.(mask);
+    }
   }
 
   /** 为指定窗口的活跃 tab 设置 BrowserView bounds。

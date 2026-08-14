@@ -52,6 +52,10 @@ export interface BrowserWindowLike {
   setBrowserView(view: unknown): void;
   /** 追加挂载 BrowserView（与既有 views 共存；角盖等叠加视图用） */
   addBrowserView?(view: unknown): void;
+  /** 移除单个 BrowserView（用于重新添加调整 z-order） */
+  removeBrowserView?(view: unknown): void;
+  /** 按 z-index 升序返回所有 BrowserView（最后元素在最上） */
+  getBrowserViews?(): unknown[];
   /** 注册事件监听 */
   on(event: string, handler: (...args: unknown[]) => void): void;
   once(event: string, handler: (...args: unknown[]) => void): void;

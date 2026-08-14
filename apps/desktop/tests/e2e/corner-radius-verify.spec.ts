@@ -79,6 +79,10 @@ test('网页区左上角圆角截图', async () => {
   const mask = cornerInfo.views.find((v) => v.url.startsWith('data:text/html'));
   if (!mask) throw new Error('角盖 BrowserView 未创建');
   expect(mask.bounds).toEqual({ x: 44, y: 0, width: 10, height: 10 });
+  // z-order：getBrowserViews 按 z 升序、最后元素在最上——
+  // 角盖必须在最后（盖在网页之上），否则被网页 view 盖住、圆角不可见
+  const lastView = cornerInfo.views[cornerInfo.views.length - 1];
+  expect(lastView?.url.startsWith('data:text/html')).toBe(true);
   // encodeURIComponent 全量编码：空格→%20、冒号→%3A、#→%23。
   // 关键：%23（#）已编码说明 HTML 未被 URL fragment 截断（此前空白角盖的根因）。
   expect(mask.url).toContain('%23c%7B'); // #c{

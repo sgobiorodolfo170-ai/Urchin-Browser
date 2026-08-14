@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { lookupBuiltinSite, builtinIconUrl } from './site-directory';
 
 /** 常用网站条目（仅根网址） */
 export interface FrequentSite {
@@ -82,10 +83,10 @@ function toRootUrl(url: string): string | null {
 type DragPayload = { kind: 'frequent'; index: number } | { kind: 'recent'; site: FrequentSite };
 
 /**
- * 网站 favicon（多源回退）。
+ * 网站 favicon（内置优先 + 多源回退）。
  *
- * Google 服务不可达（如网络受限）时依次尝试 DuckDuckGo；全部失败则显示浏览器内置图标，
- * 不再隐藏（此前隐藏导致卡片图标空白）。
+ * 优先使用内置站点目录图标（site-directory 命中 → public/sites/<key>.png，本地无网络依赖）；
+ * 未命中再依次尝试 Google / DuckDuckGo 外部服务；全部失败显示浏览器内置图标。
  */
 function SiteFavicon({ url, className }: { url: string; className?: string }) {
   const [srcIndex, setSrcIndex] = useState(0);
@@ -96,6 +97,25 @@ function SiteFavicon({ url, className }: { url: string; className?: string }) {
       return '';
     }
   })();
+
+  // 内置站点命中 → 本地图标（无外部网络依赖，不触发 onError 回退）
+  const builtin = lookupBuiltinSite(url);
+  if (builtin) {
+    return (
+      <img
+        src={builtinIconUrl(builtin)}
+        alt=""
+        className={className}
+        draggable={false}
+        onError={(e) => {
+          // 内置图标缺失（未下载成功）：回退外部服务（隐藏占位避免空白）
+          const img = e.target as HTMLImageElement;
+          const firstSource = FAVICON_SOURCES[0];
+          img.src = host && firstSource ? firstSource(host) : BROWSER_ICON;
+        }}
+      />
+    );
+  }
 
   const source = srcIndex < FAVICON_SOURCES.length && host ? FAVICON_SOURCES[srcIndex] : undefined;
   const src = source ? source(host) : '';
@@ -116,6 +136,14 @@ function SiteFavicon({ url, className }: { url: string; className?: string }) {
       }}
     />
   );
+}
+
+/**
+ * 站点显示名：内置目录命中用内置名（如 GitHub/哔哩哔哩），未命中用 history 标题。
+ */
+function siteDisplayName(url: string, fallbackTitle: string): string {
+  const builtin = lookupBuiltinSite(url);
+  return builtin ? builtin.name : fallbackTitle || url;
 }
 
 /**
@@ -346,11 +374,11 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
               onDragEnd={() => handleFrequentDragEnd(site.url)}
               onClick={() => openSite(site.url)}
               className="group flex select-none flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
-              title={site.title}
+              title={siteDisplayName(site.url, site.title)}
             >
               <SiteFavicon url={site.url} className="h-10 w-10 rounded-lg bg-white shadow-sm" />
               <span className="w-full truncate text-center text-xs text-text-secondary group-hover:text-text">
-                {site.title}
+                {siteDisplayName(site.url, site.title)}
               </span>
             </button>
           ))}
@@ -382,11 +410,11 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
                 onDragStart={(e) => handleDragStart(e, { kind: 'recent', site })}
                 onClick={() => openSite(site.url)}
                 className="group flex select-none flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
-                title={site.title}
+                title={siteDisplayName(site.url, site.title)}
               >
                 <SiteFavicon url={site.url} className="h-10 w-10 rounded-lg bg-white shadow-sm" />
                 <span className="w-full truncate text-center text-xs text-text-secondary group-hover:text-text">
-                  {site.title}
+                  {siteDisplayName(site.url, site.title)}
                 </span>
               </button>
             ))

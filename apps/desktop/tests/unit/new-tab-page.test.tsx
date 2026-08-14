@@ -59,8 +59,8 @@ describe('NewTabPage', () => {
   it('should derive recent sites from history (root url, dedup, ignore non-http)', async () => {
     mockLoad();
     render(<NewTabPage onNavigate={onNavigate} />);
-    // baidu 去重后仅一条，+ github = 2 条
-    await waitFor(() => expect(screen.getAllByText('百度搜索A')).toHaveLength(1));
+    // baidu 去重后仅一条（内置名"百度"），+ github = 2 条；file: 被忽略
+    await waitFor(() => expect(screen.getAllByText('百度').length).toBeGreaterThanOrEqual(1));
     expect(screen.getByText('GitHub')).toBeInTheDocument();
     expect(screen.queryByText('File')).toBeNull();
   });

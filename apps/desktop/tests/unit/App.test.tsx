@@ -630,7 +630,7 @@ describe('App (Browser Shell)', () => {
     );
   });
 
-  it('should open external website in new tab when clicking homepage card', async () => {
+  it('should convert homepage placeholder to website tab when clicking homepage card', async () => {
     mockInvoke.mockImplementation((channel: string) => {
       if (channel === 'tab.list') {
         return Promise.resolve({
@@ -650,17 +650,17 @@ describe('App (Browser Shell)', () => {
     renderApp();
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
 
-    // 主页（urchin://newtab 内部页）→ 点击最近浏览卡片 → 跨站新建标签
+    // 当前标签是主页占位（urchin://newtab）→ 点击最近浏览卡片 → 主页就地转为网站标签
     await waitFor(() => expect(screen.getByText('GitHub')).toBeInTheDocument());
     fireEvent.click(screen.getByText('GitHub'));
 
     await waitFor(() =>
-      expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
-        windowId: 1,
+      expect(mockInvoke).toHaveBeenCalledWith('tab.loadUrl', {
+        tabId: 1,
         url: 'https://github.com',
-        active: true,
       }),
     );
+    expect(mockInvoke).not.toHaveBeenCalledWith('tab.create', expect.anything());
   });
 
   it('should navigate in current tab from address bar (no new tab for every input)', async () => {

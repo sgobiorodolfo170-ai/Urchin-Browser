@@ -49,29 +49,6 @@ import type { Suggestion } from './omnibox/types';
 import { buildSuggestions } from './omnibox/build-suggestions';
 import { cn } from './lib/utils';
 
-/**
- * 判定两个 URL 是否同站（用于"跨站跳转开新标签"）。
- *
- * 取主机名的有效注册域（last 2 段，兼容 *.com.cn 等三级后缀的粗近似），
- * 子域视为同站：news.baidu.com ↔ www.baidu.com。非 http(s) 一律视为不同站。
- */
-function isSameSite(a: string, b: string): boolean {
-  const hostOf = (raw: string): string | undefined => {
-    try {
-      const u = new URL(raw);
-      if (u.protocol !== 'http:' && u.protocol !== 'https:') return undefined;
-      const parts = u.hostname.split('.').filter(Boolean);
-      if (parts.length < 2) return undefined;
-      return parts.slice(-2).join('.');
-    } catch {
-      return undefined;
-    }
-  };
-  const ha = hostOf(a);
-  const hb = hostOf(b);
-  return ha !== undefined && ha === hb;
-}
-
 // Tab 快照类型（与主进程 TabSnapshot 对齐）
 interface TabSnapshot {
   readonly id: number;
@@ -725,27 +702,12 @@ export function App() {
   }, []);
 
   const handleNavigate = useCallback(
-    async (url: string, options?: { newTabOnCrossSite?: boolean }) => {
-      const current = activeTab?.url;
-      if (activeTabId && current) {
-        if (
-          options?.newTabOnCrossSite &&
-          !url.startsWith('urchin://') &&
-          !isSameSite(current, url)
-        ) {
-          // 主页卡片/最近浏览跳往外部网站：新建标签页（保留主页/来源页）
-          try {
-            await window.urchin.invoke('tab.create', {
-              windowId: 1,
-              url,
-              active: true,
-            });
-          } catch (e) {
-            console.error('Failed to navigate (cross-site, create tab):', e);
-          }
-          return;
-        }
-        // 地址栏导航 / 站内跳转 / 内部页：当前标签内导航（浏览器标准行为）
+    async (url: string) => {
+      // 主页占位设计（2026-08-15）：打开网站时优先消费主页占位标签——
+      // 当前活跃标签是主页（urchin://newtab）→ 就地转为网站标签（不新建）；
+      // 当前是网站标签（地址栏/收藏夹输入）→ 当前标签导航。
+      // 无活跃标签（关闭最后一个标签后）→ 新建标签。
+      if (activeTabId) {
         try {
           await window.urchin.invoke('tab.loadUrl', { tabId: activeTabId, url });
         } catch (e) {
@@ -753,7 +715,7 @@ export function App() {
         }
         return;
       }
-      // 无标签页（关闭最后一个标签后）：新建标签并导航，避免导航静默失效
+      // 无标签页：新建标签并导航，避免导航静默失效
       try {
         await window.urchin.invoke('tab.create', {
           windowId: 1,
@@ -764,7 +726,7 @@ export function App() {
         console.error('Failed to navigate (create tab):', e);
       }
     },
-    [activeTabId, activeTab?.url],
+    [activeTabId],
   );
 
   const handleGoBack = useCallback(async () => {
@@ -1145,9 +1107,7 @@ export function App() {
             ) : isNewTab || tabs.length === 0 ? (
               /* 主页：React 组件渲染（内嵌，无法自由更换）。
                * 关闭最后一个标签后 activeTab 为空，此时同样回落到主页 */
-              <NewTabPage
-                onNavigate={(url) => void handleNavigate(url, { newTabOnCrossSite: true })}
-              />
+              <NewTabPage onNavigate={(url) => void handleNavigate(url)} />
             ) : null /* 普通网页：由 Electron BrowserView 渲染，React 仅留空 */
           }
         </div>

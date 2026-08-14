@@ -50,7 +50,8 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
 
   // W7+ UI：标签列表在右侧栏内，默认折叠为图标条。
   // E2E 关键路径依赖「新建标签」按钮，先展开右侧栏暴露标签操作区。
-  await window.getByRole('button', { name: '展开右侧栏' }).first().click();
+  // 折叠/展开按钮已移除，双击右侧边栏空白处展开。
+  await window.locator('[aria-label="右侧边栏"]').first().dblclick();
   await window
     .getByRole('button', { name: '新建标签' })
     .waitFor({ state: 'visible', timeout: 15_000 });

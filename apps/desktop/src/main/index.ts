@@ -845,14 +845,16 @@ void app.whenReady().then(() => {
     },
   });
 
-  // 为主窗口创建初始 tab
-  tabManager.create({ windowId: mainWindow.id });
+  // 为主窗口创建初始 tab：默认打开主页占位标签（urchin://newtab）。
+  // 主页占位设计（2026-08-15）：打开网站时主页就地转为网站标签，避免空标签堆积。
+  // 后续标签栏持久化（v0.2 队列）将改为：无缓存 → 主页占位；有缓存 → 恢复标签。
+  tabManager.create({ windowId: mainWindow.id, url: 'urchin://newtab' });
 
   // macOS：点击 dock 图标时重新创建窗口
   app.on('activate', () => {
     if (windowManager.getCount() === 0) {
       const win = windowManager.createWindow({});
-      tabManager.create({ windowId: win.id });
+      tabManager.create({ windowId: win.id, url: 'urchin://newtab' });
     }
   });
 });

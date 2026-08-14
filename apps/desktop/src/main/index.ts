@@ -14,7 +14,7 @@
 // Polyfill 必须在所有其他模块之前加载：undici 顶层 require node:worker_threads
 // 并解构 markAsUncloneable（Node 22.3+ 才有），Electron 32/Node 20 缺失会导致启动崩溃。
 import './polyfills/worker-threads-polyfill';
-import { app, ipcMain, dialog, BrowserWindow } from 'electron';
+import { app, ipcMain, dialog, BrowserWindow, nativeTheme } from 'electron';
 import { join } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createLogger } from '@urchin/logger';
@@ -318,6 +318,15 @@ function registerIpcHandlers(): void {
   registerHandler(ipcMain, 'ui.panel.toggle', () => {
     const open = bookmarkPanel?.toggle() ?? false;
     return { open };
+  });
+
+  // UI 域 handler：主题切换（渲染层 ThemeProvider 调用）。
+  // 设置 nativeTheme.themeSource 使：窗口标题栏/边框跟随主题；
+  // 支持 prefers-color-scheme 的网页（BrowserView）跟随主题（Chrome 深色模式行为）。
+  registerHandler(ipcMain, 'ui.theme.set', (req) => {
+    nativeTheme.themeSource = req.theme;
+    log.info('theme set', { theme: req.theme });
+    return { ok: true as const };
   });
 
   log.info('ipc handlers registered');

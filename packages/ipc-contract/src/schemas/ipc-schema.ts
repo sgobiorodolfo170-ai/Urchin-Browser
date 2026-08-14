@@ -377,6 +377,23 @@ export const uiLayoutSetStateResSchema = z.object({
 });
 export type UiLayoutSetStateRes = z.infer<typeof uiLayoutSetStateResSchema>;
 
+/**
+ * ui.theme.set：主题切换通知主进程。
+ *
+ * 渲染层 ThemeProvider 切换主题时调用，主进程据此设置 nativeTheme.themeSource：
+ * - 窗口标题栏（Windows 标题栏/边框）跟随主题
+ * - 支持 prefers-color-scheme 的网页（BrowserView）跟随主题（Chrome 深色模式行为）
+ */
+export const uiThemeSetReqSchema = z.object({
+  theme: z.enum(['light', 'dark']),
+});
+export type UiThemeSetReq = z.infer<typeof uiThemeSetReqSchema>;
+
+export const uiThemeSetResSchema = z.object({
+  ok: z.literal(true),
+});
+export type UiThemeSetRes = z.infer<typeof uiThemeSetResSchema>;
+
 // ============================================================================
 // 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）
 // ============================================================================
@@ -961,6 +978,7 @@ export const ipcSchema = {
   'settings.getAll': { req: settingsGetAllReqSchema, res: settingsGetAllResSchema },
   'ui.layout.setState': { req: uiLayoutSetStateReqSchema, res: uiLayoutSetStateResSchema },
   'ui.panel.toggle': { req: uiPanelToggleReqSchema, res: uiPanelToggleResSchema },
+  'ui.theme.set': { req: uiThemeSetReqSchema, res: uiThemeSetResSchema },
   'download.list': { req: downloadListReqSchema, res: downloadListResSchema },
   'download.cancel': { req: downloadCancelReqSchema, res: downloadCancelResSchema },
   'download.pause': { req: downloadPauseReqSchema, res: downloadPauseResSchema },

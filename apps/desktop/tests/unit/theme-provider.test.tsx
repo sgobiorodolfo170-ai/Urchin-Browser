@@ -118,6 +118,42 @@ describe('ThemeProvider', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
   });
 
+  it('should notify main process via ui.theme.set when theme changes', () => {
+    const mockInvoke = vi.fn().mockResolvedValue({ ok: true });
+    Object.defineProperty(window, 'urchin', {
+      value: { invoke: mockInvoke },
+      writable: true,
+      configurable: true,
+    });
+
+    function TestComponent() {
+      const { toggleTheme } = useTheme();
+      return <button onClick={toggleTheme}>toggle</button>;
+    }
+
+    render(
+      <ThemeProvider defaultTheme="light">
+        <TestComponent />
+      </ThemeProvider>,
+    );
+
+    // 初始挂载也应通知（默认主题）
+    expect(mockInvoke).toHaveBeenCalledWith('ui.theme.set', { theme: 'light' });
+
+    fireEvent.click(screen.getByText('toggle'));
+    expect(mockInvoke).toHaveBeenCalledWith('ui.theme.set', { theme: 'dark' });
+  });
+
+  it('should not crash when window.urchin is unavailable', () => {
+    // 默认无 window.urchin：通知静默失败，主题仍通过 data-theme 生效
+    render(
+      <ThemeProvider defaultTheme="dark">
+        <div>test</div>
+      </ThemeProvider>,
+    );
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+  });
+
   it('should respect prefers-color-scheme dark when no defaultTheme and no stored', () => {
     Object.defineProperty(window, 'matchMedia', {
       value: vi.fn().mockImplementation((query: string) => ({

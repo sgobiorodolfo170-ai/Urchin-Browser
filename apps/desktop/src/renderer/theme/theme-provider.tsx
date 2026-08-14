@@ -52,6 +52,12 @@ export function ThemeProvider({ children, defaultTheme }: ThemeProviderProps) {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem(STORAGE_KEY, theme);
+    // 通知主进程：设置 nativeTheme.themeSource，使窗口标题栏跟随主题、
+    // 支持 prefers-color-scheme 的网页（BrowserView）跟随主题（Chrome 深色模式行为）。
+    // best-effort：主进程 handler 不可用（如测试环境）时静默失败，不影响 UI 主题。
+    window.urchin?.invoke('ui.theme.set', { theme }).catch(() => {
+      // 忽略：主题已通过 data-theme 生效，主进程同步失败不阻塞 UI
+    });
   }, [theme]);
 
   const setTheme = (next: Theme): void => {

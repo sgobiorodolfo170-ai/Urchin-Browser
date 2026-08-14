@@ -158,7 +158,7 @@ export function Omnibox({
     <div className="relative flex flex-1 items-center gap-1.5">
       <div
         className={cn(
-          'inline-flex h-9 min-w-0 flex-1 items-center gap-1.5 rounded-md border bg-surface px-2 text-sm',
+          'inline-flex h-9 min-w-0 flex-1 items-center gap-1.5 rounded-lg border bg-surface px-2 text-sm',
           'transition-colors duration-fast',
           'focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-1',
           'border-border',
@@ -175,7 +175,7 @@ export function Omnibox({
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          className="h-full w-full bg-transparent text-text outline-none placeholder:text-text-secondary"
+          className="h-full w-full rounded-md bg-transparent text-text outline-none placeholder:text-text-secondary"
           aria-label="地址栏"
         />
         {/* 加载指示器 */}

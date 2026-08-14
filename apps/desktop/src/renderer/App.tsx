@@ -1092,7 +1092,13 @@ export function App() {
       {/* === 中间列：ContentArea + 下侧地址栏 === */}
       <main className="flex flex-1 flex-col overflow-hidden">
         {/* ContentArea */}
-        <div className="flex-1 overflow-hidden bg-white">
+        <div className="relative flex-1 overflow-hidden bg-white">
+          {/* 网页区左上角 5px 圆角遮罩：BrowserView 是原生合成层，不支持 CSS 圆角。
+           *  用与容器同底色（white）的圆角块遮挡网页左上直角，形成 5px 圆角视觉。
+           *  仅真实网页显示（内部页为 React 渲染，自带布局，无需遮挡）。 */}
+          {!isInternalPage && (
+            <div className="pointer-events-none absolute left-0 top-0 z-10 h-[5px] w-[5px] rounded-tl-[5px] bg-white" />
+          )}
           {
             isSettingsTab ? (
               /* 设置页：React 组件渲染 */

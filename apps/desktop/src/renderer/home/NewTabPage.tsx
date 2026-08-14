@@ -205,8 +205,9 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
         <h1 className="mt-3 text-2xl font-semibold">Urchin Browser</h1>
       </div>
 
-      {/* 红橙渐变分割线（宽度不到边、留空，高 2px） */}
-      <div className="mt-6 h-0.5 w-4/5 rounded-full bg-gradient-to-r from-red-500 via-orange-400 to-red-500" />
+      {/* 红橙渐变分割线（宽度不到边、留空，高 2px；sticky 吸顶，常用区新增行/页面
+       *  滚动后仍保持可见，不随内容滚出顶部） */}
+      <div className="sticky top-0 z-10 mt-6 h-0.5 w-4/5 shrink-0 rounded-full bg-gradient-to-r from-red-500 via-orange-400 to-red-500" />
 
       {/* 常用网站书签区 */}
       <div className="mt-8 w-4/5">

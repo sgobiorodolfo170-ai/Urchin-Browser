@@ -27,14 +27,10 @@ export default tseslint.config(
       '**/*.config.mjs',
       '.lintstagedrc.js',
       'docs/**',
-      '.electron-cache/**',
       'apps/desktop/tests/fixtures/**',
       // vendor：内置第三方 pi monorepo，自带 biome/lint 工具链，不纳入本项目 eslint
       'vendor/**',
       // 本地运行数据与调试残留（已被 .gitignore 排除，eslint 亦不扫描）
-      '.test-user-data/**',
-      'temp-test/**',
-      'test-output/**',
       '*.cjs',
       '*.mjs',
       '_*.{js,cjs,mjs}',

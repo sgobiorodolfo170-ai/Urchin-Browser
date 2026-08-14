@@ -23,9 +23,11 @@ import type {
 function createMockWebContents(): WebContentsLike & {
   _emitEvent: (event: string, ...args: unknown[]) => void;
   _loadURLCalls: string[];
+  _windowOpenHandler: ((details: { url: string }) => { action: string }) | null;
 } {
   const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
   const loadURLCalls: string[] = [];
+  let windowOpenHandler: ((details: { url: string }) => { action: string }) | null = null;
   return {
     loadURL: (url: string) => {
       loadURLCalls.push(url);
@@ -51,6 +53,16 @@ function createMockWebContents(): WebContentsLike & {
     },
     executeJavaScript: vi.fn().mockResolvedValue(null),
     getURL: vi.fn().mockReturnValue('about:blank'),
+    setWindowOpenHandler: (
+      handler: (details: { url: string; frameName: string; disposition: string }) => {
+        action: string;
+      },
+    ) => {
+      windowOpenHandler = handler as never;
+    },
+    get _windowOpenHandler() {
+      return windowOpenHandler;
+    },
     _emitEvent: (event: string, ...args: unknown[]) => {
       const arr = listeners.get(event) ?? [];
       arr.forEach((fn) => fn(...args));
@@ -365,5 +377,134 @@ describe('TabManager', () => {
     const mgr = new TabManager(factory);
 
     expect(() => mgr.stopLoading(999)).toThrow(/not found/i);
+  });
+});
+
+/**
+ * webContents 生命周期事件绑定（bindWebContentsEvents）与退出清理测试。
+ *
+ * 通过 mock webContents 的 _emitEvent 触发真实事件，验证 Tab 状态同步与事件分发。
+ */
+describe('TabManager webContents events', () => {
+  function setup() {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    const updated = vi.fn();
+    const crashed = vi.fn();
+    mgr.on('updated', updated);
+    mgr.on('crashed', crashed);
+    const tab = mgr.create({ windowId: 1 });
+    const wc = factory._views[0]!._webContents;
+    return { factory, mgr, updated, crashed, tab, wc };
+  }
+
+  it('should update loading state on did-start-loading', () => {
+    const { wc, updated } = setup();
+    updated.mockClear();
+    wc._emitEvent('did-start-loading');
+    expect(updated).toHaveBeenCalled();
+  });
+
+  it('should clear loading and update nav state on did-finish-load', () => {
+    const { wc, updated } = setup();
+    wc._emitEvent('did-start-loading');
+    wc._emitEvent('did-finish-load');
+    expect(updated).toHaveBeenCalled();
+  });
+
+  it('should ignore ERR_ABORTED in did-fail-load', () => {
+    const { wc, updated } = setup();
+    updated.mockClear();
+    // Electron 签名：(event, errorCode, errorDescription, validatedURL, ...)
+    wc._emitEvent('did-fail-load', {}, -3, 'ERR_ABORTED', 'https://a.com');
+    // 中断不算失败：不额外 emit updated
+    expect(updated).not.toHaveBeenCalled();
+  });
+
+  it('should clear loading and emit updated on real did-fail-load', () => {
+    const { wc, updated } = setup();
+    updated.mockClear();
+    wc._emitEvent('did-start-loading');
+    wc._emitEvent('did-fail-load', {}, -105, 'ERR_NAME_NOT_RESOLVED', 'https://bad.example');
+    expect(updated).toHaveBeenCalled();
+  });
+
+  it('should clear loading on did-stop-loading fallback', () => {
+    const { wc, updated } = setup();
+    wc._emitEvent('did-start-loading');
+    wc._emitEvent('did-stop-loading');
+    expect(updated).toHaveBeenCalled();
+  });
+
+  it('should update url and nav state on did-navigate', () => {
+    const { wc, updated, mgr, tab } = setup();
+    wc._emitEvent('did-navigate', undefined, 'https://new.example/path');
+    expect(mgr.getTab(tab.id)?.url).toBe('https://new.example/path');
+    expect(updated).toHaveBeenCalled();
+  });
+
+  it('should update title on page-title-updated', () => {
+    const { wc, mgr, tab } = setup();
+    wc._emitEvent('page-title-updated', undefined, '新标题');
+    expect(mgr.getTab(tab.id)?.title).toBe('新标题');
+  });
+
+  it('should update favicon on page-favicon-updated', () => {
+    const { wc, mgr, tab } = setup();
+    wc._emitEvent('page-favicon-updated', undefined, ['https://a.com/fav.ico']);
+    expect(mgr.getTab(tab.id)?.favicon).toBe('https://a.com/fav.ico');
+  });
+
+  it('should mark crashed and emit crashed event on render-process-gone', () => {
+    const { wc, crashed, mgr, tab } = setup();
+    wc._emitEvent('render-process-gone');
+    expect(mgr.getTab(tab.id)?.crashed).toBe(true);
+    expect(crashed).toHaveBeenCalled();
+  });
+
+  it('should deny window.open and load in current tab when linkBehavior is current', () => {
+    const { wc, mgr, tab } = setup();
+    mgr.setLinkBehaviorResolver(() => 'current');
+    const handler = wc._windowOpenHandler!;
+    expect(handler).toBeDefined();
+
+    // 空白 URL 直接 deny 且不触发 loadURL
+    const denied = handler({ url: 'about:blank' });
+    expect(denied.action).toBe('deny');
+    expect(wc._loadURLCalls).not.toContain('about:blank');
+
+    // 有效 URL：当前标签页打开（url 更新 + loading + loadURL 调用）
+    const denied2 = handler({ url: 'https://target.example' });
+    expect(denied2.action).toBe('deny');
+    expect(mgr.getTab(tab.id)?.url).toBe('https://target.example');
+    expect(mgr.getTab(tab.id)?.loading).toBe(true);
+    expect(wc._loadURLCalls).toContain('https://target.example');
+  });
+
+  it('should open in new tab when linkBehavior is new-tab', () => {
+    const { wc, mgr, tab } = setup();
+    mgr.setLinkBehaviorResolver(() => 'new-tab');
+    const countBefore = mgr.getCount();
+
+    const denied = wc._windowOpenHandler!({ url: 'https://target.example' });
+    expect(denied.action).toBe('deny');
+    expect(mgr.getCount()).toBe(countBefore + 1);
+    // 原 tab 不变，新 tab 加载目标 URL
+    expect(mgr.getTab(tab.id)?.url).not.toBe('https://target.example');
+  });
+
+  it('should dispose all tabs and clear collections', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    mgr.create({ windowId: 1 });
+    mgr.create({ windowId: 1 });
+    const wc0 = factory._views[0]!._webContents;
+    const wc1 = factory._views[1]!._webContents;
+
+    mgr.disposeAll();
+
+    expect(wc0.destroy).toHaveBeenCalled();
+    expect(wc1.destroy).toHaveBeenCalled();
+    expect(mgr.getCount()).toBe(0);
   });
 });

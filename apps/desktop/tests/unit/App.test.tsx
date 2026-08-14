@@ -12,7 +12,7 @@
  * 8. 订阅 tab:event 推送并更新 UI
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { App } from '../../src/renderer/App';
 import { ThemeProvider } from '../../src/renderer/theme/theme-provider';
 
@@ -246,5 +246,290 @@ describe('App (Browser Shell)', () => {
     await waitFor(() => {
       expect(screen.getAllByLabelText('展开右侧栏').length).toBeGreaterThan(0);
     });
+  });
+
+  // ── 左侧栏：展开加载摘要树 + 打开文档 ──
+
+  it('should load summary tree when left sidebar expanded and open doc on click', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({
+          tabs: [makeTab({ url: 'https://example.com', title: 'Example' })],
+        });
+      }
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      if (channel === 'summary.listTree') {
+        return Promise.resolve({
+          tree: [
+            {
+              type: 'directory' as const,
+              name: '2026-08',
+              relativePath: '2026-08',
+              children: [
+                {
+                  type: 'file' as const,
+                  name: 'article.html',
+                  relativePath: '2026-08/article.html',
+                  absolutePath: 'C:\\summaries\\2026-08\\article.html',
+                },
+              ],
+            },
+          ],
+          rootPath: 'C:\\summaries',
+        });
+      }
+      if (channel === 'summary.open') return Promise.resolve({ ok: true });
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    // 点击展开左侧栏
+    fireEvent.click(screen.getByLabelText('展开左侧栏'));
+
+    // 展开后触发 summary.listTree 加载，渲染目录树
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('summary.listTree', {}));
+    await waitFor(() => expect(screen.getByText('2026-08')).toBeTruthy());
+
+    // 点击文件节点 → summary.open
+    fireEvent.click(screen.getByText('article.html'));
+    expect(mockInvoke).toHaveBeenCalledWith('summary.open', {
+      absolutePath: 'C:\\summaries\\2026-08\\article.html',
+    });
+  });
+
+  // ── AI 入口：创建 urchin://ai 标签页 ──
+
+  it('should create ai tab via left sidebar AI button', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') return Promise.resolve({ tabs: [makeTab()] });
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      if (channel === 'tab.create') {
+        return Promise.resolve({ tab: makeTab({ id: 2, url: 'urchin://ai', title: 'AI 助手' }) });
+      }
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    fireEvent.click(screen.getByLabelText('AI 助手'));
+    expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
+      windowId: 1,
+      url: 'urchin://ai',
+      active: true,
+    });
+  });
+
+  // ── 设置入口：创建 urchin://settings 标签页 ──
+
+  it('should create settings tab when none exists', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') return Promise.resolve({ tabs: [makeTab()] });
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      if (channel === 'tab.create') {
+        return Promise.resolve({
+          tab: makeTab({ id: 2, url: 'urchin://settings', title: '设置' }),
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    fireEvent.click(screen.getByLabelText('设置'));
+    expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
+      windowId: 1,
+      url: 'urchin://settings',
+      active: true,
+    });
+  });
+
+  // ── 书签 toggle：创建 + 删除 ──
+
+  it('should create bookmark via star toggle', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({
+          tabs: [makeTab({ url: 'https://example.com', title: 'Example' })],
+        });
+      }
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      if (channel === 'bookmark.create') return Promise.resolve({ ok: true });
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    fireEvent.click(screen.getByLabelText('收藏到书签'));
+    expect(mockInvoke).toHaveBeenCalledWith('bookmark.create', {
+      url: 'https://example.com',
+      title: 'Example',
+      type: 'bookmark',
+    });
+    // toast
+    await waitFor(() => expect(screen.getByText('已添加到书签')).toBeTruthy());
+  });
+
+  it('should delete bookmark when already saved', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({
+          tabs: [makeTab({ url: 'https://example.com', title: 'Example' })],
+        });
+      }
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') {
+        // 当前 URL 已收藏
+        return Promise.resolve({
+          bookmarks: [{ id: 'b1', title: 'Example', url: 'https://example.com' }],
+        });
+      }
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      if (channel === 'bookmark.delete') return Promise.resolve({ ok: true });
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+    // 等收藏状态刷新完成（bookmark.search 返回已收藏）
+    await waitFor(() => expect(screen.getByLabelText('已收藏')).toBeTruthy());
+
+    fireEvent.click(screen.getByLabelText('已收藏'));
+    expect(mockInvoke).toHaveBeenCalledWith('bookmark.delete', { id: 'b1' });
+    await waitFor(() => expect(screen.getByText('已从书签移除')).toBeTruthy());
+  });
+
+  // ── 摘要（AI 助手）：summary.run ──
+
+  it('should run summary extraction and show toast', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({
+          tabs: [makeTab({ url: 'https://example.com', title: 'Example' })],
+        });
+      }
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      if (channel === 'summary.run') {
+        return Promise.resolve({
+          filePath: 'C:\\summaries\\a.html',
+          relativePath: 'a.html',
+          documentTitle: 'Example 摘要',
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    fireEvent.click(screen.getByLabelText('提取网页内容并保存'));
+    expect(mockInvoke).toHaveBeenCalledWith('summary.run', { tabId: 1 });
+    await waitFor(() => expect(screen.getByText('已保存：Example 摘要')).toBeTruthy());
+  });
+
+  // ── tab:event 推送分支：created / updated / removed / crashed ──
+
+  it('should add new tab on created event', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') return Promise.resolve({ tabs: [makeTab()] });
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+    await expandRightSidebar();
+
+    // 触发 tab:event created
+    const tabEventHandler = mockOn.mock.calls.find((c) => c[0] === 'tab:event')?.[1] as
+      ((payload: unknown) => void) | undefined;
+    expect(tabEventHandler).toBeDefined();
+    act(() => {
+      tabEventHandler!({
+        type: 'created',
+        snapshot: makeTab({ id: 2, url: 'https://new.example', title: 'New', active: true }),
+      });
+    });
+
+    // 新标签出现在右侧栏
+    await waitFor(() => expect(screen.getByText('New')).toBeTruthy());
+  });
+
+  it('should update and remove tabs on updated/removed events', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({ tabs: [makeTab({ id: 1, title: 'Old' })] });
+      }
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+    await expandRightSidebar();
+
+    const tabEventHandler = mockOn.mock.calls.find((c) => c[0] === 'tab:event')?.[1] as
+      ((payload: unknown) => void) | undefined;
+
+    // updated：标题变化
+    act(() => {
+      tabEventHandler!({
+        type: 'updated',
+        snapshot: makeTab({ id: 1, title: 'Renamed', loading: false }),
+      });
+    });
+    await waitFor(() => expect(screen.getByText('Renamed')).toBeTruthy());
+
+    // removed：标签移除
+    act(() => {
+      tabEventHandler!({ type: 'removed', snapshot: makeTab({ id: 1, title: 'Renamed' }) });
+    });
+    await waitFor(() => expect(screen.getByText('暂无标签页')).toBeTruthy());
+  });
+
+  it('should mark crashed tab with error icon', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({ tabs: [makeTab({ id: 1, title: 'Crashy' })] });
+      }
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+    await expandRightSidebar();
+
+    const tabEventHandler = mockOn.mock.calls.find((c) => c[0] === 'tab:event')?.[1] as
+      ((payload: unknown) => void) | undefined;
+
+    act(() => {
+      tabEventHandler!({
+        type: 'crashed',
+        snapshot: makeTab({ id: 1, title: 'Crashy', crashed: true }),
+      });
+    });
+    // crashed 状态更新不崩溃，标签仍渲染
+    expect(screen.getByText('Crashy')).toBeTruthy();
   });
 });

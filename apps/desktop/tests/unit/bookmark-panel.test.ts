@@ -74,7 +74,11 @@ function createMockParent(): PanelHostWindow & {
 }
 
 function setup(
-  overrides: { parent?: PanelHostWindow | null; createWindow?: (o: unknown) => unknown } = {},
+  overrides: {
+    parent?: PanelHostWindow | null;
+    createWindow?: (o: unknown) => unknown;
+    getLayout?: () => { rightWidth: number; bottomHeight: number };
+  } = {},
 ) {
   const parent = overrides.parent === undefined ? createMockParent() : overrides.parent;
   const created: ReturnType<typeof createMockPanelWindow>[] = [];
@@ -88,6 +92,7 @@ function setup(
   const panel = new BookmarkPanel({
     getParentWindow: () => parent,
     preloadPath: 'C:\\preload\\index.js',
+    getLayout: overrides.getLayout ?? (() => ({ rightWidth: 44, bottomHeight: 48 })),
     createWindow: createWindow,
   });
   return { panel, parent, created };
@@ -142,12 +147,23 @@ describe('BookmarkPanel', () => {
     expect(wp.nodeIntegration).toBe(false);
   });
 
-  it('should position panel at bottom-right corner of parent content area', () => {
+  it('should position panel above address bar and left of right sidebar (2px gap)', () => {
     const { panel, created } = setup();
     panel.open();
     const w = created[0]!;
-    // parent: x=100,y=50,w=1280,h=800 → 右下角：x=100+1280-280-8=1092, y=50+800-430-8=412
-    expect(w.setPosition).toHaveBeenCalledWith(1092, 412);
+    // parent: x=100,y=50,w=1280,h=800；布局：右侧栏 44 / 底部地址栏 48；间隙 2
+    // x = 100+1280-44-280-2 = 1054；y = 50+800-48-430-2 = 370
+    expect(w.setPosition).toHaveBeenCalledWith(1054, 370);
+  });
+
+  it('should respect layout insets from getLayout (expanded sidebars)', () => {
+    const { panel, created } = setup({
+      getLayout: () => ({ rightWidth: 360, bottomHeight: 48 }),
+    });
+    panel.open();
+    const w = created[0]!;
+    // x = 100+1280-360-280-2 = 738；y = 50+800-48-430-2 = 370
+    expect(w.setPosition).toHaveBeenCalledWith(738, 370);
   });
 
   it('should close on blur (click outside)', () => {

@@ -26,6 +26,7 @@ import {
   createBrowserView,
   registerTabHandlers,
   installTabViewIntegration,
+  getLayoutState,
   setLayoutState,
   type TabViewIntegrationHandle,
 } from './tabs';
@@ -807,10 +808,15 @@ void app.whenReady().then(() => {
   // 创建主窗口
   const mainWindow = windowManager.createWindow({});
 
-  // 初始化收藏夹悬浮面板（子窗口，悬浮于网页之上；随主窗口移动/缩放重定位）
+  // 初始化收藏夹悬浮面板（子窗口，悬浮于网页之上；随主窗口移动/缩放重定位）。
+  // 面板定位避开底部地址栏与右侧边栏：布局尺寸从 view-integration 的 layoutState 读取。
   bookmarkPanel = new BookmarkPanel({
     getParentWindow: () => windowManager.getWindow(mainWindow.id)?.browserWindow ?? null,
     preloadPath: join(__dirname, '..', 'preload', 'index.js'),
+    getLayout: () => {
+      const state = getLayoutState();
+      return { rightWidth: state.rightWidth, bottomHeight: state.bottomHeight };
+    },
   });
 
   // 为主窗口创建初始 tab

@@ -22,11 +22,9 @@ import { createLogger } from '@urchin/logger';
 
 const log = createLogger('bookmark-panel');
 
-/** 面板窗口尺寸（与设计一致：右下角小窗） */
+/** 面板窗口尺寸（悬浮小窗，避开底部地址栏与右侧边栏） */
 export const PANEL_WIDTH = 280;
 export const PANEL_HEIGHT = 430;
-/** 面板与主窗口内容区右/下边缘的间距（px） */
-const PANEL_MARGIN = 8;
 
 /** 面板 HTML（urchin://panel 协议返回，单文件无外部依赖） */
 export function getBookmarkPanelHtml(): string {
@@ -255,6 +253,13 @@ export interface BookmarkPanelOptions {
   getParentWindow: () => PanelHostWindow | null;
   /** 主窗口 preload 脚本路径（子窗口复用，urchin:// 下暴露 window.urchin） */
   preloadPath: string;
+  /**
+   * 读取浏览器布局尺寸（右侧栏宽度 / 底部地址栏高度）。
+   *
+   * 面板定位避开两栏：x = 内容区右缘 - rightWidth - 面板宽 - 2px，
+   * y = 内容区下缘 - bottomHeight - 面板高 - 2px（地址栏上方、右侧栏左侧）。
+   */
+  getLayout?: () => { rightWidth: number; bottomHeight: number };
   /** BrowserWindow 工厂（测试注入 mock，生产默认 new BrowserWindow） */
   createWindow?: (opts: Electron.BrowserWindowConstructorOptions) => BrowserWindow;
 }
@@ -350,19 +355,18 @@ export class BookmarkPanel {
   }
 
   /**
-   * 计算面板在主窗口内容区右下角的位置。
-   * 吸附右下角：x = 主窗口内容区右缘 - 面板宽 - 边距；y = 内容区下缘 - 面板高 - 边距。
+   * 计算面板位置：地址栏上方、右侧边栏左侧，与两栏边界间隙 2px。
+   *
+   * - x = 内容区右缘 - 右侧栏宽 - 面板宽 - 2（面板左边界贴右侧栏左缘左侧 2px）
+   * - y = 内容区下缘 - 地址栏高 - 面板高 - 2（面板下边界贴地址栏上缘上方 2px）
+   * 布局尺寸来自 getLayout()（默认视为两栏折叠 44/48，与 view-integration 初始一致）。
    */
   private reposition(panel: BrowserWindow, parent: PanelHostWindow): void {
     const parentBounds = parent.getContentBounds();
-    const x = Math.max(
-      parentBounds.x,
-      parentBounds.x + parentBounds.width - PANEL_WIDTH - PANEL_MARGIN,
-    );
-    const y = Math.max(
-      parentBounds.y,
-      parentBounds.y + parentBounds.height - PANEL_HEIGHT - PANEL_MARGIN,
-    );
+    const layout = this.options.getLayout?.() ?? { rightWidth: 44, bottomHeight: 48 };
+    const gap = 2;
+    const x = parentBounds.x + parentBounds.width - layout.rightWidth - PANEL_WIDTH - gap;
+    const y = parentBounds.y + parentBounds.height - layout.bottomHeight - PANEL_HEIGHT - gap;
     panel.setPosition(Math.round(x), Math.round(y));
   }
 }

@@ -105,7 +105,7 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
     const panelBounds = during.bounds.find((b) => b.width === 280 && b.height === 430);
     expect(panelBounds).toBeTruthy();
 
-    // 面板定位在主窗口内容区右下角附近（悬浮于网页之上）。
+    // 面板定位：地址栏上方、右侧栏左侧（避开两栏，间隙 2px）。
     // 主窗口 = 挂载了 BrowserView 的那个；面板 = 280×430 的 frameless 小窗。
     const mainBounds = await electronApp.evaluate(({ BrowserWindow }) => {
       for (const w of BrowserWindow.getAllWindows()) {
@@ -114,8 +114,9 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
       return null;
     });
     expect(mainBounds).not.toBeNull();
-    const expectedX = mainBounds!.x + mainBounds!.width - 280 - 8;
-    const expectedY = mainBounds!.y + mainBounds!.height - 430 - 8;
+    // 布局：右侧栏 44（折叠）+ 底部地址栏 48；间隙 2
+    const expectedX = mainBounds!.x + mainBounds!.width - 44 - 280 - 2;
+    const expectedY = mainBounds!.y + mainBounds!.height - 48 - 430 - 2;
     // 允许少量偏差（窗口边框/缩放）
     expect(Math.abs(panelBounds!.x - expectedX)).toBeLessThan(16);
     expect(Math.abs(panelBounds!.y - expectedY)).toBeLessThan(16);

@@ -141,7 +141,7 @@ export interface TabSnapshot {
 export interface CreateTabOptions {
   /** 所属窗口 ID */
   windowId: number;
-  /** 初始 URL（可选，默认 about:blank） */
+  /** 初始 URL（可选，默认主页占位 urchin://newtab） */
   url?: string;
   /** 是否激活（默认 true） */
   active?: boolean;

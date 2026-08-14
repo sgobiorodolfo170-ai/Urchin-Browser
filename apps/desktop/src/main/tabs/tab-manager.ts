@@ -29,7 +29,10 @@ import type {
 } from './types';
 
 /** 默认 URL */
-const DEFAULT_URL = 'about:blank';
+// 默认占位页：主页（urchin://newtab）。
+// 主页占位设计（2026-08-15）：新建标签默认打开主页占位，打开网站时就地转为网站标签；
+// 替代 about:blank 空白页，避免出现无内容空标签。
+const DEFAULT_URL = 'urchin://newtab';
 
 /** 默认标题 */
 const DEFAULT_TITLE = '';

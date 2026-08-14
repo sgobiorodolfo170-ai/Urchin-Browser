@@ -100,6 +100,11 @@ export interface DownloadItem {
 /** 面板选项卡类型 */
 type PanelTab = 'bookmarks' | 'history' | 'downloads';
 
+/** 收藏夹面板宽度（px，与面板 style width 对齐） */
+const PANEL_WIDTH = 280;
+/** 面板与地址栏/右侧边界的间距（px） */
+const PANEL_MARGIN = 8;
+
 /**
  * 安全状态图标。
  */
@@ -249,16 +254,19 @@ export function Omnibox({
     return () => document.removeEventListener('mousedown', handler);
   }, [showPanel]);
 
-  // 面板打开/关闭时，同步隐藏/显示 BrowserView。
+  // 面板打开/关闭时，让出 BrowserView 右侧区域（面板所在位置）。
   //
   // 根因：Electron BrowserView 始终渲染在主窗口 webContents 之上。
   // 面板由 React 渲染并向上弹出（bottom-full），进入 BrowserView 区域时会被遮挡，
   // 导致面板不可见、内容不可点击、点击网页时面板也不关闭（事件进入 BrowserView 而非 document）。
-  // 修复：面板打开时通过 IPC 设置 browserViewHidden=true 隐藏 BrowserView；
-  //       面板关闭时恢复 browserViewHidden=false，BrowserView 重新显示。
+  //
+  // 2026-08-14 修复：不再整体隐藏 BrowserView（网页整个消失，用户感知为"被覆盖"），
+  // 而是让出面板占用的右侧宽度（PANEL_WIDTH + 边距）——网页主体保持可见，
+  // 面板显示在让出的矩形区域中。面板关闭时让出宽度归零，网页恢复全宽。
   useEffect(() => {
-    void window.urchin.invoke('ui.layout.setState', { browserViewHidden: showPanel }).catch((e) => {
-      console.error('Failed to toggle browserViewHidden:', e);
+    const overlayRightWidth = showPanel ? PANEL_WIDTH + PANEL_MARGIN : 0;
+    void window.urchin.invoke('ui.layout.setState', { overlayRightWidth }).catch((e) => {
+      console.error('Failed to toggle overlay right width:', e);
     });
   }, [showPanel]);
 

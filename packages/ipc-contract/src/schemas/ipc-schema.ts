@@ -365,6 +365,15 @@ export const uiLayoutSetStateReqSchema = z.object({
   /** 临时隐藏 BrowserView（如收藏夹面板弹出时），避免 BrowserView 遮挡 React 渲染的弹出层。
    *  Electron BrowserView 始终渲染在主窗口 webContents 之上，不隐藏则弹出层被遮挡且不可点击。 */
   browserViewHidden: z.boolean().optional(),
+  /**
+   * 弹出层（收藏夹/历史面板）在右侧占用的宽度（px）。
+   *
+   * 2026-08-14 修复：不再用 browserViewHidden 整体隐藏 BrowserView（网页整个消失，
+   * 用户感知为"网页被覆盖"），而是让 BrowserView 让出右侧区域——网页主体保持可见，
+   * 弹出层显示在让出的区域中（BrowserView 是矩形合成层，无法与其下 React 弹出层叠加）。
+   * 0 = 无弹出层。
+   */
+  overlayRightWidth: z.number().int().min(0).max(600).optional(),
 });
 export type UiLayoutSetStateReq = z.infer<typeof uiLayoutSetStateReqSchema>;
 
@@ -374,6 +383,7 @@ export const uiLayoutSetStateResSchema = z.object({
   bottomHeight: z.number().int(),
   contentHidden: z.boolean(),
   browserViewHidden: z.boolean(),
+  overlayRightWidth: z.number().int(),
 });
 export type UiLayoutSetStateRes = z.infer<typeof uiLayoutSetStateResSchema>;
 

@@ -281,7 +281,7 @@ function registerIpcHandlers(): void {
     windowManager,
   });
 
-  // UI 域 handler：布局状态切换（左/右侧栏宽度 + 下侧栏高度 + 内容区可见性）
+  // UI 域 handler：布局状态切换（左/右侧栏宽度 + 下侧栏高度 + 内容区可见性 + 弹出层让出）
   registerHandler(ipcMain, 'ui.layout.setState', (req) => {
     const newState = setLayoutState({
       leftWidth: req.leftWidth,
@@ -289,6 +289,7 @@ function registerIpcHandlers(): void {
       bottomHeight: req.bottomHeight,
       contentHidden: req.contentHidden,
       browserViewHidden: req.browserViewHidden,
+      overlayRightWidth: req.overlayRightWidth,
     });
     // 立即刷新所有窗口的 BrowserView bounds
     tabViewIntegration?.refreshAllViewBounds();
@@ -298,6 +299,7 @@ function registerIpcHandlers(): void {
       bottomHeight: newState.bottomHeight,
       contentHidden: newState.contentHidden,
       browserViewHidden: newState.browserViewHidden,
+      overlayRightWidth: newState.overlayRightWidth,
     });
     return {
       leftWidth: newState.leftWidth,
@@ -305,6 +307,7 @@ function registerIpcHandlers(): void {
       bottomHeight: newState.bottomHeight,
       contentHidden: newState.contentHidden,
       browserViewHidden: newState.browserViewHidden,
+      overlayRightWidth: newState.overlayRightWidth,
     };
   });
 

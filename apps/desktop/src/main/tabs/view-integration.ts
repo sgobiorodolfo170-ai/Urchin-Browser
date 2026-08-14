@@ -65,6 +65,8 @@ export interface LayoutState {
   bottomHeight: number;
   /** 临时隐藏 BrowserView（如收藏夹面板弹出时） */
   browserViewHidden: boolean;
+  /** 弹出层（收藏夹/历史面板）在右侧占用的宽度（px）；0 = 无弹出层 */
+  overlayRightWidth: number;
 }
 
 /** 全局布局状态（v0.1 单窗口，简化为全局） */
@@ -73,12 +75,14 @@ const layoutState: LayoutState = {
   rightWidth: DEFAULT_RIGHT_WIDTH,
   bottomHeight: DEFAULT_BOTTOM_HEIGHT,
   browserViewHidden: false,
+  overlayRightWidth: 0,
 };
 
 /**
  * 计算 BrowserView 的 bounds。
  * BrowserView 占据中间区域：x=leftWidth, y=0,
- * 宽度=windowWidth-leftWidth-rightWidth, 高度=windowHeight-bottomHeight。
+ * 宽度=windowWidth-leftWidth-rightWidth-overlayRightWidth,
+ * 高度=windowHeight-bottomHeight。
  */
 function computeViewBounds(windowBounds: { width: number; height: number }): {
   x: number;
@@ -89,7 +93,13 @@ function computeViewBounds(windowBounds: { width: number; height: number }): {
   return {
     x: layoutState.leftWidth,
     y: 0,
-    width: Math.max(0, windowBounds.width - layoutState.leftWidth - layoutState.rightWidth),
+    width: Math.max(
+      0,
+      windowBounds.width -
+        layoutState.leftWidth -
+        layoutState.rightWidth -
+        layoutState.overlayRightWidth,
+    ),
     height: Math.max(0, windowBounds.height - layoutState.bottomHeight),
   };
 }
@@ -105,6 +115,7 @@ export function getLayoutState(): LayoutState {
  * 阶段2 解耦：移除 contentHidden 字段（不再有 AI 模式切换）。
  * 为向后兼容，仍接受 contentHidden 入参但忽略（避免破坏既有 IPC 调用）。
  * browserViewHidden：临时隐藏 BrowserView（如收藏夹面板弹出时），避免遮挡弹出层。
+ * overlayRightWidth：弹出层让出的右侧宽度（见 schema 注释；优先于 browserViewHidden）。
  */
 export function setLayoutState(next: {
   leftWidth?: number;
@@ -112,11 +123,13 @@ export function setLayoutState(next: {
   bottomHeight?: number;
   contentHidden?: boolean;
   browserViewHidden?: boolean;
+  overlayRightWidth?: number;
 }): LayoutState & { contentHidden: boolean } {
   if (next.leftWidth !== undefined) layoutState.leftWidth = next.leftWidth;
   if (next.rightWidth !== undefined) layoutState.rightWidth = next.rightWidth;
   if (next.bottomHeight !== undefined) layoutState.bottomHeight = next.bottomHeight;
   if (next.browserViewHidden !== undefined) layoutState.browserViewHidden = next.browserViewHidden;
+  if (next.overlayRightWidth !== undefined) layoutState.overlayRightWidth = next.overlayRightWidth;
   // contentHidden 已废弃：AI 模块改为独立标签页，不再需要全局隐藏 BrowserView。
   // 保留字段仅为了 ipc-schema 向后兼容，实际值固定为 false。
   return { ...layoutState, contentHidden: false };
@@ -170,9 +183,17 @@ export function installTabViewIntegration(
     }
     lastBoundsUrlPerTab.set(activeTab.id, activeTab.url);
 
-    // 临时隐藏 BrowserView（如收藏夹面板弹出时）：
-    // Electron BrowserView 始终渲染在主窗口 webContents 之上，不隐藏则 React 渲染的
-    // 弹出层（收藏夹/历史面板）被遮挡且不可点击。面板关闭后 browserViewHidden 恢复 false。
+    // 弹出层让出（收藏夹/历史面板）：不隐藏 BrowserView，而是让出右侧区域——
+    // 网页主体保持可见，弹出层显示在让出的矩形区域中。
+    // 2026-08-14 修复：此前用 browserViewHidden 整体归零隐藏 BrowserView，
+    // 网页整个消失（用户感知为"被覆盖"）；BrowserView 是矩形合成层，无法与其下
+    // React 弹出层叠加，故采用"让出宽度"方案。
+    if (layoutState.overlayRightWidth > 0) {
+      tab.view.setBounds(computeViewBounds(managed.browserWindow.getContentBounds()));
+      return;
+    }
+
+    // 临时隐藏 BrowserView（兼容旧行为，如确实需要隐藏时）
     if (layoutState.browserViewHidden) {
       tab.view.setBounds(ZERO_BOUNDS);
       return;

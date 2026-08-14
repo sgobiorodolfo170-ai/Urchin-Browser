@@ -19,7 +19,7 @@
  * - 点击任意卡片 → 在当前标签页打开该网址
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Compass, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 /** 常用网站条目（仅根网址） */
@@ -37,14 +37,27 @@ export interface NewTabPageProps {
 /** 最近浏览区最大展示数 */
 const RECENT_LIMIT = 20;
 
-/** favicon URL（Google favicon 服务，真实网站图标） */
-function faviconUrl(url: string): string {
-  try {
-    const host = new URL(url).hostname;
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
-  } catch {
-    return '';
-  }
+/** 浏览器内置图标（主页顶部标题用；随 renderer 打包） */
+const BROWSER_ICON = '/browser-icon.png';
+
+/**
+ * 网站 favicon 候选源（按序尝试；Google 服务不可达时回退到 DuckDuckGo）。
+ * 全部失败时组件显示内置浏览器图标。
+ */
+const FAVICON_SOURCES = [
+  (host: string) => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`,
+  (host: string) => `https://icons.duckduckgo.com/ip3/${encodeURIComponent(host)}.ico`,
+];
+
+/**
+ * 网站去重键：origin 去掉 www. 前缀。
+ * 同一网站的不同形式（https://github.com / https://www.github.com / 带尾斜杠）视为同一网站，
+ * 用于常用区去重与最近区前移判断。
+ */
+function siteKey(url: string): string {
+  const root = toRootUrl(url);
+  if (!root) return url;
+  return root.replace(/^https?:\/\/www\./i, root.startsWith('https://') ? 'https://' : 'http://');
 }
 
 /** 提取根网址（origin，如 https://www.baidu.com；无协议则补 https） */
@@ -67,6 +80,43 @@ function toRootUrl(url: string): string | null {
 
 /** 拖拽数据类型（区分来源：常用区重排 vs 最近区拖入） */
 type DragPayload = { kind: 'frequent'; index: number } | { kind: 'recent'; site: FrequentSite };
+
+/**
+ * 网站 favicon（多源回退）。
+ *
+ * Google 服务不可达（如网络受限）时依次尝试 DuckDuckGo；全部失败则显示浏览器内置图标，
+ * 不再隐藏（此前隐藏导致卡片图标空白）。
+ */
+function SiteFavicon({ url, className }: { url: string; className?: string }) {
+  const [srcIndex, setSrcIndex] = useState(0);
+  const host = (() => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return '';
+    }
+  })();
+
+  const source = srcIndex < FAVICON_SOURCES.length && host ? FAVICON_SOURCES[srcIndex] : undefined;
+  const src = source ? source(host) : '';
+  // 所有源失败 → 显示内置图标（最终回退）
+  const finalUrl = src || BROWSER_ICON;
+
+  return (
+    <img
+      src={finalUrl}
+      alt=""
+      className={className}
+      draggable={false}
+      onError={() => {
+        // 当前源失败 → 尝试下一源；已到末尾则用内置图标（不会再触发 onError）
+        if (srcIndex < FAVICON_SOURCES.length) {
+          setSrcIndex((i) => i + 1);
+        }
+      }}
+    />
+  );
+}
 
 /**
  * 主页组件。
@@ -98,15 +148,26 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
               (s) => typeof s.url === 'string' && typeof s.title === 'string',
             )
           : [];
-        setFrequent(frequentSites);
+        // 清洗：按 siteKey 去重（整个常用区不可有相同网站，含历史脏数据/跨行重复）
+        const freqSeen = new Set<string>();
+        const dedupedFrequent: FrequentSite[] = [];
+        for (const s of frequentSites) {
+          const key = siteKey(s.url);
+          if (freqSeen.has(key)) continue;
+          freqSeen.add(key);
+          dedupedFrequent.push(s);
+        }
+        setFrequent(dedupedFrequent);
         // 最近浏览：history 按 visitedAt 降序 → 取根域去重（保序=最新在前）
         const entries = (historyRes as { entries: { url: string; title: string }[] }).entries ?? [];
         const seen = new Set<string>();
         const recentSites: FrequentSite[] = [];
         for (const e of entries) {
           const root = toRootUrl(e.url);
-          if (!root || seen.has(root)) continue;
-          seen.add(root);
+          if (!root) continue;
+          const key = siteKey(root);
+          if (seen.has(key)) continue;
+          seen.add(key);
           recentSites.push({ url: root, title: e.title || root });
         }
         setRecent(recentSites);
@@ -146,9 +207,10 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
       if (!payload) return;
 
       if (payload.kind === 'recent') {
-        // 最近区拖入常用区：去重（相同根网址不重复添加）
+        // 最近区拖入常用区：按 siteKey 去重（整个常用区不可重复，跨行亦不重复）
         const url = payload.site.url;
-        if (frequent.some((s) => s.url === url)) return;
+        const key = siteKey(url);
+        if (frequent.some((s) => siteKey(s.url) === key)) return;
         const next = [...frequent];
         next.splice(targetIndex, 0, { url, title: payload.site.title });
         persistFrequent(next);
@@ -202,11 +264,14 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
 
   return (
     <div className="flex h-full flex-col items-center overflow-y-auto bg-surface px-6 pt-16 pb-10 text-text">
-      {/* 顶部：浏览器图标 + 浏览器名（居中） */}
+      {/* 顶部：浏览器图标（本浏览器内置图标）+ 浏览器名（居中） */}
       <div className="flex flex-col items-center">
-        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-accent text-white shadow-lg">
-          <Compass className="h-8 w-8" />
-        </div>
+        <img
+          src={BROWSER_ICON}
+          alt="Urchin Browser"
+          className="h-16 w-16 rounded-2xl shadow-lg"
+          draggable={false}
+        />
         <h1 className="mt-3 text-2xl font-semibold">Urchin Browser</h1>
       </div>
 
@@ -241,7 +306,8 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
               }
             })();
             if (payload?.kind === 'recent') {
-              if (!frequent.some((s) => s.url === payload.site.url)) {
+              const key = siteKey(payload.site.url);
+              if (!frequent.some((s) => siteKey(s.url) === key)) {
                 persistFrequent([
                   ...frequent,
                   { url: payload.site.url, title: payload.site.title },
@@ -282,15 +348,7 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
               className="group flex select-none flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
               title={site.title}
             >
-              <img
-                src={faviconUrl(site.url)}
-                alt=""
-                className="h-10 w-10 rounded-lg bg-white shadow-sm"
-                draggable={false}
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.visibility = 'hidden';
-                }}
-              />
+              <SiteFavicon url={site.url} className="h-10 w-10 rounded-lg bg-white shadow-sm" />
               <span className="w-full truncate text-center text-xs text-text-secondary group-hover:text-text">
                 {site.title}
               </span>
@@ -326,15 +384,7 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
                 className="group flex select-none flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
                 title={site.title}
               >
-                <img
-                  src={faviconUrl(site.url)}
-                  alt=""
-                  className="h-10 w-10 rounded-lg bg-white shadow-sm"
-                  draggable={false}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.visibility = 'hidden';
-                  }}
-                />
+                <SiteFavicon url={site.url} className="h-10 w-10 rounded-lg bg-white shadow-sm" />
                 <span className="w-full truncate text-center text-xs text-text-secondary group-hover:text-text">
                   {site.title}
                 </span>

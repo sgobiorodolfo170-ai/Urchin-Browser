@@ -357,6 +357,32 @@ describe('view-integration', () => {
     });
   });
 
+  describe('tab removed while another active (关闭设置/AI 标签回归)', () => {
+    it('should keep next tab BrowserView attached after removing active tab', () => {
+      // 2026-08-14 修复：remove() 先发 removed 后发 activated，避免 onRemoved 的
+      // setBrowserView(null) 把刚激活的下一个网页 view 卸载（网页不显示）。
+      const tab1 = makeTab({ id: 21, windowId: 1, active: true });
+      const tab2 = makeTab({ id: 22, windowId: 1, active: false });
+      tabManager.register(tab1);
+      tabManager.register(tab2);
+      install();
+
+      fireTab('created', tab1);
+      fireTab('created', tab2);
+      window.browserWindow.setBrowserView.mockClear();
+
+      // 移除活跃 tab1（模拟关闭设置/AI 标签）→ TabManager 自动激活 tab2
+      tabManager.emit('removed', tab1 as never);
+      tabManager.emit('activated', tab2 as never);
+
+      // 关键：removed（卸载旧 view）在前，activated（挂载 tab2）在后，
+      // 最终状态是 tab2 的 view 挂载（未被后续 null 卸载覆盖）。
+      const calls = window.browserWindow.setBrowserView.mock.calls;
+      // 最后一次调用必须是挂载 tab2（而非 null 卸载）
+      expect(calls[calls.length - 1]?.[0]).toBe(tab2.view);
+    });
+  });
+
   describe('tab crashed', () => {
     it('should push crashed event', () => {
       const tab = makeTab({ id: 13, windowId: 1 });

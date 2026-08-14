@@ -191,6 +191,13 @@ export class TabManager {
     this.tabs.delete(tabId);
     this.windowTabs.get(tab.windowId)?.delete(tabId);
 
+    // 先发 removed 再发 activated（2026-08-14 修复）：
+    // 此前先 activated（view-integration 挂载下一个 tab 的 BrowserView + 设 bounds），
+    // 后 removed（view-integration 的 onRemoved 会 setBrowserView(null) 卸载当前 view）——
+    // 导致关闭标签后激活回来的网页 BrowserView 被卸载，网页不显示（白屏/被覆盖）。
+    // 先 removed（卸载旧 view）→ 再 activated（挂载下一个）顺序正确。
+    this.emit('removed', snapshot);
+
     // 清理空窗口集合
     if (this.windowTabs.get(tab.windowId)?.size === 0) {
       this.windowTabs.delete(tab.windowId);
@@ -210,8 +217,6 @@ export class TabManager {
         }
       }
     }
-
-    this.emit('removed', snapshot);
   }
 
   /**

@@ -323,9 +323,11 @@ function registerIpcHandlers(): void {
   // UI 域 handler：主题切换（渲染层 ThemeProvider 调用）。
   // 设置 nativeTheme.themeSource 使：窗口标题栏/边框跟随主题；
   // 支持 prefers-color-scheme 的网页（BrowserView）跟随主题（Chrome 深色模式行为）。
+  // 同时联动 tabManager 强制深色：对不支持深色声明的网页（如百度）注入反色 CSS。
   registerHandler(ipcMain, 'ui.theme.set', (req) => {
     nativeTheme.themeSource = req.theme;
-    log.info('theme set', { theme: req.theme });
+    tabManager.setForceDarkTheme(req.theme === 'dark');
+    log.info('theme set', { theme: req.theme, forceDark: req.theme === 'dark' });
     return { ok: true as const };
   });
 

@@ -38,6 +38,24 @@ const DEFAULT_TITLE = '';
 export type LinkOpenBehavior = 'new-tab' | 'current';
 
 /**
+ * 强制深色模式 CSS（注入不支持 prefers-color-scheme 的网页，如百度）。
+ *
+ * 2026-08-14 设计：Chrome 深色模式仅影响声明支持 prefers-color-scheme 的站点；
+ * 本浏览器对不支持站点强制深色（类似 Chrome 强制深色模式）——反色 + 色相保持，
+ * 图片/视频/背景图反反色还原。iframe 内容受跨域限制不受影响（v0.1 接受）。
+ */
+const FORCE_DARK_CSS = `
+:root { color-scheme: dark !important; }
+html {
+  filter: invert(1) hue-rotate(180deg) !important;
+  background-color: #000 !important;
+}
+img, video, picture, canvas, svg, iframe, embed, object, [style*="background-image"] {
+  filter: invert(1) hue-rotate(180deg) !important;
+}
+`;
+
+/**
  * 判定导航错误是否为"导航被中断"（ERR_ABORTED）。
  *
  * Electron 在页面自身发起重定向/跳转时会以 ERR_ABORTED (-3) 拒绝上一次
@@ -87,6 +105,11 @@ export class TabManager {
   /** 下一个分配的 tabId（单调递增，从 1 开始） */
   private nextId = 1;
 
+  /** 强制深色模式是否开启（由 ui.theme.set 联动） */
+  private forceDarkEnabled = false;
+  /** 各 tab 已注入的强制深色 CSS key（tabId → insertCSS 返回的 key） */
+  private readonly forceDarkCssKeys = new Map<number, string>();
+
   /**
    * 链接打开行为解析器（由外部注入，读取设置决定新标签/当前标签打开）。
    * 未注入时默认 'current'（当前标签页打开）。
@@ -105,6 +128,47 @@ export class TabManager {
    */
   setLinkBehaviorResolver(resolver: (url: string) => LinkOpenBehavior): void {
     this.linkBehaviorResolver = resolver;
+  }
+
+  /**
+   * 开关强制深色模式（ui.theme.set 联动）。
+   *
+   * 对不支持 prefers-color-scheme 的网页（如百度）注入反色 CSS 强制深色；
+   * 支持深色声明的站点由 nativeTheme 自动处理，无需注入。切回浅色时移除已注入 CSS。
+   */
+  setForceDarkTheme(enabled: boolean): void {
+    this.forceDarkEnabled = enabled;
+    for (const tab of this.tabs.values()) {
+      this.syncForceDarkTheme(tab);
+    }
+  }
+
+  /**
+   * 按当前强制深色状态同步单个 tab 的 CSS 注入。
+   * 仅对 http/https 网页注入（内部 urchin:// 页面由 React 主题控制，无需反色）。
+   */
+  private syncForceDarkTheme(tab: Tab): void {
+    const isWebUrl = /^https?:\/\//i.test(tab.url);
+    const existingKey = this.forceDarkCssKeys.get(tab.id);
+
+    if (this.forceDarkEnabled && isWebUrl) {
+      if (!existingKey && tab.webContents.insertCSS) {
+        tab.webContents
+          .insertCSS(FORCE_DARK_CSS)
+          .then((key) => {
+            // 注入期间主题可能已切回浅色，仅保留当前仍为深色的 key
+            if (this.forceDarkEnabled) {
+              this.forceDarkCssKeys.set(tab.id, key);
+            }
+          })
+          .catch(() => {
+            // 注入失败（如页面未就绪）静默，下次 did-finish-load 重试
+          });
+      }
+    } else if (existingKey) {
+      tab.webContents.removeInsertedCSS?.(existingKey);
+      this.forceDarkCssKeys.delete(tab.id);
+    }
   }
 
   /**
@@ -183,6 +247,9 @@ export class TabManager {
     }
 
     const snapshot = this.toSnapshot(tab);
+
+    // 清理该 tab 的强制深色 CSS key（防止内存泄漏）
+    this.forceDarkCssKeys.delete(tabId);
 
     // 销毁 webContents
     tab.webContents.destroy();
@@ -391,6 +458,13 @@ export class TabManager {
       const nav = readNavigationState(wc);
       tab.canGoBack = nav.canGoBack;
       tab.canGoForward = nav.canGoForward;
+      // 页面加载完成：若强制深色开启且为 http/https 网页，注入反色 CSS。
+      // 导航会清除已注入 CSS，但 insertCSS 返回的 key 仍缓存在 map 中——
+      // 先移除旧 key 再重新注入（key 在导航后已失效，removeInsertedCSS 幂等无害）。
+      if (this.forceDarkEnabled && /^https?:\/\//i.test(tab.url)) {
+        this.forceDarkCssKeys.delete(tab.id);
+      }
+      this.syncForceDarkTheme(tab);
       this.emit('updated', this.toSnapshot(tab));
     });
 
@@ -480,6 +554,7 @@ export class TabManager {
     this.tabs.clear();
     this.windowTabs.clear();
     this.activeTabPerWindow.clear();
+    this.forceDarkCssKeys.clear();
   }
 
   /** 取消同窗口其他 tab 的激活态。 */

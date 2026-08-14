@@ -53,6 +53,8 @@ function createMockWebContents(): WebContentsLike & {
     },
     executeJavaScript: vi.fn().mockResolvedValue(null),
     getURL: vi.fn().mockReturnValue('about:blank'),
+    insertCSS: vi.fn().mockResolvedValue('css-key-1'),
+    removeInsertedCSS: vi.fn(),
     setWindowOpenHandler: (
       handler: (details: { url: string; frameName: string; disposition: string }) => {
         action: string;
@@ -506,5 +508,72 @@ describe('TabManager webContents events', () => {
     expect(wc0.destroy).toHaveBeenCalled();
     expect(wc1.destroy).toHaveBeenCalled();
     expect(mgr.getCount()).toBe(0);
+  });
+});
+
+/**
+ * 强制深色模式（对不支持 prefers-color-scheme 的网页注入反色 CSS）
+ */
+describe('TabManager force dark theme', () => {
+  function setup() {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    const tab = mgr.create({ windowId: 1, url: 'https://example.com' });
+    const wc = factory._views[0]!._webContents;
+    return { factory, mgr, tab, wc };
+  }
+
+  it('should inject force-dark CSS on web pages when enabled', async () => {
+    const { mgr, wc } = setup();
+    mgr.setForceDarkTheme(true);
+    await vi.waitFor(() => expect(wc.insertCSS).toHaveBeenCalled());
+    expect(wc.insertCSS).toHaveBeenCalledWith(expect.stringContaining('invert(1)'));
+  });
+
+  it('should not inject force-dark CSS when disabled', async () => {
+    const { mgr, wc } = setup();
+    mgr.setForceDarkTheme(false);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(wc.insertCSS).not.toHaveBeenCalled();
+  });
+
+  it('should not inject force-dark CSS on internal urchin:// pages', async () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    mgr.create({ windowId: 1, url: 'urchin://settings' });
+    const wc = factory._views[0]!._webContents;
+    mgr.setForceDarkTheme(true);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(wc.insertCSS).not.toHaveBeenCalled();
+  });
+
+  it('should remove injected CSS when switching back to light', async () => {
+    const { mgr, wc } = setup();
+    mgr.setForceDarkTheme(true);
+    await vi.waitFor(() => expect(wc.insertCSS).toHaveBeenCalled());
+    mgr.setForceDarkTheme(false);
+    expect(wc.removeInsertedCSS).toHaveBeenCalledWith('css-key-1');
+  });
+
+  it('should re-inject after did-finish-load (navigation resets CSS)', async () => {
+    const { mgr, wc } = setup();
+    mgr.setForceDarkTheme(true);
+    await vi.waitFor(() => expect(wc.insertCSS).toHaveBeenCalled());
+    (wc.insertCSS as ReturnType<typeof vi.fn>).mockClear();
+    // 页面加载完成（如导航后）→ 重新注入
+    wc._emitEvent('did-finish-load');
+    await vi.waitFor(() => expect(wc.insertCSS).toHaveBeenCalled());
+  });
+
+  it('should clear CSS keys on tab remove', async () => {
+    const { mgr, tab, wc } = setup();
+    mgr.setForceDarkTheme(true);
+    await vi.waitFor(() => expect(wc.insertCSS).toHaveBeenCalled());
+    mgr.remove(tab.id);
+    // webContents 销毁（CSS 随 webContents 释放），map 中 key 被清理避免泄漏
+    expect(wc.destroy).toHaveBeenCalled();
+    // remove 后 setForceDarkTheme 不再尝试对已销毁的 webContents 注入
+    mgr.setForceDarkTheme(false);
+    expect(() => mgr.setForceDarkTheme(true)).not.toThrow();
   });
 });

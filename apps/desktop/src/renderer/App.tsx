@@ -97,6 +97,11 @@ const LEFT_COLLAPSED = 44;
 const RIGHT_EXPANDED = 360;
 const RIGHT_COLLAPSED = 44;
 const BOTTOM_HEIGHT = 48;
+/** 右侧边栏宽度拖拽调节范围（px） */
+const RIGHT_MIN = 120;
+const RIGHT_MAX = 600;
+/** 右侧边栏宽度持久化 settings key（拖拽调节后记录位置，重启恢复） */
+const RIGHT_SIDEBAR_WIDTH_KEY = 'ui.rightSidebarWidth';
 
 function getSecurityState(url: string): 'secure' | 'insecure' | 'mixed' {
   if (url.startsWith('https://')) return 'secure';
@@ -232,6 +237,10 @@ export function App() {
   const [rightHovered, setRightHovered] = useState(false);
   // 回弹动画标记：为 true 时使用带过冲的弹性缓动，营造"有力度"的回弹感
   const [rightRetracting, setRightRetracting] = useState(false);
+  /** 右侧边栏展开时的宽度（可拖拽调节，默认 RIGHT_EXPANDED；持久化于 settings） */
+  const [rightExpandedWidth, setRightExpandedWidth] = useState<number>(RIGHT_EXPANDED);
+  /** 右侧边栏拖拽调节中（禁用宽度 transition，保证跟手） */
+  const [resizingRight, setResizingRight] = useState(false);
   const [bookmarkSaved, setBookmarkSaved] = useState(false);
   const [bookmarkToast, setBookmarkToast] = useState<string | null>(null);
   // 网页内容提取（AI 助手）：一键提取当前网页正文并保存到本地
@@ -359,6 +368,28 @@ export function App() {
     return () => {
       window.removeEventListener('urchin:settings-changed', onSettingsChanged);
     };
+  }, []);
+
+  // 加载持久化的右侧边栏宽度（拖拽调节后记录，重启恢复）
+  useEffect(() => {
+    async function loadRightWidth() {
+      try {
+        const res = (await window.urchin.invoke('settings.get', {
+          key: RIGHT_SIDEBAR_WIDTH_KEY,
+        })) as { value: unknown };
+        if (
+          typeof res.value === 'number' &&
+          Number.isFinite(res.value) &&
+          res.value >= RIGHT_MIN &&
+          res.value <= RIGHT_MAX
+        ) {
+          setRightExpandedWidth(res.value);
+        }
+      } catch {
+        // 使用默认宽度
+      }
+    }
+    void loadRightWidth();
   }, []);
 
   // 初始化：加载 tab 列表
@@ -679,6 +710,54 @@ export function App() {
     window.setTimeout(() => setRightRetracting(false), 320);
   }, [rightExpanded, rightHovered, leftExpanded, notifyLayout]);
 
+  // 右侧边栏宽度拖拽调节：鼠标在网页与右侧边栏的边界线上按住拖动，实时调宽。
+  // 展开态下于栏左缘内侧渲染拖拽手柄（避免与 BrowserView 重叠导致无法 hover/点击）。
+  // 拖拽中禁 width transition（保证跟手）；释放时持久化到 settings（记录位置，重启恢复）。
+  const rightDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  const handleRightResizeStart = useCallback(
+    (e: React.PointerEvent) => {
+      if (!rightExpanded && !rightHovered) return;
+      e.preventDefault();
+      rightDragRef.current = { startX: e.clientX, startWidth: rightExpandedWidth };
+      setResizingRight(true);
+      // 捕获指针：移动/释放事件跟随手柄，即使指针滑出栏外
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [rightExpanded, rightHovered, rightExpandedWidth],
+  );
+
+  const handleRightResizeMove = useCallback(
+    (e: React.PointerEvent) => {
+      const drag = rightDragRef.current;
+      if (!drag) return;
+      // 向左拖（clientX 减小）→ 栏变宽；向右拖 → 栏变窄
+      const next = Math.min(
+        RIGHT_MAX,
+        Math.max(RIGHT_MIN, drag.startWidth + (drag.startX - e.clientX)),
+      );
+      setRightExpandedWidth(next);
+      void notifyLayout(leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED, next);
+    },
+    [leftExpanded, notifyLayout],
+  );
+
+  const handleRightResizeEnd = useCallback(() => {
+    if (!rightDragRef.current) return;
+    rightDragRef.current = null;
+    setResizingRight(false);
+    // 释放时持久化宽度（记录位置，重启恢复）
+    void window.urchin
+      .invoke('settings.set', { key: RIGHT_SIDEBAR_WIDTH_KEY, value: rightExpandedWidth })
+      .catch((e) => {
+        console.error('Failed to persist right sidebar width:', e);
+      });
+    // 通知其他组件（如收藏夹面板）宽度已变化
+    window.dispatchEvent(
+      new CustomEvent('urchin:settings-changed', { detail: { keys: [RIGHT_SIDEBAR_WIDTH_KEY] } }),
+    );
+  }, [rightExpandedWidth]);
+
   // 当前 URL 对应的书签 ID（若已收藏），用于 toggle 时删除。
   // 通过 bookmark.search 查询当前 URL 是否已被收藏，实现按钮亮/灭状态同步。
   const [currentBookmarkId, setCurrentBookmarkId] = useState<string | null>(null);
@@ -745,7 +824,7 @@ export function App() {
   const leftWidth = leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED;
   // 右侧栏有效展开：固定展开 OR 折叠态下的悬停预览
   const effectiveRightExpanded = rightExpanded || rightHovered;
-  const rightWidth = effectiveRightExpanded ? RIGHT_EXPANDED : RIGHT_COLLAPSED;
+  const rightWidth = effectiveRightExpanded ? rightExpandedWidth : RIGHT_COLLAPSED;
 
   // 中区内容判断
   // 注意：urchin://settings / urchin://ai 会被 Electron URL 规范化为带末尾斜杠，
@@ -914,18 +993,34 @@ export function App() {
       </main>
 
       {/* === 右侧栏 === */}
-      {/* 折叠态下悬停展开，鼠标离开带过冲弹性回弹；展开/收起使用不同缓动以体现"力度" */}
+      {/* 折叠态下悬停展开，鼠标离开带过冲弹性回弹；展开/收起使用不同缓动以体现"力度"。
+       *  拖拽调节中（resizingRight）禁用宽度 transition，保证跟手。 */}
       <aside
         className={cn(
-          'flex shrink-0 flex-col border-l border-border bg-surface-secondary',
-          rightRetracting
-            ? 'transition-[width] duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)]'
-            : 'transition-[width] duration-150 ease-out',
+          'relative flex shrink-0 flex-col border-l border-border bg-surface-secondary',
+          resizingRight
+            ? ''
+            : rightRetracting
+              ? 'transition-[width] duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)]'
+              : 'transition-[width] duration-150 ease-out',
         )}
         style={{ width: rightWidth }}
         onMouseEnter={handleRightMouseEnter}
         onMouseLeave={handleRightMouseLeave}
       >
+        {/* 宽度调节手柄：展开态下渲染于栏左缘内侧（避免与 BrowserView 重叠），
+         *  鼠标移入手柄区域变横向调节光标，按住左右拖动调宽 */}
+        {effectiveRightExpanded && (
+          <div
+            className="absolute top-0 bottom-11 left-0 z-10 w-1.5 cursor-col-resize"
+            onPointerDown={handleRightResizeStart}
+            onPointerMove={handleRightResizeMove}
+            onPointerUp={handleRightResizeEnd}
+            onPointerCancel={handleRightResizeEnd}
+            aria-label="调节右侧栏宽度"
+            role="separator"
+          />
+        )}
         {effectiveRightExpanded ? (
           <>
             {/* 视图标题：标签页 */}

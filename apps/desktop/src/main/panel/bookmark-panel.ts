@@ -377,6 +377,17 @@ export class BookmarkPanel {
   }
 
   /**
+   * 布局变化后刷新面板位置（如右侧栏宽度拖拽调节）。
+   * 面板打开时按最新布局（右侧栏宽/地址栏高）重新定位。
+   */
+  refreshPosition(): void {
+    if (!this.isOpen || !this.panel) return;
+    const parent = this.options.getParentWindow();
+    if (!parent) return;
+    this.reposition(this.panel, parent);
+  }
+
+  /**
    * 计算面板位置：地址栏上方、右侧边栏左侧，且不遮挡网页的右/下滚动条。
    *
    * 网页（BrowserView）区域为 [leftWidth, 右缘-rightWidth] × [0, 下缘-bottomHeight]，

@@ -532,4 +532,53 @@ describe('App (Browser Shell)', () => {
     // crashed 状态更新不崩溃，标签仍渲染
     expect(screen.getByText('Crashy')).toBeTruthy();
   });
+
+  // ── 右侧边栏宽度拖拽调节 + 持久化 ──
+
+  it('should resize right sidebar via drag handle and persist width', async () => {
+    // jsdom 无 PointerEvent capture，stub 掉
+    Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
+      configurable: true,
+      value: () => undefined,
+    });
+
+    mockInvoke.mockImplementation((channel: string, req: unknown) => {
+      const reqOf = <T,>(): T => req as T;
+      if (channel === 'tab.list') return Promise.resolve({ tabs: [makeTab()] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') {
+        const req = reqOf<{ key?: string }>();
+        if (req?.key === 'ui.rightSidebarWidth') return Promise.resolve({ value: null }); // 无持久化宽度 → 默认 360
+        return Promise.resolve({ value: 300 });
+      }
+      if (channel === 'settings.set') return Promise.resolve({ ok: true });
+      if (channel === 'ui.layout.setState') return Promise.resolve({});
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+    await expandRightSidebar();
+
+    // 找到宽度调节手柄（展开态渲染）
+    const handle = screen.getByLabelText('调节右侧栏宽度');
+    expect(handle).toBeTruthy();
+
+    // 模拟拖拽：起点 x=500，向左拖 80px → 栏变宽 80
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 500 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 420 });
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 420 });
+
+    // 释放时持久化宽度（默认 360 + 拖拽量）
+    const setCalls = mockInvoke.mock.calls.filter((c) => c[0] === 'settings.set');
+    expect(setCalls.length).toBeGreaterThan(0);
+    const persisted = setCalls[setCalls.length - 1]?.[1] as { key: string; value: number };
+    expect(persisted.key).toBe('ui.rightSidebarWidth');
+    expect(persisted.value).toBe(440); // 默认 360 + 向左拖 80
+    // 拖拽过程通知主进程布局
+    const layoutCalls = mockInvoke.mock.calls.filter((c) => c[0] === 'ui.layout.setState');
+    expect(layoutCalls.some((c) => (c[1] as { rightWidth?: number }).rightWidth === 440)).toBe(
+      true,
+    );
+  });
 });

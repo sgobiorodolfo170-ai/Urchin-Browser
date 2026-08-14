@@ -296,6 +296,8 @@ function registerIpcHandlers(): void {
     });
     // 立即刷新所有窗口的 BrowserView bounds
     tabViewIntegration?.refreshAllViewBounds();
+    // 布局变化（如右侧栏宽度拖拽调节）时，悬浮面板跟随重新定位
+    bookmarkPanel?.refreshPosition();
     log.info('layout state updated', {
       leftWidth: newState.leftWidth,
       rightWidth: newState.rightWidth,

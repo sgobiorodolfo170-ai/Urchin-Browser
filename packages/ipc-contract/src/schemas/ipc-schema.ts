@@ -365,15 +365,6 @@ export const uiLayoutSetStateReqSchema = z.object({
   /** 临时隐藏 BrowserView（如收藏夹面板弹出时），避免 BrowserView 遮挡 React 渲染的弹出层。
    *  Electron BrowserView 始终渲染在主窗口 webContents 之上，不隐藏则弹出层被遮挡且不可点击。 */
   browserViewHidden: z.boolean().optional(),
-  /**
-   * 弹出层（收藏夹/历史面板）在右侧占用的宽度（px）。
-   *
-   * 2026-08-14 修复：不再用 browserViewHidden 整体隐藏 BrowserView（网页整个消失，
-   * 用户感知为"网页被覆盖"），而是让 BrowserView 让出右侧区域——网页主体保持可见，
-   * 弹出层显示在让出的区域中（BrowserView 是矩形合成层，无法与其下 React 弹出层叠加）。
-   * 0 = 无弹出层。
-   */
-  overlayRightWidth: z.number().int().min(0).max(600).optional(),
 });
 export type UiLayoutSetStateReq = z.infer<typeof uiLayoutSetStateReqSchema>;
 
@@ -383,9 +374,29 @@ export const uiLayoutSetStateResSchema = z.object({
   bottomHeight: z.number().int(),
   contentHidden: z.boolean(),
   browserViewHidden: z.boolean(),
-  overlayRightWidth: z.number().int(),
 });
 export type UiLayoutSetStateRes = z.infer<typeof uiLayoutSetStateResSchema>;
+
+// ============================================================================
+// 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）
+// ============================================================================
+
+/**
+ * ui.panel.toggle：开/关收藏夹悬浮面板。
+ *
+ * 2026-08-14 设计：收藏夹面板是 frameless 子窗口（悬浮层），由下往上弹出、
+ * 悬浮在主窗口网页 BrowserView 之上，只覆盖右下角弹窗面积。
+ * 子窗口天然层级置顶（BrowserWindow 始终在 BrowserView 之上），
+ * 且复用主窗口 preload（urchin:// 协议下暴露 window.urchin.invoke）。
+ */
+export const uiPanelToggleReqSchema = z.object({}).default({});
+export type UiPanelToggleReq = z.infer<typeof uiPanelToggleReqSchema>;
+
+export const uiPanelToggleResSchema = z.object({
+  /** 切换后的面板开合状态 */
+  open: z.boolean(),
+});
+export type UiPanelToggleRes = z.infer<typeof uiPanelToggleResSchema>;
 
 // ============================================================================
 // M23 Download Manager
@@ -949,6 +960,7 @@ export const ipcSchema = {
   'settings.set': { req: settingsSetReqSchema, res: settingsSetResSchema },
   'settings.getAll': { req: settingsGetAllReqSchema, res: settingsGetAllResSchema },
   'ui.layout.setState': { req: uiLayoutSetStateReqSchema, res: uiLayoutSetStateResSchema },
+  'ui.panel.toggle': { req: uiPanelToggleReqSchema, res: uiPanelToggleResSchema },
   'download.list': { req: downloadListReqSchema, res: downloadListResSchema },
   'download.cancel': { req: downloadCancelReqSchema, res: downloadCancelResSchema },
   'download.pause': { req: downloadPauseReqSchema, res: downloadPauseResSchema },

@@ -1,13 +1,16 @@
 /**
- * E2E 回归：收藏夹面板弹出时网页保持可见（让出右侧而非整体隐藏）
+ * E2E 回归：收藏夹悬浮面板（独立子窗口，悬浮于网页之上）
  *
- * 2026-08-14 修复验证：
- * - 此前 browserViewHidden=true 将 BrowserView 整体归零隐藏，网页整个消失（用户感知为"被覆盖"）
- * - 修复后 overlayRightWidth=288 让出右侧区域，网页主体保持可见，面板显示在让出的区域中
+ * 2026-08-14 设计（用户原始意图）：
+ * - 点击地址栏收藏夹按钮 → 由下往上弹出小窗口，悬浮置顶在网页之上
+ * - 只覆盖网页右下角弹窗面积，网页不被隐藏、不被让出
  *
  * 验证信号（可机器判定）：
- * 1. 面板打开时 BrowserView bounds 宽度 = 窗口宽 - 左栏 - 右栏 - 288（非零）
- * 2. 面板关闭后 BrowserView 恢复全宽
+ * 1. 点击收藏夹按钮 → 出现第二个 BrowserWindow（悬浮面板），尺寸 280×430
+ * 2. 主窗口 BrowserView 尺寸不变（网页未被隐藏/让出）
+ * 3. 面板定位在主窗口内容区右下角
+ * 4. 面板内容可见（收藏夹/历史/下载选项卡，加载真实数据）
+ * 5. 再次点击 → 面板关闭
  */
 import {
   test,
@@ -45,20 +48,34 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
   return { electronApp, window };
 }
 
-/** 读取主进程当前活跃 BrowserView 的 bounds */
+/** 列出所有 BrowserWindow 的尺寸与位置 */
+async function listWindows(
+  electronApp: ElectronApplication,
+): Promise<{ count: number; bounds: { x: number; y: number; width: number; height: number }[] }> {
+  return electronApp.evaluate(({ BrowserWindow }) => {
+    const wins = BrowserWindow.getAllWindows();
+    return {
+      count: wins.length,
+      bounds: wins.map((w) => w.getBounds()),
+    };
+  });
+}
+
+/** 读取主窗口活跃 BrowserView 的 bounds（验证网页未被隐藏/让出） */
 async function readActiveViewBounds(
   electronApp: ElectronApplication,
 ): Promise<{ x: number; y: number; width: number; height: number } | null> {
   return electronApp.evaluate(({ BrowserWindow }) => {
-    const wins = BrowserWindow.getAllWindows();
-    if (wins.length === 0) return null;
-    const views = wins[0]!.getBrowserViews();
-    if (views.length === 0) return null;
-    return views[0]!.getBounds();
+    // 遍历所有窗口，取第一个挂载了 BrowserView 的（悬浮面板窗口无 BrowserView）
+    for (const w of BrowserWindow.getAllWindows()) {
+      const views = w.getBrowserViews();
+      if (views.length > 0) return views[0]!.getBounds();
+    }
+    return null;
   });
 }
 
-test('收藏夹面板弹出时网页保持可见（让出右侧 288px）', async () => {
+test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', async () => {
   const { electronApp, window } = await launchApp();
 
   try {
@@ -71,30 +88,62 @@ test('收藏夹面板弹出时网页保持可见（让出右侧 288px）', async
     });
     await window.waitForTimeout(2500);
 
-    // 2. 面板打开前的 BrowserView 宽度（应为全宽：窗口 - 左右折叠栏）
-    const before = await readActiveViewBounds(electronApp);
-    expect(before).not.toBeNull();
-    expect(before!.width).toBeGreaterThan(500); // 网页占主体宽度
+    // 面板打开前的状态：1 个窗口（主窗口），BrowserView 全宽
+    const before = await listWindows(electronApp);
+    expect(before.count).toBe(1);
+    const viewBefore = await readActiveViewBounds(electronApp);
+    expect(viewBefore).not.toBeNull();
 
-    // 3. 打开收藏夹面板
+    // 2. 点击收藏夹按钮 → 弹出悬浮面板（第二个 BrowserWindow）
+    await window.getByLabel('收藏夹').click();
+    await window.waitForTimeout(1200);
+
+    const during = await listWindows(electronApp);
+    expect(during.count).toBe(2); // 主窗口 + 悬浮面板
+
+    // 面板为右下角小窗：280×430
+    const panelBounds = during.bounds.find((b) => b.width === 280 && b.height === 430);
+    expect(panelBounds).toBeTruthy();
+
+    // 面板定位在主窗口内容区右下角附近（悬浮于网页之上）。
+    // 主窗口 = 挂载了 BrowserView 的那个；面板 = 280×430 的 frameless 小窗。
+    const mainBounds = await electronApp.evaluate(({ BrowserWindow }) => {
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (w.getBrowserViews().length > 0) return w.getBounds();
+      }
+      return null;
+    });
+    expect(mainBounds).not.toBeNull();
+    const expectedX = mainBounds!.x + mainBounds!.width - 280 - 8;
+    const expectedY = mainBounds!.y + mainBounds!.height - 430 - 8;
+    // 允许少量偏差（窗口边框/缩放）
+    expect(Math.abs(panelBounds!.x - expectedX)).toBeLessThan(16);
+    expect(Math.abs(panelBounds!.y - expectedY)).toBeLessThan(16);
+
+    // 3. 网页未被隐藏/让出：BrowserView 尺寸不变（全宽）
+    const viewDuring = await readActiveViewBounds(electronApp);
+    expect(viewDuring!.width).toBe(viewBefore!.width);
+    expect(viewDuring!.width).toBeGreaterThan(500);
+
+    // 4. 面板内容可见：三选项卡（收藏夹/历史/下载）加载真实数据。
+    // 注意 windows() 包含主窗口 renderer + BrowserView 网页 + 面板窗口（3 个 page），
+    // 必须按 URL 定位面板窗口（urchin://panel）。
+    const panelWindow = electronApp.windows().find((w) => w.url().includes('urchin://panel'));
+    expect(panelWindow).toBeTruthy();
+    await panelWindow!.waitForLoadState('domcontentloaded');
+    await expect(panelWindow!.getByText('收藏夹').first()).toBeVisible();
+    await expect(panelWindow!.getByText('历史记录').first()).toBeVisible();
+    await expect(panelWindow!.getByText('下载列表').first()).toBeVisible();
+    // 书签选项卡加载真实数据（空态或列表）
+    await expect(panelWindow!.getByText(/暂无书签|加载失败/).first()).toBeVisible({
+      timeout: 5000,
+    });
+
+    // 5. 再次点击收藏夹按钮 → 面板关闭
     await window.getByLabel('收藏夹').click();
     await window.waitForTimeout(800);
-
-    // 4. 面板打开时的 BrowserView：宽度缩窄（让出 288px）但非零（网页仍可见）
-    const during = await readActiveViewBounds(electronApp);
-    expect(during).not.toBeNull();
-    expect(during!.width).toBeGreaterThan(0); // 网页未被整体隐藏
-    expect(during!.width).toBeLessThan(before!.width - 200); // 明显让出
-
-    // 5. 面板可见（React 弹窗正常渲染）
-    await expect(window.getByText('历史记录').first()).toBeVisible();
-
-    // 6. 关闭面板后恢复全宽
-    await window.getByLabel('收藏夹').click();
-    await window.waitForTimeout(800);
-    const after = await readActiveViewBounds(electronApp);
-    expect(after).not.toBeNull();
-    expect(after!.width).toBe(before!.width); // 恢复全宽
+    const after = await listWindows(electronApp);
+    expect(after.count).toBe(1);
   } finally {
     await electronApp.close();
   }

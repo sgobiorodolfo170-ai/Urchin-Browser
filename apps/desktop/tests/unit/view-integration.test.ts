@@ -159,7 +159,6 @@ describe('view-integration', () => {
       rightWidth: 44,
       bottomHeight: 48,
       browserViewHidden: false,
-      overlayRightWidth: 0,
     });
   });
 
@@ -174,7 +173,6 @@ describe('view-integration', () => {
         rightWidth: 44,
         bottomHeight: 48,
         browserViewHidden: false,
-        overlayRightWidth: 0,
       });
     });
 
@@ -186,7 +184,6 @@ describe('view-integration', () => {
         rightWidth: 300,
         bottomHeight: 100,
         browserViewHidden: false,
-        overlayRightWidth: 0,
         contentHidden: false,
       });
       expect(getLayoutState().leftWidth).toBe(200);
@@ -199,12 +196,6 @@ describe('view-integration', () => {
 
       const state = getLayoutState();
       expect(state.browserViewHidden).toBe(true);
-    });
-
-    it('should accept overlayRightWidth for popup panel', () => {
-      const next = setLayoutState({ overlayRightWidth: 288 });
-      expect(next.overlayRightWidth).toBe(288);
-      expect(getLayoutState().overlayRightWidth).toBe(288);
     });
   });
 
@@ -346,22 +337,6 @@ describe('view-integration', () => {
       fireTab('created', tab);
 
       expect(tab.view.setBounds).toHaveBeenCalledWith({ x: 0, y: 0, width: 0, height: 0 });
-    });
-
-    it('should keep page visible with narrowed bounds when overlay panel open', () => {
-      // 2026-08-14 修复：收藏夹面板弹出用 overlayRightWidth 让出右侧，
-      // 不再整体隐藏 BrowserView（网页保持可见）。
-      const tab = makeTab({ id: 12, windowId: 1 });
-      tabManager.register(tab);
-      setLayoutState({ overlayRightWidth: 288 });
-      install();
-
-      fireTab('created', tab);
-
-      // 窗口 800x600，左侧栏 44 + 右侧栏 44 + 让出 288 → 网页宽 424（非零，可见）
-      expect(tab.view.setBounds).toHaveBeenCalledWith(
-        expect.objectContaining({ x: 44, width: 800 - 44 - 44 - 288, height: 600 - 48 }),
-      );
     });
   });
 

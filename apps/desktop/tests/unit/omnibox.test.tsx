@@ -8,19 +8,12 @@
  * 4. 输入 debounce 触发 onSuggestionQuery
  * 5. 补全建议渲染 + 点击导航
  * 6. 收藏按钮（bookmarkable 禁用 / 点击回调）
- * 7. 收藏夹面板：书签选项卡渲染与导航
- * 8. 历史记录选项卡：懒加载 history.list
- * 9. 下载列表选项卡：懒加载 download.list + 空态
- * 10. AI 摘要按钮回调
+ * 7. 收藏夹按钮：点击发送 ui.panel.toggle（悬浮面板由主进程 BookmarkPanel 子窗口管理）
+ * 8. AI 摘要按钮回调
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import {
-  Omnibox,
-  type BookmarkItem,
-  type HistoryItem,
-  type DownloadItem,
-} from '../../src/renderer/omnibox/omnibox';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { Omnibox } from '../../src/renderer/omnibox/omnibox';
 import type { Suggestion } from '../../src/renderer/omnibox/types';
 
 const mockInvoke = vi.fn();
@@ -34,28 +27,6 @@ beforeEach(() => {
   });
 });
 
-const bookmarks: readonly BookmarkItem[] = [
-  { id: 'b1', title: 'GitHub', url: 'https://github.com' },
-  { id: 'b2', title: '本地书签', url: 'https://example.com' },
-];
-
-const history: readonly HistoryItem[] = [
-  { id: 1, url: 'https://github.com', title: 'GitHub', visitedAt: 1700000000000, visitCount: 3 },
-];
-
-const downloads: readonly DownloadItem[] = [
-  {
-    id: 'd1',
-    filename: 'report.pdf',
-    url: 'https://example.com/report.pdf',
-    state: 'completed',
-    receivedBytes: 1024,
-    totalBytes: 2048,
-    savePath: 'C:\\Downloads\\report.pdf',
-    startTime: 1700000000000,
-  },
-];
-
 function renderOmnibox(overrides: Partial<Parameters<typeof Omnibox>[0]> = {}) {
   const props: Parameters<typeof Omnibox>[0] = {
     currentUrl: 'https://github.com',
@@ -67,8 +38,6 @@ function renderOmnibox(overrides: Partial<Parameters<typeof Omnibox>[0]> = {}) {
     bookmarkSaved: false,
     bookmarkable: true,
     onBookmarkToggle: onBookmarkToggleMock,
-    bookmarks: [],
-    onBookmarkNavigate: onBookmarkNavigateMock,
     onSummarize: onSummarizeMock,
     summarizeDisabled: false,
     ...overrides,
@@ -81,14 +50,12 @@ function renderOmnibox(overrides: Partial<Parameters<typeof Omnibox>[0]> = {}) {
 const onNavigateMock = vi.fn();
 const onSuggestionQueryMock = vi.fn();
 const onBookmarkToggleMock = vi.fn();
-const onBookmarkNavigateMock = vi.fn();
 const onSummarizeMock = vi.fn();
 
 beforeEach(() => {
   onNavigateMock.mockReset();
   onSuggestionQueryMock.mockReset();
   onBookmarkToggleMock.mockReset();
-  onBookmarkNavigateMock.mockReset();
   onSummarizeMock.mockReset();
   mockInvoke.mockReset();
   mockInvoke.mockResolvedValue({});
@@ -182,40 +149,12 @@ describe('Omnibox', () => {
     expect(onBookmarkToggleMock).toHaveBeenCalled();
   });
 
-  it('should render bookmarks panel and navigate on bookmark click', () => {
-    renderOmnibox({ bookmarks });
-    fireEvent.click(screen.getByLabelText('收藏夹'));
-    expect(screen.getByText('GitHub')).toBeTruthy();
-    fireEvent.click(screen.getByText('GitHub'));
-    expect(onBookmarkNavigateMock).toHaveBeenCalledWith('https://github.com');
-  });
-
-  it('should load history list lazily when switching to history tab', async () => {
-    mockInvoke.mockResolvedValue({ entries: history, total: 1 });
+  it('should toggle floating bookmark panel via ui.panel.toggle on folder button click', () => {
+    mockInvoke.mockResolvedValue({ open: true });
     renderOmnibox();
     fireEvent.click(screen.getByLabelText('收藏夹'));
-    fireEvent.click(screen.getByText('历史记录'));
-    expect(mockInvoke).toHaveBeenCalledWith('history.list', { limit: 100, offset: 0 });
-    await waitFor(() => expect(screen.getByText('GitHub')).toBeTruthy());
-  });
-
-  it('should load downloads list lazily and show completed state', async () => {
-    mockInvoke.mockResolvedValue({ downloads });
-    renderOmnibox();
-    fireEvent.click(screen.getByLabelText('收藏夹'));
-    fireEvent.click(screen.getByText('下载列表'));
-    expect(mockInvoke).toHaveBeenCalledWith('download.list', {});
-    await waitFor(() => expect(screen.getByText('report.pdf')).toBeTruthy());
-    expect(screen.getByText(/已完成/)).toBeTruthy();
-  });
-
-  it('should show empty states for bookmarks and history', async () => {
-    mockInvoke.mockResolvedValue({ entries: [], total: 0 });
-    renderOmnibox({ bookmarks: [] });
-    fireEvent.click(screen.getByLabelText('收藏夹'));
-    expect(screen.getByText('暂无书签')).toBeTruthy();
-    fireEvent.click(screen.getByText('历史记录'));
-    await waitFor(() => expect(screen.getByText('暂无历史记录')).toBeTruthy());
+    // 悬浮面板由主进程 BookmarkPanel 子窗口管理，渲染层仅发开关通知
+    expect(mockInvoke).toHaveBeenCalledWith('ui.panel.toggle', {});
   });
 
   it('should trigger onSummarize when enabled', () => {

@@ -12,6 +12,7 @@
  */
 import { protocol } from 'electron';
 import { createLogger } from '@urchin/logger';
+import { getBookmarkPanelHtml } from '../panel/bookmark-panel';
 
 const log = createLogger('urchin-protocol');
 
@@ -45,6 +46,7 @@ export function registerUrchinSchemePrivileged(): void {
  * 路由：
  * - urchin://settings → 设置页 HTML（由主窗口 React SettingsPage 渲染，BrowserView 仅占位）
  * - urchin://ai → AI 模块页 HTML（由主窗口 React AiChatView 渲染，BrowserView 仅占位）
+ * - urchin://panel → 收藏夹悬浮面板 HTML（独立子窗口加载，preload 在 urchin: 协议下暴露 API）
  * - urchin://newtab → 空白页（占位，v0.1 返回简单 HTML）
  * - 其他 → 404
  *
@@ -77,6 +79,15 @@ export function registerUrchinProtocol(): void {
           '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>AI 助手</title></head><body></body></html>',
           { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
         );
+      }
+
+      if (host === 'panel') {
+        // 收藏夹悬浮面板（独立子窗口加载）。preload 在 urchin: 协议下暴露
+        // window.urchin.invoke，面板内联 JS 通过它拉取书签/历史/下载数据并操作。
+        return new Response(getBookmarkPanelHtml(), {
+          status: 200,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        });
       }
 
       if (host === 'newtab') {

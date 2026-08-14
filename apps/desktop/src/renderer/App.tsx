@@ -234,9 +234,6 @@ export function App() {
   const [rightRetracting, setRightRetracting] = useState(false);
   const [bookmarkSaved, setBookmarkSaved] = useState(false);
   const [bookmarkToast, setBookmarkToast] = useState<string | null>(null);
-  const [bookmarkList, setBookmarkList] = useState<
-    readonly { id: string; title: string; url?: string }[]
-  >([]);
   // 网页内容提取（AI 助手）：一键提取当前网页正文并保存到本地
   // 按钮位于地址栏 omnibox.tsx，点击直接调用 summary.run IPC（纯本地操作，不依赖 LLM）
   const [summaryRunning, setSummaryRunning] = useState(false);
@@ -682,18 +679,6 @@ export function App() {
     window.setTimeout(() => setRightRetracting(false), 320);
   }, [rightExpanded, rightHovered, leftExpanded, notifyLayout]);
 
-  // 加载书签列表（URL 模式下显示收藏夹面板时使用）
-  const loadBookmarks = useCallback(async () => {
-    try {
-      const result = (await window.urchin.invoke('bookmark.list', {})) as {
-        bookmarks: readonly { id: string; title: string; url?: string }[];
-      };
-      setBookmarkList(result.bookmarks);
-    } catch (e) {
-      console.error('Failed to load bookmarks:', e);
-    }
-  }, []);
-
   // 当前 URL 对应的书签 ID（若已收藏），用于 toggle 时删除。
   // 通过 bookmark.search 查询当前 URL 是否已被收藏，实现按钮亮/灭状态同步。
   const [currentBookmarkId, setCurrentBookmarkId] = useState<string | null>(null);
@@ -743,32 +728,19 @@ export function App() {
         setBookmarkToast('已添加到书签');
       }
       setTimeout(() => setBookmarkToast(null), 2000);
-      // 刷新书签列表与收藏状态
-      void loadBookmarks();
+      // 刷新收藏状态（当前 URL 的亮/灭）
       void refreshBookmarkSaved(activeTab.url);
     } catch (e) {
       console.error('Failed to toggle bookmark:', e);
       setBookmarkToast('书签操作失败');
       setTimeout(() => setBookmarkToast(null), 2000);
     }
-  }, [
-    activeTab?.url,
-    activeTab?.title,
-    bookmarkSaved,
-    currentBookmarkId,
-    loadBookmarks,
-    refreshBookmarkSaved,
-  ]);
+  }, [activeTab?.url, activeTab?.title, bookmarkSaved, currentBookmarkId, refreshBookmarkSaved]);
 
   // URL 变化时重新检查收藏状态（修复：此前仅 setBookmarkSaved(false) 未查询实际状态）
   useEffect(() => {
     void refreshBookmarkSaved(activeTab?.url);
   }, [activeTab?.url, refreshBookmarkSaved]);
-
-  // 预加载书签列表
-  useEffect(() => {
-    void loadBookmarks();
-  }, [loadBookmarks]);
 
   const leftWidth = leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED;
   // 右侧栏有效展开：固定展开 OR 折叠态下的悬停预览
@@ -919,8 +891,6 @@ export function App() {
               bookmarkSaved={bookmarkSaved}
               bookmarkable={!isInternalPage && !!activeTab?.url && isBookmarkable(activeTab.url)}
               onBookmarkToggle={() => void handleSaveBookmark()}
-              bookmarks={bookmarkList}
-              onBookmarkNavigate={(url) => void handleNavigate(url)}
               onSummarize={() => void handleSummarize()}
               summarizeDisabled={
                 summaryRunning || !activeTab?.url || !/^https?:\/\//i.test(activeTab.url)

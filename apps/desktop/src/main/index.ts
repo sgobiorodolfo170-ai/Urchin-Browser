@@ -43,6 +43,7 @@ import { ProviderRegistry } from './orchestrator/provider-registry';
 import { electronProcessFactory } from './orchestrator/electron-factory';
 import { StorageLayer, createSqliteDatabase, ElectronSafeStorage } from './storage';
 import { registerUrchinSchemePrivileged, registerUrchinProtocol } from './protocol';
+import { BookmarkPanel } from './panel/bookmark-panel';
 
 const log = createLogger('main');
 
@@ -144,6 +145,8 @@ let providerRegistry!: ProviderRegistry;
 let orchestrator!: Orchestrator;
 let providerConfigStore!: ProviderConfigStore;
 let tabViewIntegration: TabViewIntegrationHandle | null = null;
+/** 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
+let bookmarkPanel: BookmarkPanel | null = null;
 /**
  * AI IPC handlers 的 dispose 句柄（由 registerAiHandlers 返回）。
  * 进程退出时调用 dispose()，abort 所有活跃 chat/agent 流，
@@ -281,7 +284,7 @@ function registerIpcHandlers(): void {
     windowManager,
   });
 
-  // UI 域 handler：布局状态切换（左/右侧栏宽度 + 下侧栏高度 + 内容区可见性 + 弹出层让出）
+  // UI 域 handler：布局状态切换（左/右侧栏宽度 + 下侧栏高度 + 内容区可见性）
   registerHandler(ipcMain, 'ui.layout.setState', (req) => {
     const newState = setLayoutState({
       leftWidth: req.leftWidth,
@@ -289,7 +292,6 @@ function registerIpcHandlers(): void {
       bottomHeight: req.bottomHeight,
       contentHidden: req.contentHidden,
       browserViewHidden: req.browserViewHidden,
-      overlayRightWidth: req.overlayRightWidth,
     });
     // 立即刷新所有窗口的 BrowserView bounds
     tabViewIntegration?.refreshAllViewBounds();
@@ -299,7 +301,6 @@ function registerIpcHandlers(): void {
       bottomHeight: newState.bottomHeight,
       contentHidden: newState.contentHidden,
       browserViewHidden: newState.browserViewHidden,
-      overlayRightWidth: newState.overlayRightWidth,
     });
     return {
       leftWidth: newState.leftWidth,
@@ -307,8 +308,13 @@ function registerIpcHandlers(): void {
       bottomHeight: newState.bottomHeight,
       contentHidden: newState.contentHidden,
       browserViewHidden: newState.browserViewHidden,
-      overlayRightWidth: newState.overlayRightWidth,
     };
+  });
+
+  // UI 域 handler：收藏夹悬浮面板开关（独立子窗口，悬浮于网页之上）
+  registerHandler(ipcMain, 'ui.panel.toggle', () => {
+    const open = bookmarkPanel?.toggle() ?? false;
+    return { open };
   });
 
   log.info('ipc handlers registered');
@@ -800,6 +806,12 @@ void app.whenReady().then(() => {
 
   // 创建主窗口
   const mainWindow = windowManager.createWindow({});
+
+  // 初始化收藏夹悬浮面板（子窗口，悬浮于网页之上；随主窗口移动/缩放重定位）
+  bookmarkPanel = new BookmarkPanel({
+    getParentWindow: () => windowManager.getWindow(mainWindow.id)?.browserWindow ?? null,
+    preloadPath: join(__dirname, '..', 'preload', 'index.js'),
+  });
 
   // 为主窗口创建初始 tab
   tabManager.create({ windowId: mainWindow.id });

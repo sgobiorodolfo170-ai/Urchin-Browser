@@ -1025,9 +1025,12 @@ export function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface">
-      {/* === 左侧栏 === */}
+      {/* === 左侧栏 ===
+       *  背景用 bg-surface（与窗口标题栏同色）：标题栏是 OS 原生色（浅色=白/深色=深），
+       *  侧栏与标题栏同色后两者间的色差分割线消失，视觉上一体。
+       *  border-r 保留：这是"左侧边栏与网页区"之间的分割线（网页区左上角圆角的夹角边之一）。 */}
       <aside
-        className="flex shrink-0 flex-col border-r border-border bg-surface-secondary transition-[width] duration-150"
+        className="flex shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-150"
         style={{ width: leftWidth }}
         onPointerDown={windowDrag.startDrag}
         onPointerMove={windowDrag.moveDrag}
@@ -1036,7 +1039,7 @@ export function App() {
       >
         {/* 顶部：折叠/展开按钮 */}
         <button
-          className="flex h-11 w-full items-center justify-center text-text-secondary hover:bg-surface hover:text-text"
+          className="flex h-11 w-full items-center justify-center text-text-secondary hover:bg-surface-secondary hover:text-text"
           onClick={handleToggleLeft}
           aria-label={leftExpanded ? '折叠左侧栏' : '展开左侧栏'}
         >
@@ -1063,7 +1066,7 @@ export function App() {
         {/* 底部：AI 入口 + 设置 + 主题切换 */}
         <div className="flex flex-col items-center gap-1 border-t border-border p-2">
           <button
-            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface hover:text-text"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
             onClick={() => void handleOpenAi()}
             aria-label="AI 助手"
             title="AI 助手"
@@ -1071,7 +1074,7 @@ export function App() {
             <Sparkles className="h-4 w-4" />
           </button>
           <button
-            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface hover:text-text"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
             onClick={toggleTheme}
             aria-label="切换主题"
             title="切换主题"
@@ -1079,7 +1082,7 @@ export function App() {
             {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
           </button>
           <button
-            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface hover:text-text"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
             onClick={() => void handleOpenSettings()}
             aria-label="设置"
             title="设置"
@@ -1093,11 +1096,12 @@ export function App() {
       <main className="flex flex-1 flex-col overflow-hidden">
         {/* ContentArea */}
         <div className="relative flex-1 overflow-hidden bg-white">
-          {/* 网页区左上角 5px 圆角遮罩：BrowserView 是原生合成层，不支持 CSS 圆角。
-           *  用与容器同底色（white）的圆角块遮挡网页左上直角，形成 5px 圆角视觉。
-           *  仅真实网页显示（内部页为 React 渲染，自带布局，无需遮挡）。 */}
+          {/* 网页区左上角 10px 圆角遮罩：BrowserView 是原生合成层，不支持 CSS 圆角。
+           *  夹角 = 左侧边栏 border-r（垂直）与窗口标题栏底边（水平）在网页左上角相交。
+           *  圆心在网页区内、半径 10px：用同底色（surface，与侧栏/标题栏一体）的
+           *  圆角块遮挡网页左上直角，弧线自然衔接两条分割线。仅真实网页显示。 */}
           {!isInternalPage && (
-            <div className="pointer-events-none absolute left-0 top-0 z-10 h-[5px] w-[5px] rounded-tl-[5px] bg-white" />
+            <div className="pointer-events-none absolute left-0 top-0 z-10 h-[10px] w-[10px] rounded-tl-[10px] bg-surface" />
           )}
           {
             isSettingsTab ? (

@@ -48,6 +48,7 @@ interface FakeTab {
   title?: string;
   loading?: boolean;
   active: boolean;
+  htmlFullscreen?: boolean;
   view: FakeView;
 }
 
@@ -93,6 +94,7 @@ function makeTab(overrides: Partial<FakeTab> = {}): FakeTab {
     windowId: 1,
     url: 'https://example.com',
     active: true,
+    htmlFullscreen: false,
     view: { setBounds: vi.fn() },
     ...overrides,
   };
@@ -468,5 +470,60 @@ describe('view-integration', () => {
       expect(tabManager.listeners.get('crashed')).toHaveLength(0);
       expect(windowManager.listeners.get('window-created')).toHaveLength(0);
     });
+  });
+});
+
+describe('HTML5 fullscreen (内嵌视频全屏覆盖 UI 栏)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    tabManager = makeTabManager();
+    windowManager = makeWindowManager();
+    window = makeManagedWindow(1);
+    windowManager.register(window);
+    setLayoutState({
+      leftWidth: 44,
+      rightWidth: 44,
+      bottomHeight: 48,
+      browserViewHidden: false,
+    });
+    handle = undefined as never;
+  });
+
+  it('should fill entire window when tab is htmlFullscreen', () => {
+    const tab = makeTab({ id: 31, windowId: 1, htmlFullscreen: true });
+    tabManager.register(tab);
+    install();
+
+    fireTab('created', tab);
+    fireTab('updated', tab);
+
+    // 窗口 800x600 → BrowserView 撑满整个内容区（x:0, y:0, 全宽全高），覆盖 UI 栏
+    expect(tab.view.setBounds).toHaveBeenCalledWith({
+      x: 0,
+      y: 0,
+      width: 800,
+      height: 600,
+    });
+  });
+
+  it('should restore normal bounds after leaving fullscreen', () => {
+    const tab = makeTab({ id: 32, windowId: 1 });
+    tabManager.register(tab);
+    install();
+
+    fireTab('created', tab);
+    tab.view.setBounds.mockClear();
+
+    tab.htmlFullscreen = true;
+    fireTab('updated', tab);
+    expect(tab.view.setBounds).toHaveBeenCalledWith({ x: 0, y: 0, width: 800, height: 600 });
+
+    tab.view.setBounds.mockClear();
+    tab.htmlFullscreen = false;
+    fireTab('updated', tab);
+    // 恢复常规布局（含左右侧栏内缩）
+    expect(tab.view.setBounds).toHaveBeenCalledWith(
+      expect.objectContaining({ x: 44, width: 800 - 88, height: 600 - 48 }),
+    );
   });
 });

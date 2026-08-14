@@ -105,6 +105,12 @@ export interface Tab {
   crashed: boolean;
   /** 在窗口中的位置索引 */
   indexInWindow: number;
+  /**
+   * 页面是否处于 HTML5 全屏（如内嵌视频点击全屏）。
+   * 仅主进程持有（不进 TabSnapshot）：全屏时 view-integration 将 BrowserView
+   * 撑满整个窗口，覆盖浏览器 UI 栏（左/右侧边栏、地址栏）。
+   */
+  htmlFullscreen: boolean;
   /** 底层 webContents（仅主进程持有） */
   readonly webContents: WebContentsLike;
   /** 底层 BrowserView（仅主进程持有） */

@@ -139,6 +139,7 @@ export class TabManager {
       canGoForward: false,
       crashed: false,
       indexInWindow,
+      htmlFullscreen: false,
       webContents,
       view,
     };
@@ -460,6 +461,18 @@ export class TabManager {
       tab.crashed = true;
       tab.loading = false;
       this.emit('crashed', this.toSnapshot(tab));
+    });
+
+    // HTML5 全屏（如内嵌视频点击全屏）：更新 tab.htmlFullscreen 并推送 updated 事件。
+    // view-integration 据此将 BrowserView 撑满整个窗口，覆盖浏览器 UI 栏
+    // （左/右侧边栏、地址栏）；退出全屏时恢复常规布局。
+    wc.on('enter-html-full-screen', () => {
+      tab.htmlFullscreen = true;
+      this.emit('updated', this.toSnapshot(tab));
+    });
+    wc.on('leave-html-full-screen', () => {
+      tab.htmlFullscreen = false;
+      this.emit('updated', this.toSnapshot(tab));
     });
   }
 

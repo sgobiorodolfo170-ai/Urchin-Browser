@@ -61,6 +61,7 @@ function createMockTabManager(exists = true): TabManager & {
   const webContents = createMockWebContents();
   const tab: Tab = {
     ...snapshot,
+    htmlFullscreen: false,
     webContents,
     view: {
       webContents: {} as never,

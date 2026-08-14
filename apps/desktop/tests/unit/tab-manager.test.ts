@@ -508,3 +508,34 @@ describe('TabManager webContents events', () => {
     expect(mgr.getCount()).toBe(0);
   });
 });
+
+describe('TabManager HTML5 fullscreen (内嵌视频全屏)', () => {
+  it('should mark tab htmlFullscreen on enter and clear on leave', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    const tab = mgr.create({ windowId: 1 });
+    const wc = factory._views[0]!._webContents;
+
+    wc._emitEvent('enter-html-full-screen');
+    expect(mgr.getTab(tab.id)?.htmlFullscreen).toBe(true);
+
+    wc._emitEvent('leave-html-full-screen');
+    expect(mgr.getTab(tab.id)?.htmlFullscreen).toBe(false);
+  });
+
+  it('should emit updated event on fullscreen toggle', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    const updated = vi.fn();
+    mgr.on('updated', updated);
+    mgr.create({ windowId: 1 });
+    const wc = factory._views[0]!._webContents;
+
+    wc._emitEvent('enter-html-full-screen');
+    expect(updated).toHaveBeenCalled();
+
+    updated.mockClear();
+    wc._emitEvent('leave-html-full-screen');
+    expect(updated).toHaveBeenCalled();
+  });
+});

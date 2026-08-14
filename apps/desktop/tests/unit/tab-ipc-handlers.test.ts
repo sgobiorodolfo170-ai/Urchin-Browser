@@ -38,6 +38,7 @@ function createMockTabManager(): TabManager & {
 
   const tab: Tab = {
     ...snapshot,
+    htmlFullscreen: false,
     webContents: {
       loadURL: vi.fn().mockResolvedValue(undefined),
       reload: vi.fn(),

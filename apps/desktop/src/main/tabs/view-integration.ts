@@ -164,7 +164,7 @@ export function installTabViewIntegration(
     if (!tab) return;
 
     // URL 去重：若 URL 未变化且非强制刷新，跳过 setBounds 避免重复布局。
-    // 但 browserViewHidden 状态变更时必须强制刷新（force 由调用方传入）。
+    // 但 browserViewHidden / htmlFullscreen 状态变更时必须强制刷新（force 由调用方传入）。
     if (!force && lastBoundsUrlPerTab.get(activeTab.id) === activeTab.url) {
       return;
     }
@@ -175,6 +175,16 @@ export function installTabViewIntegration(
     // 弹出层（收藏夹/历史面板）被遮挡且不可点击。面板关闭后 browserViewHidden 恢复 false。
     if (layoutState.browserViewHidden) {
       tab.view.setBounds(ZERO_BOUNDS);
+      return;
+    }
+
+    // HTML5 全屏（内嵌视频点击全屏）：将 BrowserView 撑满整个窗口，
+    // 覆盖浏览器 UI 栏（左/右侧边栏、地址栏），实现视频真正全屏。
+    // 窗口已由 Electron 自动进入 OS 全屏（enter-html-full-screen 触发），
+    // BrowserView 撑满后视频即占满屏幕。
+    if (tab.htmlFullscreen) {
+      const full = managed.browserWindow.getContentBounds();
+      tab.view.setBounds({ x: 0, y: 0, width: full.width, height: full.height });
       return;
     }
 
@@ -236,10 +246,20 @@ export function installTabViewIntegration(
   // 为避免事件风暴，对 loading/title/favicon 等非关键更新做节流。
   let updatedThrottleTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingUpdatedSnapshot: TabSnapshot | null = null;
+  /** 各 tab 上次的 HTML5 全屏态（全屏切换需强制刷新 bounds，URL 去重会跳过） */
+  const lastFullscreenPerTab = new Map<number, boolean>();
   const onUpdated = (snapshot: TabSnapshot): void => {
     // URL 变更可能影响 BrowserView 可见性（如切换到/离开 urchin://settings / urchin://ai）
     if (snapshot.active) {
-      updateActiveViewBounds(snapshot.windowId, false);
+      const tab = tabManager.getTab(snapshot.id);
+      // htmlFullscreen 变化时强制刷新：否则 URL 去重跳过，全屏/退出全屏不生效
+      const fullscreenChanged =
+        tab !== undefined &&
+        tab.htmlFullscreen !== (lastFullscreenPerTab.get(snapshot.id) ?? false);
+      if (fullscreenChanged) {
+        lastFullscreenPerTab.set(snapshot.id, tab.htmlFullscreen);
+      }
+      updateActiveViewBounds(snapshot.windowId, fullscreenChanged);
     }
     // 节流 pushEvent：网页加载过程中 did-start-loading / page-title-updated /
     // page-favicon-updated / did-navigate 等事件密集触发，若每次都 IPC send 会导致

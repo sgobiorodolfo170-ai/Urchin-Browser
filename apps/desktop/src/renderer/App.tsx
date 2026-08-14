@@ -46,6 +46,7 @@ import { PiSettingsDialog } from './omnibox/pi-settings-dialog';
 import { useTheme } from './theme/theme-provider';
 import { createHostFromUrchin } from './host-impl';
 import type { Suggestion } from './omnibox/types';
+import { buildSuggestions } from './omnibox/build-suggestions';
 import { cn } from './lib/utils';
 
 // Tab 快照类型（与主进程 TabSnapshot 对齐）
@@ -545,9 +546,37 @@ export function App() {
     }
   }, [activeTabId]);
 
-  const handleSuggestionQuery = useCallback((_query: string) => {
-    void _query;
-    setSuggestions([]);
+  // 补全建议查询：历史 + 书签混合数据源（OM2 决策：150ms debounce 由 Omnibox 内部处理）
+  // v0.1.0-dev.23 修复：此前为空实现 stub（直接 setSuggestions([])），
+  // 现并联调用 history.search / bookmark.search，经 buildSuggestions 合并评分。
+  // 查询竞态防护：仅采纳最后一次查询的结果，避免慢响应覆盖新输入。
+  const suggestionQuerySeq = useRef(0);
+  const handleSuggestionQuery = useCallback(async (query: string) => {
+    const seq = ++suggestionQuerySeq.current;
+    try {
+      const [historyRes, bookmarkRes] = await Promise.all([
+        window.urchin.invoke('history.search', { query, limit: 10 }),
+        window.urchin.invoke('bookmark.search', { query, limit: 10 }),
+      ]);
+      if (seq !== suggestionQuerySeq.current) return; // 已有更新的查询，丢弃本次结果
+      const history = (
+        historyRes as { entries: { url: string; title: string; visitCount: number }[] }
+      ).entries;
+      const bookmarks = (bookmarkRes as { bookmarks: { url?: string; title: string }[] }).bookmarks;
+      setSuggestions(
+        buildSuggestions(
+          query,
+          history.map((h) => ({ url: h.url, title: h.title, visitCount: h.visitCount })),
+          bookmarks
+            .map((b) => ({ url: b.url ?? '', title: b.title }))
+            .filter((b) => b.url.length > 0),
+        ),
+      );
+    } catch (e) {
+      if (seq !== suggestionQuerySeq.current) return;
+      console.error('Failed to load suggestions:', e);
+      setSuggestions([]);
+    }
   }, []);
 
   // 通知主进程布局变化
@@ -857,7 +886,7 @@ export function App() {
               securityState={getSecurityState(activeTab?.url ?? '')}
               suggestions={suggestions}
               onNavigate={(url) => void handleNavigate(url)}
-              onSuggestionQuery={handleSuggestionQuery}
+              onSuggestionQuery={(q) => void handleSuggestionQuery(q)}
               bookmarkSaved={bookmarkSaved}
               bookmarkable={!isInternalPage && !!activeTab?.url && isBookmarkable(activeTab.url)}
               onBookmarkToggle={() => void handleSaveBookmark()}

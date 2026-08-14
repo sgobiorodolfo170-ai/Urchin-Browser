@@ -15,6 +15,7 @@
  * - value 为 unknown 类型，承载异构配置值
  */
 import type { SettingEntry, SettingsEvent, SettingsEventListener } from './types';
+import type { SecretStore } from '../storage/types';
 import { createLogger } from '@urchin/logger';
 
 const log = createLogger('settings-manager');
@@ -25,6 +26,14 @@ export interface SettingsPersistence {
   set<T>(key: string, value: T): void;
   delete?(key: string): void;
 }
+
+/**
+ * 敏感设置键集合（apiKey 类）。
+ *
+ * 这些键的值通过 secretStore（safeStorage 加密）落盘，不写入明文 SQLite。
+ * 内存中仍以普通值存在（主进程是 Single Source of Truth，渲染层经 IPC 读取用于编辑展示）。
+ */
+const SECRET_KEYS = new Set(['ai.apiKey', 'summary.apiKey']);
 
 /** 默认设置项：构造时预填充。 */
 const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
@@ -40,6 +49,7 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   // pi 模块（AI 对话标签页）AI 助手设置：由 PiSettingsDialog 编辑，pi-agent-factory 消费。
   // 注意：此组设置与 summary.* 完全独立，pi 模块与摘要模块互不干扰。
   ['ai.model', 'gpt-4o-mini'],
+  // ai.apiKey 为敏感键：注入 secretStore 时经 safeStorage 加密落盘（SECRET_KEYS），不存明文 SQLite
   ['ai.apiKey', ''],
   ['ai.providerId', ''],
   // OpenAI 兼容协议的 Base URL（留空使用官方 https://api.openai.com；
@@ -68,13 +78,21 @@ export class SettingsManager {
   /** 持久化存储（可选，注入后 set 时自动写入） */
   private readonly persistence?: SettingsPersistence;
 
+  /** 敏感数据存储（可选，safeStorage 加密；注入后 SECRET_KEYS 键不再明文落盘） */
+  private readonly secretStore?: SecretStore;
+
+  /** 敏感键预加载 Promise（构造时启动，内部消费者经 ensureSecretsLoaded 等待） */
+  private readonly secretPreload?: Promise<void>;
+
   /**
    * 构造时预填充默认设置，并从持久化存储加载已保存的值覆盖默认值。
    *
    * @param persistence 可选的持久化存储（StorageLayer.mainStore）
+   * @param secretStore 可选的敏感数据存储（StorageLayer.secrets，safeStorage 加密）
    */
-  constructor(persistence?: SettingsPersistence) {
+  constructor(persistence?: SettingsPersistence, secretStore?: SecretStore) {
     this.persistence = persistence;
+    this.secretStore = secretStore;
 
     // 1. 预填充默认值
     for (const [key, value] of DEFAULT_SETTINGS) {
@@ -91,6 +109,40 @@ export class SettingsManager {
       }
       log.info('settings loaded from persistence');
     }
+
+    // 3. 启动敏感键预加载：从 secretStore 读取已保存的 apiKey 覆盖默认值。
+    //    secretStore.get 为 async（内部为同步 fs I/O，Promise 当轮结算），
+    //    消费者在读取敏感键前应 await ensureSecretsLoaded() 避免读到 undefined。
+    if (secretStore) {
+      this.secretPreload = this.preloadSecrets(secretStore);
+    }
+  }
+
+  /** 从 secretStore 加载全部敏感键到内存 entries。 */
+  private async preloadSecrets(secretStore: SecretStore): Promise<void> {
+    for (const key of SECRET_KEYS) {
+      try {
+        const value = await secretStore.get(key);
+        if (value !== null) {
+          this.entries.set(key, value);
+        }
+      } catch (err) {
+        log.error('failed to load secret setting', {
+          key,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+
+  /**
+   * 等待敏感键预加载完成。
+   *
+   * 供主进程内部消费者（agentConfigProvider / mergedConfigProvider）在读取
+   * ai.apiKey / summary.apiKey 前调用，避免启动早期读到未加载的 undefined。
+   */
+  async ensureSecretsLoaded(): Promise<void> {
+    await this.secretPreload;
   }
 
   /**
@@ -116,13 +168,26 @@ export class SettingsManager {
     this.entries.set(key, value);
     // 持久化到 SQLite（同步写入，better-sqlite3 是同步的）
     if (this.persistence) {
-      try {
-        this.persistence.set(`settings:${key}`, value);
-      } catch (err) {
-        log.error('failed to persist setting', {
-          key,
-          error: err instanceof Error ? err.message : String(err),
+      if (this.secretStore && SECRET_KEYS.has(key)) {
+        // 敏感键：写入 safeStorage 加密存储，不落明文 SQLite；同时删除旧的明文条目（迁移）。
+        // secretStore.set 内部为同步 fs I/O（async 包装，当轮结算），fire-and-forget 安全。
+        const raw = typeof value === 'string' ? value : JSON.stringify(value ?? '');
+        void this.secretStore.set(key, raw).catch((err) => {
+          log.error('failed to persist secret setting', {
+            key,
+            error: err instanceof Error ? err.message : String(err),
+          });
         });
+        this.persistence.delete?.(`settings:${key}`);
+      } else {
+        try {
+          this.persistence.set(`settings:${key}`, value);
+        } catch (err) {
+          log.error('failed to persist setting', {
+            key,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
     }
     this.emit('changed', key, value);
@@ -172,6 +237,15 @@ export class SettingsManager {
             error: err instanceof Error ? err.message : String(err),
           });
         }
+      }
+      // 敏感键同步从加密存储删除
+      if (this.secretStore && SECRET_KEYS.has(key)) {
+        void this.secretStore.delete(key).catch((err) => {
+          log.error('failed to delete secret setting', {
+            key,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
       }
       this.emit('changed', key, undefined);
     }

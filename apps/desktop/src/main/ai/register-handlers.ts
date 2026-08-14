@@ -4,10 +4,11 @@
  * 依据：契约 B §3.1 ai.* / provider.* 通道 / 契约 E §6 / 契约 I §6 / 契约 A §6 IP8
  * 职责：
  * 1. provider.list：返回已注册 Provider 清单（含真实 capabilities/authMethod）
- * 2. provider.install：安装第三方 Provider（IP8 warning 流程）
- * 3. provider.remove：卸载 Provider
+ * 2. provider.rescan：重新扫描 providers 目录
+ * 3. provider.config.get/set：读写 per-provider 用户配置
  * 4. ai.chat.start：启动流式对话，创建 MessageChannel 并下发 port 给渲染进程
  * 5. ai.chat.abort：中止进行中的流式对话
+ * 6. ai.agent.start/abort：Agent 模式对话（pi 适配层）
  *
  * 设计理由（契约 B §6 + SP1）：
  * - ipcRenderer.invoke 的返回值无法携带 MessagePort
@@ -55,9 +56,6 @@ function normalizeProviderIdForOrchestrator(providerId: string): string {
   if (providerId === 'custom-openai-compatible') return 'openai-compatible';
   return providerId;
 }
-
-/** IP8 第三方 Provider warning 文案 */
-const THIRD_PARTY_WARNING = `第三方 Provider 代码将作为子进程运行，crash 不影响浏览器，但请确认来源可信。v0.1 未做签名校验。`;
 
 /** 活跃流式对话句柄（conversationId → StreamHandle） */
 interface ActiveStream {
@@ -165,52 +163,10 @@ export function registerAiHandlers(
     };
   });
 
-  // ── provider.install：安装第三方 Provider（IP8 warning 流程） ──
-  registerHandler(ipcMain, 'provider.install', (req) => {
-    log.info('provider.install', { source: req.source, confirm: req.confirm });
-
-    // IP8：未确认时返回 warning，不执行安装
-    if (!req.confirm) {
-      return {
-        confirmationRequired: true as const,
-        warning: THIRD_PARTY_WARNING,
-        confirmPhrase: '我确认' as const,
-      };
-    }
-
-    // 已确认，执行安装
-    try {
-      const result = registry.install(req.source);
-      log.info('provider.install succeeded', { providerId: result.providerId });
-      return {
-        confirmationRequired: false as const,
-        providerId: result.providerId,
-        source: result.source,
-      };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      log.error('provider.install failed', { source: req.source, error: message });
-      throw new IpcError(IpcErrorCode.INTERNAL, `provider.install failed: ${message}`, {
-        channel: 'provider.install',
-      });
-    }
-  });
-
-  // ── provider.remove：卸载 Provider ──
-  registerHandler(ipcMain, 'provider.remove', (req) => {
-    log.info('provider.remove', { providerId: req.providerId });
-
-    try {
-      registry.remove(req.providerId);
-      return { ok: true as const, providerId: req.providerId };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      log.error('provider.remove failed', { providerId: req.providerId, error: message });
-      throw new IpcError(IpcErrorCode.NOT_FOUND, `provider.remove failed: ${message}`, {
-        channel: 'provider.remove',
-      });
-    }
-  });
+  // ── provider.remove / install：已移除（v0.2 恢复） ──
+  // v0.1.0 第三方 Provider 安装 warning UI（provider-warning-dialog）未装配到 App，
+  // provider.install / provider.remove 无生产调用方，属未交付死链路，已随组件一并删除。
+  // v0.2 交付第三方 Provider 安装流程时按新交互重建（IP8 决策保留）。
 
   // ── provider.config.get：读取 Provider 用户配置（W5-D2） ──
   registerHandler(ipcMain, 'provider.config.get', async (req) => {
@@ -318,7 +274,8 @@ export function registerAiHandlers(
     log.info('ai.agent.start', {
       providerId: req.providerId,
       model: req.model,
-      enableTools: req.enableTools,
+      // enableTools 已强制禁用（v0.1 止血），此处仅记录渲染层是否尝试开启
+      enableToolsRequested: req.enableTools,
     });
 
     if (!agentConfigProvider) {
@@ -347,6 +304,10 @@ export function registerAiHandlers(
 
     // 3. 创建 pi Agent 实例（动态加载 pi-agent-factory，首次调用时加载重模块）
     // 提取 system 消息作为 systemPrompt 传给 pi Agent
+    // 安全（v0.1 止血，SEC-2026-08-14）：coding 工具（bash/read/edit/write）若挂载到主进程
+    // Agent 上，可在浏览器主进程执行任意 shell 命令。v0.1 对话路径在主进程内运行（orchestrator
+    // 子进程路径 ai.chat.start 未接线），故此处强制禁用 enableTools，杜绝工具经 IPC 被开启；
+    // 恢复条件：生产对话迁移到 utility 子进程（ai.chat.start）后，工具随 Agent 在子进程内运行。
     const systemMessage = req.messages.find((m) => m.role === 'system');
     let agentHandle;
     try {
@@ -356,8 +317,7 @@ export function registerAiHandlers(
         modelId: req.model,
         apiKey,
         baseUrl: req.baseUrl ?? config.baseUrl,
-        cwd: req.cwd,
-        enableTools: req.enableTools,
+        enableTools: false, // v0.1 强制禁用（见上安全说明）；req.enableTools 值被忽略
         systemPrompt: systemMessage?.content,
         sessionId: conversationId,
       });

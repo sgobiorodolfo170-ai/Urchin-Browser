@@ -219,6 +219,10 @@ export function createPiAgent(options: CreatePiAgentOptions): PiAgentHandle {
   };
 
   // 4. 可选挂载 coding 工具
+  // 安全注意（v0.1 止血，SEC-2026-08-14）：本工厂在主进程内运行。bash/write 工具
+  // 挂载后可在浏览器主进程执行任意 shell 命令，因此生产 IPC 入口（register-handlers.ts
+  // 的 ai.agent.start）已强制传 enableTools=false。此处保留能力仅服务于未来 utility
+  // 子进程场景（ai.chat.start 接线后工具随 Agent 在子进程内运行）。
   const tools: AgentTool[] = [];
   if (enableTools && cwd) {
     tools.push(...createCodingToolsList(cwd));

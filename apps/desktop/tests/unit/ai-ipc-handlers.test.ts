@@ -271,7 +271,7 @@ describe('registerAiHandlers', () => {
     expect(orchestrator.ensureProviderLoaded).toHaveBeenCalledWith('openai');
   });
 
-  // ── provider.install / provider.remove 测试（W5-D1） ──
+  // ── provider.list ──
 
   it('provider.list should return real capabilities and authMethod', async () => {
     const ipcMain = createMockIpcMain();
@@ -289,99 +289,5 @@ describe('registerAiHandlers', () => {
       'chat.completion.streaming',
     ]);
     expect(result.providers[0]!.authMethod).toBe('api_key');
-  });
-
-  it('provider.install should return warning when confirm=false (IP8)', async () => {
-    const ipcMain = createMockIpcMain();
-    const orchestrator = createMockOrchestrator();
-    const registry = createMockRegistry();
-
-    registerAiHandlers(ipcMain as never, orchestrator, registry);
-
-    const result = (await ipcMain.invoke('provider.install', {
-      source: '/path/to/provider',
-      confirm: false,
-    })) as { confirmationRequired: true; warning: string; confirmPhrase: string };
-
-    expect(result.confirmationRequired).toBe(true);
-    expect(result.warning).toContain('第三方');
-    expect(result.warning).toContain('签名校验');
-    expect(result.confirmPhrase).toBe('我确认');
-    // 不应调用 install
-    expect(registry._installMock).not.toHaveBeenCalled();
-  });
-
-  it('provider.install should call registry.install when confirm=true', async () => {
-    const ipcMain = createMockIpcMain();
-    const orchestrator = createMockOrchestrator();
-    const registry = createMockRegistry();
-    registry._installMock.mockReturnValue({
-      providerId: 'third-party-echo',
-      source: '/path/to/provider',
-    });
-
-    registerAiHandlers(ipcMain as never, orchestrator, registry);
-
-    const result = (await ipcMain.invoke('provider.install', {
-      source: '/path/to/provider',
-      confirm: true,
-    })) as { confirmationRequired: false; providerId: string; source: string };
-
-    expect(result.confirmationRequired).toBe(false);
-    expect(result.providerId).toBe('third-party-echo');
-    expect(registry._installMock).toHaveBeenCalledWith('/path/to/provider');
-  });
-
-  it('provider.install should throw IpcError when registry.install fails', async () => {
-    const ipcMain = createMockIpcMain();
-    const orchestrator = createMockOrchestrator();
-    const registry = createMockRegistry();
-    registry._installMock.mockImplementation(() => {
-      throw new Error('unsupported apiVersion');
-    });
-
-    registerAiHandlers(ipcMain as never, orchestrator, registry);
-
-    const result = (await ipcMain.invoke('provider.install', {
-      source: '/bad/path',
-      confirm: true,
-    })) as { code: string; message: string };
-
-    expect(result.code).toBe('INTERNAL');
-    expect(result.message).toContain('unsupported apiVersion');
-  });
-
-  it('provider.remove should call registry.remove and return ok', async () => {
-    const ipcMain = createMockIpcMain();
-    const orchestrator = createMockOrchestrator();
-    const registry = createMockRegistry();
-
-    registerAiHandlers(ipcMain as never, orchestrator, registry);
-
-    const result = (await ipcMain.invoke('provider.remove', {
-      providerId: 'openai',
-    })) as { ok: true; providerId: string };
-
-    expect(result.ok).toBe(true);
-    expect(result.providerId).toBe('openai');
-    expect(registry._removeMock).toHaveBeenCalledWith('openai');
-  });
-
-  it('provider.remove should throw NOT_FOUND when registry.remove fails', async () => {
-    const ipcMain = createMockIpcMain();
-    const orchestrator = createMockOrchestrator();
-    const registry = createMockRegistry();
-    registry._removeMock.mockImplementation(() => {
-      throw new Error('not registered');
-    });
-
-    registerAiHandlers(ipcMain as never, orchestrator, registry);
-
-    const result = (await ipcMain.invoke('provider.remove', {
-      providerId: 'non-existent',
-    })) as { code: string; message: string };
-
-    expect(result.code).toBe('NOT_FOUND');
-    expect(result.message).toContain('not registered');
   });
 });

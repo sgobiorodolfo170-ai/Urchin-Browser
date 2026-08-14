@@ -720,63 +720,6 @@ export const providerRescanResSchema = z.object({
 export type ProviderRescanRes = z.infer<typeof providerRescanResSchema>;
 
 /**
- * provider.install：安装第三方 Provider（IP8 决策）。
- *
- * source 支持：
- * - 本地绝对路径（复制到 providers/ 目录）
- * - npm 包名（v0.1 暂不支持，留待后续）
- *
- * confirm：IP8 决策，用户必须通过 warning 确认对话框输入「我确认」才能继续。
- * Main 端收到 confirm=false 时返回 warning 文案，不执行安装。
- */
-export const providerInstallReqSchema = z.object({
-  /** 来源：本地路径或 npm 包名 */
-  source: z.string().min(1).max(1024),
-  /** IP8：用户是否已通过 warning 确认 */
-  confirm: z.boolean().default(false),
-});
-export type ProviderInstallReq = z.infer<typeof providerInstallReqSchema>;
-
-/** provider.install 未确认时返回的 warning payload */
-export const providerInstallWarningResSchema = z.object({
-  /** 是否需要用户确认 */
-  confirmationRequired: z.literal(true),
-  /** IP8 warning 文案 */
-  warning: z.string(),
-  /** 用户需输入的确认字符串 */
-  confirmPhrase: z.literal('我确认'),
-});
-export type ProviderInstallWarningRes = z.infer<typeof providerInstallWarningResSchema>;
-
-/** provider.install 确认后成功安装的响应 */
-export const providerInstallSuccessResSchema = z.object({
-  confirmationRequired: z.literal(false),
-  providerId: providerIdSchema,
-  /** 安装来源 */
-  source: z.string(),
-});
-export type ProviderInstallSuccessRes = z.infer<typeof providerInstallSuccessResSchema>;
-
-/** provider.install 响应（联合类型：warning 或 success） */
-export const providerInstallResSchema = z.discriminatedUnion('confirmationRequired', [
-  providerInstallWarningResSchema,
-  providerInstallSuccessResSchema,
-]);
-export type ProviderInstallRes = z.infer<typeof providerInstallResSchema>;
-
-/** provider.remove：卸载 Provider */
-export const providerRemoveReqSchema = z.object({
-  providerId: providerIdSchema,
-});
-export type ProviderRemoveReq = z.infer<typeof providerRemoveReqSchema>;
-
-export const providerRemoveResSchema = z.object({
-  ok: z.literal(true),
-  providerId: providerIdSchema,
-});
-export type ProviderRemoveRes = z.infer<typeof providerRemoveResSchema>;
-
-/**
  * provider.config.get：读取 Provider 用户配置（W5-D2）。
  *
  * 配置存储在 ai.db 的 settings 表，key = `provider_config:<id>`。
@@ -1015,8 +958,6 @@ export const ipcSchema = {
   'ai.setWorkdir': { req: aiSetWorkdirReqSchema, res: aiSetWorkdirResSchema },
   'provider.list': { req: providerListReqSchema, res: providerListResSchema },
   'provider.rescan': { req: providerRescanReqSchema, res: providerRescanResSchema },
-  'provider.install': { req: providerInstallReqSchema, res: providerInstallResSchema },
-  'provider.remove': { req: providerRemoveReqSchema, res: providerRemoveResSchema },
   'provider.config.get': { req: providerConfigGetReqSchema, res: providerConfigGetResSchema },
   'provider.config.set': { req: providerConfigSetReqSchema, res: providerConfigSetResSchema },
   'page.extract': { req: pageExtractReqSchema, res: pageExtractResSchema },

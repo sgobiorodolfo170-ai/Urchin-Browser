@@ -19,8 +19,6 @@ import { join } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createLogger } from '@urchin/logger';
 
-// 启动诊断日志（W6：排查 Playwright E2E 启动失败）
-console.error('[main] module loading...');
 import { PROVIDER_EVENT_CHANNEL, registerHandler, type ProviderEvent } from '@urchin/ipc-contract';
 import { WindowManager, createBrowserWindow, registerWindowHandlers } from './windows';
 import {
@@ -234,6 +232,8 @@ function registerIpcHandlers(): void {
   // 注意：providerConfigStore.get 返回 Promise（aiStore.get 是 async），必须 await
   const agentConfigProvider = {
     async get(providerId: string): Promise<{ apiKey?: string; baseUrl?: string }> {
+      // 等待敏感键预加载完成，确保 ai.apiKey 已从 secretStore 读入内存
+      await settingsManager.ensureSecretsLoaded();
       const perProvider = providerConfigStore ? await providerConfigStore.get(providerId) : null;
       const cfg =
         typeof perProvider === 'object' && perProvider !== null
@@ -580,7 +580,6 @@ function send(msg) {
 
 // 应用就绪
 void app.whenReady().then(() => {
-  console.error('[main] app.whenReady fired');
   // 注册 urchin:// 协议处理器（必须在 app ready 之后）
   registerUrchinProtocol();
 
@@ -593,8 +592,9 @@ void app.whenReady().then(() => {
   const sl = new StorageLayer(dataDir, new ElectronSafeStorage(), createSqliteDatabase);
   storageLayer = sl;
 
-  // 初始化 SettingsManager，注入 StorageLayer 持久化（设置变更自动写入 SQLite）
-  settingsManager = new SettingsManager(sl.mainStore);
+  // 初始化 SettingsManager，注入 StorageLayer 持久化（设置变更自动写入 SQLite）。
+  // 注入 sl.secrets（safeStorage 加密存储）：ai.apiKey / summary.apiKey 走加密落盘，不存明文。
+  settingsManager = new SettingsManager(sl.mainStore, sl.secrets);
 
   // 初始化 BookmarkManager，注入 SQLite 持久化适配器。
   // 启动时从 bookmarks 表加载已有书签到内存，create/delete 时同步写入 SQLite。
@@ -702,6 +702,8 @@ void app.whenReady().then(() => {
    * 经 port.postMessage 结构化克隆会抛 "An object could not be cloned"。
    */
   const mergedConfigProvider = async (providerId: string): Promise<unknown> => {
+    // 等待敏感键预加载完成，确保 ai.apiKey 已从 secretStore 读入内存
+    await settingsManager.ensureSecretsLoaded();
     const perProvider = await providerConfigStore.get(providerId);
     const globalApiKey = settingsManager.get('ai.apiKey');
     const globalBaseUrl = settingsManager.get('ai.baseUrl');

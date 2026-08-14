@@ -731,3 +731,55 @@ describe('App right sidebar double-click toggle (替代底部按钮)', () => {
     expect(screen.queryByLabelText('展开右侧栏')).toBeNull();
   });
 });
+
+describe('App window drag via sidebars', () => {
+  function setupTabs() {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({ tabs: [makeTab({ id: 1, title: 'One' })] });
+      }
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      return Promise.resolve({});
+    });
+  }
+
+  it('should send ui.window.dragBy when dragging sidebar blank area beyond threshold', async () => {
+    setupTabs();
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+    const sidebar = screen.getByLabelText('右侧边栏');
+
+    // 按下（起点 screenX/Y）+ 移动超过 3px 阈值 → 发 dragBy
+    fireEvent.pointerDown(sidebar, { pointerId: 1, screenX: 100, screenY: 100, bubbles: true });
+    fireEvent.pointerMove(sidebar, { pointerId: 1, screenX: 140, screenY: 130, bubbles: true });
+    fireEvent.pointerUp(sidebar, { pointerId: 1, bubbles: true });
+
+    expect(mockInvoke).toHaveBeenCalledWith('ui.window.dragBy', { dx: 40, dy: 30 });
+  });
+
+  it('should not drag window on small movement below threshold (click/double-click preserved)', async () => {
+    setupTabs();
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+    const sidebar = screen.getByLabelText('右侧边栏');
+
+    fireEvent.pointerDown(sidebar, { pointerId: 1, screenX: 100, screenY: 100, bubbles: true });
+    fireEvent.pointerMove(sidebar, { pointerId: 1, screenX: 101, screenY: 101, bubbles: true });
+    fireEvent.pointerUp(sidebar, { pointerId: 1, bubbles: true });
+
+    expect(mockInvoke).not.toHaveBeenCalledWith('ui.window.dragBy', expect.anything());
+  });
+
+  it('should not drag window when starting on an interactive element', async () => {
+    setupTabs();
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+    // 左侧栏顶部展开按钮（交互元素）
+    const toggleBtn = screen.getByLabelText('展开左侧栏');
+    fireEvent.pointerDown(toggleBtn, { pointerId: 1, screenX: 0, screenY: 0, bubbles: true });
+    fireEvent.pointerMove(toggleBtn, { pointerId: 1, screenX: 100, screenY: 100, bubbles: true });
+    fireEvent.pointerUp(toggleBtn, { pointerId: 1, bubbles: true });
+
+    expect(mockInvoke).not.toHaveBeenCalledWith('ui.window.dragBy', expect.anything());
+  });
+});

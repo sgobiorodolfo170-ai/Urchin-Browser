@@ -329,6 +329,21 @@ function registerIpcHandlers(): void {
     return { ok: true as const };
   });
 
+  // UI 域 handler：按住侧边栏空白处拖动窗口（相对位移）。
+  // 渲染层发屏幕坐标增量，主进程移动窗口位置（手动拖拽实现，兼容双击/悬停展开）。
+  registerHandler(ipcMain, 'ui.window.dragBy', (req) => {
+    const managed = windowManager.getWindow(1); // v0.1 单窗口
+    const win = managed?.browserWindow;
+    if (!win?.getPosition || !win.setPosition) {
+      return { ok: true as const }; // 测试环境无真实 BrowserWindow 位置 API
+    }
+    const pos = win.getPosition();
+    const x = pos[0] ?? 0;
+    const y = pos[1] ?? 0;
+    win.setPosition(x + req.dx, y + req.dy);
+    return { ok: true as const };
+  });
+
   log.info('ipc handlers registered');
 }
 

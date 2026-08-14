@@ -394,6 +394,26 @@ export const uiThemeSetResSchema = z.object({
 });
 export type UiThemeSetRes = z.infer<typeof uiThemeSetResSchema>;
 
+/**
+ * ui.window.dragBy：按住侧边栏空白处拖动窗口（相对位移）。
+ *
+ * 渲染层在拖拽过程中持续发送屏幕坐标增量，主进程移动窗口位置。
+ * 手动实现（非 -webkit-app-region）以兼容双击展开/折叠与悬停自动展开（drag region
+ * 会吞掉鼠标事件）。
+ */
+export const uiWindowDragByReqSchema = z.object({
+  /** 屏幕坐标 X 增量（px） */
+  dx: z.number().int(),
+  /** 屏幕坐标 Y 增量（px） */
+  dy: z.number().int(),
+});
+export type UiWindowDragByReq = z.infer<typeof uiWindowDragByReqSchema>;
+
+export const uiWindowDragByResSchema = z.object({
+  ok: z.literal(true),
+});
+export type UiWindowDragByRes = z.infer<typeof uiWindowDragByResSchema>;
+
 // ============================================================================
 // 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）
 // ============================================================================
@@ -979,6 +999,7 @@ export const ipcSchema = {
   'ui.layout.setState': { req: uiLayoutSetStateReqSchema, res: uiLayoutSetStateResSchema },
   'ui.panel.toggle': { req: uiPanelToggleReqSchema, res: uiPanelToggleResSchema },
   'ui.theme.set': { req: uiThemeSetReqSchema, res: uiThemeSetResSchema },
+  'ui.window.dragBy': { req: uiWindowDragByReqSchema, res: uiWindowDragByResSchema },
   'download.list': { req: downloadListReqSchema, res: downloadListResSchema },
   'download.cancel': { req: downloadCancelReqSchema, res: downloadCancelResSchema },
   'download.pause': { req: downloadPauseReqSchema, res: downloadPauseResSchema },

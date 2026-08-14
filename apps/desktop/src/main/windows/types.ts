@@ -44,6 +44,10 @@ export interface BrowserWindowLike {
   getBounds(): { x: number; y: number; width: number; height: number };
   /** 获取窗口内容区域边界（排除标题栏/边框，用于计算 BrowserView 的 bounds） */
   getContentBounds(): { x: number; y: number; width: number; height: number };
+  /** 获取窗口位置（屏幕坐标，Electron BrowserWindow.getPosition；拖拽窗口用） */
+  getPosition?(): number[];
+  /** 设置窗口位置（屏幕坐标，Electron BrowserWindow.setPosition；拖拽窗口用） */
+  setPosition?(x: number, y: number): void;
   /** 挂载 BrowserView 到窗口（传 null 移除） */
   setBrowserView(view: unknown): void;
   /** 注册事件监听 */

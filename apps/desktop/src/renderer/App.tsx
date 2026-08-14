@@ -250,6 +250,57 @@ function TabFavicon({ tab, className }: { tab: TabSnapshot; className?: string }
   );
 }
 
+/**
+ * 按住侧边栏空白处拖动窗口（手动实现，非 -webkit-app-region）。
+ *
+ * -webkit-app-region: drag 会吞掉鼠标事件（双击展开/折叠、悬停自动展开失效），
+ * 故手动：pointerdown 记录起点，移动超过阈值（3px）才真正拖窗，经 IPC
+ * ui.window.dragBy 发送屏幕坐标增量，主进程移动窗口。
+ * - 交互元素（按钮/输入/拖拽手柄等）上不触发拖窗（保留原有交互）
+ * - 未超阈值的按下-抬起视为点击/双击，不受影响
+ */
+function useWindowDrag() {
+  const dragStateRef = useRef<{ lastX: number; lastY: number; started: boolean } | null>(null);
+
+  const startDrag = useCallback((e: React.PointerEvent) => {
+    const target = e.target as HTMLElement;
+    // 交互元素上不触发窗口拖拽
+    if (target.closest('button, input, select, textarea, a, [role="button"], [role="separator"]')) {
+      return;
+    }
+    dragStateRef.current = { lastX: e.screenX, lastY: e.screenY, started: false };
+    // 捕获指针：拖出元素后仍持续接收 move/up（jsdom 无此方法时跳过）
+    const el = e.currentTarget as HTMLElement;
+    if (typeof el.setPointerCapture === 'function') {
+      el.setPointerCapture(e.pointerId);
+    }
+  }, []);
+
+  const moveDrag = useCallback((e: React.PointerEvent) => {
+    const st = dragStateRef.current;
+    if (!st) return;
+    // 未超阈值：视为点击/双击，不拖窗
+    if (!st.started) {
+      const dist = Math.hypot(e.screenX - st.lastX, e.screenY - st.lastY);
+      if (dist < 3) return;
+      st.started = true;
+    }
+    const dx = e.screenX - st.lastX;
+    const dy = e.screenY - st.lastY;
+    st.lastX = e.screenX;
+    st.lastY = e.screenY;
+    void window.urchin.invoke('ui.window.dragBy', { dx, dy }).catch(() => {
+      // 主进程窗口移动失败静默（测试环境等）
+    });
+  }, []);
+
+  const endDrag = useCallback(() => {
+    dragStateRef.current = null;
+  }, []);
+
+  return { startDrag, moveDrag, endDrag };
+}
+
 export function App() {
   // eslint-disable-next-line @typescript-eslint/unbound-method -- useTheme 返回的 toggleTheme 是稳定引用
   const { theme, toggleTheme } = useTheme();
@@ -896,12 +947,19 @@ export function App() {
   // 阶段3 重构时将通过 host.tabs.getActive() 获取真正的活跃网页 tab
   const aiActiveTabId = activeTabId;
 
+  // 按住侧边栏空白处拖动窗口（左/右两侧栏共用）
+  const windowDrag = useWindowDrag();
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface">
       {/* === 左侧栏 === */}
       <aside
         className="flex shrink-0 flex-col border-r border-border bg-surface-secondary transition-[width] duration-150"
         style={{ width: leftWidth }}
+        onPointerDown={windowDrag.startDrag}
+        onPointerMove={windowDrag.moveDrag}
+        onPointerUp={windowDrag.endDrag}
+        onPointerCancel={windowDrag.endDrag}
       >
         {/* 顶部：折叠/展开按钮 */}
         <button
@@ -1063,6 +1121,10 @@ export function App() {
         onMouseEnter={handleRightMouseEnter}
         onMouseLeave={handleRightMouseLeave}
         onDoubleClick={handleRightDoubleClick}
+        onPointerDown={windowDrag.startDrag}
+        onPointerMove={windowDrag.moveDrag}
+        onPointerUp={windowDrag.endDrag}
+        onPointerCancel={windowDrag.endDrag}
         aria-label="右侧边栏"
       >
         {/* 宽度调节手柄：展开态下渲染于栏左缘内侧（避免与 BrowserView 重叠），

@@ -819,4 +819,27 @@ describe('App window drag via sidebars', () => {
 
     expect(mockInvoke).not.toHaveBeenCalledWith('ui.window.dragBy', expect.anything());
   });
+
+  it('should clear stuck drag state when pointerup missed the sidebar (window-level backup)', async () => {
+    setupTabs();
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+    const sidebar = screen.getByLabelText('右侧边栏');
+
+    // 拖窗过程中指针移出窗口：pointerup 未派发给侧边栏元素，而是落在 window 上
+    fireEvent.pointerDown(sidebar, { pointerId: 1, screenX: 100, screenY: 100, bubbles: true });
+    fireEvent.pointerMove(sidebar, { pointerId: 1, screenX: 160, screenY: 140, bubbles: true });
+    expect(mockInvoke).toHaveBeenCalledWith('ui.window.dragBy', { dx: 60, dy: 40 });
+    fireEvent.pointerUp(window, { pointerId: 1, bubbles: true });
+
+    // 拖拽状态已清理：不再继续发 dragBy，且后续新拖拽正常工作
+    fireEvent.pointerMove(sidebar, { pointerId: 1, screenX: 170, screenY: 150, bubbles: true });
+    const dragByCalls = mockInvoke.mock.calls.filter((c) => c[0] === 'ui.window.dragBy').length;
+    expect(dragByCalls).toBe(1);
+
+    fireEvent.pointerDown(sidebar, { pointerId: 1, screenX: 200, screenY: 200, bubbles: true });
+    fireEvent.pointerMove(sidebar, { pointerId: 1, screenX: 250, screenY: 220, bubbles: true });
+    fireEvent.pointerUp(sidebar, { pointerId: 1, bubbles: true });
+    expect(mockInvoke).toHaveBeenCalledWith('ui.window.dragBy', { dx: 50, dy: 20 });
+  });
 });

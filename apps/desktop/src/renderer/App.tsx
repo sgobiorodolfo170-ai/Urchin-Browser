@@ -262,7 +262,39 @@ function TabFavicon({ tab, className }: { tab: TabSnapshot; className?: string }
  * - 未超阈值的按下-抬起视为点击/双击，不受影响
  */
 function useWindowDrag() {
-  const dragStateRef = useRef<{ lastX: number; lastY: number; started: boolean } | null>(null);
+  const dragStateRef = useRef<{
+    lastX: number;
+    lastY: number;
+    started: boolean;
+    captureEl?: HTMLElement;
+    pointerId?: number;
+  } | null>(null);
+
+  const endDrag = useCallback(() => {
+    const st = dragStateRef.current;
+    // 主动释放指针捕获：不释放的话捕获残留在侧边栏元素上，
+    // 拖窗时指针移出窗口导致 pointerup 错过，后续所有点击被吞（表现为卡死/无法操作）。
+    if (st?.captureEl && st.pointerId !== undefined) {
+      try {
+        st.captureEl.releasePointerCapture(st.pointerId);
+      } catch {
+        /* 指针未捕获/已释放，忽略 */
+      }
+    }
+    dragStateRef.current = null;
+  }, []);
+
+  // 兜底清理：拖拽期间 pointerup/pointercancel 若在侧边栏元素外错过（如拖窗时指针
+  // 短暂移出窗口再松开），捕获会永久卡在侧边栏上。在 window 层兜底监听，
+  // 任何位置松手都能清除拖拽状态。
+  useEffect(() => {
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+    return () => {
+      window.removeEventListener('pointerup', endDrag);
+      window.removeEventListener('pointercancel', endDrag);
+    };
+  }, [endDrag]);
 
   const startDrag = useCallback((e: React.PointerEvent) => {
     const target = e.target as HTMLElement;
@@ -274,7 +306,13 @@ function useWindowDrag() {
     // 捕获指针：拖出元素后仍持续接收 move/up（jsdom 无此方法时跳过）
     const el = e.currentTarget as HTMLElement;
     if (typeof el.setPointerCapture === 'function') {
-      el.setPointerCapture(e.pointerId);
+      try {
+        el.setPointerCapture(e.pointerId);
+        dragStateRef.current.captureEl = el;
+        dragStateRef.current.pointerId = e.pointerId;
+      } catch {
+        /* 指针已捕获（如旧拖拽状态未清），忽略，仍可拖拽 */
+      }
     }
   }, []);
 
@@ -294,10 +332,6 @@ function useWindowDrag() {
     void window.urchin.invoke('ui.window.dragBy', { dx, dy }).catch(() => {
       // 主进程窗口移动失败静默（测试环境等）
     });
-  }, []);
-
-  const endDrag = useCallback(() => {
-    dragStateRef.current = null;
   }, []);
 
   return { startDrag, moveDrag, endDrag };

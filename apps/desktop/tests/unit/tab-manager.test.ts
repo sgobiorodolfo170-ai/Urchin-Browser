@@ -144,6 +144,18 @@ describe('TabManager', () => {
     expect(mgr.query({})).toHaveLength(3);
   });
 
+  it('should order query results newest-first (LIFO, new tab on top)', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+
+    mgr.create({ windowId: 1 });
+    mgr.create({ windowId: 1 });
+    mgr.create({ windowId: 1 });
+
+    const ids = mgr.query({ windowId: 1 }).map((t) => t.id);
+    expect(ids).toEqual([3, 2, 1]);
+  });
+
   it('should assign indexInWindow correctly', () => {
     const factory = createMockFactory();
     const mgr = new TabManager(factory);

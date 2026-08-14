@@ -471,6 +471,39 @@ describe('App (Browser Shell)', () => {
     await waitFor(() => expect(screen.getByText('New')).toBeTruthy());
   });
 
+  it('should prepend new tab on created event (newest on top, LIFO sidebar)', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({
+          tabs: [makeTab({ id: 1, title: 'Old', active: true })],
+        });
+      }
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+    await expandRightSidebar();
+
+    const tabEventHandler = mockOn.mock.calls.find((c) => c[0] === 'tab:event')?.[1] as
+      ((payload: unknown) => void) | undefined;
+    act(() => {
+      tabEventHandler!({
+        type: 'created',
+        snapshot: makeTab({ id: 2, url: 'https://new.example', title: 'New', active: true }),
+      });
+    });
+
+    // 新建标签（id 2）应排在旧标签（id 1）上方：New 在 DOM 中先于 Old
+    await waitFor(() => expect(screen.getByText('New')).toBeTruthy());
+    const newEl = screen.getByText('New');
+    const oldEl = screen.getByText('Old');
+    expect(newEl.compareDocumentPosition(oldEl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('should update and remove tabs on updated/removed events', async () => {
     mockInvoke.mockImplementation((channel: string) => {
       if (channel === 'tab.list') {
@@ -540,6 +573,63 @@ describe('App (Browser Shell)', () => {
       }),
     );
     expect(mockInvoke).not.toHaveBeenCalledWith('tab.loadUrl', expect.anything());
+  });
+
+  // ── 跨站跳转开新标签：站内导航当前标签，跨站新建 ──
+
+  it('should navigate within same site in current tab', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({
+          tabs: [makeTab({ id: 1, title: 'News', url: 'https://news.baidu.com/' })],
+        });
+      }
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      return Promise.resolve({});
+    });
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    // 同站（news.baidu.com → www.baidu.com，子域视为同站）：当前标签导航
+    fireEvent.click(screen.getByLabelText('主页'));
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('tab.loadUrl', {
+        tabId: 1,
+        url: 'urchin://newtab',
+      }),
+    );
+    expect(mockInvoke).not.toHaveBeenCalledWith('tab.create', expect.anything());
+  });
+
+  it('should open external website in new tab when navigating from homepage', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({
+          tabs: [makeTab({ id: 1, title: '主页', url: 'urchin://newtab' })],
+        });
+      }
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      return Promise.resolve({});
+    });
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    // 内部页（主页）→ 外部网站：跨站，新建标签
+    const omniboxInput = screen.getByRole('textbox', { name: '地址栏' });
+    fireEvent.change(omniboxInput, { target: { value: 'https://github.com' } });
+    fireEvent.keyDown(omniboxInput, { key: 'Enter' });
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
+        windowId: 1,
+        url: 'https://github.com',
+        active: true,
+      }),
+    );
   });
 
   it('should mark crashed tab with error icon', async () => {

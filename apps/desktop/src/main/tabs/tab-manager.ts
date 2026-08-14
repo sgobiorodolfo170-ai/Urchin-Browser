@@ -316,7 +316,9 @@ export class TabManager {
     if (info.windowId !== undefined) {
       result = result.filter((t) => t.windowId === info.windowId);
     }
-    return result.map((t) => this.toSnapshot(t));
+    // 右侧边栏倒推排序：新建的标签页始终在最上面。
+    // id 单调递增 = 创建顺序，降序即最新在前（LIFO 栈式列表）。
+    return result.sort((a, b) => b.id - a.id).map((t) => this.toSnapshot(t));
   }
 
   /** 获取 Tab 快照。 */

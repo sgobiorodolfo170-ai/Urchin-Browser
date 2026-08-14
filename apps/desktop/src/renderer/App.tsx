@@ -49,6 +49,29 @@ import type { Suggestion } from './omnibox/types';
 import { buildSuggestions } from './omnibox/build-suggestions';
 import { cn } from './lib/utils';
 
+/**
+ * 判定两个 URL 是否同站（用于"跨站跳转开新标签"）。
+ *
+ * 取主机名的有效注册域（last 2 段，兼容 *.com.cn 等三级后缀的粗近似），
+ * 子域视为同站：news.baidu.com ↔ www.baidu.com。非 http(s) 一律视为不同站。
+ */
+function isSameSite(a: string, b: string): boolean {
+  const hostOf = (raw: string): string | undefined => {
+    try {
+      const u = new URL(raw);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return undefined;
+      const parts = u.hostname.split('.').filter(Boolean);
+      if (parts.length < 2) return undefined;
+      return parts.slice(-2).join('.');
+    } catch {
+      return undefined;
+    }
+  };
+  const ha = hostOf(a);
+  const hb = hostOf(b);
+  return ha !== undefined && ha === hb;
+}
+
 // Tab 快照类型（与主进程 TabSnapshot 对齐）
 interface TabSnapshot {
   readonly id: number;
@@ -552,7 +575,8 @@ export function App() {
         switch (evt.type) {
           case 'created':
             if (prev.some((t) => t.id === snapshot.id)) return prev;
-            return [...prev, snapshot];
+            // 前插：与右侧边栏倒推排序一致（新建标签置顶，LIFO）
+            return [snapshot, ...prev];
           case 'updated':
             return prev.map((t) => (t.id === snapshot.id ? snapshot : t));
           case 'activated':
@@ -702,11 +726,27 @@ export function App() {
 
   const handleNavigate = useCallback(
     async (url: string) => {
-      if (activeTabId) {
+      const current = activeTab?.url;
+      if (activeTabId && current) {
+        // 站内 / 内部页跳转：当前标签内导航；
+        // 跨站跳转（含从主页/内部页跳往网站）：新建标签页打开
+        const sameSite = url.startsWith('urchin://') || isSameSite(current, url);
+        if (sameSite) {
+          try {
+            await window.urchin.invoke('tab.loadUrl', { tabId: activeTabId, url });
+          } catch (e) {
+            console.error('Failed to navigate:', e);
+          }
+          return;
+        }
         try {
-          await window.urchin.invoke('tab.loadUrl', { tabId: activeTabId, url });
+          await window.urchin.invoke('tab.create', {
+            windowId: 1,
+            url,
+            active: true,
+          });
         } catch (e) {
-          console.error('Failed to navigate:', e);
+          console.error('Failed to navigate (cross-site, create tab):', e);
         }
         return;
       }
@@ -721,7 +761,7 @@ export function App() {
         console.error('Failed to navigate (create tab):', e);
       }
     },
-    [activeTabId],
+    [activeTabId, activeTab?.url],
   );
 
   const handleGoBack = useCallback(async () => {

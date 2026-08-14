@@ -181,15 +181,16 @@ export function installTabViewIntegration(
     return getElectron()?.nativeTheme.shouldUseDarkColors ? CORNER_MASK_DARK : CORNER_MASK_LIGHT;
   }
 
-  /** 角盖 HTML：主题色圆角块（右下 10px 弧），其余透明——弧区透出下层网页 */
+  /** 角盖 HTML：主题色圆角块（右下 10px 弧），其余透明——弧区透出下层网页。
+   *  data URL 必须 encodeURIComponent 编码：HTML 中的 # 若不编码会被当作
+   *  URL fragment 分隔符截断，导致页面空白（角盖不可见，网页保持直角）。 */
   function maskHtml(color: string): string {
     const radius = CORNER_RADIUS;
-    return (
-      'data:text/html,' +
-      `<style>html,body{margin:0;width:100%;height:100%;background:transparent}` +
+    const html =
+      '<style>html,body{margin:0;width:100%;height:100%;background:transparent}' +
       `#c{width:100%;height:100%;background:${color};border-radius:0 0 ${radius}px 0}</style>` +
-      '<div id="c"></div>'
-    );
+      '<div id="c"></div>';
+    return 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
   }
 
   /** 创建并挂载窗口的角盖（幂等；测试环境无 electron 时跳过） */
@@ -232,8 +233,8 @@ export function installTabViewIntegration(
     mask.setBounds({
       x: layoutState.leftWidth,
       y: 0,
-      width: CORNER_RADIUS * 2,
-      height: CORNER_RADIUS * 2,
+      width: CORNER_RADIUS,
+      height: CORNER_RADIUS,
     });
   }
 

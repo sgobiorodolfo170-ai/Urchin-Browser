@@ -167,8 +167,13 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
   const handleDragStart = useCallback((e: React.DragEvent, payload: DragPayload) => {
     e.dataTransfer.setData('text/plain', JSON.stringify(payload));
     e.dataTransfer.effectAllowed = 'move';
-    // 拖拽开始：重置"已落在常用区"标记
+    // 重置"已落在常用区"标记
     droppedInFrequentRef.current = false;
+    // 自定义拖拽 ghost：只显示图标（避免整卡/整行被一起拖动的视觉）
+    const img = (e.currentTarget as HTMLElement).querySelector('img');
+    if (img && typeof e.dataTransfer.setDragImage === 'function') {
+      e.dataTransfer.setDragImage(img, 16, 16);
+    }
   }, []);
 
   /**
@@ -213,7 +218,8 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
       <div className="mt-8 w-4/5">
         <div
           className={cn(
-            'grid grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-x-4 gap-y-6 rounded-xl p-4 transition-colors',
+            // 限高 40vh + 内部滚动：常用区多行时在区内滚动查看，蓝绿分割线保持在首屏可见
+            'max-h-[40vh] grid grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-x-4 gap-y-6 overflow-y-auto rounded-xl p-4 transition-colors',
             dragOverFrequent && 'bg-surface-secondary',
           )}
           data-testid="frequent-sites"
@@ -273,7 +279,7 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
               }}
               onDragEnd={() => handleFrequentDragEnd(site.url)}
               onClick={() => openSite(site.url)}
-              className="group flex flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
+              className="group flex select-none flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
               title={site.title}
             >
               <img
@@ -293,8 +299,9 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
         </div>
       </div>
 
-      {/* 蓝绿渐变分割线 */}
-      <div className="mt-6 h-0.5 w-4/5 rounded-full bg-gradient-to-r from-blue-500 via-teal-400 to-green-500" />
+      {/* 蓝绿渐变分割线（宽度不到边、留空，高 2px；shrink-0 防止被外层 flex 压缩——
+       *  根因：40 书签超高时蓝绿线 height 被压成 0 消失；随常用区自动下移） */}
+      <div className="mt-6 h-0.5 w-4/5 shrink-0 rounded-full bg-gradient-to-r from-blue-500 via-teal-400 to-green-500" />
 
       {/* 最近浏览书签区（自动派生，仅根网址，最新在前，可拖入常用区） */}
       <div className="mt-8 w-4/5">
@@ -316,7 +323,7 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
                 draggable
                 onDragStart={(e) => handleDragStart(e, { kind: 'recent', site })}
                 onClick={() => openSite(site.url)}
-                className="group flex flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
+                className="group flex select-none flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
                 title={site.title}
               >
                 <img

@@ -580,5 +580,25 @@ describe('App (Browser Shell)', () => {
     expect(layoutCalls.some((c) => (c[1] as { rightWidth?: number }).rightWidth === 440)).toBe(
       true,
     );
+
+    // 回归（2026-08-14）：折叠后再次展开，布局宽度必须用拖拽后的实际宽度（440）
+    // 而非固定 RIGHT_EXPANDED（360）——否则主进程 BrowserView 布局与栏显示不一致，
+    // 网页滚动条与分割线间出现空白。
+    mockInvoke.mockClear();
+    fireEvent.click(screen.getByLabelText('折叠右侧栏'));
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'ui.layout.setState',
+        expect.objectContaining({ rightWidth: 44 }),
+      ),
+    );
+    mockInvoke.mockClear();
+    fireEvent.click(screen.getAllByLabelText('展开右侧栏')[0]!);
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'ui.layout.setState',
+        expect.objectContaining({ rightWidth: 440 }),
+      ),
+    );
   });
 });

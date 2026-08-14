@@ -654,9 +654,9 @@ export function App() {
     setLeftExpanded(next);
     void notifyLayout(
       next ? LEFT_EXPANDED : LEFT_COLLAPSED,
-      rightExpanded ? RIGHT_EXPANDED : RIGHT_COLLAPSED,
+      rightExpanded ? rightExpandedWidth : RIGHT_COLLAPSED,
     );
-  }, [leftExpanded, rightExpanded, notifyLayout]);
+  }, [leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout]);
 
   const handleToggleRight = useCallback(() => {
     const next = !rightExpanded;
@@ -666,9 +666,9 @@ export function App() {
     setRightRetracting(false);
     void notifyLayout(
       leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED,
-      next ? RIGHT_EXPANDED : RIGHT_COLLAPSED,
+      next ? rightExpandedWidth : RIGHT_COLLAPSED,
     );
-  }, [leftExpanded, rightExpanded, notifyLayout]);
+  }, [leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout]);
 
   // 右侧栏悬停展开：仅当栏处于折叠状态（rightExpanded=false）时触发
   // 使用设置中配置的延迟（debug.sidebarHoverDelay），0 = 立即展开
@@ -682,7 +682,9 @@ export function App() {
     const doExpand = (): void => {
       setRightHovered(true);
       setRightRetracting(false);
-      void notifyLayout(leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED, RIGHT_EXPANDED);
+      // 用拖拽后的实际宽度（而非固定 RIGHT_EXPANDED），否则主进程 BrowserView
+      // 布局宽度与栏显示宽度不一致 → 网页滚动条与分割线间出现空白
+      void notifyLayout(leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED, rightExpandedWidth);
     };
     if (sidebarHoverDelay <= 0) {
       doExpand();
@@ -692,7 +694,7 @@ export function App() {
         doExpand();
       }, sidebarHoverDelay);
     }
-  }, [rightExpanded, leftExpanded, notifyLayout, sidebarHoverDelay]);
+  }, [rightExpanded, leftExpanded, rightExpandedWidth, notifyLayout, sidebarHoverDelay]);
 
   // 右侧栏离开回弹：折叠状态下鼠标离开时收起，使用带过冲的弹性缓动
   // 若悬停定时器尚未触发（未展开），则取消定时器不展开

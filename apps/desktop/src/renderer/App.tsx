@@ -1051,10 +1051,15 @@ export function App() {
   // 按住侧边栏空白处拖动窗口（左/右两侧栏共用）
   const windowDrag = useWindowDrag();
 
-  // 主页跳转（主页按钮 / 新标签页共用）
+  // 主页跳转（主页按钮）：新建标签打开主页，绝不把当前网站标签原地变成主页
+  // （原地跳转会毁掉被顶下去的网站标签——此前"变新标签页"bug 的根因）。
+  // 当前已是最新主页（urchin://newtab）时不重复创建，避免堆叠主页标签。
   const handleGoHome = useCallback(() => {
-    void handleNavigate('urchin://newtab');
-  }, [handleNavigate]);
+    if (activeTab?.url === 'urchin://newtab') return;
+    void window.urchin
+      .invoke('tab.create', { windowId: 1, url: 'urchin://newtab', active: true })
+      .catch((e) => console.error('Failed to open homepage:', e));
+  }, [activeTab?.url]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface">

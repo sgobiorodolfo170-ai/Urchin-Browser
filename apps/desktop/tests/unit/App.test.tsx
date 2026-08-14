@@ -577,7 +577,7 @@ describe('App (Browser Shell)', () => {
 
   // ── 跨站跳转开新标签：站内导航当前标签，跨站新建 ──
 
-  it('should navigate within same site in current tab', async () => {
+  it('should open homepage in a NEW tab via home button (never overwrite website tab)', async () => {
     mockInvoke.mockImplementation((channel: string) => {
       if (channel === 'tab.list') {
         return Promise.resolve({
@@ -592,15 +592,42 @@ describe('App (Browser Shell)', () => {
     renderApp();
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
 
-    // 同站（news.baidu.com → www.baidu.com，子域视为同站）：当前标签导航
+    // 当前标签是网站（news.baidu.com）→ 点主页按钮 → 新建主页标签（不原地跳转）
     fireEvent.click(screen.getByLabelText('主页'));
     await waitFor(() =>
-      expect(mockInvoke).toHaveBeenCalledWith('tab.loadUrl', {
-        tabId: 1,
+      expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
+        windowId: 1,
         url: 'urchin://newtab',
+        active: true,
       }),
     );
-    expect(mockInvoke).not.toHaveBeenCalledWith('tab.create', expect.anything());
+    expect(mockInvoke).not.toHaveBeenCalledWith('tab.loadUrl', expect.anything());
+  });
+
+  it('should not create duplicate homepage when current tab is already homepage', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({
+          tabs: [makeTab({ id: 1, title: '主页', url: 'urchin://newtab' })],
+        });
+      }
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: [] });
+      if (channel === 'history.list') {
+        return Promise.resolve({ entries: [] });
+      }
+      return Promise.resolve({});
+    });
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    fireEvent.click(screen.getByLabelText('主页'));
+    // 已在主页：不重复创建主页标签
+    expect(mockInvoke).not.toHaveBeenCalledWith(
+      'tab.create',
+      expect.objectContaining({ url: 'urchin://newtab' }),
+    );
   });
 
   it('should open external website in new tab when clicking homepage card', async () => {

@@ -148,13 +148,14 @@ describe('BookmarkPanel', () => {
     expect(wp.nodeIntegration).toBe(false);
   });
 
-  it('should position panel above address bar and left of right sidebar (2px gap)', () => {
+  it('should position panel clear of scrollbars and side bars (2px gap)', () => {
     const { panel, created } = setup();
     panel.open();
     const w = created[0]!;
-    // parent: x=100,y=50,w=1280,h=800；布局：右侧栏 44 / 底部地址栏 48；间隙 2
-    // x = 100+1280-44-280-2 = 1054；y = 50+800-48-430-2 = 370
-    expect(w.setPosition).toHaveBeenCalledWith(1054, 370);
+    // parent: x=100,y=50,w=1280,h=800；布局：右侧栏 44 / 底部地址栏 48；
+    // 滚动条 17 + 间隙 2
+    // x = 100+1280-44-17-280-2 = 1037；y = 50+800-48-17-430-2 = 353
+    expect(w.setPosition).toHaveBeenCalledWith(1037, 353);
   });
 
   it('should respect layout insets from getLayout (expanded sidebars)', () => {
@@ -163,8 +164,8 @@ describe('BookmarkPanel', () => {
     });
     panel.open();
     const w = created[0]!;
-    // x = 100+1280-360-280-2 = 738；y = 50+800-48-430-2 = 370
-    expect(w.setPosition).toHaveBeenCalledWith(738, 370);
+    // x = 100+1280-360-17-280-2 = 721；y = 50+800-48-17-430-2 = 353
+    expect(w.setPosition).toHaveBeenCalledWith(721, 353);
   });
 
   it('should close on blur (click outside)', () => {

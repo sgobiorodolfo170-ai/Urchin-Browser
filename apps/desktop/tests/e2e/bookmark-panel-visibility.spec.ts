@@ -105,7 +105,7 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
     const panelBounds = during.bounds.find((b) => b.width === 280 && b.height === 430);
     expect(panelBounds).toBeTruthy();
 
-    // 面板定位：地址栏上方、右侧栏左侧（避开两栏，间隙 2px）。
+    // 面板定位：地址栏上方、右侧栏左侧，且不遮挡网页滚动条（让出 17px + 2px 间隙）。
     // 主窗口 = 挂载了 BrowserView 的那个；面板 = 280×430 的 frameless 小窗。
     const mainBounds = await electronApp.evaluate(({ BrowserWindow }) => {
       for (const w of BrowserWindow.getAllWindows()) {
@@ -114,9 +114,9 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
       return null;
     });
     expect(mainBounds).not.toBeNull();
-    // 布局：右侧栏 44（折叠）+ 底部地址栏 48；间隙 2
-    const expectedX = mainBounds!.x + mainBounds!.width - 44 - 280 - 2;
-    const expectedY = mainBounds!.y + mainBounds!.height - 48 - 430 - 2;
+    // 布局：右侧栏 44（折叠）+ 底部地址栏 48；滚动条 17 + 间隙 2
+    const expectedX = mainBounds!.x + mainBounds!.width - 44 - 17 - 280 - 2;
+    const expectedY = mainBounds!.y + mainBounds!.height - 48 - 17 - 430 - 2;
     // 允许少量偏差（窗口边框/缩放）
     expect(Math.abs(panelBounds!.x - expectedX)).toBeLessThan(16);
     expect(Math.abs(panelBounds!.y - expectedY)).toBeLessThan(16);
@@ -145,7 +145,9 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
     //    Playwright 的 CDP mouse.click 会被 BrowserView 覆盖区域吃掉、不触发 OS 焦点切换，
     //    因此用 Electron 原生 focus() 忠实模拟"点击主窗口"的焦点行为。
     await electronApp.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]!.focus();
+      // 主窗口 = 挂载了 BrowserView 的窗口（面板窗口无 BrowserView）
+      const main = BrowserWindow.getAllWindows().find((w) => w.getBrowserViews().length > 0);
+      main?.focus();
     });
     await window.waitForTimeout(800);
     const afterOutside = await listWindows(electronApp);

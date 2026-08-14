@@ -25,6 +25,16 @@ const log = createLogger('bookmark-panel');
 /** 面板窗口尺寸（悬浮小窗，避开底部地址栏与右侧边栏） */
 export const PANEL_WIDTH = 280;
 export const PANEL_HEIGHT = 430;
+/**
+ * 网页滚动条宽度（px）。
+ *
+ * 网页（BrowserView）的右/下滚动条紧贴两栏边界，面板需让出滚动条宽度，
+ * 否则会盖住滑块。Windows 经典滚动条约 17px；overlay scrollbar（自动隐藏）为 0。
+ * 取 17 覆盖经典样式。
+ */
+const SCROLLBAR_WIDTH = 17;
+/** 面板与网页滚动条/两栏边界的间隙（px） */
+const PANEL_GAP = 2;
 
 /** 面板 HTML（urchin://panel 协议返回，单文件无外部依赖） */
 export function getBookmarkPanelHtml(): string {
@@ -367,18 +377,32 @@ export class BookmarkPanel {
   }
 
   /**
-   * 计算面板位置：地址栏上方、右侧边栏左侧，与两栏边界间隙 2px。
+   * 计算面板位置：地址栏上方、右侧边栏左侧，且不遮挡网页的右/下滚动条。
    *
-   * - x = 内容区右缘 - 右侧栏宽 - 面板宽 - 2（面板左边界贴右侧栏左缘左侧 2px）
-   * - y = 内容区下缘 - 地址栏高 - 面板高 - 2（面板下边界贴地址栏上缘上方 2px）
+   * 网页（BrowserView）区域为 [leftWidth, 右缘-rightWidth] × [0, 下缘-bottomHeight]，
+   * 其右/下滚动条紧贴两栏边界。面板需让出滚动条宽度（Windows 经典滚动条约 17px），
+   * 再留 2px 间隙，避免盖住滑块：
+   * - x = 内容区右缘 - 右侧栏宽 - 滚动条宽 - 面板宽 - 2
+   * - y = 内容区下缘 - 地址栏高 - 滚动条宽 - 面板高 - 2
    * 布局尺寸来自 getLayout()（默认视为两栏折叠 44/48，与 view-integration 初始一致）。
    */
   private reposition(panel: BrowserWindow, parent: PanelHostWindow): void {
     const parentBounds = parent.getContentBounds();
     const layout = this.options.getLayout?.() ?? { rightWidth: 44, bottomHeight: 48 };
-    const gap = 2;
-    const x = parentBounds.x + parentBounds.width - layout.rightWidth - PANEL_WIDTH - gap;
-    const y = parentBounds.y + parentBounds.height - layout.bottomHeight - PANEL_HEIGHT - gap;
+    const x =
+      parentBounds.x +
+      parentBounds.width -
+      layout.rightWidth -
+      SCROLLBAR_WIDTH -
+      PANEL_WIDTH -
+      PANEL_GAP;
+    const y =
+      parentBounds.y +
+      parentBounds.height -
+      layout.bottomHeight -
+      SCROLLBAR_WIDTH -
+      PANEL_HEIGHT -
+      PANEL_GAP;
     panel.setPosition(Math.round(x), Math.round(y));
   }
 }

@@ -29,6 +29,7 @@ import {
   Sparkles,
   PanelLeftClose,
   PanelLeftOpen,
+  Home,
   List as ListIcon,
   Folder,
   FolderOpen,
@@ -40,6 +41,7 @@ import { Button } from './components/ui/button';
 import { Omnibox } from './omnibox/omnibox';
 import { AiChatView } from '@urchin/ai-extension';
 import { SettingsPage } from './settings/SettingsPage';
+import { NewTabPage } from './home/NewTabPage';
 import { PiSettingsDialog } from './omnibox/pi-settings-dialog';
 import { useTheme } from './theme/theme-provider';
 import { createHostFromUrchin } from './host-impl';
@@ -564,7 +566,12 @@ export function App() {
 
   const handleNewTab = useCallback(async () => {
     try {
-      await window.urchin.invoke('tab.create', { windowId: 1, url: 'about:blank', active: true });
+      // 新标签页打开内嵌主页（urchin://newtab，无法自由更换）
+      await window.urchin.invoke('tab.create', {
+        windowId: 1,
+        url: 'urchin://newtab',
+        active: true,
+      });
     } catch (e) {
       console.error('Failed to create tab:', e);
     }
@@ -937,11 +944,12 @@ export function App() {
   // 所以用 startsWith 判断而非严格相等，避免匹配失败导致组件不渲染。
   const isSettingsTab = !!activeTab?.url?.startsWith('urchin://settings');
   const isAiTab = !!activeTab?.url?.startsWith('urchin://ai');
-  // 渲染优先级：设置页 > AI 页 > 普通网页（BrowserView）
-  // settings 和 ai 都由 React 组件渲染，BrowserView 让出空间（ZERO_BOUNDS）
+  const isNewTab = !!activeTab?.url?.startsWith('urchin://newtab');
+  // 渲染优先级：设置页 > AI 页 > 主页 > 普通网页（BrowserView）
+  // settings / ai / newtab 都由 React 组件渲染，BrowserView 让出空间（ZERO_BOUNDS）
 
-  // 内部页面（settings / ai）下，导航按钮无意义，禁用
-  const isInternalPage = isSettingsTab || isAiTab;
+  // 内部页面（settings / ai / newtab）下，导航按钮无意义，禁用
+  const isInternalPage = isSettingsTab || isAiTab || isNewTab;
   // AI 标签页关联的"上一个活跃网页 tab ID"：用于 AI 摘要功能
   // 阶段2 简化：传入当前 activeTabId（即 AI 标签页 ID），AI 组件会自动处理
   // 阶段3 重构时将通过 host.tabs.getActive() 获取真正的活跃网页 tab
@@ -949,6 +957,11 @@ export function App() {
 
   // 按住侧边栏空白处拖动窗口（左/右两侧栏共用）
   const windowDrag = useWindowDrag();
+
+  // 主页跳转（主页按钮 / 新标签页共用）
+  const handleGoHome = useCallback(() => {
+    void handleNavigate('urchin://newtab');
+  }, [handleNavigate]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface">
@@ -1031,6 +1044,9 @@ export function App() {
                 activeTabId={aiActiveTabId}
                 onOpenPiSettings={() => setShowPiSettings(true)}
               />
+            ) : isNewTab ? (
+              /* 主页：React 组件渲染（内嵌，无法自由更换） */
+              <NewTabPage onNavigate={(url) => void handleNavigate(url)} />
             ) : null /* 普通网页：由 Electron BrowserView 渲染，React 仅留空 */
           }
         </div>
@@ -1071,6 +1087,17 @@ export function App() {
               aria-label="刷新"
             >
               <RotateCw className={cn('h-4 w-4', activeTab?.loading && 'animate-spin')} />
+            </Button>
+            {/* 主页按钮：位于刷新按钮后面，跳转内嵌主页（urchin://newtab） */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 shrink-0 p-0"
+              onClick={() => void handleGoHome()}
+              disabled={!activeTabId}
+              aria-label="主页"
+            >
+              <Home className="h-4 w-4" />
             </Button>
 
             <Omnibox

@@ -48,6 +48,8 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   ['links.openInNewTab', false],
   // 右侧边栏展开方式（默认双击展开；true=悬停自动展开，与双击互斥，设置页 select 切换）
   ['ui.rightSidebarAutoExpand', false],
+  // 主页常用网站（用户手动添加/拖拽排序，持久化于 settings；仅存根网址）
+  ['home.frequentSites', []],
   // pi 模块（AI 对话标签页）AI 助手设置：由 PiSettingsDialog 编辑，pi-agent-factory 消费。
   // 注意：此组设置与 summary.* 完全独立，pi 模块与摘要模块互不干扰。
   ['ai.model', 'gpt-4o-mini'],

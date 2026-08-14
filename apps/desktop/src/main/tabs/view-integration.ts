@@ -35,8 +35,8 @@ const DEFAULT_RIGHT_WIDTH = 44;
 const DEFAULT_BOTTOM_HEIGHT = 48;
 
 /** 由渲染进程 React 组件渲染的内部 URL 前缀（不显示 BrowserView）。
- *  阶段2 解耦：settings 和 ai 都作为 React 渲染的内部页面。 */
-const URCHIN_RENDERER_HOSTS = ['urchin://settings', 'urchin://ai'];
+ *  阶段2 解耦：settings 和 ai 都作为 React 渲染的内部页面；newtab 主页同为 React 渲染。 */
+const URCHIN_RENDERER_HOSTS = ['urchin://settings', 'urchin://ai', 'urchin://newtab'];
 
 /** 判断 URL 是否应由渲染进程 React 组件渲染（而非 BrowserView）。
  *  注意：Electron 会把 urchin://settings 规范化为 urchin://settings/（末尾加斜杠），

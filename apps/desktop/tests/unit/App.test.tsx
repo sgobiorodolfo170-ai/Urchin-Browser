@@ -145,7 +145,7 @@ describe('App (Browser Shell)', () => {
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
         windowId: 1,
-        url: 'about:blank',
+        url: 'urchin://newtab',
         active: true,
       });
     });

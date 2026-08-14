@@ -140,11 +140,16 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
       timeout: 5000,
     });
 
-    // 5. 再次点击收藏夹按钮 → 面板关闭
-    await window.getByLabel('收藏夹').click();
+    // 5. 点击主窗口（面板外任意处）→ 面板失焦自动关闭
+    //    面板以 show() 抢焦点；真实鼠标点击主窗口时 OS 将焦点切回主窗口 → 面板 blur。
+    //    Playwright 的 CDP mouse.click 会被 BrowserView 覆盖区域吃掉、不触发 OS 焦点切换，
+    //    因此用 Electron 原生 focus() 忠实模拟"点击主窗口"的焦点行为。
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]!.focus();
+    });
     await window.waitForTimeout(800);
-    const after = await listWindows(electronApp);
-    expect(after.count).toBe(1);
+    const afterOutside = await listWindows(electronApp);
+    expect(afterOutside.count).toBe(1);
   } finally {
     await electronApp.close();
   }

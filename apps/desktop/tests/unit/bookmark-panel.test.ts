@@ -24,6 +24,7 @@ function createMockPanelWindow(overrides: Partial<Record<string, unknown>> = {})
   const w = {
     setPosition: vi.fn(),
     loadURL: vi.fn().mockResolvedValue(undefined),
+    show: vi.fn(),
     showInactive: vi.fn(),
     isDestroyed: () => false,
     // 真实 Electron destroy() 会触发 'closed' 事件（用于清理监听）
@@ -176,6 +177,30 @@ describe('BookmarkPanel', () => {
     expect(w.destroy).toHaveBeenCalled();
   });
 
+  it('should steal focus via show() so outside clicks trigger blur', () => {
+    const { panel, created } = setup();
+    panel.open();
+    const w = created[0]!;
+    expect(w.show).not.toHaveBeenCalled();
+    w._emit('ready-to-show');
+    expect(w.show).toHaveBeenCalled();
+    expect(w.showInactive).not.toHaveBeenCalled();
+  });
+
+  it('should suppress toggle reopen within blur cooldown (button click race)', () => {
+    const { panel, created } = setup();
+    // 打开
+    expect(panel.toggle()).toBe(true);
+    const w = created[0]!;
+    // 模拟按钮点击时序：mousedown 触发面板 blur 关闭 → toggle IPC 随后到达
+    w._emit('blur'); // blur 关闭面板
+    expect(panel.isOpen).toBe(false);
+    // 300ms 内 toggle：应视为"已通过 blur 关闭"，不重开
+    expect(panel.toggle()).toBe(false);
+    expect(panel.isOpen).toBe(false);
+    expect(created).toHaveLength(1); // 未创建新窗口
+  });
+
   it('should reposition on parent move/resize and clean listeners on close', () => {
     const parent = createMockParent();
     const { panel, created } = setup({ parent });
@@ -191,14 +216,5 @@ describe('BookmarkPanel', () => {
     panel.close();
     expect(parent.removeListener).toHaveBeenCalledWith('move', expect.any(Function));
     expect(parent.removeListener).toHaveBeenCalledWith('resize', expect.any(Function));
-  });
-
-  it('should showInactive after ready-to-show (不抢焦点)', () => {
-    const { panel, created } = setup();
-    panel.open();
-    const w = created[0]!;
-    expect(w.showInactive).not.toHaveBeenCalled();
-    w._emit('ready-to-show');
-    expect(w.showInactive).toHaveBeenCalled();
   });
 });

@@ -267,6 +267,8 @@ export interface BookmarkPanelOptions {
 export class BookmarkPanel {
   private panel: BrowserWindow | null = null;
   private readonly options: BookmarkPanelOptions;
+  /** blur 关闭的时间戳：用于抑制"按钮 toggle 重开"竞态（见 toggle） */
+  private blurClosedAt = 0;
 
   constructor(options: BookmarkPanelOptions) {
     this.options = options;
@@ -279,6 +281,13 @@ export class BookmarkPanel {
 
   /** 切换开/关。返回切换后的状态。 */
   toggle(): boolean {
+    // 竞态抑制：面板打开时点击收藏夹按钮，mousedown 会先使主窗口获得焦点 →
+    // 面板 blur 关闭，随后 toggle IPC 才到达。若 300ms 内刚被 blur 关闭，
+    // 本次 toggle 视为"按钮点击已通过 blur 关闭面板"，不重开（避免关后又开）。
+    if (Date.now() - this.blurClosedAt < 300) {
+      this.blurClosedAt = 0;
+      return false;
+    }
     if (this.isOpen) {
       this.close();
       return false;
@@ -307,7 +316,6 @@ export class BookmarkPanel {
       minimizable: false,
       maximizable: false,
       skipTaskbar: true,
-      // 不抢焦点：showInactive 显示，点击面板内容时才获得焦点
       backgroundColor: '#ffffff',
       webPreferences: {
         preload: this.options.preloadPath,
@@ -318,10 +326,14 @@ export class BookmarkPanel {
       },
     });
 
-    // 定位：主窗口内容区右下角（吸附右下角，悬浮于网页之上）
+    // 定位：地址栏上方、右侧栏左侧（避开两栏）
     this.reposition(panel, parent);
-    // 点击外部（主窗口/网页）自动关闭
-    panel.on('blur', () => this.close());
+    // 点击面板外任意处（主窗口/网页）自动关闭：
+    // 面板以 show() 抢焦点 → 点击外部使主窗口获得焦点 → 面板 blur → 关闭
+    panel.on('blur', () => {
+      this.blurClosedAt = Date.now();
+      this.close();
+    });
     // 跟随主窗口移动/缩放
     const onParentMove = (): void => {
       if (this.isOpen && !panel.isDestroyed()) {
@@ -338,9 +350,9 @@ export class BookmarkPanel {
 
     this.panel = panel;
     void panel.loadURL('urchin://panel');
-    // 等页面加载完成再显示，避免白屏；showInactive 不抢焦点
+    // 等页面加载完成再显示，避免白屏；show() 抢焦点，使外部点击可触发 blur 关闭
     panel.once('ready-to-show', () => {
-      if (!panel.isDestroyed()) panel.showInactive();
+      if (!panel.isDestroyed()) panel.show();
     });
     log.info('bookmark panel opened');
   }

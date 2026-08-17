@@ -13,6 +13,7 @@ export default {
           DEFAULT: 'var(--color-surface)',
           secondary: 'var(--color-surface-secondary)',
         },
+        titlebar: 'var(--color-titlebar)',
         text: {
           DEFAULT: 'var(--color-text)',
           secondary: 'var(--color-text-secondary)',

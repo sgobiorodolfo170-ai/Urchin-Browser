@@ -13,6 +13,10 @@
   --color-accent: #8b5cf6;
   --color-surface: #ffffff;
   --color-surface-secondary: #f8fafc;
+  /* 窗口标题栏同色（系统原生标题栏）：亮色=白 / 暗色=中性深灰。
+   * 供左侧边栏等紧贴标题栏的 UI 使用，使两者间色差分割线消失。
+   * 注：Win11 标题栏含 Mica 壁纸渗透效果，静态色只能近似系统标准色。 */
+  --color-titlebar: #ffffff;
   --color-text: #0f172a;
   --color-text-secondary: #64748b;
   --color-border: #e2e8f0;
@@ -63,6 +67,7 @@
   --color-primary-hover: #60a5fa;
   --color-surface: #0f172a;
   --color-surface-secondary: #1e293b;
+  --color-titlebar: #202020;
   --color-text: #f8fafc;
   --color-text-secondary: #94a3b8;
   --color-border: #334155;

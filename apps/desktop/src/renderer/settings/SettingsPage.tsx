@@ -643,6 +643,7 @@ const COLOR_TOKENS = [
   { varName: '--color-accent', label: '强调色 Accent', default: '#8b5cf6' },
   { varName: '--color-surface', label: '背景 Surface', default: '#ffffff' },
   { varName: '--color-surface-secondary', label: '次背景 Surface-2', default: '#f8fafc' },
+  { varName: '--color-titlebar', label: '标题栏 Titlebar', default: '#ffffff' },
   { varName: '--color-text', label: '文字 Text', default: '#0f172a' },
   { varName: '--color-text-secondary', label: '次文字 Text-2', default: '#64748b' },
   { varName: '--color-border', label: '边框 Border', default: '#e2e8f0' },

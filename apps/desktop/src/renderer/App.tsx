@@ -261,7 +261,7 @@ function TabFavicon({ tab, className }: { tab: TabSnapshot; className?: string }
   );
 }
 
-/** 标签页网站图标 <img>：加载失败逐级回退（内置图标 → 网页 favicon → 灰点占位）。
+/** 标签页网站图标 <img>：加载失败逐级回退（内置图标 → 网页 favicon → 浏览器图标半透明占位）。
  *  src 变化（同一标签页导航到新站点）时重置回退状态，重新从最新源尝试。 */
 function TabSiteIcon({
   src,
@@ -278,8 +278,15 @@ function TabSiteIcon({
   }, [src, fallbackSrc]);
   const current = step === 0 ? src : fallbackSrc;
   if (!current) {
+    // 完全无法识别（无内置图标、网页无 favicon 或加载失败）：
+    // 用浏览器图标半透明占位，淡化显示避免与真实站点图标混淆
     return (
-      <div className={cn('shrink-0 rounded-full border border-border', className ?? 'h-3 w-3')} />
+      <img
+        src="/browser-icon.png"
+        alt=""
+        draggable={false}
+        className={cn('shrink-0 object-contain opacity-40', className ?? 'h-3 w-3')}
+      />
     );
   }
   return (
@@ -866,9 +873,16 @@ export function App() {
 
   // 双击右侧边栏空白处：展开/折叠切换（替代已移除的底部折叠/展开按钮）
   // 与悬停自动展开/自动折叠互斥（右侧栏自动展开开关控制后者）
-  const handleRightDoubleClick = useCallback(() => {
-    handleToggleRight();
-  }, [handleToggleRight]);
+  // 仅空白区域触发：标签卡片（data-tab-card）、按钮、宽度拖拽手柄（role=separator）
+  // 等交互元素各自处理自己的点击，双击其上不应折叠/展开整栏
+  const handleRightDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      const target = e.target as Element;
+      if (target.closest('button, [role="separator"], [data-tab-card]')) return;
+      handleToggleRight();
+    },
+    [handleToggleRight],
+  );
 
   // 右侧栏悬停展开：仅当栏处于折叠状态（rightExpanded=false）且设置允许自动展开时触发
   // 使用设置中配置的延迟（debug.sidebarHoverDelay），0 = 立即展开
@@ -1067,11 +1081,12 @@ export function App() {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-surface">
       {/* === 左侧栏 ===
-       *  背景用 bg-surface（与窗口标题栏同色）：标题栏是 OS 原生色（浅色=白/深色=深），
-       *  侧栏与标题栏同色后两者间的色差分割线消失，视觉上一体。
-       *  border-r 保留：这是"左侧边栏与网页区"之间的分割线（网页区左上角圆角的夹角边之一）。 */}
+       *  背景用 bg-titlebar（与窗口标题栏同色令牌）：标题栏是 OS 原生色
+       *  （浅色=白 / 暗色=中性深灰），侧栏跟随该令牌后两者间的色差分割线消失，
+       *  视觉上一体。border-r 保留：这是"左侧边栏与网页区"之间的分割线
+       *  （网页区左上角圆角的夹角边之一）。 */}
       <aside
-        className="flex shrink-0 flex-col border-r border-border bg-surface transition-[width] duration-150"
+        className="flex shrink-0 flex-col border-r border-border bg-titlebar transition-[width] duration-150"
         style={{ width: leftWidth }}
         onPointerDown={windowDrag.startDrag}
         onPointerMove={windowDrag.moveDrag}
@@ -1290,6 +1305,7 @@ export function App() {
                 {tabs.map((tab) => (
                   <div
                     key={tab.id}
+                    data-tab-card
                     className={cn(
                       // 凸起悬浮感：圆角卡片 + 投影 + 细边框 + 顶部高光线；
                       // 激活态更亮（主色投影 + 高对比文字）
@@ -1305,14 +1321,14 @@ export function App() {
                     <TabFavicon tab={tab} />
                     <span className="flex-1 truncate">{tab.title || tab.url || '新标签页'}</span>
                     <button
-                      className="shrink-0 rounded p-0.5 opacity-0 hover:bg-surface-secondary group-hover:opacity-100"
+                      className="shrink-0 rounded p-0.5 opacity-0 hover:bg-error/10 group-hover:opacity-100"
                       onClick={(e) => {
                         e.stopPropagation();
                         void handleCloseTab(tab.id);
                       }}
                       aria-label="关闭标签"
                     >
-                      <X className="h-3 w-3" />
+                      <X className="h-3 w-3 text-error" />
                     </button>
                   </div>
                 ))}
@@ -1333,13 +1349,14 @@ export function App() {
         ) : (
           // 折叠状态：竖向显示所有标签页的图标（仅图标不展示名称），点击图标切换标签；
           // 无标签时留空（底部"展开"按钮仍可用）
-          <div className="flex flex-1 flex-col items-center gap-1.5 overflow-y-auto py-2">
+          <div className="flex flex-1 flex-col items-center gap-0.5 overflow-y-auto py-2">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 className={cn(
-                  // 折叠态图标：同样凸起悬浮感，激活态带主色描边
-                  'relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border bg-surface shadow-sm',
+                  // 折叠态图标：方形小圆角（区别于展开态卡片的圆角更大），激活态带主色描边。
+                  // 尺寸 40px = 折叠栏宽 44px - 左右各留 2px 边界空隙
+                  'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md border bg-surface shadow-sm',
                   'border-border/60 before:pointer-events-none before:absolute before:inset-x-1 before:top-0 before:h-px before:rounded-full before:bg-white/70',
                   tab.id === activeTabId
                     ? 'border-primary/50 text-text shadow-[0_2px_6px_-1px_rgba(37,99,235,0.4)]'
@@ -1349,7 +1366,7 @@ export function App() {
                 aria-label={`切换到标签 ${tab.title || tab.url || '新标签页'}`}
                 title={tab.title || tab.url || '新标签页'}
               >
-                <TabFavicon tab={tab} className="h-3.5 w-3.5" />
+                <TabFavicon tab={tab} className="h-9 w-9" />
               </button>
             ))}
           </div>

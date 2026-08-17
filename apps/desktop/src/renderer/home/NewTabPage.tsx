@@ -108,7 +108,10 @@ function SiteFavicon({ url, className }: { url: string; className?: string }) {
       <img
         src={srcIndex === 0 ? builtinIconUrl(builtin) : fallbackSrc}
         alt=""
-        className={className}
+        className={cn(
+          className,
+          srcIndex > 0 && srcIndex >= FAVICON_SOURCES.length && 'opacity-40',
+        )}
         draggable={false}
         onError={() => {
           if (srcIndex < FAVICON_SOURCES.length) {
@@ -122,14 +125,14 @@ function SiteFavicon({ url, className }: { url: string; className?: string }) {
 
   const source = srcIndex < FAVICON_SOURCES.length && host ? FAVICON_SOURCES[srcIndex] : undefined;
   const src = source ? source(host) : '';
-  // 所有源失败 → 显示内置图标（最终回退）
+  // 所有源失败 → 显示内置图标（最终回退，半透明淡化避免颜色点亮）
   const finalUrl = src || BROWSER_ICON;
 
   return (
     <img
       src={finalUrl}
       alt=""
-      className={className}
+      className={cn(className, !src && 'opacity-40')}
       draggable={false}
       onError={() => {
         // 当前源失败 → 尝试下一源；已到末尾则用内置图标（不会再触发 onError）

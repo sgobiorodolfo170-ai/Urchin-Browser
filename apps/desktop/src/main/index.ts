@@ -86,6 +86,29 @@ registerUrchinSchemePrivileged();
 // 必须在 app ready 之前调用。
 app.disableHardwareAcceleration();
 
+/**
+ * 事件循环阻塞 watchdog（2026-08-17 加，排查主进程偶发 100% CPU 卡死）。
+ *
+ * 现象：主进程偶发占满一个核（采样到 3s/3s），期间浏览器窗口冻结。
+ * 若为异步事件风暴型阻塞（IPC 高频、setBounds 风暴等），定时器延迟会暴露：
+ * 每 500ms 一个 tick，检测到延迟 >2s 即把调用栈打到 stderr——下次卡死可定位热点。
+ * 注意：同步死循环会连 tick 都跑不了（watchdog 自身也被占），此种情况靠外部采样。
+ */
+function installEventLoopWatchdog(): void {
+  let last = Date.now();
+  const tick = (): void => {
+    const now = Date.now();
+    const lag = now - last - 500;
+    if (lag > 2000) {
+      console.error(`[watchdog] event loop blocked ${lag}ms`, new Error('blocked').stack);
+    }
+    last = now;
+    setTimeout(tick, 500);
+  };
+  setTimeout(tick, 500);
+}
+installEventLoopWatchdog();
+
 // 单例锁：防止多实例打开（02-架构设计 §1.2）
 // E2E 测试环境（PLAYWRIGHT）跳过单实例锁，避免与 Playwright loader 冲突
 if (!process.env.PLAYWRIGHT) {

@@ -87,7 +87,11 @@ function shouldLog(level: LogLevel, minLevel: LogLevel): boolean {
 
 /** 默认 console sink：JSON 格式输出，便于日志收集工具解析。 */
 function defaultConsoleSink(entry: LogEntry): void {
-  console.log(JSON.stringify(entry));
+  try {
+    console.log(JSON.stringify(entry));
+  } catch {
+    /* 输出流不可用（管道关闭/EPIPE）时静默丢弃，防止错误风暴 */
+  }
 }
 
 /**

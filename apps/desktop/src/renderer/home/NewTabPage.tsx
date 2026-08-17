@@ -98,20 +98,23 @@ function SiteFavicon({ url, className }: { url: string; className?: string }) {
     }
   })();
 
-  // 内置站点命中 → 本地图标（无外部网络依赖，不触发 onError 回退）
+  // 内置站点命中 → 本地图标（无外部网络依赖）
+  // onError 走 state 递增回退链，避免直接改 src 造成"失败→重设同一 URL→再失败"死循环
   const builtin = lookupBuiltinSite(url);
   if (builtin) {
+    const source = srcIndex < FAVICON_SOURCES.length ? FAVICON_SOURCES[srcIndex] : undefined;
+    const fallbackSrc = host && source ? source(host) : BROWSER_ICON;
     return (
       <img
-        src={builtinIconUrl(builtin)}
+        src={srcIndex === 0 ? builtinIconUrl(builtin) : fallbackSrc}
         alt=""
         className={className}
         draggable={false}
-        onError={(e) => {
-          // 内置图标缺失（未下载成功）：回退外部服务（隐藏占位避免空白）
-          const img = e.target as HTMLImageElement;
-          const firstSource = FAVICON_SOURCES[0];
-          img.src = host && firstSource ? firstSource(host) : BROWSER_ICON;
+        onError={() => {
+          if (srcIndex < FAVICON_SOURCES.length) {
+            setSrcIndex((i) => i + 1);
+          }
+          // 已到末尾：src 为 BROWSER_ICON（本地资源），不再触发 onError
         }}
       />
     );

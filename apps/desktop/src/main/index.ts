@@ -86,6 +86,18 @@ registerUrchinSchemePrivileged();
 // 必须在 app ready 之前调用。
 app.disableHardwareAcceleration();
 
+// stdout/stderr 写失败兜底（2026-08-17 卡死根因修复）：
+// 后台/管道启动时，若下游不读（或渲染进程 console 被 ELECTRON_ENABLE_LOGGING 灌入），
+// 管道缓冲满 → 每次写触发 EPIPE 错误事件 → 错误风暴 → 主进程 100% CPU 卡死。
+// 挂 error 监听吞掉 EPIPE，避免事件循环被错误事件占死。
+process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EPIPE') return; // 下游关闭，静默
+  console.error('stdout error', err);
+});
+process.stderr.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EPIPE') return;
+});
+
 /**
  * 事件循环阻塞 watchdog（2026-08-17 加，排查主进程偶发 100% CPU 卡死）。
  *

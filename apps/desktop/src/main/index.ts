@@ -78,13 +78,12 @@ if (process.env.URCHIN_TEST_USER_DATA) {
 // 注册 urchin: scheme 为特权协议（必须在 app ready 之前）
 registerUrchinSchemePrivileged();
 
-// 禁用 GPU 硬件加速（2026-08-17 修复桌面卡死）：
-// 事件日志显示 LiveKernelEvent 0x1CC（Resource Timeout = GPU 引擎超时 TDR），
-// 触发时 Windows 冻结桌面合成 → 整个桌面卡死。诱因：本机为
-// MuMu 虚拟显示适配器 + NVIDIA + Intel 三卡混合环境，Chromium 硬件合成
-// 偶发选中异常 GPU 路径。禁用后走软件合成，彻底规避 GPU 合成路径。
-// 必须在 app ready 之前调用。
-app.disableHardwareAcceleration();
+// GPU 硬件加速（2026-08-17 恢复）：
+// 曾全局禁用（disableHardwareAcceleration）以规避 LiveKernelEvent 0x1CC
+// （GPU 引擎超时 TDR → 桌面卡死，诱因：MuMu 虚拟适配器 + NVIDIA + Intel
+// 三卡混合环境偶发选中异常 GPU 路径）。代价是所有网页走 SwiftShader CPU
+// 软件渲染，打开重页面明显卡顿。经用户决策（2026-08-17）恢复硬件加速，
+// 若 TDR 桌面卡死复发，再回到禁用方案或改用指定 GPU 后端（如 --use-angle=d3d11）。
 
 // stdout/stderr 写失败兜底（2026-08-17 卡死根因修复）：
 // 后台/管道启动时，若下游不读（或渲染进程 console 被 ELECTRON_ENABLE_LOGGING 灌入），

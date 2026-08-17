@@ -78,6 +78,14 @@ if (process.env.URCHIN_TEST_USER_DATA) {
 // 注册 urchin: scheme 为特权协议（必须在 app ready 之前）
 registerUrchinSchemePrivileged();
 
+// 禁用 GPU 硬件加速（2026-08-17 修复桌面卡死）：
+// 事件日志显示 LiveKernelEvent 0x1CC（Resource Timeout = GPU 引擎超时 TDR），
+// 触发时 Windows 冻结桌面合成 → 整个桌面卡死。诱因：本机为
+// MuMu 虚拟显示适配器 + NVIDIA + Intel 三卡混合环境，Chromium 硬件合成
+// 偶发选中异常 GPU 路径。禁用后走软件合成，彻底规避 GPU 合成路径。
+// 必须在 app ready 之前调用。
+app.disableHardwareAcceleration();
+
 // 单例锁：防止多实例打开（02-架构设计 §1.2）
 // E2E 测试环境（PLAYWRIGHT）跳过单实例锁，避免与 Playwright loader 冲突
 if (!process.env.PLAYWRIGHT) {

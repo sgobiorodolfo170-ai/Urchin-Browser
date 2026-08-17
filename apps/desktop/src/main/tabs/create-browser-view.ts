@@ -17,6 +17,12 @@
  * - 外部网页（http/https）不需要 urchin API，无需 preload
  * - 设置页（urchin://settings）已改为 React 组件在主窗口渲染，不在 BrowserView 中
  * - 如需在内部页面暴露 urchin API，应通过主窗口 preload 实现，而非 BrowserView
+ *
+ * ⚠️ 严禁透明背景 + insertCSS 裁剪（2026-08-17 固化教训）：
+ * 曾为"网页区左上角大圆角"给 BrowserView 设置透明背景并注入 clip-path，
+ * 但透明 BrowserView 是 Windows DWM 合成压力的根源——多次触发
+ * LiveKernelEvent 0x1CC（GPU 引擎超时 TDR），导致整个桌面卡死。
+ * 此方案已回滚：BrowserView 保持不透明白背景，不再做透明合成。
  */
 import { BrowserView } from 'electron';
 import { createLogger } from '@urchin/logger';
@@ -42,8 +48,8 @@ export function createBrowserView(): BrowserViewLike {
       // ⚠️ 不要添加 preload——见文件头部说明
     },
   });
-  // 设置背景色，避免加载过程中白屏闪烁（看起来像阻塞）
-  // 在 cast 为 BrowserViewLike 之前调用，因为 setBackgroundColor 不在最小接口中
+
+  // 不透明白背景：避免网页加载时白闪，同时杜绝透明合成（DWM 压力 → 桌面卡死）
   view.setBackgroundColor('#ffffff');
 
   return view as unknown as BrowserViewLike;

@@ -171,6 +171,38 @@ describe('App (Browser Shell)', () => {
     });
   });
 
+  it('should close tab on double-click of expanded tab card', async () => {
+    const tab = makeTab({ id: 5, title: '双击关闭我' });
+    mockInvoke.mockResolvedValue({ tabs: [tab] });
+
+    renderApp();
+    await expandRightSidebar();
+    await waitFor(() => expect(screen.getByText('双击关闭我')).toBeInTheDocument());
+
+    mockInvoke.mockClear();
+    fireEvent.doubleClick(screen.getByText('双击关闭我'));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('tab.close', { tabId: 5 });
+    });
+  });
+
+  it('should close tab on double-click of collapsed tab icon', async () => {
+    const tab = makeTab({ id: 7, title: '折叠图标', url: 'https://example.com/7' });
+    mockInvoke.mockResolvedValue({ tabs: [tab] });
+
+    renderApp();
+    // 默认折叠态：图标按钮 aria-label="切换到标签 折叠图标"
+    await waitFor(() => expect(screen.getByLabelText('切换到标签 折叠图标')).toBeInTheDocument());
+
+    mockInvoke.mockClear();
+    fireEvent.doubleClick(screen.getByLabelText('切换到标签 折叠图标'));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('tab.close', { tabId: 7 });
+    });
+  });
+
   it('should call tab.setActive when tab clicked', async () => {
     const tab1 = makeTab({ id: 1, active: true, title: 'Tab 1' });
     const tab2 = makeTab({ id: 2, active: false, title: 'Tab 2', indexInWindow: 1 });
@@ -189,6 +221,86 @@ describe('App (Browser Shell)', () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith('tab.setActive', { tabId: 2 });
+    });
+  });
+
+  describe('标签拖出窗口（自定义拖拽 → 新窗口打开 + 移动语义）', () => {
+    it('should open tab url in new window at drop position and close original tab', async () => {
+      const tab = makeTab({ id: 1, url: 'https://example.com', title: '示例' });
+      mockInvoke.mockResolvedValue({ tabs: [tab] });
+
+      renderApp();
+      await expandRightSidebar();
+      await waitFor(() => expect(screen.getByText('示例')).toBeInTheDocument());
+
+      const card = screen.getByText('示例').closest('[data-tab-card]');
+      expect(card).not.toBeNull();
+      // 内部页恒 draggable=false：拖拽走自定义指针事件，不走系统拖放
+      expect(card).toHaveAttribute('draggable', 'false');
+
+      mockInvoke.mockClear();
+      fireEvent.pointerDown(card!, { pointerId: 1, clientX: 200, clientY: 300 });
+      // 指针移出窗口边界（clientX<0）→ 新窗口打开（定位到出界屏幕坐标）+ 关闭原标签
+      fireEvent.pointerMove(card!, {
+        pointerId: 1,
+        clientX: -10,
+        clientY: 300,
+        screenX: 500,
+        screenY: 260,
+      });
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith('window.createWithUrl', {
+          url: 'https://example.com',
+          x: 500,
+          y: 260,
+        });
+      });
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith('tab.close', { tabId: 1 });
+      });
+    });
+
+    it('should not open new window when pointer stays inside window', async () => {
+      const tab = makeTab({ id: 1, url: 'https://example.com', title: '示例' });
+      mockInvoke.mockResolvedValue({ tabs: [tab] });
+
+      renderApp();
+      await expandRightSidebar();
+      await waitFor(() => expect(screen.getByText('示例')).toBeInTheDocument());
+
+      const card = screen.getByText('示例').closest('[data-tab-card]')!;
+      mockInvoke.mockClear();
+      fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 300 });
+      fireEvent.pointerMove(card, { pointerId: 1, clientX: 210, clientY: 300 });
+      fireEvent.pointerUp(card, { pointerId: 1, clientX: 210, clientY: 300 });
+
+      expect(mockInvoke).not.toHaveBeenCalledWith('window.createWithUrl', expect.anything());
+      expect(mockInvoke).not.toHaveBeenCalledWith('tab.close', expect.anything());
+    });
+
+    it('should not drag internal pages out of window', async () => {
+      const tab = makeTab({ id: 1, url: 'urchin://newtab', title: '新标签页' });
+      mockInvoke.mockResolvedValue({ tabs: [tab] });
+
+      renderApp();
+      await expandRightSidebar();
+      await waitFor(() => expect(screen.getByText('新标签页')).toBeInTheDocument());
+
+      const card = screen.getByText('新标签页').closest('[data-tab-card]')!;
+      mockInvoke.mockClear();
+      fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 300 });
+      fireEvent.pointerMove(card, {
+        pointerId: 1,
+        clientX: -10,
+        clientY: 300,
+        screenX: 500,
+        screenY: 260,
+      });
+      fireEvent.pointerUp(card, { pointerId: 1, clientX: -10, clientY: 300 });
+
+      expect(mockInvoke).not.toHaveBeenCalledWith('window.createWithUrl', expect.anything());
+      expect(mockInvoke).not.toHaveBeenCalledWith('tab.close', expect.anything());
     });
   });
 
@@ -309,6 +421,7 @@ describe('App (Browser Shell)', () => {
       if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
       if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
       if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      if (channel === 'window.getCurrent') return Promise.resolve({ windowId: 1 });
       if (channel === 'tab.create') {
         return Promise.resolve({ tab: makeTab({ id: 2, url: 'urchin://ai', title: 'AI 助手' }) });
       }
@@ -319,11 +432,13 @@ describe('App (Browser Shell)', () => {
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
 
     fireEvent.click(screen.getByLabelText('AI 助手'));
-    expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
-      windowId: 1,
-      url: 'urchin://ai',
-      active: true,
-    });
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
+        windowId: 1,
+        url: 'urchin://ai',
+        active: true,
+      }),
+    );
   });
 
   // ── 设置入口：创建 urchin://settings 标签页 ──
@@ -334,6 +449,7 @@ describe('App (Browser Shell)', () => {
       if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
       if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
       if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      if (channel === 'window.getCurrent') return Promise.resolve({ windowId: 1 });
       if (channel === 'tab.create') {
         return Promise.resolve({
           tab: makeTab({ id: 2, url: 'urchin://settings', title: '设置' }),
@@ -346,11 +462,13 @@ describe('App (Browser Shell)', () => {
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
 
     fireEvent.click(screen.getByLabelText('设置'));
-    expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
-      windowId: 1,
-      url: 'urchin://settings',
-      active: true,
-    });
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
+        windowId: 1,
+        url: 'urchin://settings',
+        active: true,
+      }),
+    );
   });
 
   // ── 书签 toggle：创建 + 删除 ──

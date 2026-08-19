@@ -17,6 +17,7 @@
  * - STATE：当前状态不允许该操作（如对已关闭 tab 调用 reload）
  * - ABORTED：用户主动中止（如 ai.chat.abort）
  * - UNAVAILABLE：目标子系统不可用（如 Provider 未加载）
+ * - FILE_TOO_LARGE：文件超过读取上限（如 file.read 超过 maxBytes）
  */
 export const IpcErrorCode = {
   INTERNAL: 'INTERNAL',
@@ -27,6 +28,7 @@ export const IpcErrorCode = {
   STATE: 'STATE',
   ABORTED: 'ABORTED',
   UNAVAILABLE: 'UNAVAILABLE',
+  FILE_TOO_LARGE: 'FILE_TOO_LARGE',
 } as const;
 
 export type IpcErrorCode = (typeof IpcErrorCode)[keyof typeof IpcErrorCode];
@@ -103,6 +105,7 @@ function defaultRetryable(code: IpcErrorCode): boolean {
     case IpcErrorCode.PERMISSION:
     case IpcErrorCode.STATE:
     case IpcErrorCode.INTERNAL:
+    case IpcErrorCode.FILE_TOO_LARGE:
     default:
       return false;
   }

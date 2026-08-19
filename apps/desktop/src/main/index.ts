@@ -14,8 +14,8 @@
 // Polyfill 必须在所有其他模块之前加载：undici 顶层 require node:worker_threads
 // 并解构 markAsUncloneable（Node 22.3+ 才有），Electron 32/Node 20 缺失会导致启动崩溃。
 import './polyfills/worker-threads-polyfill';
-import { app, ipcMain, dialog, BrowserWindow, nativeTheme } from 'electron';
-import { join } from 'node:path';
+import { app, ipcMain, dialog, BrowserWindow, nativeTheme, screen } from 'electron';
+import { join, basename } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createLogger } from '@urchin/logger';
 
@@ -39,12 +39,27 @@ import { registerAiInputHandlers } from './ai/input-handlers';
 import type { ProviderConfigStore } from './ai';
 import { registerPageContextHandlers } from './page-context';
 import { SummaryManager, registerSummaryHandlers } from './summary';
+import { registerFileHandlers, classifyFileKind } from './files';
+import { registerFileAssociationHandlers, parseFileArg } from './file-association';
 import { Orchestrator } from './orchestrator/orchestrator';
 import { ProviderRegistry } from './orchestrator/provider-registry';
 import { electronProcessFactory } from './orchestrator/electron-factory';
 import { StorageLayer, createSqliteDatabase, ElectronSafeStorage } from './storage';
 import { registerUrchinSchemePrivileged, registerUrchinProtocol } from './protocol';
 import { BookmarkPanel } from './panel/bookmark-panel';
+import {
+  resolveDataLocation,
+  setDataLocation,
+  migrateLegacyPiData,
+  migrateLegacySummaries,
+  PI_DIR_NAME,
+} from './storage/data-location';
+import { installWillDownload } from './downloads/will-download';
+import { CaptureOverlay } from './screenshots/capture-overlay';
+import { registerScreenshotHandlers } from './screenshots/register-handlers';
+import { installTabContextMenu, handleContextMenu } from './context-menu';
+import { installZoomControl, applyZoomByDelta } from './zoom';
+import { resolvePortableUserData } from './portable';
 
 const log = createLogger('main');
 
@@ -74,6 +89,41 @@ interface HistoryRow {
 if (process.env.URCHIN_TEST_USER_DATA) {
   app.setPath('userData', process.env.URCHIN_TEST_USER_DATA);
 }
+
+// 便携版隔离（2026-08-19，DD 决策）：exe 同级存在 portable.dat 时，把 userData
+// 重定向到 exe 旁的 userdata 目录——zip 分发到任意机器都是全新档案，不读取/不写
+// 本机 %APPDATA% 既有用户数据。必须在 any app.getPath('userData') 调用前执行。
+const portableUserData = resolvePortableUserData(process.execPath);
+if (portableUserData) {
+  app.setPath('userData', portableUserData);
+}
+
+/**
+ * 当前生效的用户数据目录（DD1 决策；app ready 前解析，供截图等按数据目录落盘的功能读取）。
+ * 提前到顶层解析：app.setPath('sessionData') 必须在 app ready 之前调用，
+ * 而 sessionData 目标依赖数据目录。
+ */
+let currentDataDir = '';
+
+// 数据目录解析（DD1 决策，提前到 app ready 前）：
+// - dataDir = 用户个人数据目录（可配置，书签/历史/设置/摘要/截图/下载/网页保存）。
+//   默认位置：开发模式 <软件根目录>/data（apps/desktop/data）；打包后软件根为只读
+//   app.asar，默认改落 <userData>/data（修复新装机无指针时启动崩溃；data.directory
+//   设置仍可改，指针落 userData/data-location.json，含迁移标记时本次启动先整体复制迁移）。
+// - piDir   = pi(AI) 数据目录（固定 userData/pi，不可配置，与用户数据隔离）
+// 顺序：先把旧 userData/data 中的 pi 数据挪入 userData/pi，再整体迁移默认目录，
+// 避免旧 ai.db 被带进新默认数据目录（pi 隔离破坏）。
+const startupUserDataPath = app.getPath('userData');
+migrateLegacyPiData(startupUserDataPath);
+const defaultDataRoot = app.isPackaged ? startupUserDataPath : app.getAppPath();
+currentDataDir = resolveDataLocation(startupUserDataPath, defaultDataRoot);
+// 一次性升级迁移：旧 userData/summaries 迁入数据目录（DD1 决策）
+migrateLegacySummaries(startupUserDataPath, currentDataDir);
+
+// cookies 及网页存储（sessionData：cookies / localStorage / IndexedDB / service worker 等）
+// 重定向到 <数据目录>/cookies（必须在 app ready 之前调用，否则不生效）。
+// 注意：切换后旧 cookies 不会迁移（旧登录态失效，需重新登录一次）。
+app.setPath('sessionData', join(currentDataDir, 'cookies'));
 
 // 注册 urchin: scheme 为特权协议（必须在 app ready 之前）
 registerUrchinSchemePrivileged();
@@ -149,6 +199,27 @@ const windowManager = new WindowManager(createBrowserWindow);
 const tabManager = new TabManager(createBrowserView);
 
 /**
+ * 打开本地文件（Windows 文件关联 / 命令行启动入口）。
+ * 与渲染层 handleOpenFilePath 同一路由策略：
+ * - 音视频/PDF/图片/HTML → file:// 直开标签页（Chromium 原生渲染）
+ * - Markdown/JSON/文本 → urchin://file-viewer 查看器（主窗口 React 渲染）
+ */
+function openLocalFile(windowId: number, path: string): void {
+  try {
+    const kind = classifyFileKind(basename(path));
+    const nativeKinds = ['audio', 'video', 'pdf', 'image', 'html'];
+    const url = nativeKinds.includes(kind)
+      ? // 路径可能含中文/空格，须 encodeURI 才能被 Chromium 解析为 file:// URL
+        `file:///${encodeURI(path.replace(/\\/g, '/'))}`
+      : `urchin://file-viewer/?path=${encodeURIComponent(path)}`;
+    tabManager.create({ windowId, url, active: true });
+    log.info('open local file from association', { kind, path });
+  } catch (err) {
+    log.warn('failed to open local file', { path, error: String(err) });
+  }
+}
+
+/**
  * 全局 HistoryManager 实例（M6）。
  * 在 app.whenReady() 中初始化，注入 StorageLayer 持久化。
  * 启动时从 SQLite 加载已有历史记录，变更时同步写入。
@@ -170,7 +241,7 @@ let settingsManager!: SettingsManager;
 
 /**
  * 全局 SummaryManager 实例（摘要文档本地存储）。
- * 在 app.whenReady() 中初始化，保存目录来自 summary.saveDirectory 设置。
+ * 在 app.whenReady() 中初始化，保存目录恒为 <数据目录>/summaries（DD1 决策）。
  */
 let summaryManager!: SummaryManager;
 
@@ -188,6 +259,10 @@ let providerRegistry!: ProviderRegistry;
 let orchestrator!: Orchestrator;
 let providerConfigStore!: ProviderConfigStore;
 let tabViewIntegration: TabViewIntegrationHandle | null = null;
+/** 右键菜单（复制/粘贴/保存网页）卸载句柄（installTabContextMenu 返回）。退出时移除 created 监听。 */
+let disposeContextMenu: (() => void) | null = null;
+/** Ctrl+滚轮缩放卸载句柄（installZoomControl 返回）。退出时移除 created 监听。 */
+let disposeZoomControl: (() => void) | null = null;
 /** 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
 let bookmarkPanel: BookmarkPanel | null = null;
 /**
@@ -259,6 +334,15 @@ function registerIpcHandlers(): void {
   // M23 download 域 handler
   registerDownloadHandlers(ipcMain, downloadManager);
 
+  // 截图域 handler（地址栏截图按钮）：弹出整屏框选覆盖窗口，确认后裁剪保存到
+  // <数据目录>/screenshots/。CaptureOverlay 单例持覆盖窗口与截图缓存。
+  const captureOverlay = new CaptureOverlay({
+    createWindow: (opts) => new BrowserWindow(opts),
+    preloadPath: join(__dirname, '..', 'preload', 'index.js'),
+    dataDir: currentDataDir,
+  });
+  registerScreenshotHandlers(ipcMain, { overlay: captureOverlay });
+
   // dialog 域 handler：原生目录选择器
   // 供设置页「下载位置」「摘要文档保存位置」等路径字段点击选择目录使用。
   registerHandler(ipcMain, 'dialog.selectDirectory', async (req) => {
@@ -327,6 +411,14 @@ function registerIpcHandlers(): void {
     windowManager,
   });
 
+  // 本地文件域 handler（file.stat / file.read / file.open）
+  // 支撑「以网页形式打开本地文件」：音视频/PDF/图片原生渲染，文本类文档查看器渲染
+  registerFileHandlers({ ipcMain });
+
+  // 文件关联域 handler（默认应用）：注册/查询 HKCU 文件关联
+  // 使用 process.execPath 作为打开命令的可执行文件路径
+  registerFileAssociationHandlers({ ipcMain, exePath: process.execPath });
+
   // UI 域 handler：布局状态切换（左/右侧栏宽度 + 下侧栏高度 + 内容区可见性）
   registerHandler(ipcMain, 'ui.layout.setState', (req) => {
     const newState = setLayoutState({
@@ -373,8 +465,10 @@ function registerIpcHandlers(): void {
 
   // UI 域 handler：按住侧边栏空白处拖动窗口（相对位移）。
   // 渲染层发屏幕坐标增量，主进程移动窗口位置（手动拖拽实现，兼容双击/悬停展开）。
-  registerHandler(ipcMain, 'ui.window.dragBy', (req) => {
-    const managed = windowManager.getWindow(1); // v0.1 单窗口
+  // 多窗口：按 sender 反查所属窗口移动（不再硬编码 windowId=1，新窗口拖拽不再误移原窗口）。
+  registerHandler(ipcMain, 'ui.window.dragBy', (req, ctx) => {
+    const sender = ctx.event.sender;
+    const managed = windowManager.getWindowByWebContents(sender) ?? windowManager.getWindow(1);
     const win = managed?.browserWindow;
     if (!win?.getPosition || !win.setPosition) {
       return { ok: true as const }; // 测试环境无真实 BrowserWindow 位置 API
@@ -384,6 +478,37 @@ function registerIpcHandlers(): void {
     const y = pos[1] ?? 0;
     win.setPosition(x + req.dx, y + req.dy);
     return { ok: true as const };
+  });
+
+  // Window 域 handler：查询当前渲染进程所属窗口 id（多窗口下渲染层不再硬编码 windowId=1）。
+  // 经 event.sender 反查 ManagedWindow；找不到（如测试/非受管 webContents）回退 windowId=1。
+  registerHandler(ipcMain, 'window.getCurrent', (_req, ctx) => {
+    const sender = ctx.event.sender;
+    const managed = windowManager.getWindowByWebContents(sender);
+    return { windowId: managed?.id ?? 1 };
+  });
+
+  // Window 域 handler：新浏览器窗口打开 URL（侧边栏标签/书签拖出窗口触发）。
+  // 新窗口默认打开新标签页，随后把目标 URL 导航到活跃标签（tab.loadUrl）——
+  // 直接给 createWindow 传 url 不会导航（create-window.ts 仅用 url 参数决定加载源）。
+  // v0.1 单窗口化：windowManager.createWindow 恒分配 windowId=2（原窗口为 1）。
+  // x/y（拖出瞬间屏幕坐标）：窗口左上角定位到拖拽位置，避免新窗口重叠在原窗口上；
+  // clamp 到主屏工作区（至少留 120px 窗口主体可见），测试环境无 screen 时跳过定位。
+  registerHandler(ipcMain, 'window.createWithUrl', (req) => {
+    log.info('window.createWithUrl', { url: req.url, x: req.x, y: req.y });
+    const managed = windowManager.createWindow({});
+    tabManager.create({ windowId: managed.id, url: req.url, active: true });
+    if (req.x !== undefined && req.y !== undefined) {
+      try {
+        const wa = screen.getPrimaryDisplay().workArea;
+        const px = Math.min(Math.max(req.x, wa.x), wa.x + Math.max(0, wa.width - 120));
+        const py = Math.min(Math.max(req.y, wa.y), wa.y + Math.max(0, wa.height - 120));
+        managed.browserWindow.setPosition?.(px, py);
+      } catch (err) {
+        log.warn('failed to position new window', { error: String(err) });
+      }
+    }
+    return { windowId: managed.id };
   });
 
   log.info('ipc handlers registered');
@@ -658,21 +783,52 @@ function send(msg) {
 
 // 应用就绪
 void app.whenReady().then(() => {
-  // 注册 urchin:// 协议处理器（必须在 app ready 之后）
-  registerUrchinProtocol();
+  // 注册 urchin:// 协议处理器（必须在 app ready 之后）。
+  // onZoom：页面注入脚本 Ctrl+滚轮时 fetch urchin://zoom[-main] 触发——
+  // 'tab' 缩放网页 BrowserView（active tab），'main' 缩放主窗口 webContents（React 内部页）。
+  // 回调在用户操作时执行，此时 mainWebContents 已初始化（定义于下方窗口创建处）。
+  registerUrchinProtocol({
+    onZoom: (direction, target) => {
+      const delta = direction === 'in' ? -1 : 1;
+      if (target === 'main') {
+        applyZoomByDelta(mainWebContents, delta);
+        return;
+      }
+      const active = tabManager.query({}).find((t) => t.active);
+      const tab = active ? tabManager.getTab(active.id) : undefined;
+      if (tab) applyZoomByDelta(tab.webContents, delta);
+    },
+  });
 
   // 初始化需要文件系统 / SQLite 的模块（W6：移入 whenReady 避免模块加载阶段崩溃）
-  const userDataPath = app.getPath('userData');
+  // userDataPath 与 dataDir（currentDataDir）已在模块顶层解析（DD1 决策，
+  // sessionData/cookies 重定向需 app ready 前完成），此处直接复用。
+  const userDataPath = startupUserDataPath;
   const providersDir = join(userDataPath, 'providers');
   providerRegistry = new ProviderRegistry(providersDir);
 
-  const dataDir = join(userDataPath, 'data');
-  const sl = new StorageLayer(dataDir, new ElectronSafeStorage(), createSqliteDatabase);
+  const dataDir = currentDataDir;
+  const piDir = join(userDataPath, PI_DIR_NAME);
+  const sl = new StorageLayer(dataDir, piDir, new ElectronSafeStorage(), createSqliteDatabase);
   storageLayer = sl;
 
   // 初始化 SettingsManager，注入 StorageLayer 持久化（设置变更自动写入 SQLite）。
-  // 注入 sl.secrets（safeStorage 加密存储）：ai.apiKey / summary.apiKey 走加密落盘，不存明文。
-  settingsManager = new SettingsManager(sl.mainStore, sl.secrets);
+  // DD1 决策：pi 键（ai.* / summary.*）持久化到 pi 库 + pi 密钥存储，
+  // 其余（书签/历史/普通设置）走主库。启动时迁移旧主库残留的 pi 键到 pi 库。
+  settingsManager = new SettingsManager(sl.mainStore, sl.secrets, {
+    piPersistence: sl.aiStore,
+    piSecretStore: sl.secrets,
+    legacyPiKeysScan: () => {
+      const rows = sl.mainStore.query<{ key: string; value: string }>(
+        'SELECT key, value FROM settings WHERE key LIKE ?',
+        'settings:ai.%',
+      );
+      return rows.map((row) => ({
+        key: row.key,
+        value: JSON.parse(row.value) as unknown,
+      }));
+    },
+  });
 
   // 初始化 BookmarkManager，注入 SQLite 持久化适配器。
   // 启动时从 bookmarks 表加载已有书签到内存，create/delete 时同步写入 SQLite。
@@ -712,6 +868,17 @@ void app.whenReady().then(() => {
   };
   bookmarkManager = new BookmarkManager(bookmarkPersistence);
 
+  // 书签变更广播（create/delete）：推送到所有窗口的渲染进程。
+  // 场景：收藏夹面板（独立子窗口）取消收藏后，主窗口地址栏星标需同步熄灭。
+  // 渲染进程监听 'bookmark:changed' 后按 url 重新查询当前页收藏状态。
+  const broadcastBookmarkChanged = (bookmark: { url?: string | null }): void => {
+    for (const managed of windowManager.getAllWindows()) {
+      managed.browserWindow.webContents.send('bookmark:changed', { url: bookmark.url ?? null });
+    }
+  };
+  bookmarkManager.on('created', broadcastBookmarkChanged);
+  bookmarkManager.on('deleted', broadcastBookmarkChanged);
+
   // 初始化 HistoryManager，注入 SQLite 持久化适配器。
   // 启动时从 history 表加载已有记录到内存，record/delete/clear 时同步写入 SQLite。
   // 修复：此前 HistoryManager 仅用内存 Map，软件重启后历史记录全部丢失。
@@ -747,16 +914,34 @@ void app.whenReady().then(() => {
   };
   historyManager = new HistoryManager(historyPersistence);
 
-  // 初始化 SummaryManager（摘要文档本地存储），同步用户配置的保存目录
-  summaryManager = new SummaryManager(userDataPath);
-  summaryManager.setSaveDirectory(
-    settingsManager.get('summary.saveDirectory') as string | undefined,
-  );
-  // 监听保存目录设置变更，实时同步到 SummaryManager
+  // 初始化 SummaryManager（摘要文档本地存储）。
+  // DD1 决策：摘要文档存 <数据目录>/summaries（随用户数据目录迁移，无可配置项）
+  summaryManager = new SummaryManager(dataDir);
+
+  // 数据目录设置变更（DD1 决策）：写入 data-location 指针，重启后整体迁移生效。
+  // pi 数据（ai.db / secrets / providers）固定 userData/pi，不受此变更影响。
   settingsManager.on('changed', (key, value) => {
-    if (key === 'summary.saveDirectory') {
-      summaryManager.setSaveDirectory(value as string | undefined);
+    if (key === 'data.directory') {
+      const next = typeof value === 'string' ? value : '';
+      if (!next.trim()) return; // 留空 = 恢复默认 userData/data，无需写指针
+      try {
+        setDataLocation(userDataPath, dataDir, next);
+      } catch (err) {
+        log.error('failed to update data directory pointer', {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
+  });
+
+  // 完整下载挂钩（DL1 决策）：BrowserView 使用默认 session，挂载 will-download
+  // 统一处理保存位置（downloadsPath 设置 > 系统对话框询问 > 数据目录/downloads 默认）。
+  // 对话框需要主窗口句柄，故在窗口创建后安装（installWillDownload 内部懒取）。
+  installWillDownload({
+    getSetting: (key) => settingsManager.get(key) as string | undefined,
+    setSetting: (key, value) => settingsManager.set(key, value),
+    getDataDir: () => currentDataDir,
+    downloadManager,
   });
 
   providerConfigStore = {
@@ -831,6 +1016,22 @@ void app.whenReady().then(() => {
     return openInNewTab ? 'new-tab' : 'current';
   });
 
+  // 广告浮窗屏蔽（DB1 决策）：默认开启，由设置 blockAds 控制。
+  // 初始化读取设置；监听设置变更实时更新——开启时对现有 tab 补注入
+  // （新页面加载由 tab-manager 的 did-finish-load 自动注入）。
+  tabManager.setAdBlockEnabled(settingsManager.get('blockAds') !== false);
+  settingsManager.on('changed', (key, value) => {
+    if (key !== 'blockAds') return;
+    const enabled = value !== false;
+    tabManager.setAdBlockEnabled(enabled);
+    if (enabled) {
+      // 补注入：已加载的外部网页立即应用屏蔽
+      for (const snapshot of tabManager.query({ windowId: 1 })) {
+        tabManager.applyAdBlock(snapshot.id);
+      }
+    }
+  });
+
   // 监听 tab 导航事件，自动记录浏览历史。
   //
   // 根因：history.record IPC handler 存在但从未被调用，导致历史记录始终为空。
@@ -873,8 +1074,33 @@ void app.whenReady().then(() => {
   // 安装 TabManager ↔ WindowManager 集成（BrowserView 挂载 + 事件推送）
   tabViewIntegration = installTabViewIntegration(tabManager, windowManager);
 
+  // 右键菜单（复制 / 粘贴 / 保存网页）：对每个网页 tab 的 webContents 挂接
+  // context-menu 监听，菜单动作全部在主进程执行。
+  // 保存网页单独立项（用户决策 2026-08-18）：默认目录 <数据目录>/saved-pages/，
+  // 不依赖下载相关设计（不读 downloadsPath、不接入 DownloadManager），仅需数据目录。
+  const contextMenuDeps = { getDataDir: () => currentDataDir };
+  disposeContextMenu = installTabContextMenu(tabManager, contextMenuDeps);
+
   // 创建主窗口
   const mainWindow = windowManager.createWindow({});
+
+  // 主窗口 webContents（新标签页/设置页等 React 内部页）也挂右键菜单：
+  // 复制/粘贴可用；保存网页对内部页禁用（handleContextMenu 内部按 urchin:// 前缀判断）。
+  // 修复：此前只挂 BrowserView（外部网页），新标签页右键无菜单（用户反馈）。
+  // BrowserWindowLike 是结构化接口（不含 on），运行时即真实 Electron webContents。
+  const mainWebContents = mainWindow.browserWindow.webContents as unknown as Electron.WebContents;
+  mainWebContents.on('context-menu', (_event, params) => {
+    const mainTab = tabManager.query({ windowId: mainWindow.id }).find((t) => t.active);
+    handleContextMenu(mainWebContents, params, mainTab, contextMenuDeps);
+  });
+
+  // Ctrl+滚轮缩放（v2，修复 v1 不生效根因）：
+  // before-input-event 在 Electron 32 仅键盘事件触发（滚轮不达），v1 失效；
+  // v2 改为向页面注入 wheel 监听脚本，识别 Ctrl+滚轮后 fetch urchin://zoom[-main]
+  // 通知主进程缩放（协议特权 bypassCSP + supportFetchAPI 保证任意网页可发）。
+  // 页面脚本在 did-finish-load 后注入；缩放状态由 Electron 按 webContents 持有，
+  // 每标签独立、切 tab 保留，无需模块级状态。
+  disposeZoomControl = installZoomControl(tabManager, mainWebContents);
 
   // 初始化收藏夹悬浮面板（子窗口，悬浮于网页之上；随主窗口移动/缩放重定位）。
   // 面板定位避开底部地址栏与右侧边栏：布局尺寸从 view-integration 的 layoutState 读取。
@@ -891,6 +1117,14 @@ void app.whenReady().then(() => {
   // 主页占位设计（2026-08-15）：打开网站时主页就地转为网站标签，避免空标签堆积。
   // 后续标签栏持久化（v0.2 队列）将改为：无缓存 → 主页占位；有缓存 → 恢复标签。
   tabManager.create({ windowId: mainWindow.id, url: 'urchin://newtab' });
+
+  // Windows 文件关联启动：命令行带文件路径（双击关联文件打开浏览器）时，
+  // 直接以查看器/原生播放器打开该文件。须在主窗口与初始 tab 创建后执行，
+  // 否则 windowId 尚未建立。
+  const fileArg = parseFileArg(process.argv);
+  if (fileArg) {
+    openLocalFile(mainWindow.id, fileArg);
+  }
 
   // macOS：点击 dock 图标时重新创建窗口
   app.on('activate', () => {
@@ -980,6 +1214,26 @@ async function performCleanup(): Promise<void> {
       tabViewIntegration = null;
     }
 
+    // 4.5 移除右键菜单的 created 监听（webContents 的 context-menu 监听随 destroy 释放）
+    if (disposeContextMenu) {
+      try {
+        disposeContextMenu();
+      } catch (e) {
+        log.error('Failed to dispose context menu on quit', { error: String(e) });
+      }
+      disposeContextMenu = null;
+    }
+
+    // 4.6 移除 Ctrl+滚轮缩放的 created 监听（webContents 的 before-input-event 随 destroy 释放）
+    if (disposeZoomControl) {
+      try {
+        disposeZoomControl();
+      } catch (e) {
+        log.error('Failed to dispose zoom control on quit', { error: String(e) });
+      }
+      disposeZoomControl = null;
+    }
+
     // 5. 宽限期：utility process 的 kill 信号已发出但进程实际退出需要短暂时间，
     //    等待 150ms 让子进程完成退出，避免主进程先退导致子进程残留
     await new Promise<void>((resolve) => setTimeout(resolve, 150));
@@ -1037,12 +1291,18 @@ process.on('SIGTERM', () => {
 });
 
 // 第二实例聚焦已有窗口（单实例锁配合）
-app.on('second-instance', () => {
+// Windows 文件关联场景：应用已在运行再双击关联文件 → 系统启动第二实例，
+// 此处接管：聚焦窗口 + 在现有窗口打开该文件
+app.on('second-instance', (_event, commandLine) => {
   const windows = windowManager.getAllWindows();
   if (windows.length > 0) {
     const win = windows[0]!;
     win.browserWindow.show();
     win.browserWindow.restore();
+    const fileArg = parseFileArg(commandLine);
+    if (fileArg) {
+      openLocalFile(win.id, fileArg);
+    }
   }
 });
 

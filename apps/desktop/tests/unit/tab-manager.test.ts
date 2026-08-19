@@ -551,3 +551,34 @@ describe('TabManager HTML5 fullscreen (内嵌视频全屏)', () => {
     expect(updated).toHaveBeenCalled();
   });
 });
+
+describe('TabManager getTabByWebContents（右键菜单归属反查）', () => {
+  it('should find tab by its own webContents', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    const tab = mgr.create({ windowId: 1, url: 'https://example.com' });
+    const wc = factory._views[0]!._webContents;
+
+    expect(mgr.getTabByWebContents(wc)?.id).toBe(tab.id);
+  });
+
+  it('should return undefined for unknown webContents', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    mgr.create({ windowId: 1, url: 'https://example.com' });
+
+    const foreign = createMockWebContents();
+    expect(mgr.getTabByWebContents(foreign)).toBeUndefined();
+    expect(mgr.getTabByWebContents(null)).toBeUndefined();
+  });
+
+  it('should return undefined after tab is removed', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    const tab = mgr.create({ windowId: 1, url: 'https://example.com' });
+    const wc = factory._views[0]!._webContents;
+
+    mgr.remove(tab.id);
+    expect(mgr.getTabByWebContents(wc)).toBeUndefined();
+  });
+});

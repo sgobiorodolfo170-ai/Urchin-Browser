@@ -42,6 +42,7 @@ import { Omnibox } from './omnibox/omnibox';
 import { AiChatView } from '@urchin/ai-extension';
 import { SettingsPage } from './settings/SettingsPage';
 import { NewTabPage } from './home/NewTabPage';
+import { FileViewer } from './files/FileViewer';
 import { lookupBuiltinSite, builtinIconUrl } from './home/site-directory-lookup';
 import { PiSettingsDialog } from './omnibox/pi-settings-dialog';
 import { useTheme } from './theme/theme-provider';
@@ -49,6 +50,7 @@ import { createHostFromUrchin } from './host-impl';
 import type { Suggestion } from './omnibox/types';
 import { buildSuggestions } from './omnibox/build-suggestions';
 import { cn } from './lib/utils';
+import { getCurrentWindowId } from './lib/current-window';
 
 // Tab 快照类型（与主进程 TabSnapshot 对齐）
 interface TabSnapshot {
@@ -280,9 +282,10 @@ function TabSiteIcon({
   if (!current) {
     // 完全无法识别（无内置图标、网页无 favicon 或加载失败）：
     // 用浏览器图标半透明占位，淡化显示避免与真实站点图标混淆
+    // 相对路径：生产页面从 file:// 加载，绝对路径会解析到磁盘根导致 404
     return (
       <img
-        src="/browser-icon.png"
+        src="./browser-icon.png"
         alt=""
         draggable={false}
         className={cn('shrink-0 object-contain opacity-40', className ?? 'h-3 w-3')}
@@ -346,8 +349,12 @@ function useWindowDrag() {
 
   const startDrag = useCallback((e: React.PointerEvent) => {
     const target = e.target as HTMLElement;
-    // 交互元素上不触发窗口拖拽
-    if (target.closest('button, input, select, textarea, a, [role="button"], [role="separator"]')) {
+    // 交互元素上不触发窗口拖拽（含标签卡片：卡片自身支持拖出窗口，见 handleTabPointerDown）
+    if (
+      target.closest(
+        'button, input, select, textarea, a, [role="button"], [role="separator"], [data-tab-card]',
+      )
+    ) {
       return;
     }
     dragStateRef.current = { lastX: e.screenX, lastY: e.screenY, started: false };
@@ -449,6 +456,62 @@ export function App() {
   }, []);
 
   /**
+   * 打开本地路径（文件夹/文件统一入口）：
+   * - 目录（isDir）→ urchin://file-viewer/?dir= 目录浏览页（选择文件夹就打开文件夹）
+   * - 文件：HTML → file:// 直开（内嵌 iframe 相对资源解析有问题不进查看器）；
+   *   其余全部（音视频/PDF/图片/Markdown/JSON/文本/其他）→ urchin://file-viewer/?path=
+   *   查看器（媒体/PDF/图片内嵌渲染 + 同类型连续切换）
+   * 供左侧栏按钮 / Ctrl+O / 文件拖放 / 文件关联启动共用。
+   */
+  const handleOpenFilePath = useCallback((path: string) => {
+    void (async () => {
+      try {
+        const statRes = (await window.urchin.invoke('file.stat', { path })) as {
+          kind: string;
+          isDir?: boolean;
+        };
+        const url = statRes.isDir
+          ? `urchin://file-viewer/?dir=${encodeURIComponent(path)}`
+          : statRes.kind === 'html'
+            ? `file:///${encodeURI(path.replace(/\\/g, '/'))}`
+            : `urchin://file-viewer/?path=${encodeURIComponent(path)}`;
+        await window.urchin.invoke('tab.create', {
+          windowId: await getCurrentWindowId(),
+          url,
+          active: true,
+        });
+      } catch (e) {
+        console.error('Failed to open local file:', e);
+      }
+    })();
+  }, []);
+
+  /** 打开文件选择器（左侧栏「打开文件」按钮 / Ctrl+O）：
+   *  openFile 对话框 → handleOpenFilePath 统一分流（文件→查看器，
+   *  自动捕获所在目录，同目录文件可自由切换）。 */
+  const handleOpenFilePicker = useCallback(async () => {
+    try {
+      const res = (await window.urchin.invoke('file.open', {})) as { path: string | null };
+      if (res.path) handleOpenFilePath(res.path);
+    } catch (e) {
+      console.error('Failed to open file picker:', e);
+    }
+  }, [handleOpenFilePath]);
+
+  // Ctrl+O 快捷键：打开文件（主进程已 Menu.setApplicationMenu(null) 移除全局菜单，
+  // 快捷键需渲染层监听）。仅 Ctrl+O（不含 Shift/Ctrl+P 等组合），防误触。
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'o') {
+        e.preventDefault();
+        void handleOpenFilePicker();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleOpenFilePicker]);
+
+  /**
    * 一键提取当前网页内容并保存到本地（AI 助手）。
    *
    * 流程：调用 summary.run IPC → 主进程在页面上下文执行提取脚本 →
@@ -485,6 +548,19 @@ export function App() {
     return () => clearTimeout(timer);
   }, [summaryToast]);
 
+  // 截图当前网页（地址栏截图按钮）：主进程弹出整屏框选覆盖窗口，用户拖拽框选
+  // 确认后裁剪保存到 <数据目录>/screenshots/ 并打开所在文件夹。
+  const handleScreenshot = useCallback(async () => {
+    if (!activeTabId) return;
+    try {
+      await window.urchin.invoke('screenshot.capture', {});
+      // 覆盖窗口已弹出（截图/取消结果由覆盖窗口自身处理，无需 toast）
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setSummaryToast(`截图失败：${message}`);
+    }
+  }, [activeTabId]);
+
   // 阶段5：Host API 实例（单例），供 AI 模块通过标准接口访问浏览器核心
   // createHostFromUrchin 仅做接口适配，无副作用，安全地在 render 期间构造一次
   const host = useMemo(() => createHostFromUrchin(), []);
@@ -494,6 +570,9 @@ export function App() {
   /** 右侧边栏悬停自动展开开关（设置 ui.rightSidebarAutoExpand，默认 true） */
   const [rightSidebarAutoExpand, setRightSidebarAutoExpand] = useState<boolean>(true);
 
+  /** 当前搜索引擎（设置 searchEngine，供地址栏搜索词生成搜索 URL；默认 google） */
+  const [searchEngine, setSearchEngine] = useState<string>('google');
+
   // 右侧栏悬停展开延迟定时器（未触发前可取消）
   const rightHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -502,13 +581,14 @@ export function App() {
     activeTabIdRef.current = activeTabId;
   }, [activeTabId]);
 
-  // 加载右侧边栏悬停设置（延迟 + 自动展开开关），并监听设置页变更实时更新
+  // 加载右侧边栏悬停设置（延迟 + 自动展开开关）+ 搜索引擎设置，并监听设置页变更实时更新
   useEffect(() => {
     async function loadHoverSettings() {
       try {
-        const [delayRes, autoRes] = await Promise.all([
+        const [delayRes, autoRes, engineRes] = await Promise.all([
           window.urchin.invoke('settings.get', { key: 'debug.sidebarHoverDelay' }),
           window.urchin.invoke('settings.get', { key: 'ui.rightSidebarAutoExpand' }),
+          window.urchin.invoke('settings.get', { key: 'searchEngine' }),
         ]);
         const delay = (delayRes as { value: unknown }).value;
         if (typeof delay === 'number' && Number.isFinite(delay)) {
@@ -523,18 +603,23 @@ export function App() {
         } else if (auto === 'false') {
           setRightSidebarAutoExpand(false);
         }
+        const engine = (engineRes as { value: unknown }).value;
+        if (typeof engine === 'string' && engine) {
+          setSearchEngine(engine);
+        }
       } catch {
         // 使用默认值
       }
     }
     void loadHoverSettings();
 
-    // 监听设置页保存事件，实时更新悬停设置
+    // 监听设置页保存事件，实时更新悬停设置与搜索引擎
     const onSettingsChanged = (e: Event): void => {
       const detail = (e as CustomEvent<{ keys: string[] }>).detail;
       if (
         detail?.keys?.includes('debug.sidebarHoverDelay') ||
-        detail?.keys?.includes('ui.rightSidebarAutoExpand')
+        detail?.keys?.includes('ui.rightSidebarAutoExpand') ||
+        detail?.keys?.includes('searchEngine')
       ) {
         void loadHoverSettings();
       }
@@ -567,11 +652,12 @@ export function App() {
     void loadRightWidth();
   }, []);
 
-  // 初始化：加载 tab 列表
+  // 初始化：加载 tab 列表（多窗口：按当前窗口 id 查询，新窗口加载自己的标签）
   useEffect(() => {
     async function loadTabs() {
       try {
-        const result = (await window.urchin.invoke('tab.list', { windowId: 1 })) as {
+        const windowId = await getCurrentWindowId();
+        const result = (await window.urchin.invoke('tab.list', { windowId })) as {
           tabs: readonly TabSnapshot[];
         };
         setTabs(result.tabs);
@@ -655,7 +741,7 @@ export function App() {
     try {
       // 新标签页打开内嵌主页（urchin://newtab，无法自由更换）
       await window.urchin.invoke('tab.create', {
-        windowId: 1,
+        windowId: await getCurrentWindowId(),
         url: 'urchin://newtab',
         active: true,
       });
@@ -690,7 +776,7 @@ export function App() {
     // 没有设置标签页，创建新的
     try {
       await window.urchin.invoke('tab.create', {
-        windowId: 1,
+        windowId: await getCurrentWindowId(),
         url: 'urchin://settings',
         active: true,
       });
@@ -724,7 +810,7 @@ export function App() {
     // 没有 AI 标签页，创建新的
     try {
       await window.urchin.invoke('tab.create', {
-        windowId: 1,
+        windowId: await getCurrentWindowId(),
         url: 'urchin://ai',
         active: true,
       });
@@ -749,6 +835,70 @@ export function App() {
     }
   }, []);
 
+  /**
+   * 标签拖出浏览器窗口：自定义指针拖拽，检测到鼠标移出窗口边界时
+   * 经 window.createWithUrl 在新窗口打开该 URL。
+   *
+   * 方案背景（2026-08-19 迭代）：
+   * - v1 HTML5 系统拖放（text/uri-list）→ Windows 对拖到桌面的 URL 默认生成快捷方式，
+   *   且拖出窗口后 DOM 事件由 OS 接管、主进程拿不到 URL
+   * - v2 自定义拖拽：窗口内全程受控（指针事件），移出边界即触发打开
+   * - v3（用户反馈）：① 拖出后关闭原窗口标签（移动语义，与原窗口不再保留一致）；
+   *   ② 新窗口定位到拖出瞬间的屏幕坐标（跟随拖拽位置，不重叠在原窗口上）。
+   *   指针移出 OS 窗口后渲染进程收不到事件，故用出界瞬间的屏幕坐标定位（出界即开窗）
+   * 仅 http/https 可拖（内部页无法外部打开）。
+   */
+  const tabDragRef = useRef<{
+    pointerId: number;
+    url: string;
+    tabId: number;
+    captureEl: HTMLElement;
+  } | null>(null);
+
+  const handleTabPointerDown = useCallback((e: React.PointerEvent, tab: TabSnapshot) => {
+    if (!/^https?:\/\//i.test(tab.url)) return;
+    // 关闭按钮等交互元素上不启动拖拽：setPointerCapture 会把 pointerup 后的
+    // click 事件重定向到卡片（捕获目标），关闭按钮的 onClick 永远不触发（关闭阻塞）
+    if ((e.target as HTMLElement).closest('button')) return;
+    const el = e.currentTarget as HTMLElement;
+    tabDragRef.current = { pointerId: e.pointerId, url: tab.url, tabId: tab.id, captureEl: el };
+    if (typeof el.setPointerCapture === 'function') {
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        /* 指针捕获失败忽略：仍可拖拽 */
+      }
+    }
+  }, []);
+
+  const handleTabPointerMove = useCallback((e: React.PointerEvent) => {
+    const st = tabDragRef.current;
+    if (!st) return;
+    // 指针移出窗口边界 → 在新窗口打开该标签 URL（定位到出界屏幕坐标），并关闭原窗口标签
+    if (
+      e.clientX < 0 ||
+      e.clientY < 0 ||
+      e.clientX > window.innerWidth ||
+      e.clientY > window.innerHeight
+    ) {
+      tabDragRef.current = null;
+      try {
+        st.captureEl.releasePointerCapture(st.pointerId);
+      } catch {
+        /* 未捕获/已释放忽略 */
+      }
+      const { url, tabId } = st;
+      void window.urchin
+        .invoke('window.createWithUrl', { url, x: e.screenX, y: e.screenY })
+        .then(() => window.urchin.invoke('tab.close', { tabId }))
+        .catch((err) => console.error('Failed to open tab in new window:', err));
+    }
+  }, []);
+
+  const handleTabPointerEnd = useCallback(() => {
+    tabDragRef.current = null;
+  }, []);
+
   const handleNavigate = useCallback(
     async (url: string) => {
       // 主页占位设计（2026-08-15）：打开网站时优先消费主页占位标签——
@@ -766,7 +916,7 @@ export function App() {
       // 无标签页：新建标签并导航，避免导航静默失效
       try {
         await window.urchin.invoke('tab.create', {
-          windowId: 1,
+          windowId: await getCurrentWindowId(),
           url,
           active: true,
         });
@@ -1044,6 +1194,17 @@ export function App() {
     void refreshBookmarkSaved(activeTab?.url);
   }, [activeTab?.url, refreshBookmarkSaved]);
 
+  // 书签变更同步：主进程广播 bookmark:changed（收藏夹面板取消收藏等场景），
+  // 重新查询当前 URL 收藏状态，让地址栏星标亮/灭与数据一致。
+  useEffect(() => {
+    const unsubscribe = window.urchin.on('bookmark:changed', () => {
+      void refreshBookmarkSaved(activeTab?.url);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [activeTab?.url, refreshBookmarkSaved]);
+
   const leftWidth = leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED;
   // 右侧栏有效展开：固定展开 OR 折叠态下的悬停预览
   const effectiveRightExpanded = rightExpanded || rightHovered;
@@ -1055,11 +1216,12 @@ export function App() {
   const isSettingsTab = !!activeTab?.url?.startsWith('urchin://settings');
   const isAiTab = !!activeTab?.url?.startsWith('urchin://ai');
   const isNewTab = !!activeTab?.url?.startsWith('urchin://newtab');
-  // 渲染优先级：设置页 > AI 页 > 主页 > 普通网页（BrowserView）
-  // settings / ai / newtab 都由 React 组件渲染，BrowserView 让出空间（ZERO_BOUNDS）
+  const isFileViewerTab = !!activeTab?.url?.startsWith('urchin://file-viewer');
+  // 渲染优先级：设置页 > AI 页 > 主页 > 文件查看器 > 普通网页（BrowserView）
+  // settings / ai / newtab / file-viewer 都由 React 组件渲染，BrowserView 让出空间（ZERO_BOUNDS）
 
-  // 内部页面（settings / ai / newtab）下，导航按钮无意义，禁用
-  const isInternalPage = isSettingsTab || isAiTab || isNewTab;
+  // 内部页面（settings / ai / newtab / file-viewer）下，导航按钮无意义，禁用
+  const isInternalPage = isSettingsTab || isAiTab || isNewTab || isFileViewerTab;
   // AI 标签页关联的"上一个活跃网页 tab ID"：用于 AI 摘要功能
   // 阶段2 简化：传入当前 activeTabId（即 AI 标签页 ID），AI 组件会自动处理
   // 阶段3 重构时将通过 host.tabs.getActive() 获取真正的活跃网页 tab
@@ -1073,13 +1235,31 @@ export function App() {
   // 当前已是最新主页（urchin://newtab）时不重复创建，避免堆叠主页标签。
   const handleGoHome = useCallback(() => {
     if (activeTab?.url === 'urchin://newtab') return;
-    void window.urchin
-      .invoke('tab.create', { windowId: 1, url: 'urchin://newtab', active: true })
-      .catch((e) => console.error('Failed to open homepage:', e));
+    void (async () => {
+      try {
+        await window.urchin.invoke('tab.create', {
+          windowId: await getCurrentWindowId(),
+          url: 'urchin://newtab',
+          active: true,
+        });
+      } catch (e) {
+        console.error('Failed to open homepage:', e);
+      }
+    })();
   }, [activeTab?.url]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-surface">
+    <div
+      className="flex h-screen w-screen overflow-hidden bg-surface"
+      // 拖放本地文件到窗口：直接按类型在新标签页打开（audio/video/pdf 原生渲染，文本走查看器）
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        const path = (file as File & { path?: string })?.path;
+        if (path) handleOpenFilePath(path);
+      }}
+    >
       {/* === 左侧栏 ===
        *  背景用 bg-titlebar（与窗口标题栏同色令牌）：标题栏是 OS 原生色
        *  （浅色=白 / 暗色=中性深灰），侧栏跟随该令牌后两者间的色差分割线消失，
@@ -1119,8 +1299,18 @@ export function App() {
           )}
         </div>
 
-        {/* 底部：AI 入口 + 设置 + 主题切换 */}
+        {/* 底部：打开文件 + AI 入口 + 设置 + 主题切换
+         *（仅文件入口；打开后自动捕获所在目录，同目录文件可自由切换） */}
         <div className="flex flex-col items-center gap-1 border-t border-border p-2">
+          {/* 打开文件按钮：openFile 对话框 → 查看器（媒体/PDF/图片内嵌 + 同目录连续切换） */}
+          <button
+            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+            onClick={() => void handleOpenFilePicker()}
+            aria-label="打开文件"
+            title="打开文件（Ctrl+O）"
+          >
+            <FolderOpen className="h-4 w-4" />
+          </button>
           <button
             className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
             onClick={() => void handleOpenAi()}
@@ -1167,6 +1357,11 @@ export function App() {
               /* 主页：React 组件渲染（内嵌，无法自由更换）。
                * 关闭最后一个标签后 activeTab 为空，此时同样回落到主页 */
               <NewTabPage onNavigate={(url) => void handleNavigate(url)} />
+            ) : isFileViewerTab ? (
+              /* 本地文件查看器/文件夹浏览器：React 组件渲染（urchin://file-viewer），
+               * ?path= 查看文件（媒体/PDF/图片内嵌 + 同类型连续切换），?dir= 浏览文件夹。
+               * onNavigate 走 handleNavigate：同标签导航（上/下一个、进入子目录）不堆标签 */
+              <FileViewer url={activeTab?.url ?? ''} onNavigate={(u) => void handleNavigate(u)} />
             ) : null /* 普通网页：由 Electron BrowserView 渲染，React 仅留空 */
           }
         </div>
@@ -1233,6 +1428,9 @@ export function App() {
               summarizeDisabled={
                 summaryRunning || !activeTab?.url || !/^https?:\/\//i.test(activeTab.url)
               }
+              onScreenshot={() => void handleScreenshot()}
+              screenshotDisabled={!activeTabId}
+              searchEngine={searchEngine}
             />
 
             {bookmarkToast && (
@@ -1277,7 +1475,7 @@ export function App() {
          *  鼠标移入手柄区域变横向调节光标，按住左右拖动调宽 */}
         {effectiveRightExpanded && (
           <div
-            className="absolute top-0 bottom-11 left-0 z-10 w-1.5 cursor-col-resize"
+            className="absolute top-0 bottom-12 left-0 z-10 w-1.5 cursor-col-resize"
             onPointerDown={handleRightResizeStart}
             onPointerMove={handleRightResizeMove}
             onPointerUp={handleRightResizeEnd}
@@ -1306,6 +1504,11 @@ export function App() {
                   <div
                     key={tab.id}
                     data-tab-card
+                    draggable={false}
+                    onPointerDown={(e) => handleTabPointerDown(e, tab)}
+                    onPointerMove={handleTabPointerMove}
+                    onPointerUp={handleTabPointerEnd}
+                    onPointerCancel={handleTabPointerEnd}
                     className={cn(
                       // 凸起悬浮感：圆角卡片 + 投影 + 细边框 + 顶部高光线；
                       // 激活态更亮（主色投影 + 高对比文字）
@@ -1317,8 +1520,11 @@ export function App() {
                         : 'text-text-secondary shadow-[0_1px_4px_-1px_rgba(0,0,0,0.25)] hover:bg-surface-secondary hover:text-text',
                     )}
                     onClick={() => void handleSelectTab(tab.id)}
+                    onDoubleClick={() => void handleCloseTab(tab.id)}
                   >
-                    <TabFavicon tab={tab} />
+                    {/* 图标铺满标签高度：36px 与折叠态一致，卡片高度随内容撑开约 52px，
+                     *  items-center 垂直居中，object-contain 保持比例不变形 */}
+                    <TabFavicon tab={tab} className="h-9 w-9" />
                     <span className="flex-1 truncate">{tab.title || tab.url || '新标签页'}</span>
                     <button
                       className="shrink-0 rounded p-0.5 opacity-0 hover:bg-error/10 group-hover:opacity-100"
@@ -1333,8 +1539,11 @@ export function App() {
                   </div>
                 ))}
               </div>
-              {/* 新建标签 */}
-              <div className="shrink-0 border-t border-border p-2">
+              {/* 新建标签：高度与底部地址栏一致（BOTTOM_HEIGHT=48），底边对齐 */}
+              <div
+                className="flex shrink-0 items-center border-t border-border px-2"
+                style={{ height: BOTTOM_HEIGHT }}
+              >
                 <button
                   className="flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-sm text-text-secondary hover:bg-surface hover:text-text"
                   onClick={() => void handleNewTab()}
@@ -1353,6 +1562,11 @@ export function App() {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
+                draggable={false}
+                onPointerDown={(e) => handleTabPointerDown(e, tab)}
+                onPointerMove={handleTabPointerMove}
+                onPointerUp={handleTabPointerEnd}
+                onPointerCancel={handleTabPointerEnd}
                 className={cn(
                   // 折叠态图标：方形小圆角（区别于展开态卡片的圆角更大），激活态带主色描边。
                   // 尺寸 40px = 折叠栏宽 44px - 左右各留 2px 边界空隙
@@ -1363,6 +1577,7 @@ export function App() {
                     : 'text-text-secondary hover:bg-surface-secondary hover:text-text',
                 )}
                 onClick={() => void handleSelectTab(tab.id)}
+                onDoubleClick={() => void handleCloseTab(tab.id)}
                 aria-label={`切换到标签 ${tab.title || tab.url || '新标签页'}`}
                 title={tab.title || tab.url || '新标签页'}
               >

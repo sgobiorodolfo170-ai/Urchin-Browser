@@ -165,6 +165,29 @@ export const windowCreateResSchema = z.object({
 });
 export type WindowCreateRes = z.infer<typeof windowCreateResSchema>;
 
+/** 新浏览器窗口打开 URL（侧边栏标签/书签拖出窗口触发）。URL 须为 http/https。
+ *  x/y：拖出瞬间的屏幕坐标（窗口左上角定位用，跟随拖拽位置，避免重叠在原窗口）。 */
+export const windowCreateWithUrlReqSchema = z.object({
+  url: urlSchema,
+  x: z.number().int().optional(),
+  y: z.number().int().optional(),
+});
+export type WindowCreateWithUrlReq = z.infer<typeof windowCreateWithUrlReqSchema>;
+
+export const windowCreateWithUrlResSchema = z.object({
+  windowId: windowIdSchema,
+});
+export type WindowCreateWithUrlRes = z.infer<typeof windowCreateWithUrlResSchema>;
+
+/** 查询当前渲染进程所属窗口 id（多窗口下渲染层不再硬编码 windowId=1）。 */
+export const windowGetCurrentReqSchema = z.object({}).default({});
+export type WindowGetCurrentReq = z.infer<typeof windowGetCurrentReqSchema>;
+
+export const windowGetCurrentResSchema = z.object({
+  windowId: windowIdSchema,
+});
+export type WindowGetCurrentRes = z.infer<typeof windowGetCurrentResSchema>;
+
 export const windowCloseReqSchema = z.object({
   windowId: windowIdSchema,
 });
@@ -533,6 +556,135 @@ export const dialogSelectDirectoryResSchema = z.object({
 export type DialogSelectDirectoryRes = z.infer<typeof dialogSelectDirectoryResSchema>;
 
 // ============================================================================
+// File 域（本地文件网页化打开）
+// ============================================================================
+
+/** 文件类型分类：决定打开方式（原生 Chromium 渲染 or 文本查看器渲染）。 */
+export const fileKindSchema = z.enum([
+  'audio',
+  'video',
+  'pdf',
+  'image',
+  'html',
+  'markdown',
+  'json',
+  'text',
+  'binary',
+]);
+export type FileKind = z.infer<typeof fileKindSchema>;
+
+/** 本地文件绝对路径：非空，长度上限 4096（Windows 路径上限）。 */
+export const filePathSchema = z.string().min(1).max(4096);
+
+export const fileStatReqSchema = z.object({
+  path: filePathSchema,
+});
+export type FileStatReq = z.infer<typeof fileStatReqSchema>;
+
+export const fileStatResSchema = z.object({
+  /** 文件名（含扩展名）。 */
+  name: z.string(),
+  /** 文件大小（字节）；目录为 0。 */
+  size: z.number().nonnegative(),
+  /** 小写扩展名（不含点），无扩展名为空字符串；目录为空字符串。 */
+  ext: z.string(),
+  /** MIME 类型（按扩展名推断，未知为 application/octet-stream）。 */
+  mimeType: z.string(),
+  /** 类型分类：决定打开方式。 */
+  kind: fileKindSchema,
+  /** 是否为目录（true → 渲染层打开目录浏览页，kind 为 binary 占位）。 */
+  isDir: z.boolean().default(false),
+});
+export type FileStatRes = z.infer<typeof fileStatResSchema>;
+
+export const fileReadReqSchema = z.object({
+  path: filePathSchema,
+  /** 读取上限（字节），默认 5MB；超过时抛 IpcError(FILE_TOO_LARGE)。 */
+  maxBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(64 * 1024 * 1024)
+    .optional(),
+});
+export type FileReadReq = z.infer<typeof fileReadReqSchema>;
+
+export const fileReadResSchema = z.object({
+  /** 文件文本内容（UTF-8）。 */
+  content: z.string(),
+});
+export type FileReadRes = z.infer<typeof fileReadResSchema>;
+
+export const fileOpenReqSchema = z.object({
+  /** 文件选择器标题，可选。 */
+  title: z.string().max(256).optional(),
+});
+export type FileOpenReq = z.infer<typeof fileOpenReqSchema>;
+
+export const fileOpenResSchema = z.object({
+  /** 选中的文件路径，用户取消时为 null。 */
+  path: z.string().nullable(),
+});
+export type FileOpenRes = z.infer<typeof fileOpenResSchema>;
+
+/** 目录条目：目录恒为 kind='binary'（占位，UI 以 isDir 分支渲染文件夹）。 */
+export const fileDirEntrySchema = z.object({
+  name: z.string(),
+  path: filePathSchema,
+  kind: fileKindSchema,
+  isDir: z.boolean(),
+  size: z.number().nonnegative(),
+});
+export type FileDirEntry = z.infer<typeof fileDirEntrySchema>;
+
+export const fileDirReqSchema = z.object({
+  path: filePathSchema,
+});
+export type FileDirReq = z.infer<typeof fileDirReqSchema>;
+
+export const fileDirResSchema = z.object({
+  /** 目录条目：子目录在前（字母序），其后文件按名排序（字母序）。 */
+  entries: z.array(fileDirEntrySchema),
+});
+export type FileDirRes = z.infer<typeof fileDirResSchema>;
+
+// ============================================================================
+// File Association 域（Windows 默认应用 · 文件关联注册）
+// ============================================================================
+
+/** 文件关联分组标识（设置页「默认应用」三组）。 */
+export const associationGroupIdSchema = z.enum(['media', 'documents', 'images']);
+export type AssociationGroupId = z.infer<typeof associationGroupIdSchema>;
+
+/** 单组关联状态（已注册扩展名数 / 总数 / 扩展名清单）。 */
+export const associationGroupStatusSchema = z.object({
+  registered: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+  extensions: z.array(z.string()),
+});
+export type AssociationGroupStatus = z.infer<typeof associationGroupStatusSchema>;
+
+export const fileAssociationRegisterReqSchema = z.object({
+  group: associationGroupIdSchema,
+});
+export type FileAssociationRegisterReq = z.infer<typeof fileAssociationRegisterReqSchema>;
+
+export const fileAssociationRegisterResSchema = z.object({
+  ok: z.literal(true),
+  count: z.number().int().nonnegative(),
+});
+export type FileAssociationRegisterRes = z.infer<typeof fileAssociationRegisterResSchema>;
+
+export const fileAssociationGetStatusReqSchema = z.object({});
+export type FileAssociationGetStatusReq = z.infer<typeof fileAssociationGetStatusReqSchema>;
+
+export const fileAssociationGetStatusResSchema = z.object({
+  /** key = 分组 id（media / documents / images）。 */
+  groups: z.record(associationGroupIdSchema, associationGroupStatusSchema),
+});
+export type FileAssociationGetStatusRes = z.infer<typeof fileAssociationGetStatusResSchema>;
+
+// ============================================================================
 // AI 域（W4：M13 Side Panel + M11 Orchestrator UI 接线）
 // ============================================================================
 
@@ -680,6 +832,56 @@ export const aiScreenshotResSchema = z.object({
   displayId: z.string().optional(),
 });
 export type AiScreenshotRes = z.infer<typeof aiScreenshotResSchema>;
+
+// ============================================================================
+// screenshot.* —— 地址栏截图按钮（整屏框选截图，存用户数据目录）
+// ============================================================================
+
+/** 截图请求：无参数，主进程弹出全屏框选覆盖窗口 */
+export const screenshotCaptureReqSchema = z.object({}).default({});
+export type ScreenshotCaptureReq = z.infer<typeof screenshotCaptureReqSchema>;
+
+/** 截图响应：是否成功弹出框选窗口 */
+export const screenshotCaptureResSchema = z.object({
+  /** 是否已打开覆盖窗口（true = 本次弹出；false = 已有一个在进行中） */
+  started: z.boolean(),
+});
+export type ScreenshotCaptureRes = z.infer<typeof screenshotCaptureResSchema>;
+
+/** 背景截图请求：覆盖窗口拉取整屏截图 data URI */
+export const screenshotGetImageDataReqSchema = z.object({}).default({});
+export type ScreenshotGetImageDataReq = z.infer<typeof screenshotGetImageDataReqSchema>;
+
+/** 背景截图响应 */
+export const screenshotGetImageDataResSchema = z.object({
+  /** data URI 格式：data:image/png;base64,xxxx（物理像素整屏） */
+  dataUri: z.string().min(1),
+});
+export type ScreenshotGetImageDataRes = z.infer<typeof screenshotGetImageDataResSchema>;
+
+/** 确认框选请求：选区物理像素矩形（覆盖窗口已按 devicePixelRatio 换算） */
+export const screenshotConfirmReqSchema = z.object({
+  x: z.number().int().min(0),
+  y: z.number().int().min(0),
+  width: z.number().int().min(1),
+  height: z.number().int().min(1),
+});
+export type ScreenshotConfirmReq = z.infer<typeof screenshotConfirmReqSchema>;
+
+/** 确认框选响应 */
+export const screenshotConfirmResSchema = z.object({
+  /** 裁剪后的 PNG 文件绝对路径（<数据目录>/screenshots/<时间戳>.png） */
+  path: z.string().min(1),
+});
+export type ScreenshotConfirmRes = z.infer<typeof screenshotConfirmResSchema>;
+
+/** 取消框选请求：无参数，关闭覆盖窗口 */
+export const screenshotCancelReqSchema = z.object({}).default({});
+export type ScreenshotCancelReq = z.infer<typeof screenshotCancelReqSchema>;
+
+/** 取消框选响应：空 */
+export const screenshotCancelResSchema = z.object({}).default({});
+export type ScreenshotCancelRes = z.infer<typeof screenshotCancelResSchema>;
 
 /** 上传文件请求：弹出原生文件选择器，返回所选文件内容 */
 export const aiUploadFileReqSchema = z
@@ -984,6 +1186,11 @@ export const ipcSchema = {
   'tab.stop': { req: tabStopReqSchema, res: tabStopResSchema },
   'window.create': { req: windowCreateReqSchema, res: windowCreateResSchema },
   'window.close': { req: windowCloseReqSchema, res: windowCloseResSchema },
+  'window.createWithUrl': {
+    req: windowCreateWithUrlReqSchema,
+    res: windowCreateWithUrlResSchema,
+  },
+  'window.getCurrent': { req: windowGetCurrentReqSchema, res: windowGetCurrentResSchema },
   'history.record': { req: historyRecordReqSchema, res: historyRecordResSchema },
   'history.search': { req: historySearchReqSchema, res: historySearchResSchema },
   'history.list': { req: historyListReqSchema, res: historyListResSchema },
@@ -1009,6 +1216,18 @@ export const ipcSchema = {
     req: dialogSelectDirectoryReqSchema,
     res: dialogSelectDirectoryResSchema,
   },
+  'file.stat': { req: fileStatReqSchema, res: fileStatResSchema },
+  'file.read': { req: fileReadReqSchema, res: fileReadResSchema },
+  'file.open': { req: fileOpenReqSchema, res: fileOpenResSchema },
+  'file.dir': { req: fileDirReqSchema, res: fileDirResSchema },
+  'file-association.register': {
+    req: fileAssociationRegisterReqSchema,
+    res: fileAssociationRegisterResSchema,
+  },
+  'file-association.getStatus': {
+    req: fileAssociationGetStatusReqSchema,
+    res: fileAssociationGetStatusResSchema,
+  },
   'ai.chat.start': { req: aiChatStartReqSchema, res: aiChatStartResSchema },
   'ai.chat.abort': { req: aiChatAbortReqSchema, res: aiChatAbortResSchema },
   'ai.agent.start': { req: aiAgentStartReqSchema, res: aiAgentStartResSchema },
@@ -1017,6 +1236,14 @@ export const ipcSchema = {
   'ai.screenshot': { req: aiScreenshotReqSchema, res: aiScreenshotResSchema },
   'ai.uploadFile': { req: aiUploadFileReqSchema, res: aiUploadFileResSchema },
   'ai.setWorkdir': { req: aiSetWorkdirReqSchema, res: aiSetWorkdirResSchema },
+  // 整屏框选截图（地址栏按钮）：与 ai.screenshot（pi 全屏回传）不同，框选裁剪存数据目录
+  'screenshot.capture': { req: screenshotCaptureReqSchema, res: screenshotCaptureResSchema },
+  'screenshot.getImageData': {
+    req: screenshotGetImageDataReqSchema,
+    res: screenshotGetImageDataResSchema,
+  },
+  'screenshot.confirm': { req: screenshotConfirmReqSchema, res: screenshotConfirmResSchema },
+  'screenshot.cancel': { req: screenshotCancelReqSchema, res: screenshotCancelResSchema },
   'provider.list': { req: providerListReqSchema, res: providerListResSchema },
   'provider.rescan': { req: providerRescanReqSchema, res: providerRescanResSchema },
   'provider.config.get': { req: providerConfigGetReqSchema, res: providerConfigGetResSchema },

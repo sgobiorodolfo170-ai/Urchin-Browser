@@ -33,7 +33,8 @@ export function lookupBuiltinSite(url: string): BuiltinSite | undefined {
   return DOMAIN_INDEX.get(bare);
 }
 
-/** 内置站点图标 URL（public/sites/<key>.png；无则该站点无内置图标） */
+/** 内置站点图标 URL（public/sites/<key>.png；无则该站点无内置图标）。
+ *  相对路径：生产页面从 file:// 加载，绝对路径会解析到磁盘根导致 404。 */
 export function builtinIconUrl(site: BuiltinSite): string {
-  return `/sites/${site.key}.png`;
+  return `./sites/${site.key}.png`;
 }

@@ -38,8 +38,9 @@ export interface NewTabPageProps {
 /** 最近浏览区最大展示数 */
 const RECENT_LIMIT = 20;
 
-/** 浏览器内置图标（主页顶部标题用；随 renderer 打包） */
-const BROWSER_ICON = '/browser-icon.png';
+/** 浏览器内置图标（主页顶部标题用；随 renderer 打包）。
+ *  相对路径：生产页面从 file:// 加载，绝对路径会解析到磁盘根导致 404。 */
+const BROWSER_ICON = './browser-icon.png';
 
 /**
  * 网站 favicon 候选源（按序尝试；Google 服务不可达时回退到 DuckDuckGo）。

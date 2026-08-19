@@ -28,18 +28,21 @@ class MockSafeStorage implements ISafeStorage {
 
 describe('StorageLayer', () => {
   let dataDir: string;
+  let piDataDir: string;
   let storage: StorageLayer;
   let mockFactory: ReturnType<typeof createMockDatabaseFactory>;
 
   beforeEach(() => {
     dataDir = mkdtempSync(join(tmpdir(), 'urchin-storage-test-'));
+    piDataDir = mkdtempSync(join(tmpdir(), 'urchin-storage-pi-test-'));
     mockFactory = createMockDatabaseFactory();
-    storage = new StorageLayer(dataDir, new MockSafeStorage(), mockFactory.factory);
+    storage = new StorageLayer(dataDir, piDataDir, new MockSafeStorage(), mockFactory.factory);
   });
 
   afterEach(() => {
     storage.close();
     rmSync(dataDir, { recursive: true, force: true });
+    rmSync(piDataDir, { recursive: true, force: true });
   });
 
   describe('mainStore', () => {
@@ -151,10 +154,17 @@ describe('StorageLayer', () => {
 
     it('should evict oldest when exceeding max connections', async () => {
       const smallDir = mkdtempSync(join(tmpdir(), 'urchin-lru-test-'));
+      const smallPiDir = mkdtempSync(join(tmpdir(), 'urchin-lru-pi-test-'));
       const smallFactory = createMockDatabaseFactory();
-      const smallStorage = new StorageLayer(smallDir, new MockSafeStorage(), smallFactory.factory, {
-        maxNamespaceConnections: 3,
-      });
+      const smallStorage = new StorageLayer(
+        smallDir,
+        smallPiDir,
+        new MockSafeStorage(),
+        smallFactory.factory,
+        {
+          maxNamespaceConnections: 3,
+        },
+      );
       try {
         const s1 = smallStorage.providerStore('p1');
         const s2 = smallStorage.providerStore('p2');
@@ -184,6 +194,7 @@ describe('StorageLayer', () => {
       } finally {
         smallStorage.close();
         rmSync(smallDir, { recursive: true, force: true });
+        rmSync(smallPiDir, { recursive: true, force: true });
       }
     });
   });
@@ -229,7 +240,7 @@ describe('StorageLayer', () => {
       storage.providerStore('p2');
       expect(() => storage.close()).not.toThrow();
       // 防止 afterEach 再次 close
-      storage = new StorageLayer(dataDir, new MockSafeStorage(), mockFactory.factory);
+      storage = new StorageLayer(dataDir, piDataDir, new MockSafeStorage(), mockFactory.factory);
     });
   });
 });

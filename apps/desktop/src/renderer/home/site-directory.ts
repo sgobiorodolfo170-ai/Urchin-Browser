@@ -4,8 +4,12 @@
  * 2026-08-14 设计：主页常用/最近书签的图标与名称优先从本目录比对——
  * 命中内置条目则使用本地打包图标（不依赖外部网络），未命中再回退外部 favicon 服务。
  *
+ * 2026-08-15 扩充：一期收录 500 个站点，按类别分组排列（组内大致按 key 排序），
+ * 便于人工翻阅与增量补充。条目顺序不影响查找（DOMAIN_INDEX 建索引）。
+ *
  * 图标资源：renderer/public/sites/<key>.png（由 scripts/fetch-site-icons 批量下载打包）。
- * 新增站点：在 SITE_DIRECTORY 登记 { key, domains[], name }，并将图标下载到 public/sites/<key>.png。
+ * 新增站点：在 SITE_DIRECTORY 登记 { key, domains[], name } 即可——
+ * fetch-site-icons 脚本会自动从本文件解析站点清单并下载图标，无需另行维护清单。
  */
 
 /** 内置站点条目 */
@@ -114,35 +118,1173 @@ export const SITE_DIRECTORY: readonly BuiltinSite[] = [
   { key: 'huggingface', domains: ['huggingface.co'], name: 'Hugging Face' },
   { key: 'arxiv', domains: ['arxiv.org'], name: 'arXiv' },
   { key: 'zhihu', domains: ['zhuanlan.zhihu.com'], name: '知乎专栏' },
+
+  // ── 搜索引擎 ──────────────────────────────────────────────
+  { key: 'sogou', domains: ['sogou.com', 'www.sogou.com'], name: '搜狗' },
+  { key: 'so360', domains: ['so.com', 'www.so.com'], name: '360搜索' },
+  { key: 'quark', domains: ['quark.cn', 'www.quark.cn'], name: '夸克' },
+  { key: 'yandex', domains: ['yandex.com', 'www.yandex.com'], name: 'Yandex' },
+  { key: 'duckduckgo', domains: ['duckduckgo.com', 'www.duckduckgo.com'], name: 'DuckDuckGo' },
+  { key: 'brave', domains: ['search.brave.com'], name: 'Brave Search' },
+  { key: 'naver', domains: ['naver.com', 'www.naver.com'], name: 'Naver' },
+  { key: 'yahoo', domains: ['yahoo.com', 'www.yahoo.com'], name: 'Yahoo' },
+
+  // ── 社交 ──────────────────────────────────────────────────
+  { key: 'qqzone', domains: ['qzone.qq.com'], name: 'QQ空间' },
+  { key: 'tiktok', domains: ['tiktok.com', 'www.tiktok.com'], name: 'TikTok' },
+  { key: 'telegram', domains: ['telegram.org', 'web.telegram.org'], name: 'Telegram' },
+  { key: 'discord', domains: ['discord.com', 'www.discord.com'], name: 'Discord' },
+  { key: 'whatsapp', domains: ['whatsapp.com', 'www.whatsapp.com'], name: 'WhatsApp' },
+  { key: 'linkedin', domains: ['linkedin.com', 'www.linkedin.com'], name: 'LinkedIn' },
+  { key: 'pinterest', domains: ['pinterest.com', 'www.pinterest.com'], name: 'Pinterest' },
+  { key: 'threads', domains: ['threads.net', 'www.threads.net'], name: 'Threads' },
+  { key: 'xiaohongshu', domains: ['xiaohongshu.com', 'www.xiaohongshu.com'], name: '小红书' },
+  { key: 'maimai', domains: ['maimai.cn', 'www.maimai.cn'], name: '脉脉' },
+  { key: 'hupu', domains: ['hupu.com', 'www.hupu.com'], name: '虎扑' },
+  { key: 'tianya', domains: ['tianya.cn', 'www.tianya.cn'], name: '天涯社区' },
+  { key: 'tieba', domains: ['tieba.baidu.com'], name: '百度贴吧' },
+  { key: 'jike', domains: ['okjike.com', 'web.okjike.com'], name: '即刻' },
+  { key: 'renren', domains: ['renren.com', 'www.renren.com'], name: '人人网' },
+
+  // ── 新闻资讯 ──────────────────────────────────────────────
+  { key: 'qqnews', domains: ['news.qq.com'], name: '腾讯新闻' },
+  { key: 'toutiao', domains: ['toutiao.com', 'www.toutiao.com'], name: '今日头条' },
+  { key: 'baijiahao', domains: ['baijiahao.baidu.com'], name: '百家号' },
+  { key: 'guancha', domains: ['guancha.cn', 'www.guancha.cn'], name: '观察者网' },
+  { key: 'chinanews', domains: ['chinanews.com.cn', 'www.chinanews.com.cn'], name: '中国新闻网' },
+  { key: 'huanqiu', domains: ['huanqiu.com', 'www.huanqiu.com'], name: '环球网' },
+  { key: 'cankao', domains: ['cankaoxiaoxi.com', 'www.cankaoxiaoxi.com'], name: '参考消息' },
+  { key: 'gmw', domains: ['gmw.cn', 'www.gmw.cn'], name: '光明网' },
+  { key: 'chinadaily', domains: ['chinadaily.com.cn', 'www.chinadaily.com.cn'], name: '中国日报' },
+  { key: 'yicai', domains: ['yicai.com', 'www.yicai.com'], name: '第一财经' },
+  { key: 'caixin', domains: ['caixin.com', 'www.caixin.com'], name: '财新网' },
+  {
+    key: 'wallstreetcn',
+    domains: ['wallstreetcn.com', 'www.wallstreetcn.com'],
+    name: '华尔街见闻',
+  },
+  { key: 'tmtpost', domains: ['tmtpost.com', 'www.tmtpost.com'], name: '钛媒体' },
+  { key: 'geekpark', domains: ['geekpark.net', 'www.geekpark.net'], name: '极客公园' },
+  { key: 'ifanr', domains: ['ifanr.com', 'www.ifanr.com'], name: '爱范儿' },
+  { key: 'pingwest', domains: ['pingwest.com', 'www.pingwest.com'], name: '品玩' },
+  { key: 'leiphone', domains: ['leiphone.com', 'www.leiphone.com'], name: '雷锋网' },
+  { key: 'ithome', domains: ['ithome.com', 'www.ithome.com'], name: 'IT之家' },
+  { key: 'mydrivers', domains: ['mydrivers.com', 'www.mydrivers.com'], name: '快科技' },
+  { key: 'pconline', domains: ['pconline.com.cn', 'www.pconline.com.cn'], name: '太平洋电脑网' },
+  { key: 'jiqizhixin', domains: ['jiqizhixin.com', 'www.jiqizhixin.com'], name: '机器之心' },
+  { key: 'qbitai', domains: ['qbitai.com', 'www.qbitai.com'], name: '量子位' },
+  { key: 'bbc', domains: ['bbc.com', 'www.bbc.com', 'bbc.co.uk'], name: 'BBC' },
+  { key: 'cnn', domains: ['cnn.com', 'www.cnn.com'], name: 'CNN' },
+  { key: 'nytimes', domains: ['nytimes.com', 'www.nytimes.com'], name: '纽约时报' },
+  { key: 'reuters', domains: ['reuters.com', 'www.reuters.com'], name: '路透社' },
+  { key: 'bloomberg', domains: ['bloomberg.com', 'www.bloomberg.com'], name: '彭博社' },
+  { key: 'theguardian', domains: ['theguardian.com', 'www.theguardian.com'], name: '卫报' },
+  { key: 'zaobao', domains: ['zaobao.com.sg', 'www.zaobao.com.sg'], name: '联合早报' },
+  { key: 'cnbeta', domains: ['cnbeta.com.tw', 'www.cnbeta.com.tw'], name: 'cnBeta' },
+
+  // ── 视频 ──────────────────────────────────────────────────
+  { key: 'mgtv', domains: ['mgtv.com', 'www.mgtv.com'], name: '芒果TV' },
+  { key: 'xigua', domains: ['ixigua.com', 'www.ixigua.com'], name: '西瓜视频' },
+  { key: 'kuaishou', domains: ['kuaishou.com', 'www.kuaishou.com'], name: '快手' },
+  { key: 'migu', domains: ['miguvideo.com', 'www.miguvideo.com'], name: '咪咕视频' },
+  { key: 'netflix', domains: ['netflix.com', 'www.netflix.com'], name: 'Netflix' },
+  { key: 'hulu', domains: ['hulu.com', 'www.hulu.com'], name: 'Hulu' },
+  { key: 'disneyplus', domains: ['disneyplus.com', 'www.disneyplus.com'], name: 'Disney+' },
+  { key: 'max', domains: ['max.com', 'www.max.com'], name: 'HBO Max' },
+  { key: 'twitch', domains: ['twitch.tv', 'www.twitch.tv'], name: 'Twitch' },
+  { key: 'vimeo', domains: ['vimeo.com', 'www.vimeo.com'], name: 'Vimeo' },
+  { key: 'huya', domains: ['huya.com', 'www.huya.com'], name: '虎牙直播' },
+  { key: 'douyu', domains: ['douyu.com', 'www.douyu.com'], name: '斗鱼直播' },
+
+  // ── 音乐 ──────────────────────────────────────────────────
+  { key: 'kugou', domains: ['kugou.com', 'www.kugou.com'], name: '酷狗音乐' },
+  { key: 'kuwo', domains: ['kuwo.cn', 'www.kuwo.cn'], name: '酷我音乐' },
+  { key: 'qingting', domains: ['qingting.fm', 'www.qingting.fm'], name: '蜻蜓FM' },
+  { key: 'spotify', domains: ['spotify.com', 'open.spotify.com'], name: 'Spotify' },
+  { key: 'soundcloud', domains: ['soundcloud.com', 'www.soundcloud.com'], name: 'SoundCloud' },
+  { key: 'bandcamp', domains: ['bandcamp.com', 'www.bandcamp.com'], name: 'Bandcamp' },
+  { key: 'changba', domains: ['changba.com', 'www.changba.com'], name: '唱吧' },
+
+  // ── 购物 ──────────────────────────────────────────────────
+  { key: 'suning', domains: ['suning.com', 'www.suning.com'], name: '苏宁易购' },
+  { key: 'vip', domains: ['vip.com', 'www.vip.com'], name: '唯品会' },
+  { key: 'gome', domains: ['gome.com.cn', 'www.gome.com.cn'], name: '国美' },
+  { key: 'dangdang', domains: ['dangdang.com', 'www.dangdang.com'], name: '当当' },
+  { key: 'yanxuan', domains: ['you.163.com'], name: '网易严选' },
+  { key: 'mi', domains: ['mi.com', 'www.mi.com'], name: '小米商城' },
+  { key: 'vmall', domains: ['vmall.com', 'www.vmall.com'], name: '华为商城' },
+  { key: 'goofish', domains: ['goofish.com', 'www.goofish.com'], name: '闲鱼' },
+  { key: 'zhuanzhuan', domains: ['zhuanzhuan.com', 'www.zhuanzhuan.com'], name: '转转' },
+  { key: 'dewu', domains: ['dewu.com', 'www.dewu.com'], name: '得物' },
+  { key: '1688', domains: ['1688.com', 'www.1688.com'], name: '1688' },
+  { key: 'alibaba', domains: ['alibaba.com', 'www.alibaba.com'], name: '阿里巴巴' },
+  { key: 'ebay', domains: ['ebay.com', 'www.ebay.com'], name: 'eBay' },
+  { key: 'aliexpress', domains: ['aliexpress.com', 'www.aliexpress.com'], name: '速卖通' },
+  { key: 'shopee', domains: ['shopee.com', 'www.shopee.com'], name: 'Shopee' },
+
+  // ── 生活服务与出行 ────────────────────────────────────────
+  { key: 'dianping', domains: ['dianping.com', 'www.dianping.com'], name: '大众点评' },
+  { key: '58', domains: ['58.com', 'www.58.com'], name: '58同城' },
+  { key: 'anjuke', domains: ['anjuke.com', 'www.anjuke.com'], name: '安居客' },
+  { key: 'ke', domains: ['ke.com', 'www.ke.com'], name: '贝壳找房' },
+  { key: 'lianjia', domains: ['lianjia.com', 'www.lianjia.com'], name: '链家' },
+  { key: 'fang', domains: ['fang.com', 'www.fang.com'], name: '房天下' },
+  { key: 'ziroom', domains: ['ziroom.com', 'www.ziroom.com'], name: '自如' },
+  { key: 'tuniu', domains: ['tuniu.com', 'www.tuniu.com'], name: '途牛' },
+  { key: 'qunar', domains: ['qunar.com', 'www.qunar.com'], name: '去哪儿' },
+  { key: 'fliggy', domains: ['fliggy.com', 'www.fliggy.com'], name: '飞猪' },
+  { key: 'ly', domains: ['ly.com', 'www.ly.com'], name: '同程旅行' },
+  { key: 'mafengwo', domains: ['mafengwo.cn', 'www.mafengwo.cn'], name: '马蜂窝' },
+  { key: 'qyer', domains: ['qyer.com', 'www.qyer.com'], name: '穷游' },
+  { key: 'tripadvisor', domains: ['tripadvisor.com', 'www.tripadvisor.com'], name: '猫途鹰' },
+  { key: 'airbnb', domains: ['airbnb.com', 'www.airbnb.com'], name: 'Airbnb' },
+  { key: 'booking', domains: ['booking.com', 'www.booking.com'], name: 'Booking' },
+  { key: 'trip', domains: ['trip.com', 'www.trip.com'], name: 'Trip.com' },
+  { key: 'agoda', domains: ['agoda.com', 'www.agoda.com'], name: 'Agoda' },
+  { key: 'expedia', domains: ['expedia.com', 'www.expedia.com'], name: 'Expedia' },
+  { key: 'skyscanner', domains: ['skyscanner.net', 'www.skyscanner.net'], name: '天巡' },
+  { key: 'sfexpress', domains: ['sf-express.com', 'www.sf-express.com'], name: '顺丰速运' },
+  { key: 'cainiao', domains: ['cainiao.com', 'www.cainiao.com'], name: '菜鸟裹裹' },
+  { key: 'amap', domains: ['amap.com', 'www.amap.com'], name: '高德地图' },
+  { key: 'baidumap', domains: ['map.baidu.com'], name: '百度地图' },
+  { key: 'tencentmap', domains: ['maps.qq.com'], name: '腾讯地图' },
+  { key: 'didi', domains: ['didiglobal.com', 'www.didiglobal.com'], name: '滴滴出行' },
+  { key: 'tianyancha', domains: ['tianyancha.com', 'www.tianyancha.com'], name: '天眼查' },
+  { key: 'qichacha', domains: ['qcc.com', 'www.qcc.com'], name: '企查查' },
+  { key: 'aiqicha', domains: ['aiqicha.baidu.com'], name: '爱企查' },
+  { key: 'alipay', domains: ['alipay.com', 'www.alipay.com'], name: '支付宝' },
+  { key: 'guazi', domains: ['guazi.com', 'www.guazi.com'], name: '瓜子二手车' },
+  { key: 'tujia', domains: ['tujia.com', 'www.tujia.com'], name: '途家民宿' },
+
+  // ── 教育与学习 ────────────────────────────────────────────
+  { key: 'icourse163', domains: ['icourse163.org', 'www.icourse163.org'], name: '中国大学MOOC' },
+  { key: 'xuetangx', domains: ['xuetangx.com', 'www.xuetangx.com'], name: '学堂在线' },
+  { key: 'open163', domains: ['open.163.com'], name: '网易公开课' },
+  { key: 'wenku', domains: ['wenku.baidu.com'], name: '百度文库' },
+  { key: 'zuoyebang', domains: ['zuoyebang.com', 'www.zuoyebang.com'], name: '作业帮' },
+  { key: 'cnki', domains: ['cnki.net', 'www.cnki.net'], name: '中国知网' },
+  { key: 'coursera', domains: ['coursera.org', 'www.coursera.org'], name: 'Coursera' },
+  { key: 'udemy', domains: ['udemy.com', 'www.udemy.com'], name: 'Udemy' },
+  { key: 'khanacademy', domains: ['khanacademy.org', 'www.khanacademy.org'], name: '可汗学院' },
+  { key: 'duolingo', domains: ['duolingo.com', 'www.duolingo.com'], name: 'Duolingo' },
+  { key: 'youdao', domains: ['youdao.com', 'www.youdao.com'], name: '有道' },
+  { key: 'codecademy', domains: ['codecademy.com', 'www.codecademy.com'], name: 'Codecademy' },
+  {
+    key: 'freecodecamp',
+    domains: ['freecodecamp.org', 'www.freecodecamp.org'],
+    name: 'freeCodeCamp',
+  },
+  { key: 'imooc', domains: ['imooc.com', 'www.imooc.com'], name: '慕课网' },
+  { key: 'geekbang', domains: ['time.geekbang.org'], name: '极客时间' },
+  { key: '51cto', domains: ['51cto.com', 'www.51cto.com'], name: '51CTO' },
+  { key: 'luogu', domains: ['luogu.com.cn', 'www.luogu.com.cn'], name: '洛谷' },
+  { key: 'codeforces', domains: ['codeforces.com', 'www.codeforces.com'], name: 'Codeforces' },
+  { key: 'gitlab', domains: ['gitlab.com', 'www.gitlab.com'], name: 'GitLab' },
+  {
+    key: 'segmentfault',
+    domains: ['segmentfault.com', 'www.segmentfault.com'],
+    name: 'SegmentFault',
+  },
+  { key: 'oschina', domains: ['oschina.net', 'www.oschina.net'], name: 'OSCHINA' },
+  { key: 'cnblogs', domains: ['cnblogs.com', 'www.cnblogs.com'], name: '博客园' },
+  { key: 'jianshu', domains: ['jianshu.com', 'www.jianshu.com'], name: '简书' },
+  { key: 'medium', domains: ['medium.com', 'www.medium.com'], name: 'Medium' },
+  { key: 'w3school', domains: ['w3school.com.cn', 'www.w3school.com.cn'], name: 'W3School' },
+
+  // ── 开发与技术 ────────────────────────────────────────────
+  { key: 'bitbucket', domains: ['bitbucket.org', 'www.bitbucket.org'], name: 'Bitbucket' },
+  { key: 'sourceforge', domains: ['sourceforge.net', 'www.sourceforge.net'], name: 'SourceForge' },
+  { key: 'kaggle', domains: ['kaggle.com', 'www.kaggle.com'], name: 'Kaggle' },
+  { key: 'dockerhub', domains: ['hub.docker.com'], name: 'Docker Hub' },
+  { key: 'pypi', domains: ['pypi.org', 'www.pypi.org'], name: 'PyPI' },
+  { key: 'crates', domains: ['crates.io', 'www.crates.io'], name: 'crates.io' },
+  { key: 'gopkg', domains: ['pkg.go.dev'], name: 'Go 包索引' },
+  {
+    key: 'mvnrepository',
+    domains: ['mvnrepository.com', 'www.mvnrepository.com'],
+    name: 'Maven 仓库',
+  },
+  { key: 'codepen', domains: ['codepen.io', 'www.codepen.io'], name: 'CodePen' },
+  { key: 'codesandbox', domains: ['codesandbox.io', 'www.codesandbox.io'], name: 'CodeSandbox' },
+  { key: 'stackblitz', domains: ['stackblitz.com', 'www.stackblitz.com'], name: 'StackBlitz' },
+  { key: 'replit', domains: ['replit.com', 'www.replit.com'], name: 'Replit' },
+  { key: 'netlify', domains: ['netlify.com', 'www.netlify.com'], name: 'Netlify' },
+  { key: 'vercel', domains: ['vercel.com', 'www.vercel.com'], name: 'Vercel' },
+  { key: 'cloudflare', domains: ['cloudflare.com', 'www.cloudflare.com'], name: 'Cloudflare' },
+  { key: 'aws', domains: ['aws.amazon.com'], name: 'AWS' },
+  { key: 'azure', domains: ['azure.microsoft.com'], name: 'Microsoft Azure' },
+  { key: 'gcp', domains: ['cloud.google.com'], name: 'Google Cloud' },
+  { key: 'huaweicloud', domains: ['huaweicloud.com', 'www.huaweicloud.com'], name: '华为云' },
+  {
+    key: 'digitalocean',
+    domains: ['digitalocean.com', 'www.digitalocean.com'],
+    name: 'DigitalOcean',
+  },
+  { key: 'supabase', domains: ['supabase.com', 'www.supabase.com'], name: 'Supabase' },
+  { key: 'firebase', domains: ['firebase.google.com'], name: 'Firebase' },
+  { key: 'mongodb', domains: ['mongodb.com', 'www.mongodb.com'], name: 'MongoDB' },
+  { key: 'redis', domains: ['redis.io', 'www.redis.io'], name: 'Redis' },
+  { key: 'postgresql', domains: ['postgresql.org', 'www.postgresql.org'], name: 'PostgreSQL' },
+  { key: 'grafana', domains: ['grafana.com', 'www.grafana.com'], name: 'Grafana' },
+  { key: 'jetbrains', domains: ['jetbrains.com', 'www.jetbrains.com'], name: 'JetBrains' },
+  { key: 'vscode', domains: ['code.visualstudio.com'], name: 'VS Code' },
+  { key: 'electron', domains: ['electronjs.org', 'www.electronjs.org'], name: 'Electron' },
+  { key: 'mozilla', domains: ['mozilla.org', 'www.mozilla.org'], name: 'Firefox' },
+  { key: 'react', domains: ['react.dev', 'www.react.dev'], name: 'React' },
+  { key: 'vuejs', domains: ['vuejs.org', 'www.vuejs.org'], name: 'Vue.js' },
+  { key: 'angular', domains: ['angular.io', 'www.angular.io'], name: 'Angular' },
+  { key: 'svelte', domains: ['svelte.dev', 'www.svelte.dev'], name: 'Svelte' },
+  {
+    key: 'typescript',
+    domains: ['typescriptlang.org', 'www.typescriptlang.org'],
+    name: 'TypeScript',
+  },
+  { key: 'python', domains: ['python.org', 'www.python.org'], name: 'Python' },
+  { key: 'nodejs', domains: ['nodejs.org', 'www.nodejs.org'], name: 'Node.js' },
+  { key: 'deno', domains: ['deno.com', 'deno.land'], name: 'Deno' },
+  { key: 'bun', domains: ['bun.sh', 'www.bun.sh'], name: 'Bun' },
+  { key: 'rust', domains: ['rust-lang.org', 'www.rust-lang.org'], name: 'Rust' },
+  { key: 'golang', domains: ['golang.org', 'go.dev'], name: 'Go' },
+  { key: 'php', domains: ['php.net', 'www.php.net'], name: 'PHP' },
+  { key: 'ruby', domains: ['ruby-lang.org', 'www.ruby-lang.org'], name: 'Ruby' },
+  { key: 'kotlin', domains: ['kotlinlang.org', 'www.kotlinlang.org'], name: 'Kotlin' },
+  { key: 'git', domains: ['git-scm.com', 'www.git-scm.com'], name: 'Git' },
+  { key: 'ubuntu', domains: ['ubuntu.com', 'www.ubuntu.com'], name: 'Ubuntu' },
+  { key: 'archlinux', domains: ['archlinux.org', 'www.archlinux.org'], name: 'Arch Linux' },
+  { key: 'debian', domains: ['debian.org', 'www.debian.org'], name: 'Debian' },
+  { key: 'openwrt', domains: ['openwrt.org', 'www.openwrt.org'], name: 'OpenWrt' },
+  { key: 'homebrew', domains: ['brew.sh', 'www.brew.sh'], name: 'Homebrew' },
+  { key: 'androiddev', domains: ['developer.android.com'], name: 'Android 开发者' },
+  { key: 'appledev', domains: ['developer.apple.com'], name: 'Apple 开发者' },
+  { key: 'vite', domains: ['vitejs.dev', 'www.vitejs.dev'], name: 'Vite' },
+  { key: 'nextjs', domains: ['nextjs.org', 'www.nextjs.org'], name: 'Next.js' },
+  { key: 'kubernetes', domains: ['kubernetes.io', 'www.kubernetes.io'], name: 'Kubernetes' },
+  { key: 'nginx', domains: ['nginx.org', 'www.nginx.org'], name: 'Nginx' },
+  { key: 'mysql', domains: ['mysql.com', 'www.mysql.com'], name: 'MySQL' },
+  { key: 'jupyter', domains: ['jupyter.org', 'www.jupyter.org'], name: 'Jupyter' },
+  { key: 'colab', domains: ['colab.research.google.com'], name: 'Colab' },
+  { key: 'swift', domains: ['swift.org', 'www.swift.org'], name: 'Swift' },
+
+  // ── AI 工具 ───────────────────────────────────────────────
+  { key: 'wenxinyiyan', domains: ['yiyan.baidu.com'], name: '文心一言' },
+  { key: 'tongyi', domains: ['tongyi.aliyun.com'], name: '通义千问' },
+  { key: 'doubao', domains: ['doubao.com', 'www.doubao.com'], name: '豆包' },
+  { key: 'xinghuo', domains: ['xinghuo.xfyun.cn'], name: '讯飞星火' },
+  { key: 'chatglm', domains: ['chatglm.cn', 'www.chatglm.cn'], name: '智谱清言' },
+  { key: 'yuanbao', domains: ['yuanbao.tencent.com'], name: '腾讯元宝' },
+  { key: 'copilot', domains: ['copilot.microsoft.com'], name: 'Microsoft Copilot' },
+  { key: 'perplexity', domains: ['perplexity.ai', 'www.perplexity.ai'], name: 'Perplexity' },
+  { key: 'poe', domains: ['poe.com', 'www.poe.com'], name: 'Poe' },
+  { key: 'midjourney', domains: ['midjourney.com', 'www.midjourney.com'], name: 'Midjourney' },
+  { key: 'stability', domains: ['stability.ai', 'www.stability.ai'], name: 'Stability AI' },
+  { key: 'metaai', domains: ['meta.ai', 'www.meta.ai'], name: 'Meta AI' },
+  { key: 'notebooklm', domains: ['notebooklm.google.com'], name: 'NotebookLM' },
+  { key: 'cursor', domains: ['cursor.com', 'www.cursor.com'], name: 'Cursor' },
+  { key: 'bolt', domains: ['bolt.new'], name: 'Bolt' },
+  { key: 'lovable', domains: ['lovable.dev', 'www.lovable.dev'], name: 'Lovable' },
+  { key: 'v0', domains: ['v0.dev'], name: 'v0' },
+  { key: 'ollama', domains: ['ollama.com', 'www.ollama.com'], name: 'Ollama' },
+  { key: 'langchain', domains: ['langchain.com', 'www.langchain.com'], name: 'LangChain' },
+  { key: 'openrouter', domains: ['openrouter.ai', 'www.openrouter.ai'], name: 'OpenRouter' },
+  { key: 'groq', domains: ['groq.com', 'www.groq.com'], name: 'Groq' },
+  { key: 'replicate', domains: ['replicate.com', 'www.replicate.com'], name: 'Replicate' },
+  { key: 'cohere', domains: ['cohere.com', 'www.cohere.com'], name: 'Cohere' },
+  { key: 'mistral', domains: ['mistral.ai', 'www.mistral.ai'], name: 'Mistral AI' },
+  { key: 'elevenlabs', domains: ['elevenlabs.io', 'www.elevenlabs.io'], name: 'ElevenLabs' },
+  { key: 'suno', domains: ['suno.com', 'www.suno.com'], name: 'Suno' },
+  { key: 'runway', domains: ['runwayml.com', 'www.runwayml.com'], name: 'Runway' },
+  { key: 'kling', domains: ['klingai.com', 'www.klingai.com'], name: '可灵AI' },
+  { key: 'jimeng', domains: ['jimeng.jianying.com'], name: '即梦AI' },
+  { key: 'capcut', domains: ['capcut.com', 'www.capcut.com'], name: 'CapCut' },
+  { key: 'deepl', domains: ['deepl.com', 'www.deepl.com'], name: 'DeepL' },
+  { key: 'grammarly', domains: ['grammarly.com', 'www.grammarly.com'], name: 'Grammarly' },
+  { key: 'canva', domains: ['canva.com', 'www.canva.com'], name: 'Canva' },
+  { key: 'fanyi', domains: ['fanyi.baidu.com'], name: '百度翻译' },
+  { key: 'gtrans', domains: ['translate.google.com'], name: 'Google 翻译' },
+
+  // ── 云存储与网盘 ──────────────────────────────────────────
+  { key: 'dropbox', domains: ['dropbox.com', 'www.dropbox.com'], name: 'Dropbox' },
+  { key: 'gdrive', domains: ['drive.google.com'], name: 'Google Drive' },
+  { key: 'onedrive', domains: ['onedrive.live.com'], name: 'OneDrive' },
+  { key: 'icloud', domains: ['icloud.com', 'www.icloud.com'], name: 'iCloud' },
+  { key: 'mega', domains: ['mega.nz', 'www.mega.nz'], name: 'MEGA' },
+  { key: 'pan115', domains: ['115.com', 'www.115.com'], name: '115网盘' },
+  { key: 'ctyun', domains: ['cloud.189.cn'], name: '天翼云盘' },
+  { key: 'jianguoyun', domains: ['jianguoyun.com', 'www.jianguoyun.com'], name: '坚果云' },
+  { key: 'xunlei', domains: ['xunlei.com', 'www.xunlei.com'], name: '迅雷' },
+  { key: 'cowtransfer', domains: ['cowtransfer.com', 'www.cowtransfer.com'], name: '奶牛快传' },
+
+  // ── 办公与效率 ────────────────────────────────────────────
+  { key: 'shimo', domains: ['shimo.im', 'www.shimo.im'], name: '石墨文档' },
+  { key: 'feishu', domains: ['feishu.cn', 'www.feishu.cn'], name: '飞书' },
+  { key: 'dingtalk', domains: ['dingtalk.com', 'www.dingtalk.com'], name: '钉钉' },
+  { key: 'wecom', domains: ['work.weixin.qq.com'], name: '企业微信' },
+  { key: 'tencentmeeting', domains: ['meeting.tencent.com'], name: '腾讯会议' },
+  { key: 'kdocs', domains: ['kdocs.cn', 'www.kdocs.cn'], name: '金山文档' },
+  { key: 'wps', domains: ['wps.cn', 'www.wps.cn'], name: 'WPS Office' },
+  { key: 'yinxiang', domains: ['yinxiang.com', 'www.yinxiang.com'], name: '印象笔记' },
+  { key: 'evernote', domains: ['evernote.com', 'www.evernote.com'], name: 'Evernote' },
+  { key: 'youdaonote', domains: ['note.youdao.com'], name: '有道云笔记' },
+  { key: 'obsidian', domains: ['obsidian.md', 'www.obsidian.md'], name: 'Obsidian' },
+  { key: 'xmind', domains: ['xmind.net', 'www.xmind.net'], name: 'XMind' },
+  { key: 'processon', domains: ['processon.com', 'www.processon.com'], name: 'ProcessOn' },
+  { key: 'trello', domains: ['trello.com', 'www.trello.com'], name: 'Trello' },
+  { key: 'asana', domains: ['asana.com', 'www.asana.com'], name: 'Asana' },
+  { key: 'monday', domains: ['monday.com', 'www.monday.com'], name: 'Monday.com' },
+  { key: 'clickup', domains: ['clickup.com', 'www.clickup.com'], name: 'ClickUp' },
+  { key: 'todoist', domains: ['todoist.com', 'www.todoist.com'], name: 'Todoist' },
+  { key: 'dida', domains: ['dida365.com', 'www.dida365.com'], name: '滴答清单' },
+  { key: 'gkeep', domains: ['keep.google.com'], name: 'Google Keep' },
+  { key: 'slack', domains: ['slack.com', 'www.slack.com'], name: 'Slack' },
+  { key: 'zoom', domains: ['zoom.us', 'www.zoom.us'], name: 'Zoom' },
+  { key: 'airtable', domains: ['airtable.com', 'www.airtable.com'], name: 'Airtable' },
+  { key: 'atlassian', domains: ['atlassian.com', 'www.atlassian.com'], name: 'Atlassian' },
+  { key: 'teambition', domains: ['teambition.com', 'www.teambition.com'], name: 'Teambition' },
+  { key: 'mubu', domains: ['mubu.com', 'www.mubu.com'], name: '幕布' },
+  { key: 'qqmail', domains: ['mail.qq.com'], name: 'QQ邮箱' },
+  { key: 'gmail', domains: ['mail.google.com'], name: 'Gmail' },
+  { key: 'outlook', domains: ['outlook.com', 'www.outlook.com'], name: 'Outlook' },
+  { key: 'mail126', domains: ['126.com', 'www.126.com'], name: '126邮箱' },
+  { key: 'mail163', domains: ['mail.163.com'], name: '163邮箱' },
+  { key: 'zoho', domains: ['zoho.com', 'www.zoho.com'], name: 'Zoho' },
+
+  // ── 金融与银行 ────────────────────────────────────────────
+  { key: 'eastmoney', domains: ['eastmoney.com', 'www.eastmoney.com'], name: '东方财富' },
+  { key: '10jqka', domains: ['10jqka.com.cn', 'www.10jqka.com.cn'], name: '同花顺' },
+  { key: 'xueqiu', domains: ['xueqiu.com', 'www.xueqiu.com'], name: '雪球' },
+  { key: 'cmbchina', domains: ['cmbchina.com', 'www.cmbchina.com'], name: '招商银行' },
+  { key: 'icbc', domains: ['icbc.com.cn', 'www.icbc.com.cn'], name: '工商银行' },
+  { key: 'ccb', domains: ['ccb.com', 'www.ccb.com'], name: '建设银行' },
+  { key: 'abchina', domains: ['abchina.com', 'www.abchina.com'], name: '农业银行' },
+  { key: 'boc', domains: ['boc.cn', 'www.boc.cn'], name: '中国银行' },
+  { key: 'bankcomm', domains: ['bankcomm.com', 'www.bankcomm.com'], name: '交通银行' },
+  { key: 'psbc', domains: ['psbc.com', 'www.psbc.com'], name: '邮储银行' },
+  { key: 'futu', domains: ['futunn.com', 'www.futunn.com'], name: '富途牛牛' },
+  { key: 'tigerbrokers', domains: ['tigerbrokers.com', 'www.tigerbrokers.com'], name: '老虎证券' },
+  { key: 'cailianpress', domains: ['cailianpress.com', 'www.cailianpress.com'], name: '财联社' },
+  { key: 'investing', domains: ['investing.com', 'www.investing.com'], name: '英为财情' },
+  { key: 'jin10', domains: ['jin10.com', 'www.jin10.com'], name: '金十数据' },
+  { key: 'sse', domains: ['sse.com.cn', 'www.sse.com.cn'], name: '上海证券交易所' },
+  { key: 'szse', domains: ['szse.cn', 'www.szse.cn'], name: '深圳证券交易所' },
+  { key: 'gsxt', domains: ['gsxt.gov.cn', 'www.gsxt.gov.cn'], name: '国家企业信用信息公示系统' },
+  {
+    key: 'creditchina',
+    domains: ['creditchina.gov.cn', 'www.creditchina.gov.cn'],
+    name: '信用中国',
+  },
+
+  // ── 游戏与电竞 ────────────────────────────────────────────
+  { key: '4399', domains: ['4399.com', 'www.4399.com'], name: '4399' },
+  { key: '7k7k', domains: ['7k7k.com', 'www.7k7k.com'], name: '7k7k' },
+  { key: 'gamersky', domains: ['gamersky.com', 'www.gamersky.com'], name: '游民星空' },
+  { key: 'ali213', domains: ['ali213.net', 'www.ali213.net'], name: '游侠网' },
+  { key: '3dmgame', domains: ['3dmgame.com', 'www.3dmgame.com'], name: '3DM游戏网' },
+  { key: '17173', domains: ['17173.com', 'www.17173.com'], name: '17173' },
+  { key: 'taptap', domains: ['taptap.cn', 'www.taptap.cn'], name: 'TapTap' },
+  { key: 'steam', domains: ['store.steampowered.com'], name: 'Steam' },
+  { key: 'epic', domains: ['epicgames.com', 'www.epicgames.com'], name: 'Epic Games' },
+  { key: 'playstation', domains: ['playstation.com', 'www.playstation.com'], name: 'PlayStation' },
+  { key: 'xbox', domains: ['xbox.com', 'www.xbox.com'], name: 'Xbox' },
+  { key: 'nintendo', domains: ['nintendo.com', 'www.nintendo.com'], name: 'Nintendo' },
+  { key: 'gog', domains: ['gog.com', 'www.gog.com'], name: 'GOG' },
+  { key: 'mihoyo', domains: ['mihoyo.com', 'www.mihoyo.com'], name: '米哈游' },
+  { key: 'blizzard', domains: ['blizzard.com', 'www.blizzard.com'], name: '暴雪' },
+  { key: 'riot', domains: ['riotgames.com', 'www.riotgames.com'], name: 'Riot Games' },
+  { key: 'ea', domains: ['ea.com', 'www.ea.com'], name: 'EA' },
+  { key: 'itchio', domains: ['itch.io'], name: 'itch.io' },
+  { key: 'gcores', domains: ['gcores.com', 'www.gcores.com'], name: '机核网' },
+
+  // ── 汽车 ──────────────────────────────────────────────────
+  { key: 'autohome', domains: ['autohome.com.cn', 'www.autohome.com.cn'], name: '汽车之家' },
+  { key: 'bitauto', domains: ['bitauto.com', 'www.bitauto.com'], name: '易车' },
+  { key: 'dongchedi', domains: ['dongchedi.com', 'www.dongchedi.com'], name: '懂车帝' },
+  { key: 'pcauto', domains: ['pcauto.com.cn', 'www.pcauto.com.cn'], name: '太平洋汽车' },
+  { key: 'xcar', domains: ['xcar.com.cn', 'www.xcar.com.cn'], name: '爱卡汽车' },
+  { key: 'tesla', domains: ['tesla.com', 'www.tesla.com'], name: '特斯拉' },
+  { key: 'byd', domains: ['byd.com', 'www.byd.com'], name: '比亚迪' },
+  { key: 'nio', domains: ['nio.com', 'www.nio.com'], name: '蔚来' },
+  { key: 'xpeng', domains: ['xpeng.com', 'www.xpeng.com'], name: '小鹏汽车' },
+  { key: 'lixiang', domains: ['lixiang.com', 'www.lixiang.com'], name: '理想汽车' },
+
+  // ── 健康医疗 ──────────────────────────────────────────────
+  { key: 'dxy', domains: ['dxy.com', 'www.dxy.com'], name: '丁香医生' },
+  { key: 'haodf', domains: ['haodf.com', 'www.haodf.com'], name: '好大夫在线' },
+  {
+    key: 'chunyuyisheng',
+    domains: ['chunyuyisheng.com', 'www.chunyuyisheng.com'],
+    name: '春雨医生',
+  },
+  { key: '39net', domains: ['39.net', 'www.39.net'], name: '39健康网' },
+  { key: 'boohee', domains: ['boohee.com', 'www.boohee.com'], name: '薄荷健康' },
+  { key: 'keep', domains: ['keep.com', 'www.keep.com'], name: 'Keep' },
+  { key: 'webmd', domains: ['webmd.com', 'www.webmd.com'], name: 'WebMD' },
+  { key: 'mayoclinic', domains: ['mayoclinic.org', 'www.mayoclinic.org'], name: 'Mayo Clinic' },
+  { key: 'who', domains: ['who.int', 'www.who.int'], name: '世界卫生组织' },
+  { key: 'nih', domains: ['nih.gov', 'www.nih.gov'], name: 'NIH' },
+
+  // ── 政务与公共服务 ────────────────────────────────────────
+  { key: 'govcn', domains: ['gov.cn', 'www.gov.cn'], name: '中国政府网' },
+  { key: 'chinatax', domains: ['chinatax.gov.cn', 'www.chinatax.gov.cn'], name: '国家税务总局' },
+  { key: 'moe', domains: ['moe.gov.cn', 'www.moe.gov.cn'], name: '教育部' },
+  { key: 'chsi', domains: ['chsi.com.cn', 'www.chsi.com.cn'], name: '学信网' },
+  { key: 'miit', domains: ['miit.gov.cn', 'www.miit.gov.cn'], name: '工信部' },
+  { key: 'stats', domains: ['stats.gov.cn', 'www.stats.gov.cn'], name: '国家统计局' },
+
+  // ── 国际综合 ──────────────────────────────────────────────
+  { key: 'imdb', domains: ['imdb.com', 'www.imdb.com'], name: 'IMDb' },
+  {
+    key: 'rottentomatoes',
+    domains: ['rottentomatoes.com', 'www.rottentomatoes.com'],
+    name: '烂番茄',
+  },
+  { key: 'metacritic', domains: ['metacritic.com', 'www.metacritic.com'], name: 'Metacritic' },
+  { key: 'quora', domains: ['quora.com', 'www.quora.com'], name: 'Quora' },
+  { key: 'substack', domains: ['substack.com', 'www.substack.com'], name: 'Substack' },
+  { key: 'wordpress', domains: ['wordpress.com', 'www.wordpress.com'], name: 'WordPress' },
+  { key: 'wix', domains: ['wix.com', 'www.wix.com'], name: 'Wix' },
+  { key: 'squarespace', domains: ['squarespace.com', 'www.squarespace.com'], name: 'Squarespace' },
+  { key: 'webflow', domains: ['webflow.com', 'www.webflow.com'], name: 'Webflow' },
+  { key: 'shopify', domains: ['shopify.com', 'www.shopify.com'], name: 'Shopify' },
+  { key: 'stripe', domains: ['stripe.com', 'www.stripe.com'], name: 'Stripe' },
+  { key: 'paypal', domains: ['paypal.com', 'www.paypal.com'], name: 'PayPal' },
+  { key: 'patreon', domains: ['patreon.com', 'www.patreon.com'], name: 'Patreon' },
+  { key: 'kickstarter', domains: ['kickstarter.com', 'www.kickstarter.com'], name: 'Kickstarter' },
+  { key: 'ted', domains: ['ted.com', 'www.ted.com'], name: 'TED' },
+  { key: 'theverge', domains: ['theverge.com', 'www.theverge.com'], name: 'The Verge' },
+  { key: 'techcrunch', domains: ['techcrunch.com', 'www.techcrunch.com'], name: 'TechCrunch' },
+  { key: 'wired', domains: ['wired.com', 'www.wired.com'], name: 'Wired' },
+  { key: 'arstechnica', domains: ['arstechnica.com', 'www.arstechnica.com'], name: 'Ars Technica' },
+  { key: 'forbes', domains: ['forbes.com', 'www.forbes.com'], name: '福布斯' },
+  { key: 'espn', domains: ['espn.com', 'www.espn.com'], name: 'ESPN' },
+
+  // ── 阅读与创作 ────────────────────────────────────────────
+  { key: 'jjwxc', domains: ['jjwxc.net', 'www.jjwxc.net'], name: '晋江文学城' },
+  { key: 'qidian', domains: ['qidian.com', 'www.qidian.com'], name: '起点中文网' },
+  { key: 'zongheng', domains: ['zongheng.com', 'www.zongheng.com'], name: '纵横中文网' },
+  { key: 'weread', domains: ['weread.qq.com'], name: '微信读书' },
+  { key: 'kuaikan', domains: ['kuaikanmanhua.com', 'www.kuaikanmanhua.com'], name: '快看漫画' },
+  { key: 'ireader', domains: ['ireader.com.cn', 'www.ireader.com.cn'], name: '掌阅' },
+
+  // ── 招聘与远程工具 ────────────────────────────────────────
+  { key: 'liepin', domains: ['liepin.com', 'www.liepin.com'], name: '猎聘' },
+  { key: 'lagou', domains: ['lagou.com', 'www.lagou.com'], name: '拉勾招聘' },
+  { key: 'kanzhun', domains: ['kanzhun.com', 'www.kanzhun.com'], name: '看准网' },
+  { key: 'moji', domains: ['moji.com', 'www.moji.com'], name: '墨迹天气' },
+  { key: 'weathercn', domains: ['weather.com.cn', 'www.weather.com.cn'], name: '中国天气网' },
+  { key: 'teamviewer', domains: ['teamviewer.com', 'www.teamviewer.com'], name: 'TeamViewer' },
+  { key: 'sunlogin', domains: ['sunlogin.oray.com'], name: '向日葵远程控制' },
+  { key: 'todesk', domains: ['todesk.com', 'www.todesk.com'], name: 'ToDesk' },
+  { key: 'anydesk', domains: ['anydesk.com', 'www.anydesk.com'], name: 'AnyDesk' },
+  { key: 'rustdesk', domains: ['rustdesk.com', 'www.rustdesk.com'], name: 'RustDesk' },
+  { key: 'hao123', domains: ['hao123.com', 'www.hao123.com'], name: '好123' },
+  { key: '2345nav', domains: ['2345.com', 'www.2345.com'], name: '2345网址导航' },
+
+  // ── 品牌与更多 ────────────────────────────────────────────
+  { key: 'oppo', domains: ['oppo.com', 'www.oppo.com'], name: 'OPPO' },
+  { key: 'vivo', domains: ['vivo.com', 'www.vivo.com'], name: 'vivo' },
+  { key: 'honor', domains: ['honor.com', 'www.honor.com'], name: '荣耀' },
+  { key: 'oneplus', domains: ['oneplus.com', 'www.oneplus.com'], name: '一加' },
+  { key: 'meizu', domains: ['meizu.com', 'www.meizu.com'], name: '魅族' },
+  { key: 'lenovo', domains: ['lenovo.com.cn', 'www.lenovo.com.cn'], name: '联想' },
+  { key: 'dell', domains: ['dell.com', 'www.dell.com'], name: '戴尔' },
+  { key: 'hp', domains: ['hp.com', 'www.hp.com'], name: '惠普' },
+  { key: 'asus', domains: ['asus.com.cn', 'www.asus.com.cn'], name: '华硕' },
+  { key: 'samsung', domains: ['samsung.com', 'www.samsung.com'], name: '三星' },
+  { key: 'sony', domains: ['sony.com', 'www.sony.com'], name: '索尼' },
+  { key: 'dji', domains: ['dji.com', 'www.dji.com'], name: '大疆' },
+  { key: 'meitu', domains: ['meitu.com', 'www.meitu.com'], name: '美图秀秀' },
+  { key: 'gaoding', domains: ['gaoding.com', 'www.gaoding.com'], name: '稿定设计' },
+  { key: 'chuangkit', domains: ['chuangkit.com', 'www.chuangkit.com'], name: '创客贴' },
+  { key: 'zcool', domains: ['zcool.com.cn', 'www.zcool.com.cn'], name: '站酷' },
+  { key: 'iconfont', domains: ['iconfont.cn', 'www.iconfont.cn'], name: 'Iconfont' },
+  { key: 'infoq', domains: ['infoq.cn', 'www.infoq.cn'], name: 'InfoQ' },
+  { key: 'dongqiudi', domains: ['dongqiudi.com', 'www.dongqiudi.com'], name: '懂球帝' },
+  { key: 'zhibo8', domains: ['zhibo8.cc', 'www.zhibo8.cc'], name: '直播吧' },
+  { key: 'qqsports', domains: ['sports.qq.com'], name: '腾讯体育' },
+  { key: 'cmcc', domains: ['10086.cn', 'www.10086.cn'], name: '中国移动' },
+  { key: 'chinaunicom', domains: ['10010.com', 'www.10010.com'], name: '中国联通' },
+  { key: 'chinatelecom', domains: ['189.cn', 'www.189.cn'], name: '中国电信' },
+  { key: 'csair', domains: ['csair.com', 'www.csair.com'], name: '南方航空' },
+  { key: 'airchina', domains: ['airchina.com.cn', 'www.airchina.com.cn'], name: '中国国航' },
+  { key: 'ceair', domains: ['ceair.com', 'www.ceair.com'], name: '东方航空' },
+  { key: 'xiachufang', domains: ['xiachufang.com', 'www.xiachufang.com'], name: '下厨房' },
+  { key: 'douguo', domains: ['douguo.com', 'www.douguo.com'], name: '豆果美食' },
+  { key: 'behance', domains: ['behance.net', 'www.behance.net'], name: 'Behance' },
+  { key: 'unsplash', domains: ['unsplash.com', 'www.unsplash.com'], name: 'Unsplash' },
+  { key: 'pexels', domains: ['pexels.com', 'www.pexels.com'], name: 'Pexels' },
+  { key: 'pixabay', domains: ['pixabay.com', 'www.pixabay.com'], name: 'Pixabay' },
+  { key: 'freepik', domains: ['freepik.com', 'www.freepik.com'], name: 'Freepik' },
+  { key: '12315', domains: ['12315.cn', 'www.12315.cn'], name: '全国12315平台' },
+
+  // ════════════ 二期扩充（2026-08-15，总量 1000）════════════
+
+  // ── 国际效率与协作 ────────────────────────────────────────
+  { key: 'miro', domains: ['miro.com', 'www.miro.com'], name: 'Miro' },
+  { key: 'linear', domains: ['linear.app', 'www.linear.app'], name: 'Linear' },
+  { key: 'framer', domains: ['framer.com', 'www.framer.com'], name: 'Framer' },
+  { key: 'whimsical', domains: ['whimsical.com', 'www.whimsical.com'], name: 'Whimsical' },
+  { key: 'excalidraw', domains: ['excalidraw.com', 'www.excalidraw.com'], name: 'Excalidraw' },
+  { key: 'drawio', domains: ['app.diagrams.net', 'drawio.com'], name: 'draw.io' },
+  { key: 'postman', domains: ['postman.com', 'www.postman.com'], name: 'Postman' },
+  { key: 'basecamp', domains: ['basecamp.com', 'www.basecamp.com'], name: 'Basecamp' },
+  { key: 'webex', domains: ['webex.com', 'www.webex.com'], name: 'Webex' },
+  { key: 'googlemeet', domains: ['meet.google.com'], name: 'Google Meet' },
+  { key: 'teams', domains: ['teams.microsoft.com'], name: 'Microsoft Teams' },
+  { key: 'calendly', domains: ['calendly.com', 'www.calendly.com'], name: 'Calendly' },
+
+  // ── 国际密码与安全 ────────────────────────────────────────
+  { key: '1password', domains: ['1password.com', 'www.1password.com'], name: '1Password' },
+  { key: 'bitwarden', domains: ['bitwarden.com', 'www.bitwarden.com'], name: 'Bitwarden' },
+  { key: 'lastpass', domains: ['lastpass.com', 'www.lastpass.com'], name: 'LastPass' },
+  { key: 'dashlane', domains: ['dashlane.com', 'www.dashlane.com'], name: 'Dashlane' },
+  { key: 'authy', domains: ['authy.com', 'www.authy.com'], name: 'Authy' },
+
+  // ── 国际开发者资源 ────────────────────────────────────────
+  { key: 'devto', domains: ['dev.to', 'www.dev.to'], name: 'DEV Community' },
+  { key: 'hackerrank', domains: ['hackerrank.com', 'www.hackerrank.com'], name: 'HackerRank' },
+  { key: 'codewars', domains: ['codewars.com', 'www.codewars.com'], name: 'Codewars' },
+  { key: 'atcoder', domains: ['atcoder.jp', 'www.atcoder.jp'], name: 'AtCoder' },
+  { key: 'elastic', domains: ['elastic.co', 'www.elastic.co'], name: 'Elastic' },
+  { key: 'apache', domains: ['apache.org', 'www.apache.org'], name: 'Apache' },
+  { key: 'tensorflow', domains: ['tensorflow.org', 'www.tensorflow.org'], name: 'TensorFlow' },
+  { key: 'pytorch', domains: ['pytorch.org', 'www.pytorch.org'], name: 'PyTorch' },
+  { key: 'sqlite', domains: ['sqlite.org', 'www.sqlite.org'], name: 'SQLite' },
+  { key: 'kafka', domains: ['kafka.apache.org'], name: 'Apache Kafka' },
+  { key: 'rabbitmq', domains: ['rabbitmq.com', 'www.rabbitmq.com'], name: 'RabbitMQ' },
+
+  // ── 国际云与基础设施 ──────────────────────────────────────
+  { key: 'oraclecloud', domains: ['oracle.com', 'www.oracle.com'], name: 'Oracle Cloud' },
+  { key: 'ibmcloud', domains: ['ibm.com', 'www.ibm.com'], name: 'IBM Cloud' },
+  { key: 'linode', domains: ['linode.com', 'www.linode.com'], name: 'Linode' },
+  { key: 'vultr', domains: ['vultr.com', 'www.vultr.com'], name: 'Vultr' },
+  { key: 'hetzner', domains: ['hetzner.com', 'www.hetzner.com'], name: 'Hetzner' },
+  { key: 'backblaze', domains: ['backblaze.com', 'www.backblaze.com'], name: 'Backblaze' },
+  { key: 'ngrok', domains: ['ngrok.com', 'www.ngrok.com'], name: 'ngrok' },
+  { key: 'tailscale', domains: ['tailscale.com', 'www.tailscale.com'], name: 'Tailscale' },
+  { key: 'zerotier', domains: ['zerotier.com', 'www.zerotier.com'], name: 'ZeroTier' },
+  { key: 'fastly', domains: ['fastly.com', 'www.fastly.com'], name: 'Fastly' },
+
+  // ── 国际新闻媒体 ──────────────────────────────────────────
+  { key: 'economist', domains: ['economist.com', 'www.economist.com'], name: '经济学人' },
+  { key: 'ft', domains: ['ft.com', 'www.ft.com'], name: '金融时报' },
+  { key: 'wsj', domains: ['wsj.com', 'www.wsj.com'], name: '华尔街日报' },
+  { key: 'apnews', domains: ['apnews.com', 'www.apnews.com'], name: '美联社' },
+  { key: 'aljazeera', domains: ['aljazeera.com', 'www.aljazeera.com'], name: '半岛电视台' },
+  { key: 'dw', domains: ['dw.com', 'www.dw.com'], name: '德国之声' },
+  { key: 'france24', domains: ['france24.com', 'www.france24.com'], name: 'France 24' },
+  { key: 'theatlantic', domains: ['theatlantic.com', 'www.theatlantic.com'], name: '大西洋月刊' },
+  { key: 'newyorker', domains: ['newyorker.com', 'www.newyorker.com'], name: '纽约客' },
+  { key: 'time', domains: ['time.com', 'www.time.com'], name: '时代周刊' },
+  { key: 'usatoday', domains: ['usatoday.com', 'www.usatoday.com'], name: '今日美国' },
+  { key: 'npr', domains: ['npr.org', 'www.npr.org'], name: 'NPR' },
+  { key: 'cbsnews', domains: ['cbsnews.com', 'www.cbsnews.com'], name: 'CBS News' },
+  { key: 'nbcnews', domains: ['nbcnews.com', 'www.nbcnews.com'], name: 'NBC News' },
+  { key: 'scmp', domains: ['scmp.com', 'www.scmp.com'], name: '南华早报' },
+
+  // ── 国际流媒体 ────────────────────────────────────────────
+  { key: 'primevideo', domains: ['primevideo.com', 'www.primevideo.com'], name: 'Prime Video' },
+  { key: 'appletv', domains: ['tv.apple.com'], name: 'Apple TV+' },
+  {
+    key: 'paramountplus',
+    domains: ['paramountplus.com', 'www.paramountplus.com'],
+    name: 'Paramount+',
+  },
+  { key: 'peacock', domains: ['peacocktv.com', 'www.peacocktv.com'], name: 'Peacock' },
+  { key: 'crunchyroll', domains: ['crunchyroll.com', 'www.crunchyroll.com'], name: 'Crunchyroll' },
+  { key: 'dailymotion', domains: ['dailymotion.com', 'www.dailymotion.com'], name: 'Dailymotion' },
+
+  // ── 国际音乐与音频 ────────────────────────────────────────
+  { key: 'applemusic', domains: ['music.apple.com'], name: 'Apple Music' },
+  { key: 'deezer', domains: ['deezer.com', 'www.deezer.com'], name: 'Deezer' },
+  { key: 'genius', domains: ['genius.com', 'www.genius.com'], name: 'Genius' },
+
+  // ── 国际社交与通讯 ────────────────────────────────────────
+  { key: 'tumblr', domains: ['tumblr.com', 'www.tumblr.com'], name: 'Tumblr' },
+  { key: 'snapchat', domains: ['snapchat.com', 'www.snapchat.com'], name: 'Snapchat' },
+  { key: 'vk', domains: ['vk.com', 'www.vk.com'], name: 'VK' },
+  { key: 'messenger', domains: ['messenger.com', 'www.messenger.com'], name: 'Messenger' },
+  { key: 'signal', domains: ['signal.org', 'www.signal.org'], name: 'Signal' },
+  { key: 'line', domains: ['line.me', 'www.line.me'], name: 'LINE' },
+  { key: 'kakaotalk', domains: ['kakaocorp.com', 'www.kakaocorp.com'], name: 'KakaoTalk' },
+  { key: 'nextdoor', domains: ['nextdoor.com', 'www.nextdoor.com'], name: 'Nextdoor' },
+  { key: 'flickr', domains: ['flickr.com', 'www.flickr.com'], name: 'Flickr' },
+  { key: 'goodreads', domains: ['goodreads.com', 'www.goodreads.com'], name: 'Goodreads' },
+
+  // ── 国际电商与零售 ────────────────────────────────────────
+  { key: 'walmart', domains: ['walmart.com', 'www.walmart.com'], name: 'Walmart' },
+  { key: 'target', domains: ['target.com', 'www.target.com'], name: 'Target' },
+  { key: 'costco', domains: ['costco.com', 'www.costco.com'], name: 'Costco' },
+  { key: 'bestbuy', domains: ['bestbuy.com', 'www.bestbuy.com'], name: 'Best Buy' },
+  { key: 'etsy', domains: ['etsy.com', 'www.etsy.com'], name: 'Etsy' },
+  { key: 'zalando', domains: ['zalando.com', 'www.zalando.com'], name: 'Zalando' },
+  { key: 'temu', domains: ['temu.com', 'www.temu.com'], name: 'Temu' },
+  { key: 'shein', domains: ['shein.com', 'www.shein.com'], name: 'SHEIN' },
+  { key: 'rakuten', domains: ['rakuten.co.jp', 'www.rakuten.co.jp'], name: '乐天' },
+  { key: 'mercari', domains: ['mercari.com', 'www.mercari.com'], name: 'Mercari' },
+  { key: 'wish', domains: ['wish.com', 'www.wish.com'], name: 'Wish' },
+
+  // ── 国际教育与学习 ────────────────────────────────────────
+  { key: 'edx', domains: ['edx.org', 'www.edx.org'], name: 'edX' },
+  { key: 'brilliant', domains: ['brilliant.org', 'www.brilliant.org'], name: 'Brilliant' },
+  { key: 'skillshare', domains: ['skillshare.com', 'www.skillshare.com'], name: 'Skillshare' },
+  { key: 'masterclass', domains: ['masterclass.com', 'www.masterclass.com'], name: 'MasterClass' },
+  { key: 'pluralsight', domains: ['pluralsight.com', 'www.pluralsight.com'], name: 'Pluralsight' },
+  { key: 'udacity', domains: ['udacity.com', 'www.udacity.com'], name: 'Udacity' },
+  { key: 'babbel', domains: ['babbel.com', 'www.babbel.com'], name: 'Babbel' },
+
+  // ── 国际设计与创意 ────────────────────────────────────────
+  { key: 'invision', domains: ['invisionapp.com', 'www.invisionapp.com'], name: 'InVision' },
+  { key: 'zeplin', domains: ['zeplin.io', 'www.zeplin.io'], name: 'Zeplin' },
+  { key: 'sketch', domains: ['sketch.com', 'www.sketch.com'], name: 'Sketch' },
+  { key: 'affinity', domains: ['affinity.serif.com'], name: 'Affinity' },
+  { key: 'photopea', domains: ['photopea.com', 'www.photopea.com'], name: 'Photopea' },
+  { key: 'blender', domains: ['blender.org', 'www.blender.org'], name: 'Blender' },
+  { key: 'unity', domains: ['unity.com', 'www.unity.com'], name: 'Unity' },
+
+  // ── 国际游戏 ──────────────────────────────────────────────
+  { key: 'ubisoft', domains: ['ubisoft.com', 'www.ubisoft.com'], name: 'Ubisoft' },
+  {
+    key: 'rockstargames',
+    domains: ['rockstargames.com', 'www.rockstargames.com'],
+    name: 'Rockstar Games',
+  },
+  { key: 'capcom', domains: ['capcom.com', 'www.capcom.com'], name: 'Capcom' },
+  { key: 'sega', domains: ['sega.com', 'www.sega.com'], name: 'Sega' },
+  { key: 'squareenix', domains: ['square-enix.com', 'www.square-enix.com'], name: 'Square Enix' },
+  { key: 'bandainamco', domains: ['bandainamco.com', 'www.bandainamco.com'], name: 'Bandai Namco' },
+  {
+    key: 'paradox',
+    domains: ['paradoxinteractive.com', 'www.paradoxinteractive.com'],
+    name: 'Paradox',
+  },
+  { key: 'valve', domains: ['valvesoftware.com', 'www.valvesoftware.com'], name: 'Valve' },
+
+  // ── 国际硬件与芯片 ────────────────────────────────────────
+  { key: 'nvidia', domains: ['nvidia.com', 'www.nvidia.com'], name: 'NVIDIA' },
+  { key: 'intel', domains: ['intel.com', 'www.intel.com'], name: 'Intel' },
+  { key: 'amd', domains: ['amd.com', 'www.amd.com'], name: 'AMD' },
+  { key: 'qualcomm', domains: ['qualcomm.com', 'www.qualcomm.com'], name: 'Qualcomm' },
+  { key: 'cisco', domains: ['cisco.com', 'www.cisco.com'], name: 'Cisco' },
+  { key: 'nokia', domains: ['nokia.com', 'www.nokia.com'], name: 'Nokia' },
+  { key: 'lg', domains: ['lg.com', 'www.lg.com'], name: 'LG' },
+  { key: 'panasonic', domains: ['panasonic.com', 'www.panasonic.com'], name: 'Panasonic' },
+  { key: 'philips', domains: ['philips.com', 'www.philips.com'], name: 'Philips' },
+  { key: 'motorola', domains: ['motorola.com', 'www.motorola.com'], name: 'Motorola' },
+
+  // ── 国际汽车 ──────────────────────────────────────────────
+  { key: 'toyota', domains: ['toyota.com', 'www.toyota.com'], name: 'Toyota' },
+  { key: 'honda', domains: ['honda.com', 'www.honda.com'], name: 'Honda' },
+  { key: 'volkswagen', domains: ['volkswagen.com', 'www.volkswagen.com'], name: 'Volkswagen' },
+  { key: 'bmw', domains: ['bmw.com', 'www.bmw.com'], name: 'BMW' },
+  {
+    key: 'mercedes',
+    domains: ['mercedes-benz.com', 'www.mercedes-benz.com'],
+    name: 'Mercedes-Benz',
+  },
+  { key: 'audi', domains: ['audi.com', 'www.audi.com'], name: 'Audi' },
+  { key: 'ford', domains: ['ford.com', 'www.ford.com'], name: 'Ford' },
+  { key: 'rivian', domains: ['rivian.com', 'www.rivian.com'], name: 'Rivian' },
+
+  // ── 国际金融与加密 ────────────────────────────────────────
+  { key: 'coinbase', domains: ['coinbase.com', 'www.coinbase.com'], name: 'Coinbase' },
+  { key: 'binance', domains: ['binance.com', 'www.binance.com'], name: 'Binance' },
+  { key: 'okx', domains: ['okx.com', 'www.okx.com'], name: 'OKX' },
+  { key: 'kraken', domains: ['kraken.com', 'www.kraken.com'], name: 'Kraken' },
+  { key: 'robinhood', domains: ['robinhood.com', 'www.robinhood.com'], name: 'Robinhood' },
+  { key: 'fidelity', domains: ['fidelity.com', 'www.fidelity.com'], name: 'Fidelity' },
+  { key: 'nasdaq', domains: ['nasdaq.com', 'www.nasdaq.com'], name: 'Nasdaq' },
+  { key: 'fool', domains: ['fool.com', 'www.fool.com'], name: 'Motley Fool' },
+
+  // ── 国际旅行 ──────────────────────────────────────────────
+  { key: 'hotels', domains: ['hotels.com', 'www.hotels.com'], name: 'Hotels.com' },
+  { key: 'trivago', domains: ['trivago.com', 'www.trivago.com'], name: 'trivago' },
+  { key: 'kayak', domains: ['kayak.com', 'www.kayak.com'], name: 'Kayak' },
+  { key: 'hostelworld', domains: ['hostelworld.com', 'www.hostelworld.com'], name: 'Hostelworld' },
+  {
+    key: 'getyourguide',
+    domains: ['getyourguide.com', 'www.getyourguide.com'],
+    name: 'GetYourGuide',
+  },
+  { key: 'kiwi', domains: ['kiwi.com', 'www.kiwi.com'], name: 'Kiwi.com' },
+
+  // ── 国际论坛与社区 ────────────────────────────────────────
+  { key: 'lobsters', domains: ['lobste.rs', 'www.lobste.rs'], name: 'Lobsters' },
+  { key: 'slashdot', domains: ['slashdot.org', 'www.slashdot.org'], name: 'Slashdot' },
+  { key: 'mastodon', domains: ['mastodon.social', 'www.mastodon.social'], name: 'Mastodon' },
+  { key: 'letterboxd', domains: ['letterboxd.com', 'www.letterboxd.com'], name: 'Letterboxd' },
+  { key: 'kofi', domains: ['ko-fi.com', 'www.ko-fi.com'], name: 'Ko-fi' },
+
+  // ── 国际政府与组织 ────────────────────────────────────────
+  { key: 'un', domains: ['un.org', 'www.un.org'], name: '联合国' },
+  { key: 'europa', domains: ['europa.eu', 'www.europa.eu'], name: '欧盟官网' },
+  { key: 'state', domains: ['state.gov', 'www.state.gov'], name: '美国国务院' },
+  { key: 'whitehouse', domains: ['whitehouse.gov', 'www.whitehouse.gov'], name: '白宫' },
+  { key: 'govuk', domains: ['gov.uk', 'www.gov.uk'], name: '英国政府' },
+
+  // ── 国际图片与摄影 ────────────────────────────────────────
+  { key: 'wallhaven', domains: ['wallhaven.cc', 'www.wallhaven.cc'], name: 'Wallhaven' },
+  { key: 'deviantart', domains: ['deviantart.com', 'www.deviantart.com'], name: 'DeviantArt' },
+  { key: '500px', domains: ['500px.com', 'www.500px.com'], name: '500px' },
+  { key: 'rawpixel', domains: ['rawpixel.com', 'www.rawpixel.com'], name: 'Rawpixel' },
+
+  // ── 国际天气 ──────────────────────────────────────────────
+  { key: 'accuweather', domains: ['accuweather.com', 'www.accuweather.com'], name: 'AccuWeather' },
+  { key: 'windy', domains: ['windy.com', 'www.windy.com'], name: 'Windy' },
+
+  // ── 国际科技媒体 ──────────────────────────────────────────
+  { key: 'engadget', domains: ['engadget.com', 'www.engadget.com'], name: 'Engadget' },
+  { key: 'gizmodo', domains: ['gizmodo.com', 'www.gizmodo.com'], name: 'Gizmodo' },
+  { key: 'mashable', domains: ['mashable.com', 'www.mashable.com'], name: 'Mashable' },
+  {
+    key: 'tomshardware',
+    domains: ['tomshardware.com', 'www.tomshardware.com'],
+    name: 'Tom\u2019s Hardware',
+  },
+
+  // ── 国际效率工具 ──────────────────────────────────────────
+  { key: 'wetransfer', domains: ['wetransfer.com', 'www.wetransfer.com'], name: 'WeTransfer' },
+  { key: 'smallpdf', domains: ['smallpdf.com', 'www.smallpdf.com'], name: 'Smallpdf' },
+  { key: 'ilovepdf', domains: ['ilovepdf.com', 'www.ilovepdf.com'], name: 'iLovePDF' },
+  { key: 'archive', domains: ['archive.org', 'www.archive.org'], name: '互联网档案馆' },
+
+  // ── 国际地图与词典 ────────────────────────────────────────
+  { key: 'googlemaps', domains: ['maps.google.com'], name: 'Google 地图' },
+  {
+    key: 'openstreetmap',
+    domains: ['openstreetmap.org', 'www.openstreetmap.org'],
+    name: 'OpenStreetMap',
+  },
+  {
+    key: 'merriamwebster',
+    domains: ['merriam-webster.com', 'www.merriam-webster.com'],
+    name: 'Merriam-Webster',
+  },
+  { key: 'cambridge', domains: ['dictionary.cambridge.org'], name: '剑桥词典' },
+  { key: 'oxford', domains: ['oxfordlearnersdictionaries.com'], name: '牛津词典' },
+
+  // ── 国际邮箱与存储 ────────────────────────────────────────
+  { key: 'protonmail', domains: ['proton.me', 'www.proton.me'], name: 'Proton Mail' },
+  { key: 'box', domains: ['box.com', 'www.box.com'], name: 'Box' },
+  { key: 'sync', domains: ['sync.com', 'www.sync.com'], name: 'Sync.com' },
+
+  // ── 国家级部委与机构 ──────────────────────────────────────
+  { key: 'mfa', domains: ['mfa.gov.cn', 'www.mfa.gov.cn'], name: '外交部' },
+  { key: 'mod', domains: ['mod.gov.cn', 'www.mod.gov.cn'], name: '国防部' },
+  { key: 'ndrc', domains: ['ndrc.gov.cn', 'www.ndrc.gov.cn'], name: '国家发改委' },
+  { key: 'mps', domains: ['mps.gov.cn', 'www.mps.gov.cn'], name: '公安部' },
+  { key: 'mca', domains: ['mca.gov.cn', 'www.mca.gov.cn'], name: '民政部' },
+  { key: 'moj', domains: ['moj.gov.cn', 'www.moj.gov.cn'], name: '司法部' },
+  { key: 'mof', domains: ['mof.gov.cn', 'www.mof.gov.cn'], name: '财政部' },
+  { key: 'mohrss', domains: ['mohrss.gov.cn', 'www.mohrss.gov.cn'], name: '人力资源和社会保障部' },
+  { key: 'mnr', domains: ['mnr.gov.cn', 'www.mnr.gov.cn'], name: '自然资源部' },
+  { key: 'mee', domains: ['mee.gov.cn', 'www.mee.gov.cn'], name: '生态环境部' },
+  { key: 'mohurd', domains: ['mohurd.gov.cn', 'www.mohurd.gov.cn'], name: '住房和城乡建设部' },
+  { key: 'mot', domains: ['mot.gov.cn', 'www.mot.gov.cn'], name: '交通运输部' },
+  { key: 'mwr', domains: ['mwr.gov.cn', 'www.mwr.gov.cn'], name: '水利部' },
+  { key: 'moa', domains: ['moa.gov.cn', 'www.moa.gov.cn'], name: '农业农村部' },
+  { key: 'mct', domains: ['mct.gov.cn', 'www.mct.gov.cn'], name: '文化和旅游部' },
+  { key: 'nhc', domains: ['nhc.gov.cn', 'www.nhc.gov.cn'], name: '国家卫健委' },
+  { key: 'mem', domains: ['mem.gov.cn', 'www.mem.gov.cn'], name: '应急管理部' },
+  { key: 'pbc', domains: ['pbc.gov.cn', 'www.pbc.gov.cn'], name: '中国人民银行' },
+  { key: 'audit', domains: ['audit.gov.cn', 'www.audit.gov.cn'], name: '审计署' },
+  { key: 'sasac', domains: ['sasac.gov.cn', 'www.sasac.gov.cn'], name: '国务院国资委' },
+  { key: 'nhsa', domains: ['nhsa.gov.cn', 'www.nhsa.gov.cn'], name: '国家医保局' },
+  { key: 'nmpa', domains: ['nmpa.gov.cn', 'www.nmpa.gov.cn'], name: '国家药监局' },
+  { key: 'cnipa', domains: ['cnipa.gov.cn', 'www.cnipa.gov.cn'], name: '国家知识产权局' },
+  { key: 'nrta', domains: ['nrta.gov.cn', 'www.nrta.gov.cn'], name: '广电总局' },
+  { key: 'sport', domains: ['sport.gov.cn', 'www.sport.gov.cn'], name: '国家体育总局' },
+  { key: 'customs', domains: ['customs.gov.cn', 'www.customs.gov.cn'], name: '海关总署' },
+  { key: 'samr', domains: ['samr.gov.cn', 'www.samr.gov.cn'], name: '市场监管总局' },
+  { key: 'cma', domains: ['cma.gov.cn', 'www.cma.gov.cn'], name: '中国气象局' },
+  { key: 'cea', domains: ['cea.gov.cn', 'www.cea.gov.cn'], name: '中国地震局' },
+  { key: 'safe', domains: ['safe.gov.cn', 'www.safe.gov.cn'], name: '国家外汇管理局' },
+  { key: 'nra', domains: ['nra.gov.cn', 'www.nra.gov.cn'], name: '国家铁路局' },
+  { key: 'caac', domains: ['caac.gov.cn', 'www.caac.gov.cn'], name: '中国民航局' },
+  { key: 'spb', domains: ['spb.gov.cn', 'www.spb.gov.cn'], name: '国家邮政局' },
+  { key: 'nea', domains: ['nea.gov.cn', 'www.nea.gov.cn'], name: '国家能源局' },
+  { key: 'lswz', domains: ['lswz.gov.cn', 'www.lswz.gov.cn'], name: '国家粮食和物资储备局' },
+  { key: 'nia', domains: ['nia.gov.cn', 'www.nia.gov.cn'], name: '国家移民管理局' },
+
+  // ── 中央媒体与财经新闻 ────────────────────────────────────
+  { key: 'economy', domains: ['ce.cn', 'www.ce.cn'], name: '经济日报' },
+  { key: 'cyol', domains: ['cyol.com', 'www.cyol.com'], name: '中国青年报' },
+  { key: 'stdaily', domains: ['stdaily.com', 'www.stdaily.com'], name: '科技日报' },
+  { key: 'jkb', domains: ['jkb.com.cn', 'www.jkb.com.cn'], name: '健康报' },
+  { key: 'farmer', domains: ['farmer.com.cn', 'www.farmer.com.cn'], name: '农民日报' },
+  { key: 'legaldaily', domains: ['legaldaily.com.cn', 'www.legaldaily.com.cn'], name: '法制日报' },
+  { key: 'rmfyb', domains: ['rmfyb.com', 'www.rmfyb.com'], name: '人民法院报' },
+  { key: 'jcrb', domains: ['jcrb.com', 'www.jcrb.com'], name: '检察日报' },
+  { key: 'rmzxb', domains: ['rmzxb.com.cn', 'www.rmzxb.com.cn'], name: '人民政协报' },
+  { key: 'jjckb', domains: ['jjckb.cn', 'www.jjckb.cn'], name: '经济参考报' },
+  { key: 'eeo', domains: ['eeo.com.cn', 'www.eeo.com.cn'], name: '经济观察报' },
+  { key: '21jingji', domains: ['21jingji.com', 'www.21jingji.com'], name: '21世纪经济报道' },
+  { key: 'nbd', domains: ['nbd.com.cn', 'www.nbd.com.cn'], name: '每日经济新闻' },
+  { key: 'jiemian', domains: ['jiemian.com', 'www.jiemian.com'], name: '界面新闻' },
+  { key: 'infzm', domains: ['infzm.com', 'www.infzm.com'], name: '南方周末' },
+  { key: 'nddaily', domains: ['nddaily.com', 'www.nddaily.com'], name: '南方都市报' },
+  { key: 'bjnews', domains: ['bjnews.com.cn', 'www.bjnews.com.cn'], name: '新京报' },
+  { key: 'bjd', domains: ['bjd.com.cn', 'www.bjd.com.cn'], name: '北京日报' },
+  { key: 'jfdaily', domains: ['jfdaily.com', 'www.jfdaily.com'], name: '解放日报' },
+  { key: 'whb', domains: ['whb.cn', 'www.whb.cn'], name: '文汇报' },
+  { key: 'xinmin', domains: ['xinmin.cn', 'www.xinmin.cn'], name: '新民晚报' },
+  { key: 'dayoo', domains: ['dayoo.com', 'www.dayoo.com'], name: '广州日报' },
+  { key: 'ycwb', domains: ['ycwb.com', 'www.ycwb.com'], name: '羊城晚报' },
+  { key: 'dzwww', domains: ['dzwww.com', 'www.dzwww.com'], name: '大众网' },
+  { key: 'yangtse', domains: ['yangtse.com', 'www.yangtse.com'], name: '扬子晚报' },
+
+  // ── 证券财经媒体 ──────────────────────────────────────────
+  { key: 'stcn', domains: ['stcn.com', 'www.stcn.com'], name: '证券时报' },
+  { key: 'cnstock', domains: ['cnstock.com', 'www.cnstock.com'], name: '上海证券报' },
+  { key: 'cs', domains: ['cs.com.cn', 'www.cs.com.cn'], name: '中国证券报' },
+  { key: 'zqrb', domains: ['zqrb.cn', 'www.zqrb.cn'], name: '证券日报' },
+
+  // ── 门户与资讯 ────────────────────────────────────────────
+  { key: 'china', domains: ['china.com', 'www.china.com'], name: '中华网' },
+  { key: 'cnfol', domains: ['cnfol.com', 'www.cnfol.com'], name: '中金在线' },
+  { key: 'jrj', domains: ['jrj.com.cn', 'www.jrj.com.cn'], name: '金融界' },
+  { key: 'hexun', domains: ['hexun.com', 'www.hexun.com'], name: '和讯网' },
+  { key: 'yidianzixun', domains: ['yidianzixun.com', 'www.yidianzixun.com'], name: '一点资讯' },
+
+  // ── 电商与新零售 ──────────────────────────────────────────
+  { key: 'samsclub', domains: ['samsclub.cn', 'www.samsclub.cn'], name: '山姆会员店' },
+  { key: 'rtmart', domains: ['rt-mart.com.cn', 'www.rt-mart.com.cn'], name: '大润发' },
+  { key: 'yonghui', domains: ['yonghui.com.cn', 'www.yonghui.com.cn'], name: '永辉超市' },
+  { key: 'wumart', domains: ['wumart.com', 'www.wumart.com'], name: '物美' },
+  { key: 'kongfz', domains: ['kongfz.com', 'www.kongfz.com'], name: '孔夫子旧书网' },
+  { key: 'duozhuayu', domains: ['duozhuayu.com', 'www.duozhuayu.com'], name: '多抓鱼' },
+  { key: 'mogujie', domains: ['mogujie.com', 'www.mogujie.com'], name: '蘑菇街' },
+  { key: 'meilishuo', domains: ['meilishuo.com', 'www.meilishuo.com'], name: '美丽说' },
+
+  // ── 生活服务与房产 ────────────────────────────────────────
+  { key: 'lalamove', domains: ['lalamove.com', 'www.lalamove.com'], name: '货拉拉' },
+  { key: 'ganji', domains: ['ganji.com', 'www.ganji.com'], name: '赶集网' },
+  { key: '5i5j', domains: ['5i5j.com', 'www.5i5j.com'], name: '我爱我家' },
+  { key: 'centanet', domains: ['centanet.com.cn', 'www.centanet.com.cn'], name: '中原地产' },
+  { key: 'jia', domains: ['jia.com', 'www.jia.com'], name: '齐家网' },
+  { key: 'renrenche', domains: ['renrenche.com', 'www.renrenche.com'], name: '人人车' },
+
+  // ── 银行 ──────────────────────────────────────────────────
+  { key: 'cib', domains: ['cib.com.cn', 'www.cib.com.cn'], name: '兴业银行' },
+  { key: 'spdb', domains: ['spdb.com.cn', 'www.spdb.com.cn'], name: '浦发银行' },
+  { key: 'citicbank', domains: ['citicbank.com', 'www.citicbank.com'], name: '中信银行' },
+  { key: 'cmbc', domains: ['cmbc.com.cn', 'www.cmbc.com.cn'], name: '民生银行' },
+  { key: 'cebbank', domains: ['cebbank.com.cn', 'www.cebbank.com.cn'], name: '光大银行' },
+  { key: 'hxb', domains: ['hxb.com.cn', 'www.hxb.com.cn'], name: '华夏银行' },
+  { key: 'cgbchina', domains: ['cgbchina.com.cn', 'www.cgbchina.com.cn'], name: '广发银行' },
+  { key: 'pinganbank', domains: ['bank.pingan.com'], name: '平安银行' },
+  { key: 'bob', domains: ['bankofbeijing.com.cn', 'www.bankofbeijing.com.cn'], name: '北京银行' },
+  { key: 'bosc', domains: ['bosc.cn', 'www.bosc.cn'], name: '上海银行' },
+  { key: 'jsbchina', domains: ['jsbchina.cn', 'www.jsbchina.cn'], name: '江苏银行' },
+  { key: 'nbcnb', domains: ['nbcnb.com.cn', 'www.nbcnb.com.cn'], name: '宁波银行' },
+  { key: 'hsbc', domains: ['hsbc.com.cn', 'www.hsbc.com.cn'], name: '汇丰中国' },
+
+  // ── 券商 ──────────────────────────────────────────────────
+  { key: 'citics', domains: ['citics.com', 'www.citics.com'], name: '中信证券' },
+  { key: 'htsec', domains: ['htsec.com', 'www.htsec.com'], name: '华泰证券' },
+  { key: 'gtja', domains: ['gtja.com', 'www.gtja.com'], name: '国泰君安' },
+  { key: 'chinastock', domains: ['chinastock.com.cn', 'www.chinastock.com.cn'], name: '银河证券' },
+  { key: 'gfsecurities', domains: ['gf.com.cn', 'www.gf.com.cn'], name: '广发证券' },
+  { key: 'cmschina', domains: ['cmschina.com', 'www.cmschina.com'], name: '招商证券' },
+  { key: 'swhysc', domains: ['swhysc.com', 'www.swhysc.com'], name: '申万宏源' },
+  { key: 'cicc', domains: ['cicc.com', 'www.cicc.com'], name: '中金公司' },
+
+  // ── 保险 ──────────────────────────────────────────────────
+  { key: 'chinalife', domains: ['chinalife.com', 'www.chinalife.com'], name: '中国人寿' },
+  { key: 'pingan', domains: ['pingan.com', 'www.pingan.com'], name: '中国平安' },
+  { key: 'cpic', domains: ['cpic.com.cn', 'www.cpic.com.cn'], name: '太平洋保险' },
+  { key: 'newchinalife', domains: ['newchinalife.com', 'www.newchinalife.com'], name: '新华保险' },
+  { key: 'taikang', domains: ['taikang.com', 'www.taikang.com'], name: '泰康保险' },
+  { key: 'picc', domains: ['picc.com', 'www.picc.com'], name: '中国人保' },
+  { key: 'zhongan', domains: ['zhongan.com', 'www.zhongan.com'], name: '众安保险' },
+  { key: 'aia', domains: ['aia.com.cn', 'www.aia.com.cn'], name: '友邦中国' },
+
+  // ── 教育培训 ──────────────────────────────────────────────
+  { key: 'xueersi', domains: ['xueersi.com', 'www.xueersi.com'], name: '学而思' },
+  { key: 'yuanfudao', domains: ['yuanfudao.com', 'www.yuanfudao.com'], name: '猿辅导' },
+  { key: 'gaotu', domains: ['gaotu.cn', 'www.gaotu.cn'], name: '高途' },
+  { key: 'xdf', domains: ['xdf.cn', 'www.xdf.cn'], name: '新东方' },
+  { key: 'fenbi', domains: ['fenbi.com', 'www.fenbi.com'], name: '粉笔' },
+  { key: 'huatu', domains: ['huatu.com', 'www.huatu.com'], name: '华图教育' },
+  { key: 'offcn', domains: ['offcn.com', 'www.offcn.com'], name: '中公教育' },
+  { key: 'hujiang', domains: ['hujiang.com', 'www.hujiang.com'], name: '沪江网校' },
+  { key: '51talk', domains: ['51talk.com', 'www.51talk.com'], name: '51Talk' },
+  { key: 'liulishuo', domains: ['liulishuo.com', 'www.liulishuo.com'], name: '流利说' },
+
+  // ── 医疗健康 ──────────────────────────────────────────────
+  { key: 'guahao', domains: ['guahao.com', 'www.guahao.com'], name: '微医' },
+  { key: 'dxycn', domains: ['dxy.cn', 'www.dxy.cn'], name: '丁香园' },
+  { key: 'babytree', domains: ['babytree.com', 'www.babytree.com'], name: '宝宝树' },
+  { key: 'pumch', domains: ['pumch.cn', 'www.pumch.cn'], name: '北京协和医院' },
+
+  // ── 招聘求职 ──────────────────────────────────────────────
+  { key: 'shixiseng', domains: ['shixiseng.com', 'www.shixiseng.com'], name: '实习僧' },
+
+  // ── 音乐与音频 ────────────────────────────────────────────
+  { key: 'kgqq', domains: ['kg.qq.com'], name: '全民K歌' },
+  { key: 'fanqienovel', domains: ['fanqienovel.com', 'www.fanqienovel.com'], name: '番茄小说' },
+  { key: 'bookqq', domains: ['book.qq.com'], name: 'QQ阅读' },
+  { key: 'migumusic', domains: ['music.migu.cn'], name: '咪咕音乐' },
+
+  // ── 动漫与漫画 ────────────────────────────────────────────
+  { key: 'acfun', domains: ['acfun.cn', 'www.acfun.cn'], name: 'AcFun' },
+  { key: 'acqq', domains: ['ac.qq.com'], name: '腾讯动漫' },
+  { key: 'bilibilimanga', domains: ['manga.bilibili.com'], name: '哔哩哔哩漫画' },
+
+  // ── 游戏厂商 ──────────────────────────────────────────────
+  { key: 'neteasegame', domains: ['game.163.com'], name: '网易游戏' },
+  { key: 'tencentgame', domains: ['games.qq.com'], name: '腾讯游戏' },
+  { key: 'lilith', domains: ['lilith.com', 'www.lilith.com'], name: '莉莉丝游戏' },
+  { key: 'hypergryph', domains: ['hypergryph.com', 'www.hypergryph.com'], name: '鹰角网络' },
+  { key: 'wanmei', domains: ['wanmei.com', 'www.wanmei.com'], name: '完美世界' },
+  { key: 'ztgame', domains: ['ztgame.com', 'www.ztgame.com'], name: '巨人网络' },
+  { key: '37games', domains: ['37.com', 'www.37.com'], name: '三七互娱' },
+  { key: 'xd', domains: ['xd.com', 'www.xd.com'], name: '心动网络' },
+  { key: 'youzu', domains: ['youzu.com', 'www.youzu.com'], name: '游族网络' },
+  { key: 'leiting', domains: ['leiting.com', 'www.leiting.com'], name: '雷霆游戏' },
+  { key: 'duoyi', domains: ['duoyi.com', 'www.duoyi.com'], name: '多益网络' },
+  { key: 'cmge', domains: ['cmge.com', 'www.cmge.com'], name: '中手游' },
+
+  // ── 汽车厂商 ──────────────────────────────────────────────
+  { key: 'faw', domains: ['faw.com.cn', 'www.faw.com.cn'], name: '一汽集团' },
+  { key: 'saicmotor', domains: ['saicmotor.com', 'www.saicmotor.com'], name: '上汽集团' },
+  { key: 'dfmc', domains: ['dfmc.com.cn', 'www.dfmc.com.cn'], name: '东风汽车' },
+  { key: 'changan', domains: ['changan.com.cn', 'www.changan.com.cn'], name: '长安汽车' },
+  { key: 'geely', domains: ['geely.com', 'www.geely.com'], name: '吉利汽车' },
+  { key: 'gwm', domains: ['gwm.com.cn', 'www.gwm.com.cn'], name: '长城汽车' },
+  { key: 'chery', domains: ['chery.com', 'www.chery.com'], name: '奇瑞汽车' },
+  { key: 'gac', domains: ['gac.com.cn', 'www.gac.com.cn'], name: '广汽集团' },
+  { key: 'baicmotor', domains: ['baicmotor.com', 'www.baicmotor.com'], name: '北汽集团' },
+  { key: 'jac', domains: ['jac.com.cn', 'www.jac.com.cn'], name: '江淮汽车' },
+  { key: 'aito', domains: ['aito.com', 'www.aito.com'], name: '问界' },
+  { key: 'zeekr', domains: ['zeekr.com', 'www.zeekr.com'], name: '极氪' },
+  { key: 'leapmotor', domains: ['leapmotor.com', 'www.leapmotor.com'], name: '零跑汽车' },
+  { key: 'voyah', domains: ['voyah.com', 'www.voyah.com'], name: '岚图汽车' },
+  { key: 'gasgoo', domains: ['gasgoo.com', 'www.gasgoo.com'], name: '盖世汽车' },
+
+  // ── 手机与数码 ────────────────────────────────────────────
+  { key: 'realme', domains: ['realme.com', 'www.realme.com'], name: 'realme' },
+  { key: 'iqoo', domains: ['iqoo.com', 'www.iqoo.com'], name: 'iQOO' },
+  { key: 'zte', domains: ['zte.com.cn', 'www.zte.com.cn'], name: '中兴' },
+  { key: 'nubia', domains: ['nubia.com', 'www.nubia.com'], name: '努比亚' },
+  { key: 'tcl', domains: ['tcl.com', 'www.tcl.com'], name: 'TCL' },
+  { key: 'hisense', domains: ['hisense.com', 'www.hisense.com'], name: '海信' },
+  { key: 'skyworth', domains: ['skyworth.com', 'www.skyworth.com'], name: '创维' },
+  { key: 'konka', domains: ['konka.com', 'www.konka.com'], name: '康佳' },
+  { key: 'changhong', domains: ['changhong.com.cn', 'www.changhong.com.cn'], name: '长虹' },
+  { key: 'boe', domains: ['boe.com.cn', 'www.boe.com.cn'], name: '京东方' },
+
+  // ── 家电与厨电 ────────────────────────────────────────────
+  { key: 'haier', domains: ['haier.com', 'www.haier.com'], name: '海尔' },
+  { key: 'gree', domains: ['gree.com.cn', 'www.gree.com.cn'], name: '格力' },
+  { key: 'midea', domains: ['midea.com', 'www.midea.com'], name: '美的' },
+  { key: 'fotile', domains: ['fotile.com', 'www.fotile.com'], name: '方太' },
+  { key: 'robam', domains: ['robam.com', 'www.robam.com'], name: '老板电器' },
+  { key: 'supor', domains: ['supor.com.cn', 'www.supor.com.cn'], name: '苏泊尔' },
+  { key: 'joyoung', domains: ['joyoung.com', 'www.joyoung.com'], name: '九阳' },
+  { key: 'aux', domains: ['aux.com.cn', 'www.aux.com.cn'], name: '奥克斯' },
+
+  // ── 服装与运动品牌 ────────────────────────────────────────
+  { key: 'uniqlo', domains: ['uniqlo.cn', 'www.uniqlo.cn'], name: '优衣库' },
+  { key: 'nike', domains: ['nike.com', 'www.nike.com'], name: '耐克' },
+  { key: 'adidas', domains: ['adidas.com', 'www.adidas.com'], name: '阿迪达斯' },
+  { key: 'lining', domains: ['lining.com', 'www.lining.com'], name: '李宁' },
+  { key: 'anta', domains: ['anta.com', 'www.anta.com'], name: '安踏' },
+  { key: 'xtep', domains: ['xtep.com', 'www.xtep.com'], name: '特步' },
+  { key: 'bosideng', domains: ['bosideng.com', 'www.bosideng.com'], name: '波司登' },
+  { key: 'semir', domains: ['semir.com', 'www.semir.com'], name: '森马' },
+  { key: 'miniso', domains: ['miniso.com', 'www.miniso.com'], name: '名创优品' },
+
+  // ── 餐饮与茶饮 ────────────────────────────────────────────
+  { key: 'mcdonalds', domains: ['mcdonalds.com', 'www.mcdonalds.com'], name: '麦当劳' },
+  { key: 'kfc', domains: ['kfc.com.cn', 'www.kfc.com.cn'], name: '肯德基' },
+  { key: 'starbucks', domains: ['starbucks.com.cn', 'www.starbucks.com.cn'], name: '星巴克' },
+  { key: 'luckincoffee', domains: ['luckincoffee.com', 'www.luckincoffee.com'], name: '瑞幸咖啡' },
+  { key: 'heytea', domains: ['heytea.com', 'www.heytea.com'], name: '喜茶' },
+  { key: 'haidilao', domains: ['haidilao.com', 'www.haidilao.com'], name: '海底捞' },
+
+  // ── 酒店 ──────────────────────────────────────────────────
+  { key: 'hworld', domains: ['hworld.com', 'www.hworld.com'], name: '华住集团' },
+  { key: 'atour', domains: ['atour.com', 'www.atour.com'], name: '亚朵' },
+
+  // ── 快递物流 ──────────────────────────────────────────────
+  { key: 'zto', domains: ['zto.com', 'www.zto.com'], name: '中通快递' },
+  { key: 'yundaex', domains: ['yundaex.com', 'www.yundaex.com'], name: '韵达快递' },
+  { key: 'sto', domains: ['sto.cn', 'www.sto.cn'], name: '申通快递' },
+  { key: 'jtexpress', domains: ['jtexpress.com', 'www.jtexpress.com'], name: '极兔速递' },
+  { key: 'deppon', domains: ['deppon.com', 'www.deppon.com'], name: '德邦物流' },
+  { key: 'ems', domains: ['ems.com.cn', 'www.ems.com.cn'], name: '中国邮政速递' },
+
+  // ── 社交与社区 ────────────────────────────────────────────
+  { key: 'immomo', domains: ['immomo.com', 'www.immomo.com'], name: '陌陌' },
+  { key: 'nga', domains: ['nga.cn', 'bbs.nga.cn'], name: 'NGA玩家社区' },
+  { key: 'yy', domains: ['yy.com', 'www.yy.com'], name: 'YY直播' },
+
+  // ── 设计素材 ──────────────────────────────────────────────
+  { key: '58pic', domains: ['58pic.com', 'www.58pic.com'], name: '千图网' },
+  { key: '588ku', domains: ['588ku.com', 'www.588ku.com'], name: '千库网' },
+  { key: 'ibaotu', domains: ['ibaotu.com', 'www.ibaotu.com'], name: '包图网' },
+  { key: 'nipic', domains: ['nipic.com', 'www.nipic.com'], name: '昵图网' },
+  { key: '699pic', domains: ['699pic.com', 'www.699pic.com'], name: '摄图网' },
+  { key: 'duitang', domains: ['duitang.com', 'www.duitang.com'], name: '堆糖' },
+  { key: 'vcg', domains: ['vcg.com', 'www.vcg.com'], name: '视觉中国' },
+  { key: 'tuchong', domains: ['tuchong.com', 'www.tuchong.com'], name: '图虫' },
+
+  // ── 站长与效率工具 ────────────────────────────────────────
+  { key: 'chinaz', domains: ['chinaz.com', 'www.chinaz.com'], name: '站长之家' },
+  { key: 'speedtestcn', domains: ['speedtest.cn', 'www.speedtest.cn'], name: '测速网' },
+  { key: 'ipcn', domains: ['ip.cn', 'www.ip.cn'], name: 'IP查询' },
+  { key: 'ipip', domains: ['ipip.net', 'www.ipip.net'], name: 'IPIP.NET' },
+  { key: 'xuexi', domains: ['xuexi.cn', 'www.xuexi.cn'], name: '学习强国' },
+  { key: 'neea', domains: ['neea.edu.cn', 'www.neea.edu.cn'], name: '中国教育考试网' },
+  { key: 'wiz', domains: ['wiz.cn', 'www.wiz.cn'], name: '为知笔记' },
+
+  // ── 影视与票务 ────────────────────────────────────────────
+  { key: 'maoyan', domains: ['maoyan.com', 'www.maoyan.com'], name: '猫眼电影' },
+  { key: 'taopiaopiao', domains: ['taopiaopiao.com', 'www.taopiaopiao.com'], name: '淘票票' },
+  { key: 'mtime', domains: ['mtime.com', 'www.mtime.com'], name: '时光网' },
+  { key: '1905', domains: ['1905.com', 'www.1905.com'], name: '1905电影网' },
+
+  // ── 词典与翻译 ────────────────────────────────────────────
+  { key: 'iciba', domains: ['iciba.com', 'www.iciba.com'], name: '金山词霸' },
+
+  // ── 邮箱 ──────────────────────────────────────────────────
+  { key: 'mail139', domains: ['139.com', 'www.139.com'], name: '139邮箱' },
+  { key: 'mail189', domains: ['mail.189.cn'], name: '189邮箱' },
+  { key: 'exmail', domains: ['exmail.qq.com'], name: '腾讯企业邮箱' },
+
+  // ── 天气 ──────────────────────────────────────────────────
+  { key: 'qweather', domains: ['qweather.com', 'www.qweather.com'], name: '和风天气' },
+
+  // ── 省市政府门户 ──────────────────────────────────────────
+  { key: 'bjgov', domains: ['beijing.gov.cn', 'www.beijing.gov.cn'], name: '首都之窗' },
+  { key: 'shgov', domains: ['shanghai.gov.cn', 'www.shanghai.gov.cn'], name: '上海市政府' },
+  { key: 'gdgov', domains: ['gd.gov.cn', 'www.gd.gov.cn'], name: '广东省政府' },
+  { key: 'szgov', domains: ['sz.gov.cn', 'www.sz.gov.cn'], name: '深圳市政府' },
+  { key: 'zjgis', domains: ['zj.gov.cn', 'www.zj.gov.cn'], name: '浙江省政府' },
+  { key: 'jsgov', domains: ['jiangsu.gov.cn', 'www.jiangsu.gov.cn'], name: '江苏省政府' },
+  { key: 'scgov', domains: ['sc.gov.cn', 'www.sc.gov.cn'], name: '四川省政府' },
+  { key: 'hubeigov', domains: ['hubei.gov.cn', 'www.hubei.gov.cn'], name: '湖北省政府' },
+  { key: 'shandonggov', domains: ['shandong.gov.cn', 'www.shandong.gov.cn'], name: '山东省政府' },
+  { key: 'henangov', domains: ['henan.gov.cn', 'www.henan.gov.cn'], name: '河南省政府' },
+
+  // ── 地方媒体 ──────────────────────────────────────────────
+  { key: 'dahe', domains: ['dahe.cn', 'www.dahe.cn'], name: '大河网' },
+  { key: 'cnhubei', domains: ['cnhubei.com', 'www.cnhubei.com'], name: '荆楚网' },
+  { key: 'rednet', domains: ['rednet.cn', 'www.rednet.cn'], name: '红网' },
+  { key: 'cqnews', domains: ['cqnews.net', 'www.cqnews.net'], name: '华龙网' },
+  { key: 'scol', domains: ['scol.com.cn', 'www.scol.com.cn'], name: '四川在线' },
+  { key: 'cnwest', domains: ['cnwest.com', 'www.cnwest.com'], name: '西部网' },
+  { key: 'anhuinews', domains: ['anhuinews.com', 'www.anhuinews.com'], name: '中安在线' },
+  { key: 'fjsen', domains: ['fjsen.com', 'www.fjsen.com'], name: '东南网' },
+  { key: 'jxnews', domains: ['jxnews.com.cn', 'www.jxnews.com.cn'], name: '大江网' },
+  { key: 'yunnan', domains: ['yunnan.cn', 'www.yunnan.cn'], name: '云南网' },
+  { key: 'titan24', domains: ['titan24.com', 'www.titan24.com'], name: '体坛网' },
+  { key: '81cn', domains: ['81.cn', 'www.81.cn'], name: '中国军网' },
+  { key: 'chinacomcn', domains: ['china.com.cn', 'www.china.com.cn'], name: '中国网' },
+
+  // ── 高校 ──────────────────────────────────────────────────
+  { key: 'pku', domains: ['pku.edu.cn', 'www.pku.edu.cn'], name: '北京大学' },
+  { key: 'tsinghua', domains: ['tsinghua.edu.cn', 'www.tsinghua.edu.cn'], name: '清华大学' },
+  { key: 'fudan', domains: ['fudan.edu.cn', 'www.fudan.edu.cn'], name: '复旦大学' },
+  { key: 'sjtu', domains: ['sjtu.edu.cn', 'www.sjtu.edu.cn'], name: '上海交通大学' },
+  { key: 'zju', domains: ['zju.edu.cn', 'www.zju.edu.cn'], name: '浙江大学' },
+  { key: 'nju', domains: ['nju.edu.cn', 'www.nju.edu.cn'], name: '南京大学' },
+  { key: 'whu', domains: ['whu.edu.cn', 'www.whu.edu.cn'], name: '武汉大学' },
+  { key: 'hust', domains: ['hust.edu.cn', 'www.hust.edu.cn'], name: '华中科技大学' },
+  { key: 'sysu', domains: ['sysu.edu.cn', 'www.sysu.edu.cn'], name: '中山大学' },
+  { key: 'scu', domains: ['scu.edu.cn', 'www.scu.edu.cn'], name: '四川大学' },
+  { key: 'xjtu', domains: ['xjtu.edu.cn', 'www.xjtu.edu.cn'], name: '西安交通大学' },
+  { key: 'hit', domains: ['hit.edu.cn', 'www.hit.edu.cn'], name: '哈尔滨工业大学' },
+  { key: 'ruc', domains: ['ruc.edu.cn', 'www.ruc.edu.cn'], name: '中国人民大学' },
+  { key: 'buaa', domains: ['buaa.edu.cn', 'www.buaa.edu.cn'], name: '北京航空航天大学' },
+  { key: 'tongji', domains: ['tongji.edu.cn', 'www.tongji.edu.cn'], name: '同济大学' },
+  { key: 'nankai', domains: ['nankai.edu.cn', 'www.nankai.edu.cn'], name: '南开大学' },
+  { key: 'tju', domains: ['tju.edu.cn', 'www.tju.edu.cn'], name: '天津大学' },
+  { key: 'seu', domains: ['seu.edu.cn', 'www.seu.edu.cn'], name: '东南大学' },
+  { key: 'xmu', domains: ['xmu.edu.cn', 'www.xmu.edu.cn'], name: '厦门大学' },
+  { key: 'sdu', domains: ['sdu.edu.cn', 'www.sdu.edu.cn'], name: '山东大学' },
+  { key: 'ustc', domains: ['ustc.edu.cn', 'www.ustc.edu.cn'], name: '中国科学技术大学' },
+  { key: 'jlu', domains: ['jlu.edu.cn', 'www.jlu.edu.cn'], name: '吉林大学' },
+  { key: 'csu', domains: ['csu.edu.cn', 'www.csu.edu.cn'], name: '中南大学' },
+  { key: 'uestc', domains: ['uestc.edu.cn', 'www.uestc.edu.cn'], name: '电子科技大学' },
+  { key: 'nudt', domains: ['nudt.edu.cn', 'www.nudt.edu.cn'], name: '国防科技大学' },
+  { key: 'bit', domains: ['bit.edu.cn', 'www.bit.edu.cn'], name: '北京理工大学' },
+  { key: 'bnu', domains: ['bnu.edu.cn', 'www.bnu.edu.cn'], name: '北京师范大学' },
+  { key: 'ecnu', domains: ['ecnu.edu.cn', 'www.ecnu.edu.cn'], name: '华东师范大学' },
+  { key: 'hnu', domains: ['hnu.edu.cn', 'www.hnu.edu.cn'], name: '湖南大学' },
+  { key: 'lzu', domains: ['lzu.edu.cn', 'www.lzu.edu.cn'], name: '兰州大学' },
+  { key: 'nwpu', domains: ['nwpu.edu.cn', 'www.nwpu.edu.cn'], name: '西北工业大学' },
+  { key: 'scut', domains: ['scut.edu.cn', 'www.scut.edu.cn'], name: '华南理工大学' },
+
+  // ── 景区与文博 ────────────────────────────────────────────
+  { key: 'dpm', domains: ['dpm.org.cn', 'www.dpm.org.cn'], name: '故宫博物院' },
+  { key: 'chnmuseum', domains: ['chnmuseum.cn', 'www.chnmuseum.cn'], name: '中国国家博物馆' },
+  { key: 'badaling', domains: ['badaling.cn', 'www.badaling.cn'], name: '八达岭长城' },
+  {
+    key: 'shanghaidisney',
+    domains: ['shanghaidisneyresort.com', 'www.shanghaidisneyresort.com'],
+    name: '上海迪士尼',
+  },
+  { key: 'chimelong', domains: ['chimelong.com', 'www.chimelong.com'], name: '长隆' },
+  { key: 'fangte', domains: ['fangte.com', 'www.fangte.com'], name: '方特乐园' },
+  { key: 'happyvalley', domains: ['happyvalley.com.cn', 'www.happyvalley.com.cn'], name: '欢乐谷' },
+  { key: 'wuzhen', domains: ['wuzhen.com.cn', 'www.wuzhen.com.cn'], name: '乌镇' },
+
+  // ── 能源与央企 ────────────────────────────────────────────
+  { key: 'sgcc', domains: ['sgcc.com.cn', 'www.sgcc.com.cn'], name: '国家电网' },
+  { key: 'sinopec', domains: ['sinopec.com', 'www.sinopec.com'], name: '中国石化' },
+  { key: 'cnpc', domains: ['cnpc.com.cn', 'www.cnpc.com.cn'], name: '中国石油' },
+  { key: 'cnooc', domains: ['cnooc.com.cn', 'www.cnooc.com.cn'], name: '中国海油' },
+
+  // ── 云平台 ────────────────────────────────────────────────
+  { key: 'baiducloud', domains: ['cloud.baidu.com'], name: '百度智能云' },
+  { key: 'volcengine', domains: ['volcengine.com', 'www.volcengine.com'], name: '火山引擎' },
+  { key: 'jdcloud', domains: ['jdcloud.com', 'www.jdcloud.com'], name: '京东云' },
+
+  // ── AI 企业 ───────────────────────────────────────────────
+  { key: 'sensetime', domains: ['sensetime.com', 'www.sensetime.com'], name: '商汤科技' },
+  { key: 'megvii', domains: ['megvii.com', 'www.megvii.com'], name: '旷视科技' },
+
+  // ── 浏览器与安全软件 ──────────────────────────────────────
+  { key: 'uc', domains: ['uc.cn', 'www.uc.cn'], name: 'UC浏览器' },
+  { key: 'qqbrowser', domains: ['browser.qq.com'], name: 'QQ浏览器' },
+  { key: 'browser360', domains: ['browser.360.cn'], name: '360浏览器' },
+  { key: 'huorong', domains: ['huorong.cn', 'www.huorong.cn'], name: '火绒安全' },
+  { key: 'guanjia', domains: ['guanjia.qq.com'], name: '腾讯电脑管家' },
+  { key: 'duba', domains: ['duba.net', 'www.duba.net'], name: '金山毒霸' },
+
+  // ── 政务与公共服务补充 ────────────────────────────────────
+  { key: 'etax', domains: ['etax.chinatax.gov.cn'], name: '电子税务局' },
+  { key: 'gjzwfw', domains: ['gjzwfw.www.gov.cn'], name: '国家政务服务平台' },
+  { key: 'gdzwfw', domains: ['gdzwfw.gov.cn', 'www.gdzwfw.gov.cn'], name: '广东政务服务网' },
+  { key: '122', domains: ['122.gov.cn', 'www.122.gov.cn'], name: '交管12123' },
+  { key: 'fanyiqq', domains: ['fanyi.qq.com'], name: '腾讯翻译君' },
+  { key: 'jisilu', domains: ['jisilu.cn', 'www.jisilu.cn'], name: '集思录' },
+
+  // ── 应用分发与开放平台 ────────────────────────────────────
+  { key: 'sjqq', domains: ['sj.qq.com'], name: '应用宝' },
+  { key: 'wandoujia', domains: ['wandoujia.com', 'www.wandoujia.com'], name: '豌豆荚' },
+  { key: 'huawei', domains: ['huawei.com', 'www.huawei.com'], name: '华为' },
+  { key: 'huaweidev', domains: ['developer.huawei.com'], name: '华为开发者联盟' },
+  { key: 'midev', domains: ['dev.mi.com'], name: '小米开放平台' },
+  { key: 'openqq', domains: ['open.qq.com'], name: '腾讯开放平台' },
+
+  // ── 健康与运动 ────────────────────────────────────────────
+  { key: 'codoon', domains: ['codoon.com', 'www.codoon.com'], name: '咕咚' },
+  { key: 'yili', domains: ['yili.com', 'www.yili.com'], name: '伊利' },
+  { key: 'mengniu', domains: ['mengniu.com.cn', 'www.mengniu.com.cn'], name: '蒙牛' },
+
+  // ── 文学阅读补充 ──────────────────────────────────────────
+  { key: 'shuqi', domains: ['shuqi.com', 'www.shuqi.com'], name: '书旗小说' },
+  { key: 'hongxiu', domains: ['hongxiu.com', 'www.hongxiu.com'], name: '红袖添香' },
+  { key: 'xxsy', domains: ['xxsy.net', 'www.xxsy.net'], name: '潇湘书院' },
+
+  // ── 基金与理财 ────────────────────────────────────────────
+  { key: 'fund', domains: ['fund.eastmoney.com'], name: '天天基金' },
+  { key: 'howbuy', domains: ['howbuy.com', 'www.howbuy.com'], name: '好买基金' },
+
+  // ── 出行与旅游补充 ────────────────────────────────────────
+  { key: 'lvmama', domains: ['lvmama.com', 'www.lvmama.com'], name: '驴妈妈' },
+  { key: 'zuche', domains: ['zuche.com', 'www.zuche.com'], name: '神州租车' },
+  { key: 'yangshipin', domains: ['yangshipin.cn', 'www.yangshipin.cn'], name: '央视频' },
 ];
-
-/** 域名 → 内置站点（大小写不敏感，供主页比对） */
-const DOMAIN_INDEX = new Map<string, BuiltinSite>();
-for (const site of SITE_DIRECTORY) {
-  for (const domain of site.domains) {
-    // 去 www. 前缀后登记，比对时统一去前缀
-    DOMAIN_INDEX.set(domain.replace(/^www\./, ''), site);
-  }
-}
-
-/** 取 URL 的裸域名（去 www，小写） */
-export function bareDomainOf(url: string): string {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return host.replace(/^www\./, '');
-  } catch {
-    return '';
-  }
-}
-
-/** 按 URL 查内置站点（命中返回条目，未命中返回 undefined） */
-export function lookupBuiltinSite(url: string): BuiltinSite | undefined {
-  const bare = bareDomainOf(url);
-  if (!bare) return undefined;
-  return DOMAIN_INDEX.get(bare);
-}
-
-/** 内置站点图标 URL（public/sites/<key>.png；无则该站点无内置图标） */
-export function builtinIconUrl(site: BuiltinSite): string {
-  return `/sites/${site.key}.png`;
-}

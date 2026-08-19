@@ -7,7 +7,7 @@
  * 3. getAll：返回全部条目
  * 4. has：存在返回 true / 不存在返回 false
  * 5. delete：移除条目并触发事件（值为 undefined）
- * 6. 默认设置预填充（theme / searchEngine / homepage 等）
+ * 6. 默认设置预填充（searchEngine / language 等）
  * 7. events：on/off 监听器注册与移除
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -16,22 +16,10 @@ import { SettingsManager } from '../../src/main/settings';
 describe('SettingsManager', () => {
   // ===== 默认设置预填充 =====
 
-  it('default settings: theme is "light"', () => {
-    const mgr = new SettingsManager();
-
-    expect(mgr.get('theme')).toBe('light');
-  });
-
   it('default settings: searchEngine is "google"', () => {
     const mgr = new SettingsManager();
 
     expect(mgr.get('searchEngine')).toBe('google');
-  });
-
-  it('default settings: homepage is "urchin://newtab"', () => {
-    const mgr = new SettingsManager();
-
-    expect(mgr.get('homepage')).toBe('urchin://newtab');
   });
 
   it('default settings: downloadsPath is empty string', () => {
@@ -52,7 +40,7 @@ describe('SettingsManager', () => {
   it('get: returns default value for existing key', () => {
     const mgr = new SettingsManager();
 
-    expect(mgr.get('theme')).toBe('light');
+    expect(mgr.get('language')).toBe('zh-CN');
   });
 
   it('get: returns undefined for non-existent key', () => {
@@ -74,9 +62,9 @@ describe('SettingsManager', () => {
   it('set: overwrites existing value', () => {
     const mgr = new SettingsManager();
 
-    mgr.set('theme', 'dark');
+    mgr.set('language', 'en-US');
 
-    expect(mgr.get('theme')).toBe('dark');
+    expect(mgr.get('language')).toBe('en-US');
   });
 
   it('set: emits changed event with key and value', () => {
@@ -84,9 +72,9 @@ describe('SettingsManager', () => {
     const listener = vi.fn();
     mgr.on('changed', listener);
 
-    mgr.set('theme', 'dark');
+    mgr.set('language', 'en-US');
 
-    expect(listener).toHaveBeenCalledWith('theme', 'dark');
+    expect(listener).toHaveBeenCalledWith('language', 'en-US');
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
@@ -99,30 +87,30 @@ describe('SettingsManager', () => {
 
     const entries = mgr.getAll();
 
-    // 默认 18 项（theme/language/searchEngine/homepage/downloadsPath/blockTrackers/doNotTrack/links.openInNewTab/
-    //   ai.model/ai.apiKey/ai.providerId/ai.baseUrl/
-    //   summary.model/summary.apiKey/summary.providerId/summary.baseUrl/summary.saveDirectory/
+    // 默认 18 项（language/searchEngine/downloadsPath/data.directory/blockTrackers/doNotTrack/blockAds/links.openInNewTab/
+    //   ai.model/ai.apiKey/ai.providerId/ai.baseUrl/ai.providerProfiles/
+    //   summary.model/summary.apiKey/summary.providerId/summary.baseUrl/
     //   debug.sidebarHoverDelay/ui.rightSidebarAutoExpand/home.frequentSites） + 自定义 1 项
     expect(entries).toHaveLength(21);
 
     const keys = entries.map((e) => e.key);
-    expect(keys).toContain('theme');
     expect(keys).toContain('language');
     expect(keys).toContain('searchEngine');
-    expect(keys).toContain('homepage');
     expect(keys).toContain('downloadsPath');
+    expect(keys).toContain('data.directory');
     expect(keys).toContain('blockTrackers');
     expect(keys).toContain('doNotTrack');
+    expect(keys).toContain('blockAds');
     expect(keys).toContain('links.openInNewTab');
     expect(keys).toContain('ai.model');
     expect(keys).toContain('ai.apiKey');
     expect(keys).toContain('ai.providerId');
     expect(keys).toContain('ai.baseUrl');
+    expect(keys).toContain('ai.providerProfiles');
     expect(keys).toContain('summary.model');
     expect(keys).toContain('summary.apiKey');
     expect(keys).toContain('summary.providerId');
     expect(keys).toContain('summary.baseUrl');
-    expect(keys).toContain('summary.saveDirectory');
     expect(keys).toContain('customKey');
   });
 
@@ -130,10 +118,10 @@ describe('SettingsManager', () => {
     const mgr = new SettingsManager();
 
     const entries = mgr.getAll();
-    const themeEntry = entries.find((e) => e.key === 'theme');
+    const langEntry = entries.find((e) => e.key === 'language');
 
-    expect(themeEntry).toBeDefined();
-    expect(themeEntry?.value).toBe('light');
+    expect(langEntry).toBeDefined();
+    expect(langEntry?.value).toBe('zh-CN');
   });
 
   // ===== has 测试 =====
@@ -141,7 +129,7 @@ describe('SettingsManager', () => {
   it('has: returns true for existing key', () => {
     const mgr = new SettingsManager();
 
-    expect(mgr.has('theme')).toBe(true);
+    expect(mgr.has('language')).toBe(true);
   });
 
   it('has: returns false for non-existent key', () => {
@@ -155,13 +143,13 @@ describe('SettingsManager', () => {
   it('delete: removes key', () => {
     const mgr = new SettingsManager();
 
-    expect(mgr.has('theme')).toBe(true);
+    expect(mgr.has('language')).toBe(true);
 
-    const deleted = mgr.delete('theme');
+    const deleted = mgr.delete('language');
 
     expect(deleted).toBe(true);
-    expect(mgr.has('theme')).toBe(false);
-    expect(mgr.get('theme')).toBeUndefined();
+    expect(mgr.has('language')).toBe(false);
+    expect(mgr.get('language')).toBeUndefined();
   });
 
   it('delete: returns false for non-existent key', () => {
@@ -177,9 +165,9 @@ describe('SettingsManager', () => {
     const listener = vi.fn();
     mgr.on('changed', listener);
 
-    mgr.delete('theme');
+    mgr.delete('language');
 
-    expect(listener).toHaveBeenCalledWith('theme', undefined);
+    expect(listener).toHaveBeenCalledWith('language', undefined);
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
@@ -263,9 +251,9 @@ describe('SettingsManager', () => {
       delete: persistDelete,
     });
 
-    mgr.delete('theme');
+    mgr.delete('language');
 
-    expect(persistDelete).toHaveBeenCalledWith('settings:theme');
+    expect(persistDelete).toHaveBeenCalledWith('settings:language');
   });
 
   it('delete: swallows persistence delete error gracefully', () => {
@@ -350,6 +338,74 @@ describe('SettingsManager', () => {
     await mgr.ensureSecretsLoaded();
     expect(secretStore.get).toHaveBeenCalledWith('settings/ai_apiKey');
     expect(secretStore.get).toHaveBeenCalledWith('settings/summary_apiKey');
+    expect(secretStore.get).toHaveBeenCalledWith('settings/ai_providerProfiles');
     expect(mgr.get('ai.apiKey')).toBe('sk-preloaded');
+  });
+
+  // ===== 命名提供商配置（ai.providerProfiles，整体加密落盘）测试 =====
+
+  it('secret: providerProfiles set writes JSON to secretStore, not plaintext SQLite', async () => {
+    const secretStore = createSecretStoreMock();
+    const persistSet = vi.fn();
+    const mgr = new SettingsManager(
+      { get: vi.fn().mockReturnValue(null), set: persistSet },
+      secretStore,
+    );
+
+    const profiles = [
+      {
+        id: 'p1',
+        name: '公司 OpenAI',
+        model: 'gpt-4o',
+        apiKey: 'sk-secret',
+        baseUrl: 'https://api.openai.com/v1',
+      },
+    ];
+    mgr.set('ai.providerProfiles', profiles);
+    await vi.waitFor(() => expect(secretStore.set).toHaveBeenCalled());
+
+    expect(secretStore.set).toHaveBeenCalledWith(
+      'settings/ai_providerProfiles',
+      JSON.stringify(profiles),
+    );
+    // 敏感键不落明文 SQLite（persistSet 永不被调用）
+    expect(persistSet).not.toHaveBeenCalledWith('settings:ai.providerProfiles', expect.anything());
+    expect(mgr.get('ai.providerProfiles')).toEqual(profiles);
+  });
+
+  it('secret: providerProfiles preload parses JSON back into array', () => {
+    const secretStore = createSecretStoreMock();
+    const profiles = [
+      {
+        id: 'p1',
+        name: '公司 OpenAI',
+        model: 'gpt-4o',
+        apiKey: 'sk-secret',
+        baseUrl: 'https://api.openai.com/v1',
+      },
+    ];
+    secretStore.get.mockImplementation((name: string) =>
+      Promise.resolve(name === 'settings/ai_providerProfiles' ? JSON.stringify(profiles) : null),
+    );
+    const mgr = new SettingsManager(
+      { get: vi.fn().mockReturnValue(null), set: vi.fn() },
+      secretStore,
+    );
+
+    return mgr.ensureSecretsLoaded().then(() => {
+      expect(mgr.get('ai.providerProfiles')).toEqual(profiles);
+    });
+  });
+
+  it('secret: providerProfiles delete removes mapped name from secretStore', async () => {
+    const secretStore = createSecretStoreMock();
+    const mgr = new SettingsManager(
+      { get: vi.fn().mockReturnValue(null), set: vi.fn() },
+      secretStore,
+    );
+
+    mgr.delete('ai.providerProfiles');
+    await vi.waitFor(() => expect(secretStore.delete).toHaveBeenCalled());
+    expect(secretStore.delete).toHaveBeenCalledWith('settings/ai_providerProfiles');
   });
 });

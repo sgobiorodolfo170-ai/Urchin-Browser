@@ -27,6 +27,7 @@ import type {
   WindowOpenHandlerDetails,
   WindowOpenHandlerResponse,
 } from './types';
+import { buildAdBlockCss } from './ad-block-css';
 
 /** 默认 URL */
 // 默认占位页：主页（urchin://newtab）。
@@ -96,6 +97,9 @@ export class TabManager {
    */
   private linkBehaviorResolver?: (url: string) => LinkOpenBehavior;
 
+  /** 广告浮窗屏蔽开关（DB1 决策：默认开启，由设置 blockAds 控制） */
+  private adBlockEnabled = true;
+
   constructor(private readonly factory: BrowserViewFactory) {}
 
   /**
@@ -108,6 +112,35 @@ export class TabManager {
    */
   setLinkBehaviorResolver(resolver: (url: string) => LinkOpenBehavior): void {
     this.linkBehaviorResolver = resolver;
+  }
+
+  /**
+   * 设置广告浮窗屏蔽开关（DB1 决策）。
+   *
+   * 开启后新加载完成的页面自动注入屏蔽 CSS；对已加载的 tab 补注入（
+   * reapplyAdBlock 由调用方遍历 query 触发）。
+   */
+  setAdBlockEnabled(enabled: boolean): void {
+    this.adBlockEnabled = enabled;
+  }
+
+  /**
+   * 对指定 tab 重新注入广告屏蔽 CSS（设置变更后由 index.ts 遍历现有 tab 调用）。
+   * 忽略不可注入的页面（urchin:// 内部页无网页广告）。
+   */
+  applyAdBlock(tabId: number): void {
+    const tab = this.tabs.get(tabId);
+    if (!tab || !this.adBlockEnabled) return;
+    if (tab.url.startsWith('urchin://')) return;
+    try {
+      // WebContentsLike 是结构化接口（不含 insertCSS），运行时即 Electron WebContents
+      const wc = tab.webContents as unknown as Electron.WebContents;
+      void wc.insertCSS(buildAdBlockCss()).catch(() => {
+        /* 忽略：页面可能已销毁 */
+      });
+    } catch {
+      /* 忽略：注入失败不影响浏览 */
+    }
   }
 
   /**
@@ -251,6 +284,20 @@ export class TabManager {
   /** 按 id 获取 Tab。 */
   getTab(tabId: number): Tab | undefined {
     return this.tabs.get(tabId);
+  }
+
+  /**
+   * 按 webContents 查找所属 Tab（右键菜单等 webContents 事件回调场景用）。
+   *
+   * context-menu 等 Electron 事件携带的是 webContents 实例而非 tabId，
+   * 经此方法反查 tab 归属，获取 url / title 等用于菜单动作（如保存网页默认文件名）。
+   * 遍历 Map（tab 数量级小，无需额外索引）。
+   */
+  getTabByWebContents(wc: unknown): Tab | undefined {
+    for (const tab of this.tabs.values()) {
+      if (tab.webContents === wc) return tab;
+    }
+    return undefined;
   }
 
   /** 获取 Tab 数量。 */
@@ -398,6 +445,9 @@ export class TabManager {
       tab.canGoBack = nav.canGoBack;
       tab.canGoForward = nav.canGoForward;
       this.emit('updated', this.toSnapshot(tab));
+      // 广告浮窗屏蔽（DB1 决策）：页面加载完成后注入隐藏 CSS（CSS 全局生效，
+      // 后续 SPA 动态创建的浮窗同样被规则覆盖，无需重复注入）
+      this.applyAdBlock(tab.id);
     });
 
     // 加载失败：重置 loading 状态，记录错误（防止 tab 永久卡在 loading）

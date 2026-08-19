@@ -211,11 +211,6 @@ export function getSettingsPageHtml(): string {
       {
         title: '外观',
         fields: [
-          { key: 'theme', label: '主题', desc: '浅色 / 深色', type: 'select', options: [
-            { value: 'light', label: '浅色' },
-            { value: 'dark', label: '深色' },
-            { value: 'system', label: '跟随系统' },
-          ]},
           { key: 'language', label: '界面语言', desc: '应用界面显示语言（默认中文）', type: 'select', options: [
             { value: 'zh-CN', label: '简体中文' },
             { value: 'en-US', label: 'English' },
@@ -230,10 +225,10 @@ export function getSettingsPageHtml(): string {
             { value: 'bing', label: 'Bing' },
             { value: 'baidu', label: '百度' },
             { value: 'duckduckgo', label: 'DuckDuckGo' },
+            { value: 'sogou', label: '搜狗' },
+            { value: 'so360', label: '360 搜索' },
           ]},
-          { key: 'homepage', label: '主页', desc: '启动时打开的页面', type: 'text' },
           { key: 'downloadsPath', label: '下载位置', desc: '留空使用系统默认', type: 'directory' },
-          { key: 'summary.saveDirectory', label: '摘要文档保存位置', desc: 'AI 摘要生成的网页文档保存目录（留空使用默认位置）', type: 'directory' },
           { key: 'links.openInNewTab', label: '在新标签页打开链接', desc: '点击网页内链接时在新标签页打开（关闭则在当前标签页打开）', type: 'toggle' },
         ],
       },
@@ -242,6 +237,7 @@ export function getSettingsPageHtml(): string {
         fields: [
           { key: 'blockTrackers', label: '拦截追踪器', desc: '阻止第三方追踪脚本', type: 'toggle' },
           { key: 'doNotTrack', label: '请勿追踪', desc: '发送 DNT 头', type: 'toggle' },
+          { key: 'blockAds', label: '屏蔽广告浮窗', desc: '隐藏网页内悬浮/弹窗类广告', type: 'toggle' },
         ],
       },
       {
@@ -388,9 +384,9 @@ export function getSettingsPageHtml(): string {
       if (!confirm('确定重置所有设置为默认值？')) return;
       try {
         const defaults = {
-          'theme': 'light', 'language': 'zh-CN', 'searchEngine': 'google',
-          'homepage': 'urchin://newtab', 'downloadsPath': '',
-          'blockTrackers': true, 'doNotTrack': true, 'links.openInNewTab': false,
+          'language': 'zh-CN', 'searchEngine': 'google',
+          'downloadsPath': '',
+          'blockTrackers': true, 'doNotTrack': true, 'blockAds': true, 'links.openInNewTab': false,
           'summary.model': 'gpt-4o-mini', 'summary.apiKey': '', 'summary.providerId': '', 'summary.baseUrl': '',
         };
         for (const [k, v] of Object.entries(defaults)) {

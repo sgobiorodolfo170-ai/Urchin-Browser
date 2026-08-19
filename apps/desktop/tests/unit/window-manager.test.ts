@@ -123,6 +123,20 @@ describe('WindowManager', () => {
     expect(all[1]!.isIncognito).toBe(true);
   });
 
+  it('should find window by its webContents (IPC sender 反查)', () => {
+    const factory = createMockFactory();
+    const mgr = new WindowManager(factory);
+
+    const w1 = mgr.createWindow({});
+    const w2 = mgr.createWindow({});
+    const wc1 = factory._created[0]!.webContents;
+    const wc2 = factory._created[1]!.webContents;
+
+    expect(mgr.getWindowByWebContents(wc1)?.id).toBe(w1.id);
+    expect(mgr.getWindowByWebContents(wc2)?.id).toBe(w2.id);
+    expect(mgr.getWindowByWebContents({})).toBeUndefined();
+  });
+
   it('should remove window from collection on closed event', () => {
     const factory = createMockFactory();
     const mgr = new WindowManager(factory);

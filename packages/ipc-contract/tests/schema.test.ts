@@ -122,6 +122,8 @@ describe('ipcSchema', () => {
     expect(channels).toContain('tab.stop');
     expect(channels).toContain('window.create');
     expect(channels).toContain('window.close');
+    expect(channels).toContain('window.createWithUrl');
+    expect(channels).toContain('window.getCurrent');
     // AI 域（W4）
     expect(channels).toContain('ai.chat.start');
     expect(channels).toContain('ai.chat.abort');

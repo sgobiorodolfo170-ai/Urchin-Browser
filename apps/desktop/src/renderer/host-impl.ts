@@ -25,6 +25,7 @@ import type {
   TabSnapshot,
   UploadedFile,
 } from '@urchin/browser-host';
+import { getCurrentWindowId } from './lib/current-window';
 
 /** preload 暴露的 MessagePort 代理（方法形式，见 preload/index.ts） */
 interface RendererMessagePort {
@@ -81,7 +82,7 @@ export function createHostFromUrchin(): BrowserHostApi {
       },
       async getActive() {
         const u = getUrchin();
-        const res = (await u.invoke('tab.list', { windowId: 1 })) as {
+        const res = (await u.invoke('tab.list', { windowId: await getCurrentWindowId() })) as {
           tabs: readonly TabSnapshot[];
         };
         const active = res.tabs.find((t) => t.active);
@@ -94,9 +95,11 @@ export function createHostFromUrchin(): BrowserHostApi {
     tabs: {
       async create(url, active = true) {
         const u = getUrchin();
-        const res = (await u.invoke('tab.create', { windowId: 1, url, active })) as {
-          tab: TabSnapshot;
-        };
+        const res = (await u.invoke('tab.create', {
+          windowId: await getCurrentWindowId(),
+          url,
+          active,
+        })) as { tab: TabSnapshot };
         return res.tab;
       },
       async close(tabId) {
@@ -111,7 +114,7 @@ export function createHostFromUrchin(): BrowserHostApi {
       },
       async list() {
         const u = getUrchin();
-        const res = (await u.invoke('tab.list', { windowId: 1 })) as {
+        const res = (await u.invoke('tab.list', { windowId: await getCurrentWindowId() })) as {
           tabs: readonly TabSnapshot[];
         };
         return res.tabs;

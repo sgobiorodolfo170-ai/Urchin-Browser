@@ -55,6 +55,8 @@ export interface WebContentsLike {
   once(event: string, handler: (...args: unknown[]) => void): void;
   /** 在页面上下文执行脚本并返回结果（M14 PageContextExtractor 用） */
   executeJavaScript<T = unknown>(code: string, userGesture?: boolean): Promise<T>;
+  /** 向页面注入 CSS（广告浮窗屏蔽用；可选，Electron webContents 才有） */
+  insertCSS?(css: string): Promise<string>;
   /** 获取当前 URL（M14 用） */
   getURL(): string;
   /** 拦截 window.open / target=_blank（可选，Electron webContents 才有） */
@@ -71,6 +73,11 @@ export interface BrowserViewLike {
   readonly webContents: WebContentsLike;
   /** 设置边界 */
   setBounds(bounds: { x: number; y: number; width: number; height: number }): void;
+  /**
+   * 获取边界（可选，真实 Electron BrowserView 有；测试 mock 可省略）。
+   * 右键菜单弹出坐标补偿用：BrowserView 在窗口内的偏移（水平起点 = 左侧栏宽度）。
+   */
+  getBounds?(): { x: number; y: number; width: number; height: number };
 }
 
 /**

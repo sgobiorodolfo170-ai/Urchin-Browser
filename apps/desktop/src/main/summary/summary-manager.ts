@@ -17,7 +17,7 @@ import type { SummaryTreeNode, SummarySaveResult } from '@urchin/summary-agent';
 
 const log = createLogger('summary-manager');
 
-/** 默认保存目录名（相对于 userData，当用户未配置时使用） */
+/** 默认保存目录名（相对于数据目录，当用户未配置时使用） */
 const DEFAULT_SAVE_DIR_NAME = 'summaries';
 
 /** 文件名非法字符（含 Windows 控制字符 0x00-0x1f），用于净化文档标题 */
@@ -28,8 +28,8 @@ export class SummaryManager {
   /** 用户配置的保存目录绝对路径（来自 summary.saveDirectory 设置） */
   private customSaveDirectory: string | null = null;
 
-  /** app userData 路径（默认保存目录的父目录） */
-  constructor(private readonly userDataPath: string) {}
+  /** 用户数据目录（默认保存目录的父目录；DD1 决策：摘要文档属用户个人数据，随数据目录） */
+  constructor(private readonly dataDir: string) {}
 
   /** 设置用户自定义保存目录（空字符串/null 恢复默认） */
   setSaveDirectory(dir: string | null | undefined): void {
@@ -39,7 +39,7 @@ export class SummaryManager {
 
   /** 获取当前生效的保存根目录绝对路径 */
   getSaveDirectory(): string {
-    return this.customSaveDirectory ?? path.join(this.userDataPath, DEFAULT_SAVE_DIR_NAME);
+    return this.customSaveDirectory ?? path.join(this.dataDir, DEFAULT_SAVE_DIR_NAME);
   }
 
   /**

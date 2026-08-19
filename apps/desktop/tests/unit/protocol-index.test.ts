@@ -110,5 +110,41 @@ describe('protocol/index', () => {
 
       expect(res.status).toBe(500);
     });
+
+    describe('zoom routes (Ctrl+滚轮缩放信号)', () => {
+      it('should invoke onZoom for urchin://zoom?d=in with tab target', async () => {
+        const onZoom = vi.fn();
+        registerUrchinProtocol({ onZoom });
+        const res = await getHandler()({ url: 'urchin://zoom?d=in' });
+
+        expect(res.status).toBe(200);
+        expect(onZoom).toHaveBeenCalledWith('in', 'tab');
+      });
+
+      it('should invoke onZoom for urchin://zoom?d=out with tab target', async () => {
+        const onZoom = vi.fn();
+        registerUrchinProtocol({ onZoom });
+        await getHandler()({ url: 'urchin://zoom?d=out' });
+
+        expect(onZoom).toHaveBeenCalledWith('out', 'tab');
+      });
+
+      it('should invoke onZoom for urchin://zoom-main?d=in with main target', async () => {
+        const onZoom = vi.fn();
+        registerUrchinProtocol({ onZoom });
+        await getHandler()({ url: 'urchin://zoom-main?d=in' });
+
+        expect(onZoom).toHaveBeenCalledWith('in', 'main');
+      });
+
+      it('should not invoke onZoom for invalid direction param', async () => {
+        const onZoom = vi.fn();
+        registerUrchinProtocol({ onZoom });
+        const res = await getHandler()({ url: 'urchin://zoom?d=sideways' });
+
+        expect(res.status).toBe(200);
+        expect(onZoom).not.toHaveBeenCalled();
+      });
+    });
   });
 });

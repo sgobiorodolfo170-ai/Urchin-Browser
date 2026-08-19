@@ -60,6 +60,25 @@ electron-builder.lock
 .test-user-data/
 temp-test/
 test-output/
+
+# 本地运行数据（书签/历史/设置/cookies/下载等，不入库）
+apps/desktop/data/
+
+# AI 工具状态（Mimosa / ZCode 会话与报告，非项目产物）
+.mimosa/
+.zcode/
+
+# 本地辅助脚本（开发便利工具，不随项目分发）
+build-and-run.cmd
+build-and-run.bat
+apps/desktop/build-and-run.bat
+powershell.bat
+powershell.cmd
+apps/desktop/powershell.bat
+apps/desktop/powershell.cmd
+
+# 打包产物
+*.zip
 scripts/_test.txt
 _ai_test_runner.cjs
 _cdp-ai-test.js

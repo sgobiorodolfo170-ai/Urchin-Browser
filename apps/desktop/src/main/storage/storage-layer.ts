@@ -87,6 +87,7 @@ class NamespaceStorageImpl implements NamespaceStorage {
 
 export class StorageLayer {
   private readonly dataDir: string;
+  private readonly piDataDir: string;
   private readonly main: IDatabase;
   private readonly ai: IDatabase;
   private readonly connectionPool = new Map<string, IDatabase>();
@@ -96,27 +97,33 @@ export class StorageLayer {
 
   constructor(
     dataDir: string,
+    piDataDir: string,
     safeStorage: ISafeStorage,
     dbFactory: DatabaseFactory,
     options?: { readonly maxNamespaceConnections?: number },
   ) {
     this.dataDir = dataDir;
+    this.piDataDir = piDataDir;
     this.dbFactory = dbFactory;
     this.maxConnections = options?.maxNamespaceConnections ?? DEFAULT_MAX_NAMESPACE_CONNECTIONS;
 
     mkdirSync(dataDir, { recursive: true });
+    mkdirSync(piDataDir, { recursive: true });
 
+    // 主库（书签/历史/非 pi 设置）在用户数据目录；AI 库（pi 对话/pi 设置）在 pi 目录。
+    // DD1 决策：pi 数据与用户个人数据隔离，pi 目录固定 userData/pi，不随数据目录配置变动。
     this.main = this.dbFactory(join(dataDir, 'urchin.db'));
-    this.ai = this.dbFactory(join(dataDir, 'ai.db'));
+    this.ai = this.dbFactory(join(piDataDir, 'ai.db'));
     this.main.pragma('journal_mode = WAL');
     this.ai.pragma('journal_mode = WAL');
 
     runMigrations(this.main, MIGRATIONS_MAIN);
     runMigrations(this.ai, MIGRATIONS_AI);
 
-    this.secrets = new SecretStoreImpl(dataDir, safeStorage);
+    // 密钥（ai.apiKey / summary.apiKey 等）属 pi 敏感数据，加密落盘到 pi 目录
+    this.secrets = new SecretStoreImpl(piDataDir, safeStorage);
 
-    log.info('storage layer initialized', { dataDir });
+    log.info('storage layer initialized', { dataDir, piDataDir });
   }
 
   /** 主库 facade（settings 表 KV） */
@@ -167,14 +174,14 @@ export class StorageLayer {
     },
   };
 
-  /** Provider 私有命名空间（ST2 + ST8 决策） */
+  /** Provider 私有命名空间（ST2 + ST8 决策；DD1 决策：Provider 数据属 pi 隔离区） */
   providerStore(providerId: string): NamespaceStorage {
-    return this.getOrCreateNamespaceDb('providers', providerId);
+    return this.getOrCreateNamespaceDb(this.piDataDir, 'providers', providerId);
   }
 
-  /** Extension 私有命名空间（CP4 决策） */
+  /** Extension 私有命名空间（CP4 决策；扩展数据随用户数据目录） */
   extensionStore(extId: string): NamespaceStorage {
-    return this.getOrCreateNamespaceDb('extensions', extId);
+    return this.getOrCreateNamespaceDb(this.dataDir, 'extensions', extId);
   }
 
   /** 关闭所有数据库连接 */
@@ -191,7 +198,7 @@ export class StorageLayer {
   /**
    * 获取或创建命名空间数据库（LRU 策略，ST8 决策）。
    */
-  private getOrCreateNamespaceDb(subdir: string, id: string): NamespaceStorage {
+  private getOrCreateNamespaceDb(rootDir: string, subdir: string, id: string): NamespaceStorage {
     const key = `${subdir}/${id}`;
 
     // LRU 更新：命中则移到末尾
@@ -212,8 +219,8 @@ export class StorageLayer {
       }
     }
 
-    const dbPath = join(this.dataDir, subdir, `${id}.db`);
-    mkdirSync(join(this.dataDir, subdir), { recursive: true });
+    const dbPath = join(rootDir, subdir, `${id}.db`);
+    mkdirSync(join(rootDir, subdir), { recursive: true });
     const db = this.dbFactory(dbPath);
     db.pragma('journal_mode = WAL');
     this.connectionPool.set(key, db);

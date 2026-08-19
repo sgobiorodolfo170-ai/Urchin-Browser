@@ -48,12 +48,9 @@ describe('getSettingsPageHtml', () => {
     const html = getSettingsPageHtml();
 
     for (const key of [
-      'theme',
       'language',
       'searchEngine',
-      'homepage',
       'downloadsPath',
-      'summary.saveDirectory',
       'blockTrackers',
       'doNotTrack',
       'summary.providerId',

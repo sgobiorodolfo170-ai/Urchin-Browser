@@ -82,6 +82,20 @@ export class WindowManager {
     return this.windows.get(windowId);
   }
 
+  /**
+   * 按 webContents 反查所属窗口（IPC sender 定位用）。
+   *
+   * IPC handler 的 event.sender 是真实 Electron webContents，
+   * 与 ManagedWindow.browserWindow.webContents 同一实例，按引用相等匹配。
+   * 多窗口场景下渲染层不再硬编码 windowId=1，改经此反查自己的窗口。
+   */
+  getWindowByWebContents(wc: unknown): ManagedWindow | undefined {
+    for (const managed of this.windows.values()) {
+      if (managed.browserWindow.webContents === wc) return managed;
+    }
+    return undefined;
+  }
+
   /** 获取所有窗口。 */
   getAllWindows(): ManagedWindow[] {
     return Array.from(this.windows.values());

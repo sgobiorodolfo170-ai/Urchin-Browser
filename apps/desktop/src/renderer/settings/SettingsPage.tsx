@@ -8,15 +8,22 @@
  *
  * 通过主窗口已有的 window.urchin.invoke('settings.*') 读写设置。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
+import {
+  clearErrorLogs,
+  getErrorLogs,
+  subscribeErrorLogs,
+  type LogLevel,
+} from '../lib/runtime-error-log';
 
 // ───────────────── 类型定义 ─────────────────
 
 /** 单个设置字段类型 */
-type FieldType = 'select' | 'toggle' | 'text' | 'password' | 'provider-select' | 'directory';
+type FieldType =
+  'select' | 'toggle' | 'text' | 'password' | 'provider-select' | 'provider-name' | 'directory';
 
 interface SelectOption {
   readonly value: string;
@@ -31,11 +38,41 @@ interface SettingField {
   readonly options?: readonly SelectOption[];
 }
 
-/** Provider 信息（来自 provider.list） */
-interface ProviderInfo {
+/** 命名提供商配置（设置页保存的「提供商名 → 模型/Key/URL」） */
+interface ProviderProfile {
   readonly id: string;
   readonly name: string;
-  readonly version: string;
+  readonly model: string;
+  readonly apiKey: string;
+  readonly baseUrl: string;
+}
+
+/** 命名配置操作注入接口（由 SettingsPage 实现，供 FieldControl 使用） */
+interface ProfileApi {
+  readonly profiles: readonly ProviderProfile[];
+  /** 「提供商名」输入框草稿 */
+  readonly nameDraft: string;
+  readonly setNameDraft: (v: string) => void;
+  /** 把当前模型/Key/URL 保存为一套命名配置 */
+  readonly save: (name: string) => void;
+  /** 删除指定 id 的命名配置 */
+  readonly remove: (id: string) => void;
+  /** 选中命名配置后自动回填模型/Key/URL */
+  readonly select: (profile: ProviderProfile) => void;
+}
+
+/** 命名配置操作注入接口（由 SettingsPage 实现，供 FieldControl 使用） */
+interface ProfileApi {
+  readonly profiles: readonly ProviderProfile[];
+  /** 「提供商名」输入框草稿 */
+  readonly nameDraft: string;
+  readonly setNameDraft: (v: string) => void;
+  /** 把当前模型/Key/URL 保存为一套命名配置 */
+  readonly save: (name: string) => void;
+  /** 删除指定 id 的命名配置 */
+  readonly remove: (id: string) => void;
+  /** 选中命名配置后自动回填模型/Key/URL */
+  readonly select: (profile: ProviderProfile) => void;
 }
 
 interface SettingsEntry {
@@ -44,7 +81,7 @@ interface SettingsEntry {
 }
 
 /** 选项卡定义 */
-type TabKey = 'general' | 'ai' | 'privacy' | 'update' | 'about' | 'debug';
+type TabKey = 'general' | 'ai' | 'privacy' | 'update' | 'files' | 'about' | 'debug';
 
 interface TabDef {
   readonly key: TabKey;
@@ -56,6 +93,7 @@ const TABS: readonly TabDef[] = [
   { key: 'ai', label: 'AI 助手' },
   { key: 'privacy', label: '隐私与安全' },
   { key: 'update', label: '更新' },
+  { key: 'files', label: '默认应用' },
   { key: 'about', label: '关于' },
   { key: 'debug', label: '调试' },
 ];
@@ -63,17 +101,6 @@ const TABS: readonly TabDef[] = [
 // ───────────────── 设置项分组（按选项卡组织） ─────────────────
 
 const GENERAL_FIELDS: readonly SettingField[] = [
-  {
-    key: 'theme',
-    label: '主题',
-    desc: '浅色 / 深色',
-    type: 'select',
-    options: [
-      { value: 'light', label: '浅色' },
-      { value: 'dark', label: '深色' },
-      { value: 'system', label: '跟随系统' },
-    ],
-  },
   {
     key: 'language',
     label: '界面语言',
@@ -87,21 +114,27 @@ const GENERAL_FIELDS: readonly SettingField[] = [
   {
     key: 'searchEngine',
     label: '搜索引擎',
-    desc: '地址栏搜索使用的引擎',
+    desc: '地址栏搜索使用的引擎（与 parse-input 的 SEARCH_ENGINE_TEMPLATES 表对应）',
     type: 'select',
     options: [
       { value: 'google', label: 'Google' },
       { value: 'bing', label: 'Bing' },
       { value: 'baidu', label: '百度' },
       { value: 'duckduckgo', label: 'DuckDuckGo' },
+      { value: 'sogou', label: '搜狗' },
+      { value: 'so360', label: '360 搜索' },
     ],
   },
-  { key: 'homepage', label: '主页', desc: '启动时打开的页面', type: 'text' },
-  { key: 'downloadsPath', label: '下载位置', desc: '留空使用系统默认', type: 'directory' },
   {
-    key: 'summary.saveDirectory',
-    label: '摘要文档保存位置',
-    desc: 'AI 摘要生成的网页文档保存目录（留空使用默认位置）',
+    key: 'data.directory',
+    label: '数据存储位置',
+    desc: '书签、历史、设置、截图、摘要、下载、网页保存的根目录（留空使用默认位置）。修改后重启生效；pi 对话数据与设置固定存于 userData/pi，不随此目录变动',
+    type: 'directory',
+  },
+  {
+    key: 'downloadsPath',
+    label: '下载位置',
+    desc: '下载保存目录（留空 = 每次下载询问保存位置，确认时可设为默认）',
     type: 'directory',
   },
   {
@@ -126,8 +159,14 @@ const AI_FIELDS: readonly SettingField[] = [
   {
     key: 'summary.providerId',
     label: '默认 Provider',
-    desc: '摘要助手的服务提供方（留空使用首个可用 Provider）',
+    desc: 'AI 助手仅兼容 OpenAI 协议；选择已保存的命名配置即自动回填模型/Key/URL，选中项后可删除',
     type: 'provider-select',
+  },
+  {
+    key: 'ai.providerProfileName',
+    label: '提供商名',
+    desc: '把当前模型 / API Key / Base URL 保存为一套命名配置，保存后自动出现在「默认 Provider」下拉框',
+    type: 'provider-name',
   },
   { key: 'summary.model', label: '模型', desc: '摘要助手调用 LLM 时使用的模型名', type: 'text' },
   {
@@ -147,14 +186,18 @@ const AI_FIELDS: readonly SettingField[] = [
 const PRIVACY_FIELDS: readonly SettingField[] = [
   { key: 'blockTrackers', label: '拦截追踪器', desc: '阻止第三方追踪脚本', type: 'toggle' },
   { key: 'doNotTrack', label: '请勿追踪', desc: '发送 DNT 头', type: 'toggle' },
+  {
+    key: 'blockAds',
+    label: '屏蔽广告浮窗',
+    desc: '隐藏网页内悬浮/弹窗类广告（如固定悬浮广告层、弹窗遮罩）',
+    type: 'toggle',
+  },
 ];
 
 /** 默认值（用于重置） */
 const DEFAULTS: Record<string, unknown> = {
-  theme: 'light',
   language: 'zh-CN',
   searchEngine: 'google',
-  homepage: 'urchin://newtab',
   downloadsPath: '',
   blockTrackers: true,
   doNotTrack: true,
@@ -163,7 +206,7 @@ const DEFAULTS: Record<string, unknown> = {
   'summary.apiKey': '',
   'summary.providerId': '',
   'summary.baseUrl': '',
-  'summary.saveDirectory': '',
+  'ai.providerProfiles': [],
   'debug.sidebarHoverDelay': 300,
 };
 
@@ -181,16 +224,29 @@ function toStr(v: unknown): string {
   }
 }
 
+/** 将 unknown 值安全解析为命名配置数组（过滤非法项，容忍损坏数据） */
+function parseProfiles(v: unknown): ProviderProfile[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter(
+    (p): p is ProviderProfile =>
+      typeof p === 'object' &&
+      p !== null &&
+      typeof (p as ProviderProfile).id === 'string' &&
+      typeof (p as ProviderProfile).name === 'string',
+  );
+}
+
 // ───────────────── 主组件 ─────────────────
 
 export function SettingsPage() {
   const [entries, setEntries] = useState<Record<string, unknown>>({});
-  const [providers, setProviders] = useState<readonly ProviderInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('general');
   const [toast, setToast] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // 「提供商名」输入框草稿（命名配置保存后清空）
+  const [profileNameDraft, setProfileNameDraft] = useState('');
 
   // 待保存的变更（key → value），自动保存队列
   const pendingRef = useRef<Map<string, unknown>>(new Map());
@@ -205,17 +261,6 @@ export function SettingsPage() {
         const next: Record<string, unknown> = {};
         for (const e of settingsRes.entries) next[e.key] = e.value;
         setEntries(next);
-
-        try {
-          // 先触发重新扫描，确保内置 Provider 已注册（解决首次运行或文件缺失问题）
-          await window.urchin.invoke('provider.rescan', {});
-          const providersRes = (await window.urchin.invoke('provider.list', {})) as {
-            providers: readonly ProviderInfo[];
-          };
-          setProviders(providersRes.providers ?? []);
-        } catch {
-          setProviders([]);
-        }
       } catch (e) {
         setError(String(e));
       } finally {
@@ -294,6 +339,73 @@ export function SettingsPage() {
     }
   }, [showToast]);
 
+  // ── 命名提供商配置（ai.providerProfiles）──
+  const profilesRaw = entries['ai.providerProfiles'];
+  const profiles = useMemo(() => parseProfiles(profilesRaw), [profilesRaw]);
+
+  /** 把当前模型/Key/URL 保存为一套命名配置（同名覆盖） */
+  const handleSaveProfile = useCallback(
+    (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      const model = toStr(entries['summary.model']);
+      const apiKey = toStr(entries['summary.apiKey']);
+      const baseUrl = toStr(entries['summary.baseUrl']);
+      const existing = profiles.find((p) => p.name === trimmed);
+      const next: ProviderProfile[] = existing
+        ? profiles.map((p) => (p === existing ? { ...p, model, apiKey, baseUrl } : p))
+        : [
+            ...profiles,
+            {
+              id: `profile-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+              name: trimmed,
+              model,
+              apiKey,
+              baseUrl,
+            },
+          ];
+      updateField('ai.providerProfiles', next);
+      showToast(`已保存配置「${trimmed}」`);
+    },
+    [profiles, entries, updateField, showToast],
+  );
+
+  /** 删除命名配置；若正被选为默认 Provider，同步复位为「自动」 */
+  const handleDeleteProfile = useCallback(
+    (id: string) => {
+      const next = profiles.filter((p) => p.id !== id);
+      updateField('ai.providerProfiles', next);
+      if (toStr(entries['summary.providerId']) === id) {
+        updateField('summary.providerId', '');
+      }
+      showToast('已删除配置');
+    },
+    [profiles, entries, updateField, showToast],
+  );
+
+  /** 选中命名配置：自动回填模型/Key/URL，并把默认 Provider 指向该配置 */
+  const handleSelectProfile = useCallback(
+    (profile: ProviderProfile) => {
+      updateField('summary.providerId', profile.id);
+      updateField('summary.model', profile.model);
+      updateField('summary.apiKey', profile.apiKey);
+      updateField('summary.baseUrl', profile.baseUrl);
+    },
+    [updateField],
+  );
+
+  const profileApi = useMemo<ProfileApi>(
+    () => ({
+      profiles,
+      nameDraft: profileNameDraft,
+      setNameDraft: setProfileNameDraft,
+      save: handleSaveProfile,
+      remove: handleDeleteProfile,
+      select: handleSelectProfile,
+    }),
+    [profiles, profileNameDraft, handleSaveProfile, handleDeleteProfile, handleSelectProfile],
+  );
+
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-text-secondary">加载中…</div>
@@ -349,7 +461,6 @@ export function SettingsPage() {
               title="通用"
               fields={GENERAL_FIELDS}
               entries={entries}
-              providers={providers}
               onChange={updateField}
             />
           )}
@@ -358,8 +469,8 @@ export function SettingsPage() {
               title="AI 助手"
               fields={AI_FIELDS}
               entries={entries}
-              providers={providers}
               onChange={updateField}
+              profileApi={profileApi}
             />
           )}
           {activeTab === 'privacy' && (
@@ -367,11 +478,11 @@ export function SettingsPage() {
               title="隐私与安全"
               fields={PRIVACY_FIELDS}
               entries={entries}
-              providers={providers}
               onChange={updateField}
             />
           )}
           {activeTab === 'update' && <UpdateTab />}
+          {activeTab === 'files' && <FilesTab onToast={showToast} />}
           {activeTab === 'about' && <AboutTab />}
           {activeTab === 'debug' && <DebugTab entries={entries} onChange={updateField} />}
         </div>
@@ -393,11 +504,11 @@ interface SettingsSectionProps {
   readonly title: string;
   readonly fields: readonly SettingField[];
   readonly entries: Record<string, unknown>;
-  readonly providers: readonly ProviderInfo[];
   readonly onChange: (key: string, value: unknown) => void;
+  readonly profileApi?: ProfileApi;
 }
 
-function SettingsSection({ title, fields, entries, providers, onChange }: SettingsSectionProps) {
+function SettingsSection({ title, fields, entries, onChange, profileApi }: SettingsSectionProps) {
   return (
     <section>
       <h1 className="mb-6 text-2xl font-semibold">{title}</h1>
@@ -412,8 +523,8 @@ function SettingsSection({ title, fields, entries, providers, onChange }: Settin
               <FieldControl
                 field={field}
                 value={entries[field.key]}
-                providers={providers}
                 onChange={(v) => onChange(field.key, v)}
+                profileApi={profileApi}
               />
             </div>
           </div>
@@ -426,11 +537,11 @@ function SettingsSection({ title, fields, entries, providers, onChange }: Settin
 interface FieldControlProps {
   readonly field: SettingField;
   readonly value: unknown;
-  readonly providers: readonly ProviderInfo[];
   readonly onChange: (value: unknown) => void;
+  readonly profileApi?: ProfileApi;
 }
 
-function FieldControl({ field, value, providers, onChange }: FieldControlProps) {
+function FieldControl({ field, value, onChange, profileApi }: FieldControlProps) {
   if (field.type === 'select' && field.options) {
     return (
       <select
@@ -448,24 +559,41 @@ function FieldControl({ field, value, providers, onChange }: FieldControlProps) 
   }
 
   if (field.type === 'provider-select') {
+    return <ProfileSelect value={toStr(value)} profileApi={profileApi} />;
+  }
+
+  if (field.type === 'provider-name') {
     return (
-      <select
-        className="h-8 w-full rounded-md border border-border bg-surface px-2 text-sm text-text outline-none focus:border-primary"
-        value={toStr(value)}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        <option value="">自动（使用首个可用 Provider）</option>
-        {providers.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.name} v{p.version}
-          </option>
-        ))}
-        {providers.length === 0 && (
-          <option value="" disabled>
-            （未安装任何 Provider）
-          </option>
-        )}
-      </select>
+      <div className="flex items-center gap-1.5">
+        <Input
+          type="text"
+          className="h-8 min-w-0 flex-1"
+          value={profileApi?.nameDraft ?? ''}
+          onChange={(e) => profileApi?.setNameDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              profileApi?.save(profileApi.nameDraft);
+              profileApi?.setNameDraft('');
+            }
+          }}
+          placeholder="输入配置名（如 公司 OpenAI）"
+        />
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-8 shrink-0 px-2.5"
+          disabled={!profileApi?.nameDraft.trim()}
+          onClick={() => {
+            if (profileApi) {
+              profileApi.save(profileApi.nameDraft);
+              profileApi.setNameDraft('');
+            }
+          }}
+        >
+          保存配置
+        </Button>
+      </div>
     );
   }
 
@@ -536,6 +664,94 @@ function FieldControl({ field, value, providers, onChange }: FieldControlProps) 
       value={toStr(value)}
       onChange={(e) => onChange(e.target.value)}
     />
+  );
+}
+
+/**
+ * 「默认 Provider」下拉（自定义，仅列已保存的命名配置）。
+ *
+ * 不用原生 <select>：需要在选项项内提供可点击的 × 删除符号，
+ * 原生 option 无法承载交互。交互：
+ * - 点击收起按钮展开/收起；点击配置名选中并自动回填模型/Key/URL
+ * - 每项右侧 × 直接删除该配置（删除不触发选中）
+ * - 未选中或无配置时按钮保持空白
+ */
+function ProfileSelect({
+  value,
+  profileApi,
+}: {
+  readonly value: string;
+  readonly profileApi?: ProfileApi;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // 点击组件外部时收起下拉
+  useEffect(() => {
+    if (!open) return;
+    const onDocMouseDown = (e: MouseEvent): void => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [open]);
+
+  const profiles = profileApi?.profiles ?? [];
+  const selected = profiles.find((p) => p.id === value);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        aria-label="选择默认 Provider"
+        className="h-8 w-full rounded-md border border-border bg-surface px-2 text-left text-sm text-text outline-none focus:border-primary"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {selected?.name ?? ''}
+      </button>
+      {open &&
+        (profiles.length === 0 ? (
+          <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-text-secondary shadow-md">
+            暂无已保存配置
+          </div>
+        ) : (
+          <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-surface py-1 shadow-md">
+            {profiles.map((p) => (
+              <div
+                key={p.id}
+                className={cn(
+                  'flex items-center justify-between px-1',
+                  p.id === value ? 'bg-primary/10' : 'hover:bg-surface-secondary',
+                )}
+              >
+                <button
+                  type="button"
+                  aria-label={p.name}
+                  className="min-w-0 flex-1 truncate px-1.5 py-1.5 text-left text-sm text-text"
+                  onClick={() => {
+                    // 选中命名配置：自动加载该配置的模型/Key/URL
+                    profileApi?.select(p);
+                    setOpen(false);
+                  }}
+                >
+                  {p.name}
+                </button>
+                <button
+                  type="button"
+                  aria-label={`删除配置 ${p.name}`}
+                  title={`删除配置 ${p.name}`}
+                  className="shrink-0 rounded px-1.5 py-1.5 text-base leading-none text-text-secondary hover:text-error"
+                  onClick={() => profileApi?.remove(p.id)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        ))}
+    </div>
   );
 }
 
@@ -634,7 +850,138 @@ function AboutTab() {
   );
 }
 
+// ───────────────── 默认应用选项卡（Windows 文件关联） ─────────────────
+
+/** 分组定义（与主进程 file-association/associations.ts 的 ASSOCIATION_GROUPS 对齐）。 */
+interface AssociationGroupDef {
+  readonly id: 'media' | 'documents' | 'images';
+  readonly label: string;
+  readonly description: string;
+}
+
+const ASSOCIATION_GROUP_DEFS: readonly AssociationGroupDef[] = [
+  { id: 'media', label: '音视频', description: 'MP3 / MP4 / WAV 等音频视频文件' },
+  { id: 'documents', label: '文档', description: 'PDF / Markdown / 文本 / JSON 等文档文件' },
+  { id: 'images', label: '图片', description: 'PNG / JPG / GIF / SVG 等图片文件' },
+];
+
+interface GroupStatus {
+  readonly registered: number;
+  readonly total: number;
+  readonly extensions: readonly string[];
+}
+
+/**
+ * 「默认应用」选项卡：把本浏览器注册为音视频/文档/图片的打开方式。
+ *
+ * 交互：每张卡片显示该组扩展名与注册状态；点「设为默认打开方式」→
+ * file-association.register → 主进程写 HKCU 注册表 → 刷新状态 + toast。
+ * 注册后浏览器出现在 Windows「打开方式 → 选择其他应用」列表，用户勾选
+ * 「始终使用」即由系统完成永久默认（UserChoice 由 Windows 写入）。
+ */
+function FilesTab({ onToast }: { readonly onToast: (msg: string) => void }) {
+  const [statuses, setStatuses] = useState<Record<string, GroupStatus> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [registering, setRegistering] = useState<string | null>(null);
+
+  const loadStatus = useCallback(async () => {
+    try {
+      const res = (await window.urchin.invoke('file-association.getStatus', {})) as {
+        groups: Record<string, GroupStatus>;
+      };
+      setStatuses(res.groups);
+    } catch (e) {
+      onToast('读取关联状态失败：' + String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [onToast]);
+
+  useEffect(() => {
+    void loadStatus();
+  }, [loadStatus]);
+
+  const handleRegister = useCallback(
+    async (groupId: string) => {
+      setRegistering(groupId);
+      try {
+        await window.urchin.invoke('file-association.register', { group: groupId });
+        onToast('已注册。可在系统「打开方式」选择 Urchin Browser 并勾选"始终使用"');
+        await loadStatus();
+      } catch (e) {
+        onToast('注册失败：' + String(e));
+      } finally {
+        setRegistering(null);
+      }
+    },
+    [loadStatus, onToast],
+  );
+
+  return (
+    <section>
+      <h1 className="mb-2 text-2xl font-semibold">默认应用</h1>
+      <p className="mb-6 text-sm text-text-secondary">
+        把 Urchin Browser 设为音视频、文档、图片的打开方式。注册后，双击这类文件
+        即可用本浏览器打开；在系统「打开方式 → 选择其他应用」中勾选「始终使用」， 即可设为永久默认。
+      </p>
+
+      {loading && <p className="text-text-secondary">加载中…</p>}
+      {!loading &&
+        ASSOCIATION_GROUP_DEFS.map((group) => {
+          const status = statuses?.[group.id];
+          return (
+            <div
+              key={group.id}
+              className="mb-4 rounded-md border border-border bg-surface-secondary px-4 py-4"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium">{group.label}</div>
+                  <div className="mt-0.5 text-xs text-text-secondary">{group.description}</div>
+                </div>
+                {status && (
+                  <span
+                    className={cn(
+                      'shrink-0 rounded px-1.5 py-0.5 text-xs',
+                      status.registered > 0
+                        ? 'bg-success/15 text-success'
+                        : 'bg-text-secondary/10 text-text-secondary',
+                    )}
+                  >
+                    {status.registered}/{status.total} 已关联
+                  </span>
+                )}
+              </div>
+              {status && status.extensions.length > 0 && (
+                <div className="mt-3 text-xs text-text-secondary">
+                  {status.extensions.map((e) => `.${e}`).join(' ')}
+                </div>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                className="mt-3"
+                disabled={registering === group.id}
+                onClick={() => void handleRegister(group.id)}
+              >
+                {registering === group.id ? '注册中…' : '设为默认打开方式'}
+              </Button>
+            </div>
+          );
+        })}
+    </section>
+  );
+}
+
 // ───────────────── 调试选项卡（开发阶段临时） ─────────────────
+
+/** 日志级别配色（与 store 的 LogLevel 对应；UNCAUGHT / REJECTION 与 ERROR 同为错误色） */
+const LOG_LEVEL_COLOR: Record<LogLevel, string> = {
+  ERROR: 'text-error',
+  WARN: 'text-warning',
+  UNCAUGHT: 'text-error',
+  REJECTION: 'text-error',
+};
 
 /** 配色变量定义（来自 tokens.css） */
 const COLOR_TOKENS = [
@@ -704,7 +1051,9 @@ function DebugTab({
   readonly entries: Record<string, unknown>;
   readonly onChange: (key: string, value: unknown) => void;
 }) {
-  const [logs, setLogs] = useState<string[]>([]);
+  // 运行报错日志来自渲染进程级 store（main.tsx 启动时已安装采集器），
+  // 这里只订阅展示；store 已按「级别 + 内容」去重计数，重复错误只记次数
+  const logs = useSyncExternalStore(subscribeErrorLogs, getErrorLogs);
   const logBoxRef = useRef<HTMLDivElement>(null);
   const [colors, setColors] = useState<Record<string, string>>(() => ({ ...DEFAULT_COLOR_MAP }));
   const [schemes, setSchemes] = useState<ColorScheme[]>(() => loadSchemes());
@@ -717,55 +1066,6 @@ function DebugTab({
   const hoverDelayRaw = entries['debug.sidebarHoverDelay'];
   const hoverDelay =
     typeof hoverDelayRaw === 'number' && Number.isFinite(hoverDelayRaw) ? hoverDelayRaw : 300;
-
-  // 收集控制台错误日志
-  useEffect(() => {
-    const originalError = console.error;
-    const originalWarn = console.warn;
-    const pushLog = (level: string, args: unknown[]): void => {
-      const msg = args
-        .map((a) => {
-          if (a instanceof Error) return `${a.name}: ${a.message}\n${a.stack ?? ''}`;
-          if (typeof a === 'object' && a !== null) {
-            try {
-              return JSON.stringify(a);
-            } catch {
-              return '[object]';
-            }
-          }
-          return String(a);
-        })
-        .join(' ');
-      const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-      setLogs((prev) => [...prev.slice(-500), `[${time}] ${level} ${msg}`]);
-    };
-
-    console.error = (...args: unknown[]) => {
-      pushLog('ERROR', args);
-      originalError.apply(console, args as never);
-    };
-    console.warn = (...args: unknown[]) => {
-      pushLog('WARN', args);
-      originalWarn.apply(console, args as never);
-    };
-
-    // 监听未捕获错误
-    const onError = (e: ErrorEvent): void => {
-      pushLog('UNCAUGHT', [`${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`]);
-    };
-    const onRejection = (e: PromiseRejectionEvent): void => {
-      pushLog('REJECTION', [e.reason]);
-    };
-    window.addEventListener('error', onError);
-    window.addEventListener('unhandledrejection', onRejection);
-
-    return () => {
-      console.error = originalError;
-      console.warn = originalWarn;
-      window.removeEventListener('error', onError);
-      window.removeEventListener('unhandledrejection', onRejection);
-    };
-  }, []);
 
   // 日志自动滚动到底部
   useEffect(() => {
@@ -821,7 +1121,7 @@ function DebugTab({
   }, []);
 
   const handleClearLogs = useCallback(() => {
-    setLogs([]);
+    clearErrorLogs();
   }, []);
 
   // 保存当前配色为新方案（同名则覆盖）
@@ -911,7 +1211,13 @@ function DebugTab({
 
       {/* 运行日志显示框 */}
       <div className="mb-2 flex items-center justify-between">
-        <div className="text-sm font-medium">运行报错日志</div>
+        <div className="flex items-center gap-2">
+          <div className="text-sm font-medium">运行报错日志</div>
+          <div className="text-xs text-text-secondary">
+            重复报错只计次数（共 {logs.reduce((sum, e) => sum + e.count, 0)} 条）·
+            带日期时间，本地持久保存
+          </div>
+        </div>
         <Button variant="secondary" size="sm" onClick={handleClearLogs}>
           清空
         </Button>
@@ -923,18 +1229,17 @@ function DebugTab({
         {logs.length === 0 ? (
           <div className="text-text-secondary">暂无日志输出</div>
         ) : (
-          logs.map((line, idx) => (
-            <div
-              key={idx}
-              className={cn(
-                'whitespace-pre-wrap break-all',
-                line.includes('ERROR') && 'text-error',
-                line.includes('UNCAUGHT') && 'text-error',
-                line.includes('REJECTION') && 'text-error',
-                line.includes('WARN') && 'text-warning',
+          logs.map((log) => (
+            <div key={log.id} className="flex gap-2">
+              <span className={cn('shrink-0', LOG_LEVEL_COLOR[log.level])}>
+                [{log.time}] {log.level}
+              </span>
+              {log.count > 1 && (
+                <span className="shrink-0 rounded bg-text-secondary/15 px-1 text-text-secondary">
+                  ×{log.count}
+                </span>
               )}
-            >
-              {line}
+              <span className="min-w-0 flex-1 whitespace-pre-wrap break-all">{log.message}</span>
             </div>
           ))
         )}

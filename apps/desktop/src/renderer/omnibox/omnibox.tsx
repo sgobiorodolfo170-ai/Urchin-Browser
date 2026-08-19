@@ -17,7 +17,15 @@
  * 地址栏回归纯 URL 输入职责，简化逻辑、避免与 AI 模块耦合。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Lock, Globe, AlertTriangle, Star, Bookmark as BookmarkIcon, Sparkles } from 'lucide-react';
+import {
+  Lock,
+  Globe,
+  AlertTriangle,
+  Star,
+  Bookmark as BookmarkIcon,
+  Sparkles,
+  Scissors,
+} from 'lucide-react';
 import { cn } from '../lib/utils';
 import { parseInput } from './parse-input';
 import { validateUrlBeforeNavigation } from './validate-url';
@@ -46,6 +54,12 @@ export interface OmniboxProps {
   readonly onSummarize?: () => void;
   /** 摘要按钮是否禁用（如未配置 Provider 或流式生成中） */
   readonly summarizeDisabled?: boolean;
+  /** 截图当前页面回调（截图保存到 <数据目录>/screenshots/） */
+  readonly onScreenshot?: () => void;
+  /** 截图按钮是否禁用（如无活跃网页可截） */
+  readonly screenshotDisabled?: boolean;
+  /** 当前搜索引擎标识（searchEngine 设置；供搜索词生成搜索 URL） */
+  readonly searchEngine?: string;
 }
 
 /** 安全状态图标。 */
@@ -71,6 +85,9 @@ export function Omnibox({
   onBookmarkToggle,
   onSummarize,
   summarizeDisabled = false,
+  onScreenshot,
+  screenshotDisabled = false,
+  searchEngine,
 }: OmniboxProps) {
   const [input, setInput] = useState(currentUrl);
   const [isFocused, setIsFocused] = useState(false);
@@ -106,7 +123,7 @@ export function Omnibox({
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Enter') {
-        const parsed = parseInput(input);
+        const parsed = parseInput(input, searchEngine);
         const validation = validateUrlBeforeNavigation(parsed.url);
         if (validation.valid) {
           onNavigate(parsed.url);
@@ -117,7 +134,7 @@ export function Omnibox({
         inputRef.current?.blur();
       }
     },
-    [input, currentUrl, onNavigate],
+    [input, currentUrl, onNavigate, searchEngine],
   );
 
   // 获得焦点全选（OM7 决策）
@@ -205,6 +222,19 @@ export function Omnibox({
         title="收藏夹"
       >
         <BookmarkIcon className="h-4 w-4" />
+      </button>
+
+      {/* 截图按钮：截取当前网页保存到 <数据目录>/screenshots/（地址栏收藏夹按钮之后） */}
+      <button
+        type="button"
+        className="flex shrink-0 items-center justify-center rounded-md p-1.5 text-text-secondary hover:bg-surface-secondary hover:text-text disabled:opacity-40 disabled:hover:bg-transparent"
+        onClick={() => onScreenshot?.()}
+        disabled={screenshotDisabled || !onScreenshot}
+        aria-label="截图当前网页"
+        title="截图当前网页"
+      >
+        {/* -scale-x-100：剪刀图标左右翻转，让剪刀口朝左 */}
+        <Scissors className="h-4 w-4 -scale-x-100" />
       </button>
 
       {/* AI 助手按钮：一键提取当前网页内容并保存到本地 */}

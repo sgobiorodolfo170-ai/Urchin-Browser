@@ -14,6 +14,8 @@ import {
   BookmarkPanel,
   PANEL_WIDTH,
   PANEL_HEIGHT,
+  getBookmarkPanelHtml,
+  getBookmarkPanelScript,
   type PanelHostWindow,
 } from '../../src/main/panel/bookmark-panel';
 import type { BrowserWindow } from 'electron';
@@ -217,5 +219,143 @@ describe('BookmarkPanel', () => {
     panel.close();
     expect(parent.removeListener).toHaveBeenCalledWith('move', expect.any(Function));
     expect(parent.removeListener).toHaveBeenCalledWith('resize', expect.any(Function));
+  });
+});
+
+describe('getBookmarkPanelHtml（面板模板）', () => {
+  it('should bind pointer-drag that opens url in new window when dragged out', () => {
+    const html = getBookmarkPanelHtml();
+
+    // 书签拖出面板窗口 → 新浏览器窗口打开（自定义指针拖拽，非系统拖放）
+    expect(html).toContain(
+      "invoke('window.createWithUrl', { url: st.url, x: e.screenX, y: e.screenY })",
+    );
+    expect(html).toContain("contentEl.addEventListener('pointerdown'");
+    expect(html).toContain("contentEl.addEventListener('pointermove'");
+    // 不再使用系统拖放（防止拖到桌面生成快捷方式）
+    expect(html).not.toContain("e.dataTransfer.setData('text/uri-list', url)");
+    expect(html).not.toContain('draggable="true"');
+  });
+});
+
+describe('getBookmarkPanelScript（面板交互，jsdom）', () => {
+  /** 以真实面板 DOM + 脚本执行一次渲染，返回可查询的 content 容器与调用记录 */
+  function setupPanel() {
+    document.body.innerHTML = `
+      <div class="tabs">
+        <div class="tab active" data-tab="bookmarks">收藏夹</div>
+        <div class="tab" data-tab="history">历史记录</div>
+        <div class="tab" data-tab="downloads">下载列表</div>
+      </div>
+      <div class="content" id="content"><div class="empty">加载中…</div></div>
+    `;
+    const calls: { ch: string; req: Record<string, unknown> }[] = [];
+    const invokeMock = vi.fn((ch: string, req: Record<string, unknown>): Promise<unknown> => {
+      calls.push({ ch, req });
+      if (ch === 'bookmark.list') {
+        return Promise.resolve({
+          bookmarks: [
+            {
+              id: 'bm-1',
+              type: 'bookmark',
+              title: 'Example',
+              url: 'https://example.com/A',
+              parentId: null,
+              position: 0,
+              createdAt: 1,
+              updatedAt: 1,
+            },
+            {
+              id: 'bm-2',
+              type: 'bookmark',
+              title: 'B Site',
+              url: 'https://example.com/B',
+              parentId: null,
+              position: 1,
+              createdAt: 2,
+              updatedAt: 2,
+            },
+          ],
+        });
+      }
+      if (ch === 'tab.list') return Promise.resolve({ tabs: [{ id: 'tab-1', active: true }] });
+      return Promise.resolve({});
+    });
+    (window as unknown as { urchin: { invoke: (...a: unknown[]) => Promise<unknown> } }).urchin = {
+      invoke: invokeMock as unknown as (...a: unknown[]) => Promise<unknown>,
+    };
+    // jsdom runScripts=outside-only 下动态插入 <script> 不保证执行，改用 window.eval
+    window.eval(getBookmarkPanelScript());
+    return { calls };
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('should delete bookmark when star clicked, not open the url', async () => {
+    const { calls } = setupPanel();
+    // 等待首次 bookmark.list 渲染完成
+    await vi.waitFor(() => expect(document.querySelectorAll('.item .star')).toHaveLength(2));
+
+    // 真实点击序列：pointerdown（会触发面板的拖拽逻辑）→ pointerup → click
+    const star = document.querySelectorAll<HTMLElement>('.item .star')[0]!;
+    star.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    star.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+    star.click();
+
+    await vi.waitFor(() => {
+      expect(calls.some((c) => c.ch === 'bookmark.delete')).toBe(true);
+    });
+    // 删除后刷新列表 → 重新拉取 bookmark.list
+    const deletes = calls.filter((c) => c.ch === 'bookmark.delete');
+    expect(deletes).toHaveLength(1);
+    expect(deletes[0]!.req).toEqual({ id: 'bm-1' });
+    // 星标点击不得误触"打开网址"（tab.loadUrl）
+    expect(calls.some((c) => c.ch === 'tab.loadUrl')).toBe(false);
+  });
+
+  it('should not start pointer drag on star (capture would hijack star click)', async () => {
+    const { calls } = setupPanel();
+    await vi.waitFor(() => expect(document.querySelectorAll('.item .star')).toHaveLength(2));
+
+    // 根因回归护栏：pointerdown 落在星标上时，拖拽分支必须提前返回，不得对条目
+    // 调用 setPointerCapture。真实 Chromium 中 setPointerCapture 会把随后的 click
+    // 目标重定向到 .item，使星标删除点击被劫持为"打开网址"（本 bug 的直接成因）。
+    const star = document.querySelectorAll<HTMLElement>('.item .star')[0]!;
+    const item = star.closest<HTMLElement>('.item')!;
+    item.setPointerCapture = vi.fn();
+    star.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    expect(item.setPointerCapture).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.ch === 'bookmark.delete')).toBe(false);
+  });
+
+  it('should start pointer drag on item body (capture for drag-out)', async () => {
+    setupPanel();
+    await vi.waitFor(() => expect(document.querySelectorAll('.item')).toHaveLength(2));
+
+    // 条目主体仍保留拖拽能力：pointerdown 启动拖拽并捕获指针，供"拖出窗口打开"使用
+    const item = document.querySelectorAll<HTMLElement>('.item')[0]!;
+    item.setPointerCapture = vi.fn();
+    item.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    expect(item.setPointerCapture).toHaveBeenCalled();
+  });
+
+  it('should open url in active tab when item body clicked (drag not started)', async () => {
+    const { calls } = setupPanel();
+    await vi.waitFor(() => expect(document.querySelectorAll('.item')).toHaveLength(2));
+
+    // 点击条目主体（非星标）→ 打开网址；且不因 pointerdown 启动拖拽而改变 click 目标
+    const item = document.querySelectorAll<HTMLElement>('.item')[1]!;
+    item.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    item.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+    item.click();
+
+    await vi.waitFor(() => {
+      expect(calls.some((c) => c.ch === 'tab.loadUrl')).toBe(true);
+    });
+    const load = calls.find((c) => c.ch === 'tab.loadUrl');
+    expect(load?.req).toEqual({ tabId: 'tab-1', url: 'https://example.com/B' });
+    expect(calls.some((c) => c.ch === 'bookmark.delete')).toBe(false);
   });
 });

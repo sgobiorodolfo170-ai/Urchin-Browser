@@ -22,95 +22,12 @@ import { createLogger } from '@urchin/logger';
 
 const log = createLogger('bookmark-panel');
 
-/** 面板窗口尺寸（悬浮小窗，避开底部地址栏与右侧边栏） */
-export const PANEL_WIDTH = 280;
-export const PANEL_HEIGHT = 430;
-/**
- * 网页滚动条宽度（px）。
- *
- * 网页（BrowserView）的右/下滚动条紧贴两栏边界，面板需让出滚动条宽度，
- * 否则会盖住滑块。Windows 经典滚动条约 17px；overlay scrollbar（自动隐藏）为 0。
- * 取 17 覆盖经典样式。
- */
-const SCROLLBAR_WIDTH = 17;
-/** 面板与网页滚动条/两栏边界的间隙（px） */
-const PANEL_GAP = 2;
-
-/** 面板 HTML（urchin://panel 协议返回，单文件无外部依赖） */
-export function getBookmarkPanelHtml(): string {
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <title>收藏夹</title>
-  <style>
-    :root {
-      --bg: #ffffff; --bg-secondary: #f5f5f5; --border: #e5e5e5;
-      --text: #1a1a1a; --text-secondary: #666666; --primary: #2563eb;
-      --success: #16a34a; --warning: #d97706; --error: #dc2626;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #1a1a1a; --bg-secondary: #262626; --border: #404040;
-        --text: #f5f5f5; --text-secondary: #a3a3a3; --primary: #3b82f6;
-      }
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; overflow: hidden; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-      background: var(--bg); color: var(--text); font-size: 13px;
-      /* 自下而上弹出动画 */
-      animation: slideUp 0.18s ease-out;
-    }
-    @keyframes slideUp {
-      from { transform: translateY(24px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
-    .tabs {
-      display: flex; border-bottom: 1px solid var(--border); background: var(--bg);
-    }
-    .tab {
-      flex: 1; padding: 9px 0; text-align: center; font-size: 12px;
-      color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent;
-      user-select: none;
-    }
-    .tab.active { color: var(--text); border-bottom-color: var(--primary); font-weight: 500; }
-    .content { height: calc(100% - 38px); overflow-y: auto; }
-    .empty { padding: 32px 0; text-align: center; color: var(--text-secondary); font-size: 12px; }
-    .item {
-      display: flex; align-items: center; gap: 8px; padding: 8px 10px;
-      cursor: pointer; border-bottom: 1px solid var(--border);
-    }
-    .item:hover { background: var(--bg-secondary); }
-    .item .icon { flex-shrink: 0; width: 14px; text-align: center; }
-    .item .main { flex: 1; min-width: 0; }
-    .item .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .item .url { color: var(--text-secondary); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .dl-actions { display: flex; gap: 6px; flex-shrink: 0; }
-    .dl-actions button {
-      border: 1px solid var(--border); background: var(--bg); color: var(--text);
-      border-radius: 4px; font-size: 11px; padding: 2px 6px; cursor: pointer;
-    }
-    .dl-actions button:hover { background: var(--bg-secondary); }
-    .dl-state { font-size: 11px; color: var(--text-secondary); }
-    .clear-row { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--border); }
-    .clear-row button {
-      border: none; background: none; color: var(--text-secondary);
-      font-size: 11px; cursor: pointer;
-    }
-    .clear-row button:hover { color: var(--text); }
-  </style>
-</head>
-<body>
-  <div class="tabs">
-    <div class="tab active" data-tab="bookmarks">收藏夹</div>
-    <div class="tab" data-tab="history">历史记录</div>
-    <div class="tab" data-tab="downloads">下载列表</div>
-  </div>
-  <div class="content" id="content"><div class="empty">加载中…</div></div>
-
-  <script>
+/** 面板内联脚本（独立成函数便于 jsdom 单元测试执行真实交互）。
+ *  IIFE 包裹：隔离顶层 const/let 作用域，jsdom 多测试用例共享同一 window
+ *  重复执行脚本时不产生 "Identifier already declared" 冲突。 */
+export function getBookmarkPanelScript(): string {
+  return `
+  (function () {
     const contentEl = document.getElementById('content');
     let activeTab = 'bookmarks';
 
@@ -147,12 +64,56 @@ export function getBookmarkPanelHtml(): string {
       }
       contentEl.innerHTML = items.map(b => (
         '<div class="item" data-url="' + escapeHtml(b.url) + '">' +
-        '<span class="icon">⭐</span>' +
+        '<span class="icon star" data-id="' + escapeHtml(b.id) + '" title="取消收藏">⭐</span>' +
         '<div class="main"><div class="title">' + escapeHtml(b.title || b.url) + '</div>' +
         '<div class="url">' + escapeHtml(b.url) + '</div></div></div>'
       )).join('');
       bindOpen('.item');
+      // 星标点击取消收藏：stopPropagation 防止冒泡触发"打开网址"，删除后刷新列表
+      contentEl.querySelectorAll('.item .star').forEach(el => {
+        el.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = el.dataset.id;
+          if (!id) return;
+          try {
+            await invoke('bookmark.delete', { id });
+            await loadTab('bookmarks');
+          } catch (err) { /* 忽略：删除失败保持现状 */ }
+        });
+      });
     }
+
+    // 书签拖出浏览器窗口：自定义指针拖拽，指针移出面板窗口边界 →
+    // 经 window.createWithUrl 在新浏览器窗口打开该 URL。
+    // （v1 用系统拖放会生成桌面快捷方式；v2 改自定义拖拽，与 Chrome 拖出标签一致。）
+    let dragBookmark = null;
+    contentEl.addEventListener('pointerdown', (e) => {
+      const item = e.target.closest && e.target.closest('.item');
+      if (!item) return;
+      // 星标（取消收藏）/下载操作按钮不启动拖拽：setPointerCapture 会重定向
+      // pointerup 目标，使随后的 click 派发到 .item 而非按钮——删除点击被劫持为打开网址。
+      if (e.target.closest('.star') || e.target.closest('.dl-actions')) return;
+      const url = item.dataset.url;
+      if (!url) return;
+      dragBookmark = { url, el: item, pointerId: e.pointerId };
+      if (item.setPointerCapture) {
+        try { item.setPointerCapture(e.pointerId); } catch (err) { /* 捕获失败忽略 */ }
+      }
+    });
+    contentEl.addEventListener('pointermove', (e) => {
+      if (!dragBookmark) return;
+      // 指针移出面板窗口边界 → 在新窗口打开（定位到出界屏幕坐标，不重叠在面板窗口上）
+      if (e.clientX < 0 || e.clientY < 0 || e.clientX > window.innerWidth || e.clientY > window.innerHeight) {
+        const st = dragBookmark;
+        dragBookmark = null;
+        try { st.el.releasePointerCapture(st.pointerId); } catch (err) { /* 未捕获忽略 */ }
+        invoke('window.createWithUrl', { url: st.url, x: e.screenX, y: e.screenY })
+          .catch(() => { /* 打开失败静默 */ });
+      }
+    });
+    const endBookmarkDrag = () => { dragBookmark = null; };
+    contentEl.addEventListener('pointerup', endBookmarkDrag);
+    contentEl.addEventListener('pointercancel', endBookmarkDrag);
 
     async function renderHistory() {
       const res = await invoke('history.list', { limit: 100, offset: 0 });
@@ -237,10 +198,112 @@ export function getBookmarkPanelHtml(): string {
     });
 
     loadTab('bookmarks');
+  })();
+  `;
+}
+
+/**
+ * 收藏夹悬浮面板 HTML（urchin://panel 协议返回，单文件无外部依赖）。
+ *
+ * 内联脚本抽至 getBookmarkPanelScript() 以便 jsdom 单元测试执行真实交互
+ * （星标删除 / 拖拽打开等），此处仅做拼接。
+ */
+export function getBookmarkPanelHtml(): string {
+  return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>收藏夹</title>
+  <style>
+    :root {
+      --bg: #ffffff; --bg-secondary: #f5f5f5; --border: #e5e5e5;
+      --text: #1a1a1a; --text-secondary: #666666; --primary: #2563eb;
+      --success: #16a34a; --warning: #d97706; --error: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a1a; --bg-secondary: #262626; --border: #404040;
+        --text: #f5f5f5; --text-secondary: #a3a3a3; --primary: #3b82f6;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg); color: var(--text); font-size: 13px;
+      /* 自下而上弹出动画 */
+      animation: slideUp 0.18s ease-out;
+    }
+    @keyframes slideUp {
+      from { transform: translateY(24px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .tabs {
+      display: flex; border-bottom: 1px solid var(--border); background: var(--bg);
+    }
+    .tab {
+      flex: 1; padding: 9px 0; text-align: center; font-size: 12px;
+      color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent;
+      user-select: none;
+    }
+    .tab.active { color: var(--text); border-bottom-color: var(--primary); font-weight: 500; }
+    .content { height: calc(100% - 38px); overflow-y: auto; }
+    .empty { padding: 32px 0; text-align: center; color: var(--text-secondary); font-size: 12px; }
+    .item {
+      display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+      cursor: pointer; border-bottom: 1px solid var(--border);
+    }
+    .item:hover { background: var(--bg-secondary); }
+    .item .icon { flex-shrink: 0; width: 14px; text-align: center; }
+    /* 收藏星标：可点击取消收藏（hover 变暗提示可点击） */
+    .item .icon.star { cursor: pointer; }
+    .item .icon.star:hover { filter: grayscale(0.5) brightness(0.7); }
+    .item .main { flex: 1; min-width: 0; }
+    .item .title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item .url { color: var(--text-secondary); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dl-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .dl-actions button {
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+      border-radius: 4px; font-size: 11px; padding: 2px 6px; cursor: pointer;
+    }
+    .dl-actions button:hover { background: var(--bg-secondary); }
+    .dl-state { font-size: 11px; color: var(--text-secondary); }
+    .clear-row { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--border); }
+    .clear-row button {
+      border: none; background: none; color: var(--text-secondary);
+      font-size: 11px; cursor: pointer;
+    }
+    .clear-row button:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="tabs">
+    <div class="tab active" data-tab="bookmarks">收藏夹</div>
+    <div class="tab" data-tab="history">历史记录</div>
+    <div class="tab" data-tab="downloads">下载列表</div>
+  </div>
+  <div class="content" id="content"><div class="empty">加载中…</div></div>
+
+  <script>
+${getBookmarkPanelScript()}
   </script>
 </body>
 </html>`;
 }
+
+/** 面板窗口尺寸（悬浮小窗，避开底部地址栏与右侧边栏） */
+export const PANEL_WIDTH = 280;
+export const PANEL_HEIGHT = 430;
+/**
+ * 网页滚动条宽度（px）。
+ *
+ * 网页（BrowserView）的右/下滚动条紧贴两栏边界，面板需让出滚动条宽度，
+ * 否则会盖住滑块。Windows 经典滚动条约 17px；overlay scrollbar（自动隐藏）为 0。
+ * 取 17 覆盖经典样式。
+ */
+const SCROLLBAR_WIDTH = 17;
+/** 面板与网页滚动条/两栏边界的间隙（px） */
+const PANEL_GAP = 2;
 
 /**
  * 收藏夹悬浮面板管理器。

@@ -25,14 +25,18 @@ import {
 } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /** 启动 Electron 应用并返回 Playwright 页面（与 launch.spec.ts 相同模式） */
-async function launchApp(): Promise<{ electronApp: ElectronApplication; window: Page }> {
+async function launchApp(): Promise<{
+  electronApp: ElectronApplication;
+  window: Page;
+  userDataDir: string;
+}> {
   const appPath = resolve(__dirname, '..', '..');
   const userDataDir = mkdtempSync(join(tmpdir(), 'urchin-e2e-piweb-'));
 
@@ -65,7 +69,7 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
   await window
     .getByRole('button', { name: '新建标签' })
     .waitFor({ state: 'visible', timeout: 15_000 });
-  return { electronApp, window };
+  return { electronApp, window, userDataDir };
 }
 
 /** HTTP 探活：返回状态码（连接失败返回 0） */
@@ -81,7 +85,7 @@ async function probe(url: string): Promise<number> {
 test.describe('pi 网页版启动器（整项目运行路径）', () => {
   test('从主项目入口启动 pi 模块并在 Urchin 标签页内打开，随应用退出终止', async () => {
     test.setTimeout(180_000);
-    const { electronApp, window } = await launchApp();
+    const { electronApp, window, userDataDir } = await launchApp();
 
     // 1. 左侧栏「AI 助手」→ urchin://ai 启动器标签页（dev.39 一键直达：进入即自动启动）
     await window.getByRole('button', { name: 'AI 助手' }).click();
@@ -143,6 +147,11 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
 
     // 5. 测试进程 HTTP 探活（服务真实可访问）
     expect(await probe(url)).toBe(200);
+
+    // 5.5 dev.43：启动链路已向临时 profile 预置 auth.json 空白占位
+    //     （isPiConfigured 判定通过 → 「下载 pi agent」引导被抑制）
+    const seededAuth = readFileSync(join(userDataDir, 'pi', 'agent', 'auth.json'), 'utf-8');
+    expect(seededAuth).toContain('_urchin_bootstrap');
 
     // 6. 关闭应用 → 子进程树随 performCleanup 终止 → 端口不可达（与主项目同生共死）
     await electronApp.close();

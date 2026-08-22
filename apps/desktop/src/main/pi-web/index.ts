@@ -13,3 +13,4 @@ export type {
   SpawnFn,
 } from './launcher';
 export { registerPiWebHandlers } from './register-handlers';
+export { ensureAuthPlaceholder } from './auth-placeholder';

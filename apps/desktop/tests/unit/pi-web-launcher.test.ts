@@ -40,6 +40,7 @@ interface Harness {
   killTree: ReturnType<typeof vi.fn>;
   spawn: ReturnType<typeof vi.fn>;
   ensureDir: ReturnType<typeof vi.fn>;
+  seedAuth: ReturnType<typeof vi.fn>;
   health: ReturnType<typeof vi.fn>;
 }
 
@@ -47,6 +48,7 @@ interface Harness {
 function createHarness(overrides?: {
   health?: (port: number) => Promise<boolean>;
   ensureDir?: (dir: string) => Promise<void>;
+  seedAuth?: (agentDir: string) => Promise<void>;
 }): Harness {
   const children: MockChild[] = [];
   let pidSeq = 1000;
@@ -63,6 +65,7 @@ function createHarness(overrides?: {
   );
   const killTree = vi.fn(() => Promise.resolve(undefined));
   const ensureDir = vi.fn(() => Promise.resolve(undefined));
+  const seedAuth = vi.fn(() => Promise.resolve(undefined));
   const launcher = new PiWebLauncher({
     cliPath: '/fake/node_modules/pi-web-ui/bin/pi-web-ui.mjs',
     dataDir: '/fake/userData/pi/web-ui',
@@ -74,10 +77,11 @@ function createHarness(overrides?: {
     portPickerFn: () => Promise.resolve(45001),
     healthCheckFn: overrides?.health ?? (() => Promise.resolve(true)),
     ensureDirFn: overrides?.ensureDir ?? ensureDir,
+    seedAuthFn: overrides?.seedAuth ?? seedAuth,
     healthTimeoutMs: 500,
     healthPollIntervalMs: 10,
   });
-  return { launcher, children, killTree, spawn, ensureDir, health: vi.fn() };
+  return { launcher, children, killTree, spawn, ensureDir, seedAuth, health: vi.fn() };
 }
 
 describe('PiWebLauncher', () => {
@@ -89,6 +93,8 @@ describe('PiWebLauncher', () => {
     // dev.41：spawn 前确保 dataDir/cwd/agentDir 存在（pi 会话管理器硬校验 cwd）
     expect(h.ensureDir).toHaveBeenCalledWith('/fake/userData/pi/web-ui');
     expect(h.ensureDir).toHaveBeenCalledWith('/fake/userData/pi/agent');
+    // dev.43：spawn 前对 agentDir 注入 auth.json 空白占位（隐藏下载引导）
+    expect(h.seedAuth).toHaveBeenCalledWith('/fake/userData/pi/agent');
     expect(h.spawn).toHaveBeenCalledTimes(1);
     // spawn 参数：系统 node 直启预装依赖的 CLI（无 shell、无 npx 运行时下载），
     // --no-browser 禁止 pi-web-ui 拉起系统默认浏览器（dev.39）
@@ -147,6 +153,16 @@ describe('PiWebLauncher', () => {
     // 目录创建失败时不应 spawn 子进程
     expect(h.spawn).not.toHaveBeenCalled();
     expect(h.launcher.status().state).toBe('error');
+  });
+
+  it('seedAuth failure should be non-fatal (launch still succeeds)', async () => {
+    const h = createHarness({
+      seedAuth: () => Promise.reject(new Error('EACCES')),
+    });
+    const port = await h.launcher.launch();
+    // 占位失败不阻塞启动：最坏情况引导照旧出现，功能不受影响
+    expect(port).toBe(45001);
+    expect(h.launcher.status().state).toBe('running');
   });
 
   it('health timeout should kill process tree and set error state', async () => {

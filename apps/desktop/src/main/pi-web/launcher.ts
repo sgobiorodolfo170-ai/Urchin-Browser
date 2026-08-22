@@ -23,6 +23,7 @@ import { createServer } from 'node:net';
 import http from 'node:http';
 import { mkdir } from 'node:fs/promises';
 import { createLogger } from '@urchin/logger';
+import { ensureAuthPlaceholder } from './auth-placeholder';
 
 const log = createLogger('pi-web-launcher');
 
@@ -91,6 +92,12 @@ export interface PiWebLauncherOptions {
   readonly healthCheckFn?: (port: number) => Promise<boolean>;
   /** 目录确保存在（默认 fs mkdir recursive，测试注入 mock；dev.41 修复的核心） */
   readonly ensureDirFn?: (dir: string) => Promise<void>;
+  /**
+   * auth.json 空白占位注入（默认 ensureAuthPlaceholder，测试注入 mock；dev.43）：
+   * 无任何凭据时写入合法空白条目，隐藏 pi-web-ui 的「下载 pi agent」误导性引导。
+   * 非致命——失败仅记日志，不阻塞启动。
+   */
+  readonly seedAuthFn?: (agentDir: string) => Promise<void>;
   /** 启动超时（默认 HEALTH_TIMEOUT_MS，测试注入缩短） */
   readonly healthTimeoutMs?: number;
   /** 健康检查轮询间隔（默认 HEALTH_POLL_INTERVAL_MS，测试注入缩短） */
@@ -177,6 +184,7 @@ export class PiWebLauncher {
     readonly portPickerFn: () => Promise<number>;
     readonly healthCheckFn: (port: number) => Promise<boolean>;
     readonly ensureDirFn: (dir: string) => Promise<void>;
+    readonly seedAuthFn: (agentDir: string) => Promise<void>;
     readonly healthTimeoutMs: number;
     readonly healthPollIntervalMs: number;
   };
@@ -197,6 +205,7 @@ export class PiWebLauncher {
       portPickerFn: options.portPickerFn ?? defaultPickFreePort,
       healthCheckFn: options.healthCheckFn ?? defaultHealthCheck,
       ensureDirFn: options.ensureDirFn ?? defaultEnsureDir,
+      seedAuthFn: options.seedAuthFn ?? ensureAuthPlaceholder,
       healthTimeoutMs: options.healthTimeoutMs ?? HEALTH_TIMEOUT_MS,
       healthPollIntervalMs: options.healthPollIntervalMs ?? HEALTH_POLL_INTERVAL_MS,
     };
@@ -244,6 +253,19 @@ export class PiWebLauncher {
       }
     } catch (e) {
       return this.failLaunch(`数据目录创建失败: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    // dev.43：auth.json 空白占位注入（无凭据时）——隐藏「下载 pi agent」误导性
+    // 引导；非致命，失败仅记日志（最坏情况引导照旧出现，功能不受影响）
+    if (this.opts.agentDir) {
+      try {
+        await this.opts.seedAuthFn(this.opts.agentDir);
+      } catch (e) {
+        log.warn('auth placeholder seeding failed (non-fatal)', {
+          agentDir: this.opts.agentDir,
+          error: String(e),
+        });
+      }
     }
 
     let port: number;

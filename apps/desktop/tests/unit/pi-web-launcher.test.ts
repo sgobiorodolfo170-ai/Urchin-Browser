@@ -39,11 +39,15 @@ interface Harness {
   children: MockChild[];
   killTree: ReturnType<typeof vi.fn>;
   spawn: ReturnType<typeof vi.fn>;
+  ensureDir: ReturnType<typeof vi.fn>;
   health: ReturnType<typeof vi.fn>;
 }
 
 /** 构建全 mock 启动器（健康默认立即就绪；快轮询缩短测试耗时） */
-function createHarness(overrides?: { health?: (port: number) => Promise<boolean> }): Harness {
+function createHarness(overrides?: {
+  health?: (port: number) => Promise<boolean>;
+  ensureDir?: (dir: string) => Promise<void>;
+}): Harness {
   const children: MockChild[] = [];
   let pidSeq = 1000;
   const spawn = vi.fn(
@@ -58,18 +62,21 @@ function createHarness(overrides?: { health?: (port: number) => Promise<boolean>
     },
   );
   const killTree = vi.fn(() => Promise.resolve(undefined));
+  const ensureDir = vi.fn(() => Promise.resolve(undefined));
   const launcher = new PiWebLauncher({
     cliPath: '/fake/node_modules/pi-web-ui/bin/pi-web-ui.mjs',
     dataDir: '/fake/userData/pi/web-ui',
     cwd: '/fake/userData/pi/web-ui',
+    agentDir: '/fake/userData/pi/agent',
     spawnFn: spawn,
     killTreeFn: killTree,
     portPickerFn: () => Promise.resolve(45001),
     healthCheckFn: overrides?.health ?? (() => Promise.resolve(true)),
+    ensureDirFn: overrides?.ensureDir ?? ensureDir,
     healthTimeoutMs: 500,
     healthPollIntervalMs: 10,
   });
-  return { launcher, children, killTree, spawn, health: vi.fn() };
+  return { launcher, children, killTree, spawn, ensureDir, health: vi.fn() };
 }
 
 describe('PiWebLauncher', () => {
@@ -78,6 +85,10 @@ describe('PiWebLauncher', () => {
     const port = await h.launcher.launch();
 
     expect(port).toBe(45001);
+    // dev.41：spawn 前确保 dataDir/cwd/agentDir 存在（pi 会话管理器硬校验 cwd）
+    expect(h.ensureDir).toHaveBeenCalledWith('/fake/userData/pi/web-ui');
+    expect(h.ensureDir).toHaveBeenCalledWith('/fake/userData/pi/agent');
+    expect(h.spawn).toHaveBeenCalledTimes(1);
     // spawn 参数：系统 node 直启预装依赖的 CLI（无 shell、无 npx 运行时下载），
     // --no-browser 禁止 pi-web-ui 拉起系统默认浏览器（dev.39）
     expect(h.spawn).toHaveBeenCalledWith(
@@ -85,11 +96,12 @@ describe('PiWebLauncher', () => {
       ['/fake/node_modules/pi-web-ui/bin/pi-web-ui.mjs', '--no-browser'],
       expect.objectContaining({ stdio: 'ignore' }),
     );
-    // 目录经 env 注入（不经命令行）
+    // 目录经 env 注入（不经命令行）；PI_CODING_AGENT_DIR 把会话库隔离到 userData/pi
     const env = h.children[0]!.spawnEnv;
     expect(env.PORT).toBe('45001');
     expect(env.PI_WEB_DATA_DIR).toBe('/fake/userData/pi/web-ui');
     expect(env.PI_WEB_CWD).toBe('/fake/userData/pi/web-ui');
+    expect(env.PI_CODING_AGENT_DIR).toBe('/fake/userData/pi/agent');
 
     const s = h.launcher.status();
     expect(s.state).toBe('running');
@@ -119,6 +131,19 @@ describe('PiWebLauncher', () => {
     await expect(pending).rejects.toThrow('启动即退出');
     expect(h.launcher.status().state).toBe('error');
     expect(h.launcher.status().lastError).toContain('code=1');
+  });
+
+  it('ensureDir failure should fail launch before spawn with readable message', async () => {
+    const h = createHarness({
+      ensureDir: (dir) =>
+        dir === '/fake/userData/pi/web-ui'
+          ? Promise.reject(new Error('EPERM'))
+          : Promise.resolve(undefined),
+    });
+    await expect(h.launcher.launch()).rejects.toThrow('数据目录创建失败');
+    // 目录创建失败时不应 spawn 子进程
+    expect(h.spawn).not.toHaveBeenCalled();
+    expect(h.launcher.status().state).toBe('error');
   });
 
   it('health timeout should kill process tree and set error state', async () => {

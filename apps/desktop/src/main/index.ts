@@ -427,10 +427,14 @@ function registerIpcHandlers(): void {
     log.error('pi-web-ui CLI not found (依赖未安装？请运行 pnpm install)', { piWebCliPath });
   }
   const piWebDataDir = join(startupUserDataPath, PI_DIR_NAME, 'web-ui');
+  // pi agent 目录（会话库/agent 配置根，dev.41）：不设则 pi 落全局 ~/.pi——
+  // 既污染用户主目录（含 E2E 临时会话遗留），也违背 DD1「pi 数据固定 userData/pi」
+  const piWebAgentDir = join(startupUserDataPath, PI_DIR_NAME, 'agent');
   piWebLauncher = createPiWebLauncher({
     cliPath: piWebCliPath,
     dataDir: piWebDataDir,
     cwd: piWebDataDir,
+    agentDir: piWebAgentDir,
   });
   registerPiWebHandlers(ipcMain, piWebLauncher);
 

@@ -21,6 +21,7 @@
 import { spawn, execFile } from 'node:child_process';
 import { createServer } from 'node:net';
 import http from 'node:http';
+import { mkdir } from 'node:fs/promises';
 import { createLogger } from '@urchin/logger';
 
 const log = createLogger('pi-web-launcher');
@@ -66,8 +67,13 @@ export interface PiWebLauncherOptions {
   readonly cliPath: string;
   /** pi-web-ui 数据目录（会话/配置落盘；建议 userData/pi/web-ui，DD1） */
   readonly dataDir: string;
-  /** agent 工作目录（PI_WEB_CWD） */
+  /** agent 工作目录（PI_WEB_CWD）。pi 会话管理器要求该目录真实存在（dev.41 教训） */
   readonly cwd: string;
+  /**
+   * pi agent 目录（PI_CODING_AGENT_DIR，官方环境变量）：会话库/agent 配置的根。
+   * 不设则 pi 默认落全局 ~/.pi，污染用户主目录；建议 userData/pi/agent（DD1 对齐）。
+   */
+  readonly agentDir?: string;
   /** 进程工厂（默认 node spawn，测试注入 mock） */
   readonly spawnFn?: SpawnFn;
   /** 进程树终止（默认 Windows taskkill /T /F，测试注入 mock） */
@@ -76,6 +82,8 @@ export interface PiWebLauncherOptions {
   readonly portPickerFn?: () => Promise<number>;
   /** 健康检查（默认 HTTP GET /，测试注入 mock） */
   readonly healthCheckFn?: (port: number) => Promise<boolean>;
+  /** 目录确保存在（默认 fs mkdir recursive，测试注入 mock；dev.41 修复的核心） */
+  readonly ensureDirFn?: (dir: string) => Promise<void>;
   /** 启动超时（默认 HEALTH_TIMEOUT_MS，测试注入缩短） */
   readonly healthTimeoutMs?: number;
   /** 健康检查轮询间隔（默认 HEALTH_POLL_INTERVAL_MS，测试注入缩短） */
@@ -142,6 +150,11 @@ function defaultHealthCheck(port: number): Promise<boolean> {
   });
 }
 
+/** 默认目录确保存在：递归 mkdir（幂等，已存在不报错；mkdir 返回首建路径，包一层归一为 void） */
+async function defaultEnsureDir(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true });
+}
+
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -156,6 +169,7 @@ export class PiWebLauncher {
     readonly killTreeFn: (pid: number) => Promise<void>;
     readonly portPickerFn: () => Promise<number>;
     readonly healthCheckFn: (port: number) => Promise<boolean>;
+    readonly ensureDirFn: (dir: string) => Promise<void>;
     readonly healthTimeoutMs: number;
     readonly healthPollIntervalMs: number;
   };
@@ -175,6 +189,7 @@ export class PiWebLauncher {
       killTreeFn: options.killTreeFn ?? defaultKillTree,
       portPickerFn: options.portPickerFn ?? defaultPickFreePort,
       healthCheckFn: options.healthCheckFn ?? defaultHealthCheck,
+      ensureDirFn: options.ensureDirFn ?? defaultEnsureDir,
       healthTimeoutMs: options.healthTimeoutMs ?? HEALTH_TIMEOUT_MS,
       healthPollIntervalMs: options.healthPollIntervalMs ?? HEALTH_POLL_INTERVAL_MS,
     };
@@ -205,11 +220,24 @@ export class PiWebLauncher {
     return this.pendingLaunch;
   }
 
-  /** 单次启动流程：选端口 → spawn → 健康检查轮询 */
+  /** 单次启动流程：确保目录存在 → 选端口 → spawn → 健康检查轮询 */
   private async startProcess(): Promise<number> {
     this.stopping = false;
     this.lastError = undefined;
     this.state = 'starting';
+
+    // dev.41 修复：pi 会话管理器硬校验工作目录必须存在（此前报
+    // "Stored session working directory does not exist"），spawn 前统一确保
+    // dataDir / cwd / agentDir 均已创建
+    const dirsToEnsure = [this.opts.dataDir, this.opts.cwd];
+    if (this.opts.agentDir) dirsToEnsure.push(this.opts.agentDir);
+    try {
+      for (const dir of dirsToEnsure) {
+        await this.opts.ensureDirFn(dir);
+      }
+    } catch (e) {
+      return this.failLaunch(`数据目录创建失败: ${e instanceof Error ? e.message : String(e)}`);
+    }
 
     let port: number;
     try {
@@ -223,6 +251,7 @@ export class PiWebLauncher {
       cliPath: this.opts.cliPath,
       port,
       dataDir: this.opts.dataDir,
+      agentDir: this.opts.agentDir,
     });
 
     let exited = false;
@@ -234,6 +263,8 @@ export class PiWebLauncher {
         PORT: String(port),
         PI_WEB_DATA_DIR: this.opts.dataDir,
         PI_WEB_CWD: this.opts.cwd,
+        // 会话库/agent 配置根：未设则 pi 落全局 ~/.pi（污染用户主目录，DD1 不符）
+        ...(this.opts.agentDir ? { PI_CODING_AGENT_DIR: this.opts.agentDir } : {}),
       },
       stdio: 'ignore',
     });

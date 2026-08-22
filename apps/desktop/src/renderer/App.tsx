@@ -1369,7 +1369,13 @@ export function App() {
             aria-label="AI 助手"
             title="AI 助手"
           >
-            <Sparkles className="h-4 w-4" />
+            {/* pi 模块入口图标（用户指定素材，public/pi-icon.png，白底深蓝 π 方形图标） */}
+            <img
+              src="./pi-icon.png"
+              alt=""
+              draggable={false}
+              className="h-5 w-5 rounded object-contain"
+            />
           </button>
           <button
             className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"

@@ -50,7 +50,7 @@ function createHarness(overrides?: { health?: (port: number) => Promise<boolean>
     (
       _cmd: string,
       args: readonly string[],
-      opts: { shell: boolean; env: Record<string, string>; stdio: 'ignore' },
+      opts: { env: Record<string, string>; stdio: 'ignore' },
     ): ChildProcessLike => {
       const child = new MockChild(pidSeq++, args, opts.env);
       children.push(child);
@@ -59,6 +59,7 @@ function createHarness(overrides?: { health?: (port: number) => Promise<boolean>
   );
   const killTree = vi.fn(() => Promise.resolve(undefined));
   const launcher = new PiWebLauncher({
+    cliPath: '/fake/node_modules/pi-web-ui/bin/pi-web-ui.mjs',
     dataDir: '/fake/userData/pi/web-ui',
     cwd: '/fake/userData/pi/web-ui',
     spawnFn: spawn,
@@ -77,13 +78,14 @@ describe('PiWebLauncher', () => {
     const port = await h.launcher.launch();
 
     expect(port).toBe(45001);
-    // spawn 参数：固定包名（供应链锁定版本）
+    // spawn 参数：系统 node 直启预装依赖的 CLI（无 shell、无 npx 运行时下载），
+    // --no-browser 禁止 pi-web-ui 拉起系统默认浏览器（dev.39）
     expect(h.spawn).toHaveBeenCalledWith(
-      'npx',
-      ['-y', 'pi-web-ui@0.28.2'],
-      expect.objectContaining({ shell: true, stdio: 'ignore' }),
+      'node',
+      ['/fake/node_modules/pi-web-ui/bin/pi-web-ui.mjs', '--no-browser'],
+      expect.objectContaining({ stdio: 'ignore' }),
     );
-    // 目录经 env 注入（不经 shell 命令行）
+    // 目录经 env 注入（不经命令行）
     const env = h.children[0]!.spawnEnv;
     expect(env.PORT).toBe('45001');
     expect(env.PI_WEB_DATA_DIR).toBe('/fake/userData/pi/web-ui');

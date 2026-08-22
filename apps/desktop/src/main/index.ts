@@ -406,12 +406,29 @@ function registerIpcHandlers(): void {
   // pi 模块前端加号菜单三项：截图、上传文件、设置工作目录
   registerAiInputHandlers(ipcMain);
 
-  // pi 网页版启动器（阶段 1，docs/pi-web-评估.md）：系统 Node 子进程运行社区包
-  // pi-web-ui，与浏览器主进程完全隔离。数据目录落 userData/pi/web-ui（DD1 决策：
-  // pi 数据固定 userData/pi，不随用户数据目录迁移）。旧 ai-extension 对话 UI 保留
+  // pi 网页版启动器（阶段 1，docs/pi-web-评估.md）：系统 Node 子进程运行 pi-web-ui，
+  // 与浏览器主进程完全隔离。依赖已在 pnpm install 预装（apps/desktop dependencies，
+  // 运行时零下载）；--no-browser 禁止其拉起系统默认浏览器（dev.39：一律由 Urchin 打开）。
+  // 数据目录落 userData/pi/web-ui（DD1 决策）。旧 ai-extension 对话 UI 保留
   // （urchin://ai 页已切换为启动器视图，回退时恢复渲染 AiChatView 即可）。
+  // CLI 入口解析：开发态在 apps/desktop/node_modules；打包态 node_modules 经 asarUnpack
+  // 移至 app.asar.unpacked（外部系统 node 无法读取 asar 内文件，见 electron-builder.yml）。
+  const piWebCliPathInAsar = join(
+    app.getAppPath(),
+    'node_modules',
+    'pi-web-ui',
+    'bin',
+    'pi-web-ui.mjs',
+  );
+  const piWebCliPath = app.isPackaged
+    ? piWebCliPathInAsar.replace('app.asar', 'app.asar.unpacked')
+    : piWebCliPathInAsar;
+  if (!existsSync(piWebCliPath)) {
+    log.error('pi-web-ui CLI not found (依赖未安装？请运行 pnpm install)', { piWebCliPath });
+  }
   const piWebDataDir = join(startupUserDataPath, PI_DIR_NAME, 'web-ui');
   piWebLauncher = createPiWebLauncher({
+    cliPath: piWebCliPath,
     dataDir: piWebDataDir,
     cwd: piWebDataDir,
   });

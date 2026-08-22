@@ -7,14 +7,14 @@
  *
  * 路径：
  * 1. 启动整个 Electron 应用（真实构建产物，不 mock）
- * 2. 左侧栏「AI 助手」入口 → urchin://ai 启动器标签页
- * 3. 点击「启动 pi 网页」→ piWeb.launch（系统 Node 子进程 npx pi-web-ui）
- * 4. 启动器进入 running；新标签页加载 pi 网页（标题含 pi-web-ui）
- * 5. 服务经 HTTP 探活 200
+ * 2. 左侧栏「AI 助手」入口 → urchin://ai 启动器标签页（dev.39 一键直达：进入即自动启动）
+ * 3. 首次运行确认第三方来源说明 → 确认后自动启动（依赖预装、系统 Node 直启、--no-browser）
+ * 4. piWeb.status 进入 running；新标签页加载 pi 网页（标题含 pi-web-ui）
+ * 5. 服务经 HTTP 探活 200；启动过程不弹系统默认浏览器（--no-browser）
  * 6. 关闭应用 → performCleanup 终止子进程树 → 端口随即不可达（与主项目同生共死）
  *
- * 前置：需已构建 dist/main、dist/preload、dist/renderer（CI/本地先跑 build）。
- * 超时放宽到 180s：npx 首次拉包（冷缓存）可能较慢，npm 缓存命中时通常数秒。
+ * 前置：需已构建 dist/main、dist/preload、dist/renderer（CI/本地先跑 build）+
+ * pnpm install（pi-web-ui 依赖预装，运行时零下载）。
  */
 import {
   test,
@@ -83,14 +83,20 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     test.setTimeout(180_000);
     const { electronApp, window } = await launchApp();
 
-    // 1. 左侧栏「AI 助手」→ urchin://ai 启动器标签页
+    // 1. 左侧栏「AI 助手」→ urchin://ai 启动器标签页（dev.39 一键直达：进入即自动启动）
     await window.getByRole('button', { name: 'AI 助手' }).click();
-    const startBtn = window.getByRole('button', { name: /启动 pi 网页/ });
-    await startBtn.waitFor({ state: 'visible', timeout: 15_000 });
-    await expect(window.getByText('服务未运行')).toBeVisible();
 
-    // 2. 点击启动：主进程 piWeb.launch → 系统 Node 子进程运行 pi-web-ui
-    await startBtn.click();
+    // 2. 首次运行需确认第三方来源说明（确认后立即自动启动）。
+    //    注意：确认标记存于主窗口 localStorage，而 DD1 布局下 sessionData 分区
+    //    （<软件根>/data/cookies）不随测试临时 userData 变化——说明可能已被
+    //    此前运行确认过而不再弹出，两条路径都要兼容。
+    const ackBtn = window.getByRole('button', { name: /我已知晓/ });
+    try {
+      await ackBtn.waitFor({ state: 'visible', timeout: 5_000 });
+      await ackBtn.click();
+    } catch {
+      // 已确认过：autoStart 直接生效，无需确认
+    }
 
     // 3. 轮询 piWeb.status（渲染层真实 preload→IPC 链路）直到 running，取得入口 URL。
     //    注意：就绪后 pi 标签被创建并激活，启动器视图随之卸载——「运行中」文本不可作为等待目标；

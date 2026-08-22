@@ -38,15 +38,26 @@ const NOTICE_ACK_KEY = 'urchin.pi-web.notice-ack-v1';
 export interface PiWebLauncherViewProps {
   /** 打开 pi 网页（App 层新开标签页加载 URL） */
   readonly onOpenUrl: (url: string) => void;
+  /**
+   * 一键直达（dev.39 用户决策）：入口按钮点开即自动启动（无需再点「启动」按钮）。
+   * 首次运行仍需经第三方来源说明确认（「我已知晓」后立即自动启动）。
+   */
+  readonly autoStart?: boolean;
 }
 
-export function PiWebLauncherView({ onOpenUrl }: PiWebLauncherViewProps) {
+export function PiWebLauncherView({ onOpenUrl, autoStart = false }: PiWebLauncherViewProps) {
   const [snapshot, setSnapshot] = useState<PiWebSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [noticeVisible, setNoticeVisible] = useState(
     () => localStorage.getItem(NOTICE_ACK_KEY) !== '1',
   );
+  /** 第三方来源说明是否已确认（autoStart 的放行条件） */
+  const [noticeAcked, setNoticeAcked] = useState(
+    () => localStorage.getItem(NOTICE_ACK_KEY) === '1',
+  );
+  /** autoStart 是否已触发过（每次挂载只自动启动一次，避免 error 后死循环重启） */
+  const autoStartedRef = useRef(false);
   /** 轮询定时器（starting 期间 1.2s 查一次状态） */
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -109,6 +120,15 @@ export function PiWebLauncherView({ onOpenUrl }: PiWebLauncherViewProps) {
     }
   }, [refreshStatus]);
 
+  // 一键直达：状态就绪 + 说明已确认 + 尚未触发过 → 自动启动（每次挂载一次）
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current) return;
+    if (snapshot?.state !== 'stopped') return;
+    if (!noticeAcked || busy) return;
+    autoStartedRef.current = true;
+    void handleStart();
+  }, [autoStart, snapshot, noticeAcked, busy, handleStart]);
+
   const state = snapshot?.state ?? 'stopped';
   const isRunning = state === 'running';
   const isStarting = state === 'starting';
@@ -146,6 +166,7 @@ export function PiWebLauncherView({ onOpenUrl }: PiWebLauncherViewProps) {
               onClick={() => {
                 localStorage.setItem(NOTICE_ACK_KEY, '1');
                 setNoticeVisible(false);
+                setNoticeAcked(true);
               }}
             >
               我已知晓
@@ -160,7 +181,7 @@ export function PiWebLauncherView({ onOpenUrl }: PiWebLauncherViewProps) {
           {isStarting && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
           <span className="text-text-secondary">
             {state === 'stopped' && '服务未运行'}
-            {isStarting && '正在启动（首次需下载依赖，可能需要几分钟）…'}
+            {isStarting && '正在启动…'}
             {isRunning && (
               <>
                 运行中 · 端口 {snapshot?.port}

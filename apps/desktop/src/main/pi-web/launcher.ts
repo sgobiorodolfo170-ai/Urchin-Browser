@@ -2,15 +2,19 @@
  * pi 网页版启动器（阶段 1）· 系统 Node 子进程生命周期管理
  *
  * 职责：
- * 1. 懒启动社区包 pi-web-ui（`npx -y pi-web-ui@0.28.2`）于独立系统 Node 子进程
+ * 1. 以系统 Node 直启 pi-web-ui CLI（依赖已在 pnpm install 时预装，运行时零下载）
  * 2. 随机空闲端口探测 + 健康检查轮询，就绪后返回入口 URL
  * 3. 进程树终止（Windows taskkill /T /F；类 Unix kill 进程组）
  * 4. 状态机：stopped → starting → running / error，支持崩溃后重启
  *
+ * 启动方式（dev.39 用户决策）：
+ * - 包 pi-web-ui 以精确版本钉在 apps/desktop dependencies（供应链单一真源），
+ *   `--no-browser` 禁用其启动时自动拉起系统默认浏览器（本项目内一律由 Urchin 打开）
+ * - spawn 系统 `node <cliPath>`，不走 npx（npx 会运行时下载依赖）
+ *
  * 隔离设计（docs/pi-web-评估.md）：
  * - pi 及其 Web UI 全部运行在系统 Node 子进程，Electron 主进程零 pi 依赖
  * - 服务仅绑定 127.0.0.1；子进程崩溃不影响浏览器
- * - 已知限制：社区包自身无 token 鉴权（阶段 2 自研服务内置），以随机端口 + 随退出关闭缓解
  *
  * 数据目录（DD1 决策对齐）：pi 相关数据固定落 userData/pi，不随用户数据目录迁移。
  */
@@ -21,19 +25,13 @@ import { createLogger } from '@urchin/logger';
 
 const log = createLogger('pi-web-launcher');
 
-/**
- * 固定第三方包精确版本（供应链约束：AGENTS.md §九 依赖引入审查，
- * 审查记录见 docs/pi-web-评估.md；升级须重新审查并同步该文档）。
- */
-const PI_WEB_UI_PACKAGE = 'pi-web-ui@0.28.2';
-
 /** 健康检查轮询间隔 */
 const HEALTH_POLL_INTERVAL_MS = 1_000;
 /**
- * 启动超时：npx 首次拉包（约 2MB + node-pty 原生模块）在慢网络下可能需要数分钟，
- * 给足余量；后续启动走 npm 缓存，通常数秒内就绪。
+ * 启动超时：依赖已预装（node_modules 内直启，无网络下载），冷启动通常数秒；
+ * 给足余量覆盖首次初始化数据目录 / 杀软扫描等情况。
  */
-const HEALTH_TIMEOUT_MS = 180_000;
+const HEALTH_TIMEOUT_MS = 60_000;
 
 /** 子进程最小接口（测试可注入 mock） */
 export interface ChildProcessLike {
@@ -43,11 +41,11 @@ export interface ChildProcessLike {
   on(event: 'error', listener: (err: Error) => void): unknown;
 }
 
-/** 进程工厂签名（node:child_process.spawn 的可注入子集） */
+/** 进程工厂签名（node:child_process.spawn 的可注入子集；node.exe 无需 shell） */
 export type SpawnFn = (
   command: string,
   args: readonly string[],
-  options: { shell: boolean; env: Record<string, string>; stdio: 'ignore' },
+  options: { env: Record<string, string>; stdio: 'ignore' },
 ) => ChildProcessLike;
 
 /** 状态机状态 */
@@ -64,6 +62,8 @@ export interface PiWebStatusSnapshot {
 
 /** 启动器选项 */
 export interface PiWebLauncherOptions {
+  /** pi-web-ui CLI 入口脚本绝对路径（node_modules 内 bin/pi-web-ui.mjs；打包态指向 asar.unpacked） */
+  readonly cliPath: string;
   /** pi-web-ui 数据目录（会话/配置落盘；建议 userData/pi/web-ui，DD1） */
   readonly dataDir: string;
   /** agent 工作目录（PI_WEB_CWD） */
@@ -82,11 +82,11 @@ export interface PiWebLauncherOptions {
   readonly healthPollIntervalMs?: number;
 }
 
-/** 默认进程工厂：shell:true 以兼容 Windows 的 npx.cmd */
+/** 默认进程工厂：直启 node.exe（经 PATH 解析，无需 shell——cliPath 含空格安全） */
 function defaultSpawn(
   command: string,
   args: readonly string[],
-  options: { shell: boolean; env: Record<string, string>; stdio: 'ignore' },
+  options: { env: Record<string, string>; stdio: 'ignore' },
 ): ChildProcessLike {
   return spawn(command, [...args], options);
 }
@@ -220,16 +220,15 @@ export class PiWebLauncher {
     this.port = port;
 
     log.info('spawning pi-web-ui', {
-      package: PI_WEB_UI_PACKAGE,
+      cliPath: this.opts.cliPath,
       port,
       dataDir: this.opts.dataDir,
     });
 
     let exited = false;
     let exitCode: number | null = null;
-    const child = this.opts.spawnFn('npx', ['-y', PI_WEB_UI_PACKAGE], {
-      shell: true,
-      // 目录经环境变量传递（不经 shell 命令行，路径含空格安全）
+    const child = this.opts.spawnFn('node', [this.opts.cliPath, '--no-browser'], {
+      // 目录经环境变量传递（不经命令行，路径含空格安全）
       env: {
         ...process.env,
         PORT: String(port),
@@ -253,15 +252,15 @@ export class PiWebLauncher {
     child.on('error', (err) => {
       exited = true;
       this.state = 'error';
-      this.lastError = `无法启动 npx: ${err.message}`;
-      log.error('spawn npx failed', { error: err.message });
+      this.lastError = `无法启动 node（${err.message}）。请确认系统已安装 Node.js ≥22.19 并在 PATH 中`;
+      log.error('spawn node failed', { error: err.message });
     });
 
     const deadline = Date.now() + this.opts.healthTimeoutMs;
     while (Date.now() < deadline) {
       if (exited) {
         return this.failLaunch(
-          `pi-web-ui 启动即退出（code=${String(exitCode)}）。请检查系统 Node/npm 环境与网络（npx 首次拉包需联网）`,
+          `pi-web-ui 启动即退出（code=${String(exitCode)}）。请检查系统 Node 环境（需 ≥22.19，可用 node --version 验证）与依赖安装（pnpm install）`,
         );
       }
       if (await this.opts.healthCheckFn(port)) {

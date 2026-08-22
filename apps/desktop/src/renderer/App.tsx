@@ -782,20 +782,63 @@ export function App() {
     }
   }, [tabs, activeTabId]);
 
-  // 打开 AI 标签页：如果已有 AI 标签页则激活它，不重复创建
+  // 打开 pi 模块（dev.39 一键直达）：pi 已运行 → 直接开/复用 pi 网页标签；
+  // 未运行 → 打开启动器标签页（挂载即自动启动并跳转，无需再点「启动」按钮）。
   // 阶段2 解耦：AI 模块作为独立标签页（urchin://ai），不再融合到地址栏
   const handleOpenAi = useCallback(async () => {
+    // 1. 查询 pi 服务状态：running 则直达 pi 网页标签（toggle 语义：已激活则关闭标签）
+    let piUrl: string | null = null;
+    try {
+      const s = (await window.urchin.invoke('piWeb.status', {})) as {
+        state?: string;
+        url?: string;
+      };
+      if (s.state === 'running' && typeof s.url === 'string') piUrl = s.url;
+    } catch {
+      // 状态查询失败（如 IPC 未就绪）：回落到启动器页展示错误
+    }
+    if (piUrl) {
+      const piTab = tabs.find((t) => t.url === piUrl);
+      if (piTab) {
+        if (piTab.id === activeTabId) {
+          try {
+            await window.urchin.invoke('tab.close', { tabId: piTab.id });
+          } catch (e) {
+            console.error('Failed to close pi tab:', e);
+          }
+        } else {
+          try {
+            await window.urchin.invoke('tab.setActive', { tabId: piTab.id });
+          } catch (e) {
+            console.error('Failed to activate pi tab:', e);
+          }
+        }
+        return;
+      }
+      try {
+        await window.urchin.invoke('tab.create', {
+          windowId: await getCurrentWindowId(),
+          url: piUrl,
+          active: true,
+        });
+      } catch (e) {
+        console.error('Failed to open pi tab:', e);
+      }
+      return;
+    }
+
+    // 2. pi 未运行：打开/复用启动器标签页（进入即自动启动）
     const existing = tabs.find((t) => t.url?.startsWith('urchin://ai'));
     if (existing) {
       if (existing.id === activeTabId) {
-        // 当前 AI 页已激活：关闭它（toggle 行为）
+        // 当前启动器页已激活：关闭它（toggle 行为）
         try {
           await window.urchin.invoke('tab.close', { tabId: existing.id });
         } catch (e) {
           console.error('Failed to close ai tab:', e);
         }
       } else {
-        // AI 页存在但未激活：激活它
+        // 启动器页存在但未激活：激活它
         try {
           await window.urchin.invoke('tab.setActive', { tabId: existing.id });
         } catch (e) {
@@ -804,7 +847,7 @@ export function App() {
       }
       return;
     }
-    // 没有 AI 标签页，创建新的
+    // 没有启动器标签页，创建新的
     try {
       await window.urchin.invoke('tab.create', {
         windowId: await getCurrentWindowId(),
@@ -1359,7 +1402,7 @@ export function App() {
               /* AI 页：pi 网页版启动器（阶段 1，docs/pi-web-评估.md）——pi 对话迁移至
                * 独立系统 Node 子进程的 pi-web-ui 网页,本页仅作入口（启动/停止/打开）。
                * 旧对话视图 AiChatView 保留于 @urchin/ai-extension,回退时恢复渲染即可。 */
-              <PiWebLauncherView onOpenUrl={(url) => void handleOpenPiWebUrl(url)} />
+              <PiWebLauncherView autoStart onOpenUrl={(url) => void handleOpenPiWebUrl(url)} />
             ) : isNewTab || tabs.length === 0 ? (
               /* 主页：React 组件渲染（内嵌，无法自由更换）。
                * 关闭最后一个标签后 activeTab 为空，此时同样回落到主页 */

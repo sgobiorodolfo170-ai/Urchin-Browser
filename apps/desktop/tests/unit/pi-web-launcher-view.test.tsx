@@ -125,4 +125,44 @@ describe('PiWebLauncherView', () => {
     await screen.findByRole('button', { name: /启动 pi 网页/ });
     expect(screen.queryByText(/我已知晓/)).toBeNull();
   });
+
+  it('autoStart should launch automatically when notice already acknowledged', async () => {
+    localStorage.setItem('urchin.pi-web.notice-ack-v1', '1');
+    mockStatus('stopped');
+    render(<PiWebLauncherView onOpenUrl={onOpenUrl} autoStart />);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('piWeb.launch', {});
+    });
+    await waitFor(() => {
+      expect(onOpenUrl).toHaveBeenCalledWith('http://127.0.0.1:45001');
+    });
+  });
+
+  it('autoStart should wait for notice acknowledgement before launching', async () => {
+    mockStatus('stopped');
+    render(<PiWebLauncherView onOpenUrl={onOpenUrl} autoStart />);
+
+    // 说明未确认前不自动启动
+    await screen.findByRole('button', { name: /启动 pi 网页/ });
+    expect(mockInvoke).not.toHaveBeenCalledWith('piWeb.launch', {});
+
+    // 确认后立即自动启动并打开
+    fireEvent.click(await screen.findByRole('button', { name: /我已知晓/ }));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('piWeb.launch', {});
+    });
+    await waitFor(() => {
+      expect(onOpenUrl).toHaveBeenCalledWith('http://127.0.0.1:45001');
+    });
+  });
+
+  it('should not auto-launch without autoStart prop', async () => {
+    localStorage.setItem('urchin.pi-web.notice-ack-v1', '1');
+    mockStatus('stopped');
+    render(<PiWebLauncherView onOpenUrl={onOpenUrl} />);
+
+    await screen.findByRole('button', { name: /启动 pi 网页/ });
+    expect(mockInvoke).not.toHaveBeenCalledWith('piWeb.launch', {});
+  });
 });

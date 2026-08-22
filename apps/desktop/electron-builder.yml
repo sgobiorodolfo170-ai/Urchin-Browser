@@ -44,6 +44,12 @@ nsis:
 # 原生模块重新构建
 npmRebuild: true
 
+# node_modules 整体移出 asar：pi-web-ui 由外部「系统 Node」子进程直启（pi-web 启动器），
+# 系统 Node 无法读取 asar 内文件——pi-web-ui 及其运行时依赖（ws、node-pty 等）必须是
+# asar 外的实体文件；better-sqlite3 等原生模块同样受益（.node 本就无法从 asar 加载）。
+asarUnpack:
+  - '**/node_modules/**'
+
 # v0.1 暂无代码签名（CON-07：v0.1 不引入签名基础设施依赖）
 # v0.4+ 引入代码签名
 

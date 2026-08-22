@@ -79,3 +79,21 @@
 ## 四、阶段 2 方向(已获计划批准,另立迭代实施)
 
 自研 `apps/pi-web`(Vite+React,消费 pi 原生类型)+ `packages/pi-web-host`(Electron utilityProcess 内 vendored pi SDK `AgentSession` + WebSocket + 随机 token,数据落 `userData/pi`);同时满足 ADR-004 进程隔离与工具恢复条件。CBOR 官方栈 vs 轻量 JSON-over-WS 于开工时决策留痕。
+
+## 五、依赖 containment 原则(2026-08-22 用户四次决策,dev.42)
+
+> 用户原则:**pi 为本项目内模块,所有依赖随本项目构建/打包/安装,不可单独全局安装;
+> 卸载本项目即同时卸载 pi。**
+
+落实措施:
+- **npm 前缀沙箱**:launcher spawn env 注入 `npm_config_prefix=<userData>/pi/npm-global`
+  ——pi-web-ui 进程树内任何 `npm i -g`(如其「安装 pi agent」引导按钮,该按钮在
+  auth.json 无凭据时出现,实为面向独立用户的 `npm i -g @earendil-works/pi-coding-agent`)
+  都只落项目沙箱目录,系统全局不可能再被写入。
+- **卸载即全卸**:electron-builder nsis `deleteAppDataOnUninstall: true`(cookies 与
+  pi 全部数据在 AppData\Roaming\<app>;浏览器主数据在软件根 data/,随安装目录删除)。
+- **事故记录**:dev.41→42 之间用户误点该按钮,`@earendil-works/pi-coding-agent@0.84.2`
+  曾全局安装(140 包 + pi/pi.cmd/pi.ps1 命令);已 `npm uninstall -g` 并核验清零。
+- **已知边界**:无 Git Bash 的机器上 pi-web-ui 会后台下载 busybox 到 `~/.pi-web/bin`
+  (其 windowsBashDir 硬编码,无环境变量可覆盖;本机有 Git Bash 不触发)。根治待
+  阶段 2 自研服务(届时该第三方包整体退场)。

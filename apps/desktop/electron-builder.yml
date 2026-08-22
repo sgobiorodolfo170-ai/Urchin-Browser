@@ -40,6 +40,10 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Urchin Browser
+  # 卸载即全卸（dev.42 用户原则）：移除 AppData\Roaming\<app>——cookies 与 pi 模块
+  # 全部数据（pi/agent 会话、pi/npm-global 沙箱）都在其中；浏览器主数据在软件根
+  # data/（DD1），随安装目录删除。
+  deleteAppDataOnUninstall: true
 
 # 原生模块重新构建
 npmRebuild: true

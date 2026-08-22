@@ -74,6 +74,13 @@ export interface PiWebLauncherOptions {
    * 不设则 pi 默认落全局 ~/.pi，污染用户主目录；建议 userData/pi/agent（DD1 对齐）。
    */
   readonly agentDir?: string;
+  /**
+   * npm 全局前缀沙箱（dev.42 用户原则：pi 依赖全部随本项目，禁止系统级全局安装）。
+   * 注入 env npm_config_prefix 后，pi-web-ui 进程树内的一切 `npm i -g`
+   * （如其「安装 pi agent」按钮）都落在此目录而非系统全局——卸载应用即随
+   * userData 整体移除。建议 userData/pi/npm-global。
+   */
+  readonly npmGlobalPrefixDir?: string;
   /** 进程工厂（默认 node spawn，测试注入 mock） */
   readonly spawnFn?: SpawnFn;
   /** 进程树终止（默认 Windows taskkill /T /F，测试注入 mock） */
@@ -265,6 +272,10 @@ export class PiWebLauncher {
         PI_WEB_CWD: this.opts.cwd,
         // 会话库/agent 配置根：未设则 pi 落全局 ~/.pi（污染用户主目录，DD1 不符）
         ...(this.opts.agentDir ? { PI_CODING_AGENT_DIR: this.opts.agentDir } : {}),
+        // npm 沙箱（dev.42）：进程树内任何 -g 安装改落项目目录，杜绝写系统全局
+        ...(this.opts.npmGlobalPrefixDir
+          ? { npm_config_prefix: this.opts.npmGlobalPrefixDir }
+          : {}),
       },
       stdio: 'ignore',
     });

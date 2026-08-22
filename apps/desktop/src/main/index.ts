@@ -430,11 +430,15 @@ function registerIpcHandlers(): void {
   // pi agent 目录（会话库/agent 配置根，dev.41）：不设则 pi 落全局 ~/.pi——
   // 既污染用户主目录（含 E2E 临时会话遗留），也违背 DD1「pi 数据固定 userData/pi」
   const piWebAgentDir = join(startupUserDataPath, PI_DIR_NAME, 'agent');
+  // npm 全局前缀沙箱（dev.42 用户原则：pi 依赖全部随本项目，禁止系统级全局安装）：
+  // pi-web-ui 内任何 `npm i -g`（如「安装 pi agent」按钮）都落此目录，卸载即整体移除
+  const piWebNpmGlobalDir = join(startupUserDataPath, PI_DIR_NAME, 'npm-global');
   piWebLauncher = createPiWebLauncher({
     cliPath: piWebCliPath,
     dataDir: piWebDataDir,
     cwd: piWebDataDir,
     agentDir: piWebAgentDir,
+    npmGlobalPrefixDir: piWebNpmGlobalDir,
   });
   registerPiWebHandlers(ipcMain, piWebLauncher);
 

@@ -68,6 +68,7 @@ function createHarness(overrides?: {
     dataDir: '/fake/userData/pi/web-ui',
     cwd: '/fake/userData/pi/web-ui',
     agentDir: '/fake/userData/pi/agent',
+    npmGlobalPrefixDir: '/fake/userData/pi/npm-global',
     spawnFn: spawn,
     killTreeFn: killTree,
     portPickerFn: () => Promise.resolve(45001),
@@ -102,6 +103,8 @@ describe('PiWebLauncher', () => {
     expect(env.PI_WEB_DATA_DIR).toBe('/fake/userData/pi/web-ui');
     expect(env.PI_WEB_CWD).toBe('/fake/userData/pi/web-ui');
     expect(env.PI_CODING_AGENT_DIR).toBe('/fake/userData/pi/agent');
+    // dev.42：npm 沙箱前缀——进程树内 -g 安装只落项目目录，杜绝写系统全局
+    expect(env.npm_config_prefix).toBe('/fake/userData/pi/npm-global');
 
     const s = h.launcher.status();
     expect(s.state).toBe('running');

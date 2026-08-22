@@ -44,6 +44,21 @@
   - 扬弃:内嵌终端与 Git 面板(浏览器主项目定位外的重能力,阶段 2 不做)
   - 对齐官方:`pi-client` + WebSocket 直连、快照权威状态、pi 原生事件形状透传(不手抄类型)
 
+## 三·补、运行方式澄清与整项目 E2E(2026-08-22 用户二次决策)
+
+> 用户澄清:此前的「仅限 Urchin 打开」表述有误——**并非要排除其他浏览器、也不与当前浏览器强绑定**;
+> 真实诉求是:「运行」= 运行**整个项目**(主浏览器 + pi 模块一体),pi 模块通过 Urchin 主项目的入口直接启动,
+> 而不是在应用外手动 npx 单独拉起、再拿别的浏览器去看。据此**不做**访问排除/鉴权代理类机制。
+
+- 整项目运行链路已由 E2E 实测闭环(`tests/e2e/pi-web-launcher.spec.ts`,dev.38):
+  启动真实 Electron 应用 → 左侧栏「AI 助手」→ 启动器标签页 → 点「启动 pi 网页」→
+  主进程拉起 pi-web-ui 子进程 → pi 网页以标签页在 Urchin 内打开(HTTP 200)→
+  关闭应用后子进程树随 performCleanup 终止(端口不可达)——与主项目同生共死。
+- 顺带修复:渲染层 CSP `img-src` 增加 `http://127.0.0.1`(本机回环服务图标源),
+  否则 pi 标签的 favicon 被主窗口 CSP 拦截。
+- 已知事项(与本次改动无关的既有测试腐化,待另行修复):
+  `perf.spec.ts` 仍指向已移除的「展开右侧栏」按钮;`tab-order-repro.spec.ts` 依赖展开态标题文本。
+
 ## 四、阶段 2 方向(已获计划批准,另立迭代实施)
 
 自研 `apps/pi-web`(Vite+React,消费 pi 原生类型)+ `packages/pi-web-host`(Electron utilityProcess 内 vendored pi SDK `AgentSession` + WebSocket + 随机 token,数据落 `userData/pi`);同时满足 ADR-004 进程隔离与工具恢复条件。CBOR 官方栈 vs 轻量 JSON-over-WS 于开工时决策留痕。

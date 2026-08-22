@@ -2,7 +2,7 @@
  * pi 设置对话框
  *
  * 职责：
- * 1. 提供模型提供商（Provider）配置 UI：从 pi 内置 39 个 provider 中选择，或选择「自定义」OpenAI 兼容 provider
+ * 1. 提供模型提供商（Provider）配置 UI：从 pi 内置 41 个 provider 中选择，或选择「自定义」OpenAI 兼容 provider
  * 2. 配置项：Provider / API Key / Base URL / Model
  * 3. 通过 settings.set IPC 持久化到 SQLite（key: ai.providerId / ai.apiKey / ai.baseUrl / ai.model）
  * 4. 保存后派发 urchin:settings-changed 事件，AI 模块监听后刷新配置

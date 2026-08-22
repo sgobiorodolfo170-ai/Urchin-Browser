@@ -2,13 +2,14 @@
  * pi 内置 Provider 元信息（方案 A 适配层）
  *
  * 职责：
- * 返回 pi 仓库内置 39 个 provider 的静态元信息（id/name/baseUrl/apiKeyEnvVar/supportsOAuth），
+ * 返回 pi 仓库内置 41 个 provider 的静态元信息（id/name/baseUrl/apiKeyEnvVar/supportsOAuth），
  * 供渲染层 pi 设置对话框的 provider 下拉选择使用。
  *
  * 设计理由：
  * 不直接调用 pi 的 `builtinProviders()` 工厂，因为那会触发所有 provider 子模块的加载
  * （包括各 provider 的 models 列表和 lazy API 包装器）。本模块维护一份精简的元信息表，
- * 字段从 vendor/pi/packages/ai/src/providers/*.ts 和 env-api-keys.ts 中提取。
+ * 字段从 vendor/pi/packages/ai/src/providers/*.ts 和 src/env-api-keys.ts 中提取
+ * （0.84.x 起 env-api-keys.ts 从 providers/ 目录移至 src/ 根）。
  *
  * 维护：当 pi 升级新增 provider 时，需同步在此添加条目。
  * 可通过 `pnpm run check-pi-providers`（如有）对照 vendor/pi/packages/ai/src/providers/all.ts 校验。
@@ -30,6 +31,13 @@ const PI_PROVIDERS: readonly PiProviderInfo[] = [
     id: 'azure-openai-responses',
     name: 'Azure OpenAI Responses',
     apiKeyEnvVar: 'AZURE_OPENAI_API_KEY',
+    supportsOAuth: false,
+  },
+  {
+    id: 'baseten',
+    name: 'Baseten',
+    baseUrl: 'https://inference.baseten.co/v1',
+    apiKeyEnvVar: 'BASETEN_API_KEY',
     supportsOAuth: false,
   },
   { id: 'cerebras', name: 'Cerebras', apiKeyEnvVar: 'CEREBRAS_API_KEY', supportsOAuth: false },
@@ -128,6 +136,13 @@ const PI_PROVIDERS: readonly PiProviderInfo[] = [
     id: 'qwen-token-plan-cn',
     name: 'Qwen Token Plan (CN)',
     apiKeyEnvVar: 'QWEN_TOKEN_PLAN_CN_API_KEY',
+    supportsOAuth: false,
+  },
+  {
+    id: 'qwen-token-plan-individual',
+    name: 'Qwen Token Plan Individual',
+    baseUrl: 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1',
+    apiKeyEnvVar: 'QWEN_TOKEN_PLAN_API_KEY',
     supportsOAuth: false,
   },
   { id: 'radius', name: 'Radius', apiKeyEnvVar: 'RADIUS_API_KEY', supportsOAuth: true },

@@ -29,7 +29,7 @@ import { bridgeAgentToPort } from './pi-event-bridge';
 
 /**
  * pi-agent-factory 及其依赖（@earendil-works/pi-agent-core / pi-ai / pi-coding-agent）
- * 体积庞大（含完整模型目录 + 39 个 provider 适配器 + coding 工具集），
+ * 体积庞大（含完整模型目录 + 41 个 provider 适配器 + coding 工具集），
  * 在主进程启动时静态加载会严重拖慢首屏。
  *
  * 采用动态 import() 延迟到 ai.agent.start 首次调用时才加载，
@@ -116,7 +116,7 @@ export function registerAiHandlers(
   const activeStreams = new Map<string, ActiveStream>();
 
   // ── pi.providers：列出 pi 内置 Provider 元信息（方案 A 适配层，用于 pi 设置对话框） ──
-  // 与 provider.list 不同：返回 pi 仓库内置 39 个 provider 的静态元信息（id/name/baseUrl/apiKeyEnvVar），
+  // 与 provider.list 不同：返回 pi 仓库内置 41 个 provider 的静态元信息（id/name/baseUrl/apiKeyEnvVar），
   // 不涉及 Urchin 子进程 Provider 注册表。对话框根据本列表展示可选 provider。
   registerHandler(ipcMain, 'pi.providers', () => {
     log.info('pi.providers');

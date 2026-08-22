@@ -205,7 +205,7 @@ export function createHostFromUrchin(): BrowserHostApi {
         const u = getUrchin();
         // 走 ai.agent.start（pi 适配层）而非 ai.chat.start（orchestrator + provider child）。
         // 原因：ai.chat.start 依赖 ProviderRegistry，仅注册了 'openai-compatible' 一个 provider；
-        // 当用户在 pi 设置对话框中选择 pi 内置 provider（如 'openai'/'anthropic' 等 39 个）时，
+        // 当用户在 pi 设置对话框中选择 pi 内置 provider（如 'openai'/'anthropic' 等 41 个）时，
         // ai.chat.start 会报 "Provider not registered"。
         // ai.agent.start 走 pi-agent-factory + pi-ai streamSimple 路径，支持所有 pi 内置 provider，
         // 且 StreamMessage 格式与 port 下发机制与 ai.chat.start 完全一致，渲染层无需改动。

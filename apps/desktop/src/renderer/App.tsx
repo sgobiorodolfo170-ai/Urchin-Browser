@@ -16,7 +16,7 @@
  *
  * 事件订阅：通过 window.urchin.on('tab:event', ...) 接收主进程推送的 tab 状态变更
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Plus,
   X,
@@ -39,14 +39,15 @@ import {
 } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { Omnibox } from './omnibox/omnibox';
-import { AiChatView } from '@urchin/ai-extension';
+// 回退提示：旧对话视图 AiChatView(@urchin/ai-extension)在阶段 1 启动器切换时移出渲染树,
+// 恢复时重新 import 并在 isAiTab 分支渲染即可（配套:const host = useMemo(() => createHostFromUrchin(), [])）
+import { PiWebLauncherView } from './pi-web/launcher-view';
 import { SettingsPage } from './settings/SettingsPage';
 import { NewTabPage } from './home/NewTabPage';
 import { FileViewer } from './files/FileViewer';
 import { lookupBuiltinSite, builtinIconUrl } from './home/site-directory-lookup';
 import { PiSettingsDialog } from './omnibox/pi-settings-dialog';
 import { useTheme } from './theme/theme-provider';
-import { createHostFromUrchin } from './host-impl';
 import type { Suggestion } from './omnibox/types';
 import { buildSuggestions } from './omnibox/build-suggestions';
 import { cn } from './lib/utils';
@@ -561,10 +562,6 @@ export function App() {
     }
   }, [activeTabId]);
 
-  // 阶段5：Host API 实例（单例），供 AI 模块通过标准接口访问浏览器核心
-  // createHostFromUrchin 仅做接口适配，无副作用，安全地在 render 期间构造一次
-  const host = useMemo(() => createHostFromUrchin(), []);
-
   // 右侧边栏悬停展开延迟（ms，从设置读取，默认 300）
   const [sidebarHoverDelay, setSidebarHoverDelay] = useState<number>(300);
   /** 右侧边栏悬停自动展开开关（设置 ui.rightSidebarAutoExpand，默认 true） */
@@ -818,6 +815,22 @@ export function App() {
       console.error('Failed to open ai tab:', e);
     }
   }, [tabs, activeTabId]);
+
+  /**
+   * 打开 pi 网页版 URL（阶段 1 启动器视图回调）：新开标签页加载。
+   * 启动器标签页（urchin://ai）保持打开,随时可返回停止服务。
+   */
+  const handleOpenPiWebUrl = useCallback(async (url: string) => {
+    try {
+      await window.urchin.invoke('tab.create', {
+        windowId: await getCurrentWindowId(),
+        url,
+        active: true,
+      });
+    } catch (e) {
+      console.error('Failed to open pi web tab:', e);
+    }
+  }, []);
 
   const handleCloseTab = useCallback(async (tabId: number) => {
     try {
@@ -1222,10 +1235,6 @@ export function App() {
 
   // 内部页面（settings / ai / newtab / file-viewer）下，导航按钮无意义，禁用
   const isInternalPage = isSettingsTab || isAiTab || isNewTab || isFileViewerTab;
-  // AI 标签页关联的"上一个活跃网页 tab ID"：用于 AI 摘要功能
-  // 阶段2 简化：传入当前 activeTabId（即 AI 标签页 ID），AI 组件会自动处理
-  // 阶段3 重构时将通过 host.tabs.getActive() 获取真正的活跃网页 tab
-  const aiActiveTabId = activeTabId;
 
   // 按住侧边栏空白处拖动窗口（左/右两侧栏共用）
   const windowDrag = useWindowDrag();
@@ -1347,12 +1356,10 @@ export function App() {
               /* 设置页：React 组件渲染 */
               <SettingsPage />
             ) : isAiTab ? (
-              /* AI 页：React 组件渲染（独立标签页应用，通过 Host API 访问浏览器核心） */
-              <AiChatView
-                host={host}
-                activeTabId={aiActiveTabId}
-                onOpenPiSettings={() => setShowPiSettings(true)}
-              />
+              /* AI 页：pi 网页版启动器（阶段 1，docs/pi-web-评估.md）——pi 对话迁移至
+               * 独立系统 Node 子进程的 pi-web-ui 网页,本页仅作入口（启动/停止/打开）。
+               * 旧对话视图 AiChatView 保留于 @urchin/ai-extension,回退时恢复渲染即可。 */
+              <PiWebLauncherView onOpenUrl={(url) => void handleOpenPiWebUrl(url)} />
             ) : isNewTab || tabs.length === 0 ? (
               /* 主页：React 组件渲染（内嵌，无法自由更换）。
                * 关闭最后一个标签后 activeTab 为空，此时同样回落到主页 */

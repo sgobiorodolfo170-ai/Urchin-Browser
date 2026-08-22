@@ -37,6 +37,7 @@ import { DownloadManager, registerDownloadHandlers } from './downloads';
 import { registerAiHandlers } from './ai';
 import { registerAiInputHandlers } from './ai/input-handlers';
 import type { ProviderConfigStore } from './ai';
+import { createPiWebLauncher, registerPiWebHandlers, type PiWebLauncher } from './pi-web';
 import { registerPageContextHandlers } from './page-context';
 import { SummaryManager, registerSummaryHandlers } from './summary';
 import { registerFileHandlers, classifyFileKind } from './files';
@@ -273,6 +274,11 @@ let bookmarkPanel: BookmarkPanel | null = null;
  */
 let aiHandlersDispose: (() => void) | null = null;
 /**
+ * pi 网页版启动器（阶段 1）：系统 Node 子进程运行 pi-web-ui。
+ * 进程退出时 performCleanup 调用 dispose() 终止子进程树（taskkill /T /F）。
+ */
+let piWebLauncher: PiWebLauncher | null = null;
+/**
  * 全局 StorageLayer 引用（在 whenReady 中赋值）。
  * 退出时需调用 close() 以释放 better-sqlite3 原生句柄，
  * 避免进程退出后残留线程或 WAL 文件未 checkpoint。
@@ -399,6 +405,17 @@ function registerIpcHandlers(): void {
 
   // pi 模块前端加号菜单三项：截图、上传文件、设置工作目录
   registerAiInputHandlers(ipcMain);
+
+  // pi 网页版启动器（阶段 1，docs/pi-web-评估.md）：系统 Node 子进程运行社区包
+  // pi-web-ui，与浏览器主进程完全隔离。数据目录落 userData/pi/web-ui（DD1 决策：
+  // pi 数据固定 userData/pi，不随用户数据目录迁移）。旧 ai-extension 对话 UI 保留
+  // （urchin://ai 页已切换为启动器视图，回退时恢复渲染 AiChatView 即可）。
+  const piWebDataDir = join(startupUserDataPath, PI_DIR_NAME, 'web-ui');
+  piWebLauncher = createPiWebLauncher({
+    dataDir: piWebDataDir,
+    cwd: piWebDataDir,
+  });
+  registerPiWebHandlers(ipcMain, piWebLauncher);
 
   // M14 page context 域 handler（page.extract）
   registerPageContextHandlers(ipcMain, tabManager);
@@ -1174,6 +1191,17 @@ async function performCleanup(): Promise<void> {
         log.error('Failed to dispose AI handlers on quit', { error: String(e) });
       }
       aiHandlersDispose = null;
+    }
+
+    // 0.5 终止 pi-web-ui 子进程树（阶段 1 启动器）：await 确保 kill 信号发出
+    //     （taskkill /T /F）后再继续，避免 app 退出后遗留孤儿 node 进程。
+    if (piWebLauncher) {
+      try {
+        await piWebLauncher.dispose();
+      } catch (e) {
+        log.error('Failed to dispose piWeb launcher on quit', { error: String(e) });
+      }
+      piWebLauncher = null;
     }
 
     // 1. 清理 AI Provider 子进程（utility process）+ 定时器 + MessagePort

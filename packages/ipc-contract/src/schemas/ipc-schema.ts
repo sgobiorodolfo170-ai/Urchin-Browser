@@ -834,6 +834,58 @@ export const aiScreenshotResSchema = z.object({
 export type AiScreenshotRes = z.infer<typeof aiScreenshotResSchema>;
 
 // ============================================================================
+// piWeb.* —— pi 网页版启动器（阶段 1：系统 Node 子进程运行社区包 pi-web-ui）
+// ============================================================================
+
+/**
+ * piWeb.launch：启动（或复用已运行的）pi 网页服务并返回入口 URL。
+ *
+ * 架构（docs/pi-web-评估.md）：pi 及其 Web UI 全部运行在独立的系统 Node 子进程中
+ * （`npx -y pi-web-ui@0.28.2`），仅绑定 127.0.0.1 随机端口；Electron 主进程零 pi 依赖。
+ */
+export const piWebLaunchReqSchema = z.object({}).default({});
+export type PiWebLaunchReq = z.infer<typeof piWebLaunchReqSchema>;
+
+export const piWebLaunchResSchema = z.object({
+  ok: z.literal(true),
+  /** 入口 URL（http://127.0.0.1:<port>），渲染层新开标签页加载 */
+  url: z.string().url(),
+  /** 本次服务监听端口 */
+  port: z.number().int().min(1).max(65_535),
+});
+export type PiWebLaunchRes = z.infer<typeof piWebLaunchResSchema>;
+
+/** piWeb.status：查询 pi 网页服务状态（不产生副作用） */
+export const piWebStatusReqSchema = z.object({}).default({});
+export type PiWebStatusReq = z.infer<typeof piWebStatusReqSchema>;
+
+/** pi 网页服务运行状态（有限状态机：stopped → starting → running / error） */
+export const piWebStateSchema = z.enum(['stopped', 'starting', 'running', 'error']);
+export type PiWebState = z.infer<typeof piWebStateSchema>;
+
+export const piWebStatusResSchema = z.object({
+  state: piWebStateSchema,
+  /** running 时返回入口 URL */
+  url: z.string().url().optional(),
+  /** 本次服务监听端口（starting/running 时返回） */
+  port: z.number().int().min(1).max(65_535).optional(),
+  /** 子进程 PID（starting/running 时返回） */
+  pid: z.number().int().optional(),
+  /** error 状态时的最后错误信息 */
+  lastError: z.string().optional(),
+});
+export type PiWebStatusRes = z.infer<typeof piWebStatusResSchema>;
+
+/** piWeb.stop：停止 pi 网页服务（终止子进程树；已停时幂等成功） */
+export const piWebStopReqSchema = z.object({}).default({});
+export type PiWebStopReq = z.infer<typeof piWebStopReqSchema>;
+
+export const piWebStopResSchema = z.object({
+  ok: z.literal(true),
+});
+export type PiWebStopRes = z.infer<typeof piWebStopResSchema>;
+
+// ============================================================================
 // screenshot.* —— 地址栏截图按钮（整屏框选截图，存用户数据目录）
 // ============================================================================
 
@@ -1236,6 +1288,10 @@ export const ipcSchema = {
   'ai.screenshot': { req: aiScreenshotReqSchema, res: aiScreenshotResSchema },
   'ai.uploadFile': { req: aiUploadFileReqSchema, res: aiUploadFileResSchema },
   'ai.setWorkdir': { req: aiSetWorkdirReqSchema, res: aiSetWorkdirResSchema },
+  // pi 网页版启动器（阶段 1）：launch / status / stop
+  'piWeb.launch': { req: piWebLaunchReqSchema, res: piWebLaunchResSchema },
+  'piWeb.status': { req: piWebStatusReqSchema, res: piWebStatusResSchema },
+  'piWeb.stop': { req: piWebStopReqSchema, res: piWebStopResSchema },
   // 整屏框选截图（地址栏按钮）：与 ai.screenshot（pi 全屏回传）不同，框选裁剪存数据目录
   'screenshot.capture': { req: screenshotCaptureReqSchema, res: screenshotCaptureResSchema },
   'screenshot.getImageData': {

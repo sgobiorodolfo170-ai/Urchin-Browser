@@ -99,6 +99,20 @@ function SiteFavicon({ url, className }: { url: string; className?: string }) {
     }
   })();
 
+  // dev.45：pi 模块统一 π 品牌图标——urchin://ai 内部页与 pi 本机服务页
+  // （127.0.0.1/localhost）不走外部 favicon 服务（Google 服务对 localhost
+  // 也取不到图标），直接用与左侧栏入口一致的本地 π 图标
+  if (url.startsWith('urchin://ai') || host === '127.0.0.1' || host === 'localhost') {
+    return (
+      <img
+        src="./pi-icon.png"
+        alt=""
+        draggable={false}
+        className={cn('shrink-0 rounded object-contain', className)}
+      />
+    );
+  }
+
   // 内置站点命中 → 本地图标（无外部网络依赖）
   // onError 走 state 递增回退链，避免直接改 src 造成"失败→重设同一 URL→再失败"死循环
   const builtin = lookupBuiltinSite(url);

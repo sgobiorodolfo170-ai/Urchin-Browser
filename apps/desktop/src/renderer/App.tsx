@@ -26,7 +26,6 @@ import {
   Moon,
   Sun,
   Settings as SettingsIcon,
-  Sparkles,
   PanelLeftClose,
   PanelLeftOpen,
   Home,
@@ -229,7 +228,7 @@ function SummaryTreeItem({
 }
 
 /** 标签页图标（展开态与折叠态共用）：
- *  加载中 → spinner；崩溃 → 红叉；urchin://ai → Sparkles；urchin://settings → 齿轮；
+ *  加载中 → spinner；崩溃 → 红叉；urchin://ai → π 品牌图标；urchin://settings → 齿轮；
  *  普通网页 → 优先封装库内置图标（site-directory 命中 → 本地 /sites/<key>.png，离线可用），
  *  未命中内置 → 网页真实 favicon（主进程 page-favicon-updated 抓取）；
  *  图标加载失败逐级回退，皆不可用 → 灰点占位。 */
@@ -248,7 +247,15 @@ function TabFavicon({ tab, className }: { tab: TabSnapshot; className?: string }
     return <X className={cn('shrink-0 text-error', className ?? 'h-3 w-3')} />;
   }
   if (tab.url?.startsWith('urchin://ai')) {
-    return <Sparkles className={cn('shrink-0 text-primary', className ?? 'h-3 w-3')} />;
+    // dev.45：pi 模块标签统一使用品牌 π 图标（与左侧栏入口一致，public/pi-icon.png）
+    return (
+      <img
+        src="./pi-icon.png"
+        alt=""
+        draggable={false}
+        className={cn('shrink-0 rounded object-contain', className ?? 'h-3 w-3')}
+      />
+    );
   }
   if (tab.url?.startsWith('urchin://settings')) {
     return <SettingsIcon className={cn('shrink-0 text-text-secondary', className ?? 'h-3 w-3')} />;

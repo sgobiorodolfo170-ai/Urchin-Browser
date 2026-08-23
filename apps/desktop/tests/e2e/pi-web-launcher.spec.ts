@@ -186,6 +186,80 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     );
     expect(pickResult).toMatchObject({ installed: true, switched: true });
 
+    // 5.7 dev.45：页面增强——主题默认亮色 / 最近项目删除按钮 / 路径提示抑制。
+    //     主题脚本在页面加载即执行（含一次 reload 兜底），轮询等待其稳定。
+    interface EnhanceResult {
+      theme?: string | null;
+      projectItems?: number;
+      delButtons?: number;
+      hiddenAfterDel?: boolean;
+      noticeSuppressed?: boolean;
+      error?: string;
+    }
+    const enhance = await electronApp.evaluate(
+      async ({ webContents }, piUrl): Promise<EnhanceResult> => {
+        const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith(piUrl));
+        if (!wc) return { error: 'pi webContents not found' };
+        const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+        // 主题：等待 reload 兜底完成后 key 应为 light（最多 8s）
+        let theme: string | null = null;
+        for (let i = 0; i < 16; i++) {
+          theme = (await wc.executeJavaScript(`localStorage.getItem('pi-web-ui:theme')`)) as
+            string | null;
+          if (theme === 'light') break;
+          await wait(500);
+        }
+
+        // 5.6 已切换到 G:/ 仓库 → 最近项目应有该条目且带删除按钮
+        await wait(1000);
+        const counts = (await wc.executeJavaScript(`(() => {
+          const items = document.querySelectorAll('button.project-item');
+          return { items: items.length, dels: document.querySelectorAll('.__ubProjDel').length };
+        })()`)) as { items: number; dels: number };
+
+        // 点击 G:/ 条目的删除按钮 → 行隐藏
+        let hiddenAfterDel = false;
+        if (counts.items > 0) {
+          hiddenAfterDel = (await wc.executeJavaScript(`(() => {
+            const rows = Array.from(document.querySelectorAll('button.project-item'));
+            const row = rows.find((r) => (r.getAttribute('title') || '').includes('Urchin-Browser'));
+            if (!row) return false;
+            const del = row.querySelector('.__ubProjDel');
+            if (!del) return false;
+            del.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+            return new Promise((resolve) => setTimeout(() => {
+              resolve(row.style.display === 'none' || !document.body.contains(row));
+            }, 400));
+          })()`)) as boolean;
+        }
+
+        // 路径提示抑制：切换目录后 1.5s 内不应存在「已切换到工作目录」提示
+        await wc.executeJavaScript(`window.__ubCwdPickerPick && window.__ubCwdPickerPick('C:/')`);
+        await wait(1500);
+        const noticeSuppressed = (await wc.executeJavaScript(`(() => {
+          const notes = Array.from(document.querySelectorAll('.fp-notice'));
+          return !notes.some((n) => /\\u5df2\\u5207\\u6362\\u5230\\u5de5\\u4f5c\\u76ee\\u5f55|\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55/.test(n.textContent || ''));
+        })()`)) as boolean;
+
+        return {
+          theme,
+          projectItems: counts.items,
+          delButtons: counts.dels,
+          hiddenAfterDel,
+          noticeSuppressed,
+        };
+      },
+      url,
+    );
+    expect(enhance).toMatchObject({
+      theme: 'light',
+      noticeSuppressed: true,
+    });
+    // 至少存在一个最近项目条目且删除后隐藏（5.6 刚切换过 → 必有）
+    expect(enhance.projectItems ?? 0).toBeGreaterThanOrEqual(1);
+    expect(enhance.hiddenAfterDel).toBe(true);
+
     // 6. 关闭应用 → 子进程树随 performCleanup 终止 → 端口不可达（与主项目同生共死）
     await electronApp.close();
     let down = false;

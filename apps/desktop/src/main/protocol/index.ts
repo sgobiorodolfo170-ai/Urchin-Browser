@@ -11,7 +11,7 @@
  * 在 app.whenReady() 之后调用 registerUrchinProtocol。
  */
 import { protocol } from 'electron';
-import { createReadStream } from 'node:fs';
+import { createReadStream, readFileSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { createLogger } from '@urchin/logger';
@@ -222,7 +222,31 @@ export function registerUrchinProtocol(opts?: {
   onZoom?: (direction: 'in' | 'out', target: 'tab' | 'main') => void;
   /** pi 页目录选择回调（dev.44）：弹原生目录选择器，返回所选路径或 null（取消） */
   onPickDirectory?: () => Promise<string | null>;
+  /** pi 品牌图标 PNG 绝对路径（dev.45，dist/renderer/pi-icon.png；缺省 404） */
+  piIconPath?: string;
 }): void {
+  /**
+   * 服务 pi 品牌图标（pi-icon host）：首读后缓存（favicon 请求频繁）。
+   * 未配置/文件缺失返回 404——调用方（favicon 重定向）将显示原图标回退。
+   */
+  let piIconCache: Buffer | null | undefined;
+  const servePiIcon = (iconPath: string | undefined): Response => {
+    if (piIconCache === undefined) {
+      try {
+        piIconCache = iconPath ? readFileSync(iconPath) : null;
+      } catch {
+        piIconCache = null;
+      }
+    }
+    if (!piIconCache) {
+      return new Response('Not Found', { status: 404, headers: { 'Content-Type': 'text/plain' } });
+    }
+    return new Response(new Uint8Array(piIconCache), {
+      status: 200,
+      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'max-age=86400' },
+    });
+  };
+
   const handleZoom = (request: Request, target: 'tab' | 'main'): Response => {
     const url = new URL(request.url);
     const direction = url.searchParams.get('d');
@@ -250,6 +274,13 @@ export function registerUrchinProtocol(opts?: {
           const pick = opts?.onPickDirectory;
           return pick ? pick() : null;
         });
+      }
+
+      if (host === 'pi-icon') {
+        // pi 模块品牌图标 PNG（dev.45）：favicon 网络重定向的目标——pi 网页
+        // 标签/历史/主页的 favicon 请求（127.0.0.1:<pi端口>/favicon.svg）被
+        // webRequest 重定向到此，统一显示与左侧栏入口一致的 π 图标。
+        return servePiIcon(opts?.piIconPath);
       }
 
       if (host === 'settings') {

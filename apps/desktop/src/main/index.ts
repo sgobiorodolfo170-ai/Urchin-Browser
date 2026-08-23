@@ -14,7 +14,7 @@
 // Polyfill 必须在所有其他模块之前加载：undici 顶层 require node:worker_threads
 // 并解构 markAsUncloneable（Node 22.3+ 才有），Electron 32/Node 20 缺失会导致启动崩溃。
 import './polyfills/worker-threads-polyfill';
-import { app, ipcMain, dialog, BrowserWindow, nativeTheme, screen } from 'electron';
+import { app, ipcMain, dialog, BrowserWindow, nativeTheme, screen, session } from 'electron';
 import { join, basename } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createLogger } from '@urchin/logger';
@@ -41,6 +41,7 @@ import {
   createPiWebLauncher,
   registerPiWebHandlers,
   installCwdPickerControl,
+  installPiWebPageEnhance,
   type PiWebLauncher,
 } from './pi-web';
 import { registerPageContextHandlers } from './page-context';
@@ -271,6 +272,8 @@ let disposeContextMenu: (() => void) | null = null;
 let disposeZoomControl: (() => void) | null = null;
 /** pi 页目录选择器注入卸载句柄（dev.44，installCwdPickerControl 返回）。 */
 let disposeCwdPicker: (() => void) | null = null;
+/** pi 页体验增强注入卸载句柄（dev.45，installPiWebPageEnhance 返回）。 */
+let disposePiEnhance: (() => void) | null = null;
 /** 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
 let bookmarkPanel: BookmarkPanel | null = null;
 /**
@@ -858,6 +861,9 @@ void app.whenReady().then(() => {
       if (result.canceled || result.filePaths.length === 0) return null;
       return result.filePaths[0] ?? null;
     },
+    // dev.45：pi 品牌图标（π）——favicon 重定向目标（urchin://pi-icon）。
+    // dev 与打包态同路径：dist/renderer/pi-icon.png（asar 内可直读）。
+    piIconPath: join(app.getAppPath(), 'dist', 'renderer', 'pi-icon.png'),
   });
 
   // 初始化需要文件系统 / SQLite 的模块（W6：移入 whenReady 避免模块加载阶段崩溃）
@@ -1166,6 +1172,34 @@ void app.whenReady().then(() => {
   // 仅 pi-web-ui 页面的 status-cwd 生效；其他页面零影响）
   disposeCwdPicker = installCwdPickerControl(tabManager);
 
+  // dev.45：pi 页体验增强注入——主题默认亮色 + 最近项目删除按钮 + 路径提示
+  // 抑制（同样按 DOM 守卫仅 pi 页生效；详见 pi-web/page-enhance.ts 头注释）
+  disposePiEnhance = installPiWebPageEnhance(tabManager);
+
+  // dev.45：pi 网页 favicon 统一为 π 品牌图标——拦截 pi 服务（当前随机端口）的
+  // favicon 请求重定向到 urchin://pi-icon。效果覆盖标签栏/历史/主页等所有经
+  // favicon URL 渲染的位置；仅匹配 pi 端口，不影响其他 localhost 应用。
+  session.defaultSession.webRequest.onBeforeRequest(
+    { urls: ['http://127.0.0.1/*'] },
+    (details, callback) => {
+      try {
+        const piPort = piWebLauncher?.status().port;
+        const u = new URL(details.url);
+        if (
+          piPort &&
+          u.port === String(piPort) &&
+          (u.pathname === '/favicon.svg' || u.pathname === '/favicon.ico')
+        ) {
+          callback({ redirectURL: 'urchin://pi-icon/' });
+          return;
+        }
+      } catch {
+        /* URL 解析异常按原请求放行 */
+      }
+      callback({});
+    },
+  );
+
   // 初始化收藏夹悬浮面板（子窗口，悬浮于网页之上；随主窗口移动/缩放重定位）。
   // 面板定位避开底部地址栏与右侧边栏：布局尺寸从 view-integration 的 layoutState 读取。
   bookmarkPanel = new BookmarkPanel({
@@ -1317,6 +1351,16 @@ async function performCleanup(): Promise<void> {
         log.error('Failed to dispose cwd picker on quit', { error: String(e) });
       }
       disposeCwdPicker = null;
+    }
+
+    // 4.8 移除 pi 页体验增强注入的监听（dev.45；webRequest 随 session 销毁释放）
+    if (disposePiEnhance) {
+      try {
+        disposePiEnhance();
+      } catch (e) {
+        log.error('Failed to dispose pi enhance on quit', { error: String(e) });
+      }
+      disposePiEnhance = null;
     }
 
     // 5. 宽限期：utility process 的 kill 信号已发出但进程实际退出需要短暂时间，

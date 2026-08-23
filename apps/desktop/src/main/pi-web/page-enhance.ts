@@ -1,20 +1,23 @@
 /**
- * pi 网页版 · 页面体验增强注入（dev.45）
+ * pi 网页版 · 页面体验增强注入（dev.45 建立，dev.48 重构主题跟随）
  *
- * 三项用户需求（均不动第三方包源码，注入脚本按 DOM 守卫仅 pi 页生效）：
- * 1. 主题默认亮色：pi-web-ui 前端默认 dark，主题 id 持久于 localStorage
- *    `pi-web-ui:theme`（null = dark 内置样式）。launcher 端口每次随机 →
- *    origin 变化 → localStorage 清零，故每次会话首访注入时补设 'light'：
- *    先派发官方 `pi-web-ui:theme-change` 事件尝试热切换；400ms 后若
- *    #theme-stylesheet 未生效则 reload 一次（key 已写入，重载后即亮色，
- *    不会循环）。用户在 pi 设置里显式选过其他主题（key 非 null）则不动。
- * 2. 最近项目删除按钮：左区 panel-projects 的 project-item 行尾注入 ✕，
- *    点击隐藏该行并记入 sessionStorage（React 重渲染后观察器重新应用）。
- *    注：clientId 存 localStorage 同样随端口重置——最近项目列表本就每次
- *    会话重建，会话内隐藏即等效删除；无服务端 remove_project 命令可用。
- * 3. 抑制中区路径提示：点击最近项目触发的「已切换到工作目录/已在工作
- *    目录」notice toast 即时移除（MutationObserver，仅匹配这两类文案，
- *    错误提示等其他 notice 不受影响）。
+ * 用户需求（均不动第三方包源码，注入脚本按 DOM 守卫仅 pi 页生效）：
+ * 1. 主题跟随浏览器（dev.48，替代 dev.45 的「默认亮色」）：注入脚本轮询
+ *    `urchin://pi-theme`（主进程读 nativeTheme）驱动 pi 主题——亮=官方
+ *    light.css，暗=移除样式表回内置默认。pi 设置内的主题选择器同时隐藏
+ *    （跟随逻辑会覆盖手选，保留选择器徒增困惑）。切亮沿用 dev.47 机制：
+ *    官方 theme-change 事件热切换 + 直接替换 #theme-stylesheet——**禁止
+ *    整页 reload**（reload 空窗会令目录选择拦截器短暂失效，dev.47 教训）。
+ *    危险度评估（用户要求先行）：仅外观层（样式表切换），不涉会话/凭据/
+ *    进程；失败模式=不同步（页面维持当前主题），无功能损失；写入值
+ *    'light'/'dark' 均为官方已知值。
+ * 2. 新对话按钮移植（dev.48）：隐藏顶栏原 button.chip.newchat，在左区
+ *    「历史对话」标题行（.panel-sessions > .panel-section-title）尾部注入
+ *    同功能小按钮（右对齐、尺寸贴合标题行高），点击转发触发原按钮逻辑。
+ * 3. 最近项目删除按钮（dev.45/47）：行尾 ✕ + 删除确认（window.confirm，
+ *    __ubProjDelConfirm 钩子供自动化）+ sessionStorage 会话内隐藏。
+ * 4. 抑制中区路径提示（dev.45）：移除「已切换到/已在工作目录」notice。
+ * 5. 更新组件隐藏（dev.47）：.dd-update 仅留版本行 + update-dot 红点隐藏。
  */
 import { createLogger } from '@urchin/logger';
 
@@ -23,7 +26,7 @@ const log = createLogger('pi-web-enhance');
 /** 注入脚本幂等标志 */
 const INSTALLED_FLAG = '__ubPageEnhanceInstalled';
 
-/** pi-web-ui 官方存储键 / 元素（vendor 0.28.2 前端 bundle 核验） */
+/** pi-web-ui 官方存储键 / 元素（前端 bundle 核验） */
 const THEME_KEY = 'pi-web-ui:theme';
 const THEME_LINK_ID = 'theme-stylesheet';
 const THEME_CHANGE_EVENT = 'pi-web-ui:theme-change';
@@ -31,37 +34,51 @@ const THEME_CHANGE_EVENT = 'pi-web-ui:theme-change';
 /** 本模块 sessionStorage 键：会话内已隐藏的最近项目路径 */
 const HIDDEN_KEY = '__ubHiddenProjects';
 
+/** 主题轮询间隔（ms）：浏览器切主题后 pi 最迟 2s + visibilitychange 即时跟进 */
+const THEME_POLL_MS = 2000;
+
 /**
- * 构建主题默认亮色脚本（纯字符串，可单测）。
+ * 构建主题跟随浏览器脚本（纯字符串，可单测）。
+ *
+ * 轮询 urchin://pi-theme → {dark}；期望值与 localStorage 不一致时：
+ * 写 key + 派发官方 theme-change 事件热切换；300ms 后样式表未达预期则
+ * 直接操作 #theme-stylesheet（亮=建/换 href /themes/light.css，暗=移除）。
  */
-export function buildThemeDefaultScript(): string {
+export function buildThemeFollowScript(): string {
   return (
     '(function(){' +
-    'try{' +
-    `if (localStorage.getItem('${THEME_KEY}') === null) {` +
-    `localStorage.setItem('${THEME_KEY}', 'light');` +
-    // 先尝试官方热切换事件；400ms 后未见样式表生效则**直接替换/创建样式表**
-    //（服务端 /themes/light.css，与官方切换同一 URL）——不整页 reload。
-    // dev.47 教训：reload 空窗期内目录选择拦截器随 document 销毁，此间点击
-    // 📁 会落回 pi 原生手输框（用户反馈「升级后选择器失效」的根因）。
-    `document.dispatchEvent(new CustomEvent('${THEME_CHANGE_EVENT}', { detail: 'light' }));` +
+    'function applyTheme(t){' +
+    `if (localStorage.getItem('${THEME_KEY}') === t) return;` +
+    `localStorage.setItem('${THEME_KEY}', t);` +
+    `document.dispatchEvent(new CustomEvent('${THEME_CHANGE_EVENT}', { detail: t }));` +
     'setTimeout(function(){' +
     `var link = document.getElementById('${THEME_LINK_ID}');` +
+    "if (t === 'light') {" +
     "if (!link || !/light/.test(link.href || '')) {" +
     "if (!link) { link = document.createElement('link'); link.id = '" +
     THEME_LINK_ID +
     "'; link.rel = 'stylesheet'; document.head.appendChild(link); }" +
     "link.href = '/themes/light.css';" +
     '}' +
-    '}, 400);' +
+    '} else if (link) { link.remove(); }' +
+    '}, 300);' +
     '}' +
-    '}catch(e){}' +
+    'function sync(){' +
+    "fetch('urchin://pi-theme', { mode: 'cors' })" +
+    '.then(function(r){ return r.json(); })' +
+    ".then(function(d){ applyTheme(d && d.dark ? 'dark' : 'light'); })" +
+    '.catch(function(){});' +
+    '}' +
+    'sync();' +
+    `setInterval(sync, ${THEME_POLL_MS});` +
+    "document.addEventListener('visibilitychange', function(){ if (!document.hidden) sync(); });" +
     '})();'
   );
 }
 
 /**
- * 构建最近项目面板增强脚本（删除按钮 + 路径提示抑制，纯字符串可单测）。
+ * 构建面板增强脚本（新对话移植 + 删除按钮/确认 + 提示抑制 + 更新组件隐藏，
+ * 纯字符串可单测）。
  */
 export function buildProjectsPanelScript(): string {
   return (
@@ -75,9 +92,12 @@ export function buildProjectsPanelScript(): string {
     'function saveHidden(list){ sessionStorage.setItem("' +
     HIDDEN_KEY +
     '", JSON.stringify(list)); }' +
-    // 样式：行尾 ✕（悬停显现，样式注入一次）；
-    // 更新组件（dev.47 用户决策：pi-web-ui 随本项目升级，页内自更新无效且误导）：
-    // 隐藏 .dd-update 除首行（当前版本）外的全部内容 + 触发器新版本红点
+    // 样式（注入一次）：
+    // - 行尾 ✕（悬停显现）
+    // - dev.48 新对话移植：隐藏顶栏原按钮；历史对话标题行改 flex，注入按钮右对齐、
+    //   尺寸贴合标题行高（18px 图标按钮）
+    // - dev.48 主题跟随：隐藏 pi 设置内主题选择器触发器（跟随逻辑会覆盖手选）
+    // - dev.47 更新组件：.dd-update 仅留版本行 + update-dot 红点隐藏
     'if (!document.getElementById("__ubProjStyle")) {' +
     'var st = document.createElement("style"); st.id = "__ubProjStyle";' +
     'st.textContent = ' +
@@ -87,11 +107,43 @@ export function buildProjectsPanelScript(): string {
     'cursor:pointer;color:#e5484d;font-size:12px;opacity:0;transition:opacity .12s;' +
     'background:rgba(229,72,77,.08)}' +
     '.project-item:hover .__ubProjDel{opacity:1}' +
+    'button.chip.newchat{display:none!important}' +
+    '.panel-sessions>.panel-section-title{display:flex!important;align-items:center}' +
+    '.__ubNewChat{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;' +
+    'width:18px;height:18px;border:none;border-radius:4px;background:transparent;' +
+    'cursor:pointer;color:inherit;font-size:15px;line-height:1;opacity:.65}' +
+    '.__ubNewChat:hover{opacity:1;background:rgba(128,128,128,.12)}' +
+    '.__ubThemeSelHidden{display:none!important}' +
     '.dd-update>*:not(:first-child){display:none!important}' +
     '.update-dot{display:none!important}";' +
     'document.head.appendChild(st);' +
     '}' +
     'function enhance(){' +
+    // ── dev.48：新对话按钮移植到「历史对话」标题行尾 ──
+    'var sessionsTitle = document.querySelector(".panel-sessions > .panel-section-title");' +
+    'if (sessionsTitle && !sessionsTitle.querySelector(".__ubNewChat")) {' +
+    'var nc = document.createElement("button");' +
+    'nc.className = "__ubNewChat"; nc.type = "button";' +
+    'nc.textContent = "+";' +
+    'nc.title = "\\u65b0\\u5bf9\\u8bdd";' +
+    'nc.addEventListener("click", function(ev){' +
+    'ev.preventDefault(); ev.stopPropagation();' +
+    // 转发触发被隐藏的原按钮（顶栏常驻渲染，display:none 不影响 .click()）
+    'var orig = document.querySelector("button.chip.newchat");' +
+    'if (orig) orig.click();' +
+    '});' +
+    'sessionsTitle.appendChild(nc);' +
+    '}' +
+    // ── dev.48：隐藏主题选择器触发器（chip-sub 文本「主题/theme」的 chip）──
+    'var chips = document.querySelectorAll("span.chip-sub");' +
+    'for (var ci = 0; ci < chips.length; ci++) {' +
+    'var txt = (chips[ci].textContent || "").trim();' +
+    'if (/^(\\u4e3b\\u9898|theme)$/i.test(txt)) {' +
+    'var host = chips[ci].closest("[class*=chip]") || chips[ci].parentElement;' +
+    'if (host && !host.classList.contains("__ubThemeSelHidden")) host.classList.add("__ubThemeSelHidden");' +
+    '}' +
+    '}' +
+    // ── dev.45/47：最近项目删除按钮（确认 + 会话内隐藏）──
     'var hidden = hiddenList();' +
     'var items = document.querySelectorAll("button.project-item");' +
     'for (var i = 0; i < items.length; i++) {' +
@@ -106,8 +158,6 @@ export function buildProjectsPanelScript(): string {
     'ev.preventDefault(); ev.stopPropagation();' +
     'var row = ev.target.closest("button.project-item");' +
     'var p = row && (row.getAttribute("title") || "");' +
-    // dev.47 用户决策：删除前弹确认。默认 window.confirm（Electron 原生确认框）；
-    // window.__ubProjDelConfirm(path) 可覆盖判定（E2E/自动化用，避免真弹窗阻塞）
     'var ok = (typeof window.__ubProjDelConfirm === "function")' +
     '  ? window.__ubProjDelConfirm(p)' +
     '  : window.confirm("\\u786e\\u8ba4\\u4ece\\u6700\\u8fd1\\u9879\\u76ee\\u5217\\u8868\\u79fb\\u9664\\uff1f\\n" + p);' +
@@ -142,7 +192,7 @@ export function buildProjectsPanelScript(): string {
  * 安装 pi 页增强注入（镜像 zoom/dir-picker 的生命周期模式）。
  *
  * 对每个网页 tab 的 webContents（created + 存量补装）did-finish-load 后
- * 注入主题 + 面板脚本（幂等标志防叠加；脚本按 DOM 守卫，非 pi 页零影响）。
+ * 注入主题跟随 + 面板脚本（幂等标志防叠加；脚本按 DOM 守卫，非 pi 页零影响）。
  *
  * @param tabManager 网页 tab 管理实例
  * @returns 卸载函数（移除 created 与 did-finish-load 监听）
@@ -154,7 +204,7 @@ export function installPiWebPageEnhance(tabManager: {
   query(_: unknown): readonly { id: number }[];
 }): () => void {
   const disposers: (() => void)[] = [];
-  const script = buildThemeDefaultScript() + buildProjectsPanelScript();
+  const script = buildThemeFollowScript() + buildProjectsPanelScript();
 
   const injectInto = (wc: unknown): void => {
     const electronWc = wc as Electron.WebContents;

@@ -100,6 +100,11 @@ export interface Tab {
   title: string;
   /** 网站图标 URL */
   favicon?: string;
+  /**
+   * 图标是否被钉定（dev.48）：pi 模块内打开的网页钉定为 π 品牌图标——
+   * page-favicon-updated 不再覆盖（仅主进程持有，不进 TabSnapshot）。
+   */
+  piIconPinned?: boolean;
   /** 是否激活（每窗口仅一个 active tab） */
   active: boolean;
   /** 是否加载中 */

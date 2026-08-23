@@ -17,6 +17,6 @@ export { ensureAuthPlaceholder } from './auth-placeholder';
 export { installCwdPickerControl, buildCwdPickerInjectionScript } from './dir-picker';
 export {
   installPiWebPageEnhance,
-  buildThemeDefaultScript,
+  buildThemeFollowScript,
   buildProjectsPanelScript,
 } from './page-enhance';

@@ -240,15 +240,26 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       confirmAsked?: boolean;
       noticeSuppressed?: boolean;
       updateCssReady?: boolean;
+      newChatMoved?: boolean;
+      themeSelectorHidden?: boolean;
+      pinnedTabIcon?: string | null;
       error?: string;
     }
+    // dev.48 前置：开「链接在新标签页打开」，使 pi 页 window.open 产生新标签
+    //（图标钉定断言依赖新标签创建路径）
+    await window.evaluate(async () => {
+      const w = window as unknown as {
+        urchin: { invoke: (c: string, r: unknown) => Promise<unknown> };
+      };
+      await w.urchin.invoke('settings.set', { key: 'links.openInNewTab', value: true });
+    });
     const enhance = await electronApp.evaluate(
       async ({ webContents }, piUrl): Promise<EnhanceResult> => {
         const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith(piUrl));
         if (!wc) return { error: 'pi webContents not found' };
         const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-        // 主题：等待 reload 兜底完成后 key 应为 light（最多 8s）
+        // 主题跟随浏览器（dev.48）：E2E 环境浏览器为亮色 → pi 应跟进 light
         let theme: string | null = null;
         for (let i = 0; i < 16; i++) {
           theme = (await wc.executeJavaScript(`localStorage.getItem('pi-web-ui:theme')`)) as
@@ -256,6 +267,40 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           if (theme === 'light') break;
           await wait(500);
         }
+
+        // dev.48：新对话移植——顶栏原按钮隐藏 + 历史对话标题行有注入按钮
+        await wait(600);
+        const newChat = (await wc.executeJavaScript(`(() => {
+          const orig = document.querySelector('button.chip.newchat');
+          const injected = document.querySelector(
+            '.panel-sessions > .panel-section-title .__ubNewChat',
+          );
+          // 右对齐用几何断言：注入按钮右缘贴近标题行右缘
+          //（margin-left:auto 的 computed 值会被解析为像素，不能直接比对）
+          let rightAligned = false;
+          if (injected) {
+            const row = injected.closest('.panel-section-title');
+            if (row) {
+              const r = injected.getBoundingClientRect();
+              const rr = row.getBoundingClientRect();
+              rightAligned = rr.right - r.right < 40;
+            }
+          }
+          return {
+            origHidden: orig ? getComputedStyle(orig).display === 'none' : false,
+            injected: !!injected,
+            rightAligned,
+          };
+        })()`)) as { origHidden: boolean; injected: boolean; rightAligned: boolean };
+
+        // dev.48：主题选择器触发器被隐藏（顶部 chip 区无可见「主题」入口）
+        const themeSel = (await wc.executeJavaScript(`(() => {
+          const chips = Array.from(document.querySelectorAll('span.chip-sub'));
+          const themeChip = chips.find((c) => /^(主题|theme)$/i.test((c.textContent || '').trim()));
+          if (!themeChip) return { present: false, hidden: true };
+          const host = themeChip.closest('[class*=chip]') || themeChip.parentElement;
+          return { present: true, hidden: !host || host.classList.contains('__ubThemeSelHidden') };
+        })()`)) as { present: boolean; hidden: boolean };
 
         // 5.6 已切换到 G:/ 仓库 → 最近项目应有该条目且带删除按钮
         await wait(1000);
@@ -304,6 +349,11 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           return css.includes('.dd-update>*:not(:first-child)') && css.includes('.update-dot');
         })()`)) as boolean;
 
+        // dev.48：pi 页内 window.open 新开网页 → 标签图标钉定为 π
+        //（先经主窗口开「链接新标签打开」，再从 pi 页开 example.com）
+        await wc.executeJavaScript(`window.open('https://example.com')`);
+        await wait(2500);
+
         return {
           theme,
           projectItems: counts.items,
@@ -312,6 +362,8 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           confirmAsked,
           noticeSuppressed,
           updateCssReady,
+          newChatMoved: newChat.origHidden && newChat.injected && newChat.rightAligned,
+          themeSelectorHidden: !themeSel.present || themeSel.hidden,
         };
       },
       url,
@@ -320,12 +372,29 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       theme: 'light',
       noticeSuppressed: true,
       updateCssReady: true,
+      newChatMoved: true,
+      themeSelectorHidden: true,
     });
     // 至少存在一个最近项目条目且确认后删除隐藏（5.6 刚切换过 → 必有）
     expect(enhance.projectItems ?? 0).toBeGreaterThanOrEqual(1);
     expect(enhance.hiddenAfterDel).toBe(true);
     // dev.47：删除经过确认判定（钩子被调用）
     expect(enhance.confirmAsked).toBe(true);
+
+    // dev.48：pi 页打开的网页标签图标 = π（urchin://pi-icon 钉定）
+    const tabList = await window.evaluate(async () => {
+      const w = window as unknown as {
+        urchin: {
+          invoke: (
+            c: string,
+            r: unknown,
+          ) => Promise<{ tabs?: { url?: string; favicon?: string }[] }>;
+        };
+      };
+      return w.urchin.invoke('tab.list', {});
+    });
+    const exampleTab = (tabList.tabs ?? []).find((t) => (t.url ?? '').includes('example.com'));
+    expect(exampleTab?.favicon).toBe('urchin://pi-icon/');
 
     // 6. 关闭应用 → 子进程树随 performCleanup 终止 → 端口不可达（与主项目同生共死）
     await electronApp.close();

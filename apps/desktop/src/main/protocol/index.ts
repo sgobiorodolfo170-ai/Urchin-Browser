@@ -224,7 +224,25 @@ export function registerUrchinProtocol(opts?: {
   onPickDirectory?: () => Promise<string | null>;
   /** pi 品牌图标 PNG 绝对路径（dev.45，dist/renderer/pi-icon.png；缺省 404） */
   piIconPath?: string;
+  /** 浏览器当前主题是否暗色（dev.48：pi 页主题跟随浏览器，主进程读 nativeTheme） */
+  isBrowserDarkTheme?: () => boolean;
 }): void {
+  /**
+   * pi 页主题跟随端点（pi-theme host，dev.48）：返回浏览器当前主题
+   * {dark:boolean}。pi 页注入脚本轮询此端点并驱动 pi 主题切换
+   * （亮=light.css，暗=移除样式表回默认）。只读、无副作用。
+   */
+  const handlePiTheme = (): Response => {
+    const dark = opts?.isBrowserDarkTheme?.() ?? false;
+    return new Response(JSON.stringify({ dark }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  };
+
   /**
    * 服务 pi 品牌图标（pi-icon host）：首读后缓存（favicon 请求频繁）。
    * 未配置/文件缺失返回 404——调用方（favicon 重定向）将显示原图标回退。
@@ -281,6 +299,11 @@ export function registerUrchinProtocol(opts?: {
         // 标签/历史/主页的 favicon 请求（127.0.0.1:<pi端口>/favicon.svg）被
         // webRequest 重定向到此，统一显示与左侧栏入口一致的 π 图标。
         return servePiIcon(opts?.piIconPath);
+      }
+
+      if (host === 'pi-theme') {
+        // pi 页主题跟随浏览器（dev.48）：注入脚本轮询读取 {dark}
+        return handlePiTheme();
       }
 
       if (host === 'settings') {

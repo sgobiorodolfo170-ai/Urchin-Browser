@@ -452,6 +452,13 @@ function registerIpcHandlers(): void {
   });
   registerPiWebHandlers(ipcMain, piWebLauncher);
 
+  // dev.48：pi 模块内打开的网页（window.open 新标签）右侧栏图标钉定为 π——
+  // 来源 tab URL 命中当前 pi 服务地址时返回钉定图标（端口随机，读实时状态）
+  tabManager.setPiIconPinner((sourceUrl) => {
+    const piUrl = piWebLauncher?.status().url;
+    return piUrl && sourceUrl.startsWith(piUrl) ? 'urchin://pi-icon/' : undefined;
+  });
+
   // M14 page context 域 handler（page.extract）
   registerPageContextHandlers(ipcMain, tabManager);
 
@@ -864,6 +871,9 @@ void app.whenReady().then(() => {
     // dev.45：pi 品牌图标（π）——favicon 重定向目标（urchin://pi-icon）。
     // dev 与打包态同路径：dist/renderer/pi-icon.png（asar 内可直读）。
     piIconPath: join(app.getAppPath(), 'dist', 'renderer', 'pi-icon.png'),
+    // dev.48：pi 页主题跟随浏览器——主进程读 nativeTheme 实际生效值
+    //（含「跟随系统」模式的解析结果），pi 页注入脚本轮询此端点切换主题
+    isBrowserDarkTheme: () => nativeTheme.shouldUseDarkColors,
   });
 
   // 初始化需要文件系统 / SQLite 的模块（W6：移入 whenReady 避免模块加载阶段崩溃）

@@ -97,6 +97,12 @@ export class TabManager {
    */
   private linkBehaviorResolver?: (url: string) => LinkOpenBehavior;
 
+  /**
+   * 图标钉定解析器（dev.48，由外部注入）：window.open 新开标签时以来源 tab
+   * 的 URL 调用，返回图标 URL 则钉定该标签图标（如 pi 页来源 → π 品牌图标）。
+   */
+  private piIconPinner?: (sourceUrl: string) => string | undefined;
+
   /** 广告浮窗屏蔽开关（DB1 决策：默认开启，由设置 blockAds 控制） */
   private adBlockEnabled = true;
 
@@ -112,6 +118,15 @@ export class TabManager {
    */
   setLinkBehaviorResolver(resolver: (url: string) => LinkOpenBehavior): void {
     this.linkBehaviorResolver = resolver;
+  }
+
+  /**
+   * 注入图标钉定解析器（dev.48）。
+   *
+   * @param resolver 以来源 tab URL 调用，返回图标 URL 则钉定，undefined 不钉定
+   */
+  setPiIconPinner(resolver: (sourceUrl: string) => string | undefined): void {
+    this.piIconPinner = resolver;
   }
 
   /**
@@ -416,7 +431,15 @@ export class TabManager {
         const behavior = this.linkBehaviorResolver?.(url) ?? 'current';
         if (behavior === 'new-tab') {
           // 在新标签页打开
-          this.create({ windowId: tab.windowId, url, active: true });
+          const created = this.create({ windowId: tab.windowId, url, active: true });
+          // dev.48：pi 模块内打开的网页，右侧栏图标钉定为 π 品牌图标
+          //（来源 tab 即 pi 页时，解析器返回钉定图标 URL）
+          const pinnedIcon = this.piIconPinner?.(tab.url);
+          if (created && pinnedIcon) {
+            created.favicon = pinnedIcon;
+            created.piIconPinned = true;
+            this.emit('updated', this.toSnapshot(created));
+          }
         } else {
           // 在当前标签页打开
           tab.url = url;
@@ -506,7 +529,8 @@ export class TabManager {
 
     wc.on('page-favicon-updated', (...args: unknown[]) => {
       const favicons = args[1];
-      if (Array.isArray(favicons) && typeof favicons[0] === 'string') {
+      // dev.48：钉定图标的 tab（pi 模块打开的网页）不被页面真实 favicon 覆盖
+      if (Array.isArray(favicons) && typeof favicons[0] === 'string' && !tab.piIconPinned) {
         tab.favicon = favicons[0];
       }
       this.emit('updated', this.toSnapshot(tab));

@@ -153,3 +153,16 @@
 | auth 占位(引导抑制) | pi-web/auth-placeholder.ts | auth.json 形状、isPiConfigured |
 | npm 沙箱/进程/数据目录 | pi-web/launcher.ts + main 接线 | bin 入口、--no-browser、四个 env |
 | favicon π 统一 | urchin://pi-icon + webRequest 重定向 | /favicon.svg|.ico 路径 |
+
+## 八、dev.48 定制追加（2026-08-23,纳入 §七 受控面长期管控）
+
+| 定制 | 实现位置 | 依赖的上游锚点 |
+| --- | --- | --- |
+| 主题跟随浏览器(替代默认亮色) | page-enhance(轮询脚本) + urchin://pi-theme(主进程读 nativeTheme) | pi-web-ui:theme 键、theme-change 事件、#theme-stylesheet、/themes/light.css |
+| pi 设置内主题选择器隐藏 | page-enhance(chip-sub「主题/theme」触发器加隐藏类) | span.chip-sub 文本 |
+| 新对话按钮移植至历史对话标题行 | page-enhance(隐藏 chip.newchat + 注入 __ubNewChat 转发触发) | button.chip.newchat、.panel-sessions>.panel-section-title |
+| pi 打开的网页图标钉定 π | tab-manager(piIconPinner + favicon 不覆盖) + main 接线(读实时 pi URL) | window-open 创建路径、tab.favicon 快照字段 |
+
+主题跟随危险度评估(用户要求先行,结论:低):仅外观层(样式表切换),不涉会话/
+凭据/进程;失败模式=不同步(页面维持当前主题)无功能损失;写入值 light/dark 均为
+官方已知值;禁用 reload(dev.47 空窗教训)。

@@ -117,3 +117,39 @@
 
 验证:typecheck / 938 单测全绿 / build:main / pi-web E2E 20.3s 全绿
 (启动→auth占位→原生目录选择→主题亮色→删除按钮→提示抑制→退出杀进程全链路)。
+
+## 七、pi-web-ui 升级管控流程(2026-08-23 用户八次决策确立,长期有效)
+
+> **原则:本项目对 pi 前端的定制(注入/拦截/锚点,见 §六 核验表)优先于上游迭代。
+> 上游更新涉及的定制区域,未经用户逐项判断,不得改动本项目实现——防止重复建设
+> 与定制丢失。本流程随本项目 pi 前端的迭代长期监控执行,任何执行者(Agent/人)必须遵守。**
+
+### 流程(五步,缺一不可)
+
+1. **取新版比对源**(不动本项目依赖):`npm pack pi-web-ui@<新版>` 或临时目录
+   `npm i --prefix`,与当前 `node_modules/pi-web-ui` 逐项比对。
+2. **锚点比对**:对照 §六 核验表逐项检查——bin 入口/`--no-browser`/四个 env/
+   auth.json 形状与 isPiConfigured/五个 DOM 类名(status-cwd、status-cwd-input、
+   panel-projects、project-item、fp-notice)/四个主题键/themes 目录/favicon/
+   WS 命令集/update_app 行为;另比对 dd-update(更新组件)与 client-state 结构。
+3. **无变化 → 默认沿用本项目迭代**:直接走 dev.46 升级流程(pnpm add -E →
+   锚点核验 → 门禁+E2E 全链路 → 提交)。
+4. **有变化 → 先报告后动手**:列出每个变动锚点的新旧代码位置与改动说明、
+   对本项目对应定制的影响评估、建议方案(适配/保持本项目实现/部分采纳);
+   **经用户明确判断后方可**修改本项目定制或放行升级。禁止未经确认合并上游
+   同功能实现(防重复建设——例如上游若新增目录选择器/项目删除,须评估是否
+   弃用本项目注入版,由用户定夺)。
+5. **升级后验证**:锚点核验 + typecheck/lint/单测/build + pi-web E2E 全链路
+   (含真实点击拦截/主题/删除确认/更新组件隐藏断言)。
+
+### 本项目定制清单(上游变更时的受控面,2026-08-23 现状)
+
+| 定制 | 实现位置 | 依赖的上游锚点 |
+| --- | --- | --- |
+| 原生目录选择器 | pi-web/dir-picker.ts + urchin://pi-pick-dir | button.status-cwd、input.status-cwd-input、set_cwd、fetch 可用 |
+| 主题默认亮色 | pi-web/page-enhance.ts(主题脚本) | pi-web-ui:theme 键、theme-change 事件、#theme-stylesheet、/themes/light.css |
+| 最近项目删除+确认+路径提示抑制 | pi-web/page-enhance.ts(面板脚本) | panel-projects、project-item(title=路径)、fp-notice 文案 |
+| 更新组件隐藏(仅版本号) | page-enhance 注入 CSS | .dd-update、.update-dot |
+| auth 占位(引导抑制) | pi-web/auth-placeholder.ts | auth.json 形状、isPiConfigured |
+| npm 沙箱/进程/数据目录 | pi-web/launcher.ts + main 接线 | bin 入口、--no-browser、四个 env |
+| favicon π 统一 | urchin://pi-icon + webRequest 重定向 | /favicon.svg|.ico 路径 |

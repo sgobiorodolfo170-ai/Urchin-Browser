@@ -156,8 +156,14 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     // 5.6 dev.44：目录选择器注入脚本已就位；直调 __ubCwdPickerPick 走
     //     与原生选择器相同的「填路径 + Enter」链路（原生弹窗为 OS 标准件，
     //     E2E 不弹窗，用调试入口替代;目标目录 G: 仓库根真实存在）
+    //     dev.47 补盲区：先验证「真实点击 → 捕获拦截 → fetch 协议端点」链路——
+    //     覆写页面 fetch 截获请求（不真发，避免弹原生对话框），断言点击不弹
+    //     pi 原生手输入框、且 fetch 目标为 urchin://pi-pick-dir。
     interface PickResult {
       installed?: boolean;
+      clickIntercepted?: boolean;
+      fetchedEndpoint?: boolean;
+      inputOpened?: boolean;
       switched?: boolean;
       error?: string;
     }
@@ -170,6 +176,35 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           '!!window.__ubCwdPickerInstalled',
         )) as boolean;
         if (!installed) return { installed, error: 'picker script not injected' };
+
+        // 真实点击链路：覆写 fetch 截获（不真发），点击按钮后检查拦截效果
+        await wc.executeJavaScript(`(() => {
+          window.__ubFetchLog = [];
+          const orig = window.fetch.bind(window);
+          window.__ubFetchOrigRestore = () => { window.fetch = orig; };
+          window.fetch = function (input) {
+            window.__ubFetchLog.push(String(input));
+            if (String(input).includes('pi-pick-dir')) {
+              return Promise.resolve(new Response(JSON.stringify({ path: null }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' },
+              }));
+            }
+            return orig(input);
+          };
+        })()`);
+        await wc.executeJavaScript(`(() => {
+          const btn = document.querySelector('button.status-cwd');
+          if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+        })()`);
+        await new Promise((r) => setTimeout(r, 1000));
+        const clickCheck = (await wc.executeJavaScript(`(() => ({
+          fetchLog: window.__ubFetchLog,
+          inputOpened: !!document.querySelector('input.status-cwd-input'),
+        }))()`)) as { fetchLog: string[]; inputOpened: boolean };
+        // 还原 fetch，避免影响后续链路
+        await wc.executeJavaScript(`window.__ubFetchOrigRestore && window.__ubFetchOrigRestore()`);
+
         await wc.executeJavaScript(
           `window.__ubCwdPickerPick('G:/pj/pj--ing/111111/Urchin-Browser')`,
         );
@@ -179,12 +214,21 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
         )) as string;
         return {
           installed,
+          clickIntercepted: !clickCheck.inputOpened,
+          fetchedEndpoint: clickCheck.fetchLog.some((u) => u.includes('urchin://pi-pick-dir')),
+          inputOpened: clickCheck.inputOpened,
           switched: cwdText.includes('Urchin-Browser') && cwdText.includes('G:'),
         };
       },
       url,
     );
-    expect(pickResult).toMatchObject({ installed: true, switched: true });
+    // dev.47：真实点击链路三重断言——拦截(不弹手输框) + fetch 命中协议端点 + 切换成功
+    expect(pickResult).toMatchObject({
+      installed: true,
+      clickIntercepted: true,
+      fetchedEndpoint: true,
+      switched: true,
+    });
 
     // 5.7 dev.45：页面增强——主题默认亮色 / 最近项目删除按钮 / 路径提示抑制。
     //     主题脚本在页面加载即执行（含一次 reload 兜底），轮询等待其稳定。
@@ -193,7 +237,9 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       projectItems?: number;
       delButtons?: number;
       hiddenAfterDel?: boolean;
+      confirmAsked?: boolean;
       noticeSuppressed?: boolean;
+      updateCssReady?: boolean;
       error?: string;
     }
     const enhance = await electronApp.evaluate(
@@ -218,20 +264,29 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           return { items: items.length, dels: document.querySelectorAll('.__ubProjDel').length };
         })()`)) as { items: number; dels: number };
 
-        // 点击 G:/ 条目的删除按钮 → 行隐藏
+        // 点击 G:/ 条目的删除按钮 → 行隐藏（dev.47：删除需先过确认——
+        // 设 __ubProjDelConfirm 钩子自动确认，避免真弹原生确认框阻塞测试）
         let hiddenAfterDel = false;
+        let confirmAsked = false;
         if (counts.items > 0) {
-          hiddenAfterDel = (await wc.executeJavaScript(`(() => {
+          const delResult = (await wc.executeJavaScript(`(() => {
+            window.__ubProjDelConfirm = function () { window.__ubDelAsked = true; return true; };
             const rows = Array.from(document.querySelectorAll('button.project-item'));
             const row = rows.find((r) => (r.getAttribute('title') || '').includes('Urchin-Browser'));
-            if (!row) return false;
+            if (!row) return { clicked: false };
             const del = row.querySelector('.__ubProjDel');
-            if (!del) return false;
+            if (!del) return { clicked: false };
             del.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
             return new Promise((resolve) => setTimeout(() => {
-              resolve(row.style.display === 'none' || !document.body.contains(row));
+              resolve({
+                clicked: true,
+                asked: !!window.__ubDelAsked,
+                hidden: row.style.display === 'none' || !document.body.contains(row),
+              });
             }, 400));
-          })()`)) as boolean;
+          })()`)) as { clicked: boolean; asked?: boolean; hidden?: boolean };
+          hiddenAfterDel = delResult.clicked && (delResult.hidden ?? false);
+          confirmAsked = delResult.asked ?? false;
         }
 
         // 路径提示抑制：切换目录后 1.5s 内不应存在「已切换到工作目录」提示
@@ -242,12 +297,21 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           return !notes.some((n) => /\\u5df2\\u5207\\u6362\\u5230\\u5de5\\u4f5c\\u76ee\\u5f55|\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55/.test(n.textContent || ''));
         })()`)) as boolean;
 
+        // dev.47：更新组件隐藏 CSS 已注入（dd-update 仅留版本行 + update-dot 隐藏）
+        const updateCssReady = (await wc.executeJavaScript(`(() => {
+          const st = document.getElementById('__ubProjStyle');
+          const css = st ? st.textContent || '' : '';
+          return css.includes('.dd-update>*:not(:first-child)') && css.includes('.update-dot');
+        })()`)) as boolean;
+
         return {
           theme,
           projectItems: counts.items,
           delButtons: counts.dels,
           hiddenAfterDel,
+          confirmAsked,
           noticeSuppressed,
+          updateCssReady,
         };
       },
       url,
@@ -255,10 +319,13 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     expect(enhance).toMatchObject({
       theme: 'light',
       noticeSuppressed: true,
+      updateCssReady: true,
     });
-    // 至少存在一个最近项目条目且删除后隐藏（5.6 刚切换过 → 必有）
+    // 至少存在一个最近项目条目且确认后删除隐藏（5.6 刚切换过 → 必有）
     expect(enhance.projectItems ?? 0).toBeGreaterThanOrEqual(1);
     expect(enhance.hiddenAfterDel).toBe(true);
+    // dev.47：删除经过确认判定（钩子被调用）
+    expect(enhance.confirmAsked).toBe(true);
 
     // 6. 关闭应用 → 子进程树随 performCleanup 终止 → 端口不可达（与主项目同生共死）
     await electronApp.close();

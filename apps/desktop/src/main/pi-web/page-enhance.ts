@@ -40,11 +40,19 @@ export function buildThemeDefaultScript(): string {
     'try{' +
     `if (localStorage.getItem('${THEME_KEY}') === null) {` +
     `localStorage.setItem('${THEME_KEY}', 'light');` +
-    // 先尝试官方热切换事件；400ms 后未见样式表生效则整页重载一次兜底
+    // 先尝试官方热切换事件；400ms 后未见样式表生效则**直接替换/创建样式表**
+    //（服务端 /themes/light.css，与官方切换同一 URL）——不整页 reload。
+    // dev.47 教训：reload 空窗期内目录选择拦截器随 document 销毁，此间点击
+    // 📁 会落回 pi 原生手输框（用户反馈「升级后选择器失效」的根因）。
     `document.dispatchEvent(new CustomEvent('${THEME_CHANGE_EVENT}', { detail: 'light' }));` +
     'setTimeout(function(){' +
     `var link = document.getElementById('${THEME_LINK_ID}');` +
-    "if (!link || !/light/.test(link.href || '')) location.reload();" +
+    "if (!link || !/light/.test(link.href || '')) {" +
+    "if (!link) { link = document.createElement('link'); link.id = '" +
+    THEME_LINK_ID +
+    "'; link.rel = 'stylesheet'; document.head.appendChild(link); }" +
+    "link.href = '/themes/light.css';" +
+    '}' +
     '}, 400);' +
     '}' +
     '}catch(e){}' +
@@ -67,7 +75,9 @@ export function buildProjectsPanelScript(): string {
     'function saveHidden(list){ sessionStorage.setItem("' +
     HIDDEN_KEY +
     '", JSON.stringify(list)); }' +
-    // 样式：行尾 ✕（悬停显现，样式注入一次）
+    // 样式：行尾 ✕（悬停显现，样式注入一次）；
+    // 更新组件（dev.47 用户决策：pi-web-ui 随本项目升级，页内自更新无效且误导）：
+    // 隐藏 .dd-update 除首行（当前版本）外的全部内容 + 触发器新版本红点
     'if (!document.getElementById("__ubProjStyle")) {' +
     'var st = document.createElement("style"); st.id = "__ubProjStyle";' +
     'st.textContent = ' +
@@ -76,7 +86,9 @@ export function buildProjectsPanelScript(): string {
     'width:16px;height:16px;line-height:16px;text-align:center;border-radius:4px;' +
     'cursor:pointer;color:#e5484d;font-size:12px;opacity:0;transition:opacity .12s;' +
     'background:rgba(229,72,77,.08)}' +
-    '.project-item:hover .__ubProjDel{opacity:1}";' +
+    '.project-item:hover .__ubProjDel{opacity:1}' +
+    '.dd-update>*:not(:first-child){display:none!important}' +
+    '.update-dot{display:none!important}";' +
     'document.head.appendChild(st);' +
     '}' +
     'function enhance(){' +
@@ -94,6 +106,12 @@ export function buildProjectsPanelScript(): string {
     'ev.preventDefault(); ev.stopPropagation();' +
     'var row = ev.target.closest("button.project-item");' +
     'var p = row && (row.getAttribute("title") || "");' +
+    // dev.47 用户决策：删除前弹确认。默认 window.confirm（Electron 原生确认框）；
+    // window.__ubProjDelConfirm(path) 可覆盖判定（E2E/自动化用，避免真弹窗阻塞）
+    'var ok = (typeof window.__ubProjDelConfirm === "function")' +
+    '  ? window.__ubProjDelConfirm(p)' +
+    '  : window.confirm("\\u786e\\u8ba4\\u4ece\\u6700\\u8fd1\\u9879\\u76ee\\u5217\\u8868\\u79fb\\u9664\\uff1f\\n" + p);' +
+    'if (!ok) return;' +
     'if (p) { var l = hiddenList(); if (l.indexOf(p) < 0) { l.push(p); saveHidden(l); } }' +
     'if (row) row.style.display = "none";' +
     '});' +

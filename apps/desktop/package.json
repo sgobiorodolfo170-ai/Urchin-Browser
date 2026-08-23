@@ -33,7 +33,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.27.0",
     "marked": "18.0.5",
-    "pi-web-ui": "0.28.2",
+    "pi-web-ui": "0.29.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^3.6.0",

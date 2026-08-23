@@ -21,7 +21,7 @@
 | 项 | pi-web-ui | pi-web-chat |
 | --- | --- | --- |
 | npm 包名 | `pi-web-ui`(已验证存在于 registry) | `pi-web-chat`(已验证) |
-| 版本 / 发布 | v0.28.2,2026-08-21(活跃) | v0.1.19,2026-08-11(~3.5k 下载/月) |
+| 版本 / 发布 | v0.29.1,2026-08-23(活跃;2026-08-22 由 0.28.2 升级并全锚点核验,见 §六) | v0.1.19,2026-08-11(~3.5k 下载/月) |
 | 作者 / 性质 | xingshuyin,社区(非 earendil 官方) | preinpost,社区(非官方) |
 | 许可证 | MIT(与本项目兼容) | MIT |
 | 架构 | pi SDK 进程内 + WebSocket 快照推流(60ms 节流),默认仅绑 127.0.0.1,凭据留服务端 | Node + ws 服务,React 19 前端,默认 127.0.0.1,复用 pi CLI auth |
@@ -97,3 +97,23 @@
 - **已知边界**:无 Git Bash 的机器上 pi-web-ui 会后台下载 busybox 到 `~/.pi-web/bin`
   (其 windowsBashDir 硬编码,无环境变量可覆盖;本机有 Git Bash 不触发)。根治待
   阶段 2 自研服务(届时该第三方包整体退场)。
+
+## 六、pi-web-ui 升级核验记录(0.28.2 → 0.29.1,2026-08-22)
+
+> 升级流程:pnpm add -E 精确钉版 → 逐项核验本项目全部注入/定制锚点在新版成立
+> → 全量门禁 + pi-web E2E 全链路回归。任一锚点失效应先适配再放行。
+
+| 锚点(本项目依赖面) | 0.29.1 核验 |
+| --- | --- |
+| bin/pi-web-ui.mjs 入口 + `--no-browser` | 通过 |
+| env PORT / PI_WEB_DATA_DIR / PI_WEB_CWD / PI_CODING_AGENT_DIR | 通过 |
+| auth.json 形状 `{type:"api_key"}` + isPiConfigured(keys>0) | 通过(写入移入 modelAdmin,形状不变;另新增 clearProviderApiKey 清除凭据) |
+| DOM 类名 status-cwd / status-cwd-input / panel-projects / project-item / fp-notice | 通过(全部在) |
+| 主题键 pi-web-ui:theme / theme-change 事件 / #theme-stylesheet / pi-web-client-id | 通过 |
+| themes/light.css、favicon.svg | 通过 |
+| set_cwd 等 WS 命令 | 通过(命令 50→56:新增 scm_*/terminal_*/start_goal_wizard/write_file 等,无删除) |
+| install_pi_agent(内部 npm i -g) | 通过(仍在 → npm 前缀沙箱继续覆盖) |
+| 内嵌 pi SDK | ^0.83.0 → ^0.84.2(与本项目 vendored pi 0.84.2 对齐) |
+
+验证:typecheck / 938 单测全绿 / build:main / pi-web E2E 20.3s 全绿
+(启动→auth占位→原生目录选择→主题亮色→删除按钮→提示抑制→退出杀进程全链路)。

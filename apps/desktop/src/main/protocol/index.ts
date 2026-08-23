@@ -18,6 +18,7 @@ import { createLogger } from '@urchin/logger';
 import { getBookmarkPanelHtml } from '../panel/bookmark-panel';
 import { getCaptureOverlayHtml } from '../screenshots/capture-overlay-html';
 import { inferMimeType } from '../files/file-kind';
+import { buildPickDirectoryResponse, PICK_DIR_HOST } from '../pi-web/dir-picker';
 
 const log = createLogger('urchin-protocol');
 
@@ -219,6 +220,8 @@ async function serveLocalFile(request: Request, url: URL): Promise<Response> {
  */
 export function registerUrchinProtocol(opts?: {
   onZoom?: (direction: 'in' | 'out', target: 'tab' | 'main') => void;
+  /** pi 页目录选择回调（dev.44）：弹原生目录选择器，返回所选路径或 null（取消） */
+  onPickDirectory?: () => Promise<string | null>;
 }): void {
   const handleZoom = (request: Request, target: 'tab' | 'main'): Response => {
     const url = new URL(request.url);
@@ -237,6 +240,16 @@ export function registerUrchinProtocol(opts?: {
 
       if (host === 'zoom' || host === 'zoom-main') {
         return handleZoom(request, host === 'zoom-main' ? 'main' : 'tab');
+      }
+
+      if (host === PICK_DIR_HOST) {
+        // pi 网页版原生目录选择器（dev.44）：页面注入脚本 fetch 触发——
+        // 弹 Windows 目录选择窗口，返回 { path } 供页面自动切换 pi 工作目录。
+        // Referer 白名单在 buildPickDirectoryResponse 内校验。
+        return buildPickDirectoryResponse(request.headers.get('Referer') ?? '', async () => {
+          const pick = opts?.onPickDirectory;
+          return pick ? pick() : null;
+        });
       }
 
       if (host === 'settings') {

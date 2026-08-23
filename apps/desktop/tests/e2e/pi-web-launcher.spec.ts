@@ -153,6 +153,39 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     const seededAuth = readFileSync(join(userDataDir, 'pi', 'agent', 'auth.json'), 'utf-8');
     expect(seededAuth).toContain('_urchin_bootstrap');
 
+    // 5.6 dev.44：目录选择器注入脚本已就位；直调 __ubCwdPickerPick 走
+    //     与原生选择器相同的「填路径 + Enter」链路（原生弹窗为 OS 标准件，
+    //     E2E 不弹窗，用调试入口替代;目标目录 G: 仓库根真实存在）
+    interface PickResult {
+      installed?: boolean;
+      switched?: boolean;
+      error?: string;
+    }
+    const pickResult = await electronApp.evaluate(
+      async ({ webContents }, piUrl): Promise<PickResult> => {
+        const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith(piUrl));
+        if (!wc) return { error: 'pi webContents not found' };
+        // 注入脚本幂等标志存在 = 拦截已生效
+        const installed = (await wc.executeJavaScript(
+          '!!window.__ubCwdPickerInstalled',
+        )) as boolean;
+        if (!installed) return { installed, error: 'picker script not injected' };
+        await wc.executeJavaScript(
+          `window.__ubCwdPickerPick('G:/pj/pj--ing/111111/Urchin-Browser')`,
+        );
+        await new Promise((r) => setTimeout(r, 3000));
+        const cwdText = (await wc.executeJavaScript(
+          `document.querySelector('button.status-cwd, .status-cwd-wrap')?.textContent ?? ''`,
+        )) as string;
+        return {
+          installed,
+          switched: cwdText.includes('Urchin-Browser') && cwdText.includes('G:'),
+        };
+      },
+      url,
+    );
+    expect(pickResult).toMatchObject({ installed: true, switched: true });
+
     // 6. 关闭应用 → 子进程树随 performCleanup 终止 → 端口不可达（与主项目同生共死）
     await electronApp.close();
     let down = false;

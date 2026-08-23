@@ -37,7 +37,12 @@ import { DownloadManager, registerDownloadHandlers } from './downloads';
 import { registerAiHandlers } from './ai';
 import { registerAiInputHandlers } from './ai/input-handlers';
 import type { ProviderConfigStore } from './ai';
-import { createPiWebLauncher, registerPiWebHandlers, type PiWebLauncher } from './pi-web';
+import {
+  createPiWebLauncher,
+  registerPiWebHandlers,
+  installCwdPickerControl,
+  type PiWebLauncher,
+} from './pi-web';
 import { registerPageContextHandlers } from './page-context';
 import { SummaryManager, registerSummaryHandlers } from './summary';
 import { registerFileHandlers, classifyFileKind } from './files';
@@ -264,6 +269,8 @@ let tabViewIntegration: TabViewIntegrationHandle | null = null;
 let disposeContextMenu: (() => void) | null = null;
 /** Ctrl+滚轮缩放卸载句柄（installZoomControl 返回）。退出时移除 created 监听。 */
 let disposeZoomControl: (() => void) | null = null;
+/** pi 页目录选择器注入卸载句柄（dev.44，installCwdPickerControl 返回）。 */
+let disposeCwdPicker: (() => void) | null = null;
 /** 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
 let bookmarkPanel: BookmarkPanel | null = null;
 /**
@@ -840,6 +847,17 @@ void app.whenReady().then(() => {
       const tab = active ? tabManager.getTab(active.id) : undefined;
       if (tab) applyZoomByDelta(tab.webContents, delta);
     },
+    // dev.44：pi 页右下角「📁 项目路径」点击 → 原生 Windows 目录选择器
+    // （页面注入脚本 fetch urchin://pi-pick-dir 触发；取消返回 null 页面无操作）
+    onPickDirectory: async () => {
+      const result = await dialog.showOpenDialog({
+        title: '选择 pi 项目目录',
+        buttonLabel: '选择此目录',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      if (result.canceled || result.filePaths.length === 0) return null;
+      return result.filePaths[0] ?? null;
+    },
   });
 
   // 初始化需要文件系统 / SQLite 的模块（W6：移入 whenReady 避免模块加载阶段崩溃）
@@ -1144,6 +1162,10 @@ void app.whenReady().then(() => {
   // 每标签独立、切 tab 保留，无需模块级状态。
   disposeZoomControl = installZoomControl(tabManager, mainWebContents);
 
+  // dev.44：pi 页右下角「📁 项目路径」→ 原生目录选择器注入（脚本按 DOM 守卫，
+  // 仅 pi-web-ui 页面的 status-cwd 生效；其他页面零影响）
+  disposeCwdPicker = installCwdPickerControl(tabManager);
+
   // 初始化收藏夹悬浮面板（子窗口，悬浮于网页之上；随主窗口移动/缩放重定位）。
   // 面板定位避开底部地址栏与右侧边栏：布局尺寸从 view-integration 的 layoutState 读取。
   bookmarkPanel = new BookmarkPanel({
@@ -1285,6 +1307,16 @@ async function performCleanup(): Promise<void> {
         log.error('Failed to dispose zoom control on quit', { error: String(e) });
       }
       disposeZoomControl = null;
+    }
+
+    // 4.7 移除 pi 页目录选择器注入的 created/did-finish-load 监听（dev.44）
+    if (disposeCwdPicker) {
+      try {
+        disposeCwdPicker();
+      } catch (e) {
+        log.error('Failed to dispose cwd picker on quit', { error: String(e) });
+      }
+      disposeCwdPicker = null;
     }
 
     // 5. 宽限期：utility process 的 kill 信号已发出但进程实际退出需要短暂时间，

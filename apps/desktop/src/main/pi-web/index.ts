@@ -14,3 +14,4 @@ export type {
 } from './launcher';
 export { registerPiWebHandlers } from './register-handlers';
 export { ensureAuthPlaceholder } from './auth-placeholder';
+export { installCwdPickerControl, buildCwdPickerInjectionScript } from './dir-picker';

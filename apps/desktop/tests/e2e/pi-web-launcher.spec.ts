@@ -293,14 +293,19 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           };
         })()`)) as { origHidden: boolean; injected: boolean; rightAligned: boolean };
 
-        // dev.48：主题选择器触发器被隐藏（顶部 chip 区无可见「主题」入口）
+        // dev.49：主题切换按钮被删除（顶栏无「主题」触发器——chip 不存在或其
+        // .dropdown 包装已从 DOM 移除；替代 dev.48 的隐藏类方案）
         const themeSel = (await wc.executeJavaScript(`(() => {
           const chips = Array.from(document.querySelectorAll('span.chip-sub'));
           const themeChip = chips.find((c) => /^(主题|theme)$/i.test((c.textContent || '').trim()));
-          if (!themeChip) return { present: false, hidden: true };
-          const host = themeChip.closest('[class*=chip]') || themeChip.parentElement;
-          return { present: true, hidden: !host || host.classList.contains('__ubThemeSelHidden') };
-        })()`)) as { present: boolean; hidden: boolean };
+          if (!themeChip) return { present: false, hidden: true, removed: true };
+          const dd = themeChip.closest('.dropdown');
+          return {
+            present: true,
+            hidden: !!dd && getComputedStyle(dd).display === 'none',
+            removed: !!dd && !document.body.contains(dd),
+          };
+        })()`)) as { present: boolean; hidden: boolean; removed: boolean };
 
         // 5.6 已切换到 G:/ 仓库 → 最近项目应有该条目且带删除按钮
         await wait(1000);
@@ -363,7 +368,7 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           noticeSuppressed,
           updateCssReady,
           newChatMoved: newChat.origHidden && newChat.injected && newChat.rightAligned,
-          themeSelectorHidden: !themeSel.present || themeSel.hidden,
+          themeSelectorHidden: !themeSel.present || themeSel.removed || themeSel.hidden,
         };
       },
       url,
@@ -380,6 +385,48 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     expect(enhance.hiddenAfterDel).toBe(true);
     // dev.47：删除经过确认判定（钩子被调用）
     expect(enhance.confirmAsked).toBe(true);
+
+    // dev.49：主题即时直推——ui.theme.set 后主进程立刻向 pi 标签推送
+    //（根治 dev.48 纯 2s 轮询的滞后/偶发失败「阻塞」）。往返断言：
+    // 切暗 → pi 页移除 light 样式表 + 主题键清除（官方 dark=键缺失语义）；
+    // 切亮 → pi 页恢复 light 样式表 + 主题键='light'。
+    const invokeUiTheme = async (theme: 'dark' | 'light') => {
+      await window.evaluate(async (t) => {
+        const w = window as unknown as {
+          urchin: { invoke: (c: string, r: unknown) => Promise<unknown> };
+        };
+        await w.urchin.invoke('ui.theme.set', { theme: t });
+      }, theme);
+    };
+    const readPiThemeState = async (piUrl: string) =>
+      electronApp.evaluate(
+        async ({ webContents }, url): Promise<{ key: string | null; link: boolean }> => {
+          const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith(url));
+          if (!wc) return { key: 'missing', link: false };
+          return (await wc.executeJavaScript(`(() => ({
+            key: localStorage.getItem('pi-web-ui:theme'),
+            link: !!document.getElementById('theme-stylesheet'),
+          }))()`)) as { key: string | null; link: boolean };
+        },
+        piUrl,
+      );
+    const waitPiThemeState = async (
+      piUrl: string,
+      want: (s: { key: string | null; link: boolean }) => boolean,
+    ): Promise<boolean> => {
+      for (let i = 0; i < 10; i++) {
+        const st = await readPiThemeState(piUrl);
+        if (want(st)) return true;
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      return false;
+    };
+
+    await invokeUiTheme('dark');
+    expect(await waitPiThemeState(url, (s) => s.key === null && !s.link)).toBe(true);
+
+    await invokeUiTheme('light');
+    expect(await waitPiThemeState(url, (s) => s.key === 'light' && s.link)).toBe(true);
 
     // dev.48：pi 页打开的网页标签图标 = π（urchin://pi-icon 钉定）
     const tabList = await window.evaluate(async () => {

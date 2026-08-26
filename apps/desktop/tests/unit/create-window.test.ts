@@ -17,6 +17,8 @@ const electronMocks = vi.hoisted(() => ({
   isPackaged: false,
   getAppPath: vi.fn().mockReturnValue('C:\\app'),
   resourcesPath: 'C:\\resources',
+  /** dev.50：nativeTheme 暗色标志（背景色跟随主题断言用） */
+  dark: false,
 }));
 
 vi.mock('electron', () => ({
@@ -29,6 +31,11 @@ vi.mock('electron', () => ({
     getAppPath: electronMocks.getAppPath,
     get resourcesPath() {
       return electronMocks.resourcesPath;
+    },
+  },
+  nativeTheme: {
+    get shouldUseDarkColors() {
+      return electronMocks.dark;
     },
   },
 }));
@@ -65,6 +72,7 @@ beforeEach(() => {
   winMock = makeWinMock();
   electronMocks.BrowserWindow.mockReturnValue(winMock);
   electronMocks.isPackaged = false;
+  electronMocks.dark = false;
   process.env.NODE_ENV = 'test';
   (process as unknown as { resourcesPath: string }).resourcesPath = 'C:\\resources';
 });
@@ -156,5 +164,18 @@ describe('createBrowserWindow', () => {
     const result = createBrowserWindow({});
 
     expect(result).toBe(winMock);
+  });
+
+  it('should set light background color by default (dev.50)', () => {
+    // 亮色：白（与渲染层 --color-surface 亮值一致）
+    createBrowserWindow({});
+    expect(getWindowArgs()).toMatchObject({ backgroundColor: '#ffffff' });
+  });
+
+  it('should set dark background color when nativeTheme is dark (dev.50)', () => {
+    // 暗色：surface 深色（硬编码白会在深色模式缝隙透出白色分割线）
+    electronMocks.dark = true;
+    createBrowserWindow({});
+    expect(getWindowArgs()).toMatchObject({ backgroundColor: '#0f172a' });
   });
 });

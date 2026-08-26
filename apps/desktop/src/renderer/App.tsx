@@ -1405,8 +1405,13 @@ export function App() {
 
       {/* === 中间列：ContentArea + 下侧地址栏 === */}
       <main className="flex flex-1 flex-col overflow-hidden">
-        {/* ContentArea */}
-        <div className="flex-1 overflow-hidden bg-white">
+        {/* ContentArea
+         *  背景必须用主题令牌 bg-surface 而非硬编码白色：本 div 位于网页
+         *  BrowserView 之下，DPI 取整级缝隙会透出此背景——硬编码白在深色
+         *  模式下表现为「网页四边白色分割线」（dev.50 修复）。
+         *  内部页面（设置/主页/文件查看器）均自带满幅 bg-surface 根，
+         *  容器换色不影响其外观。 */}
+        <div className="flex-1 overflow-hidden bg-surface">
           {
             isSettingsTab ? (
               /* 设置页：React 组件渲染 */

@@ -19,4 +19,7 @@ export {
   installPiWebPageEnhance,
   buildThemeFollowScript,
   buildProjectsPanelScript,
+  buildThemePushCall,
+  pushPiTheme,
 } from './page-enhance';
+export type { PiThemeTabManagerLike } from './page-enhance';

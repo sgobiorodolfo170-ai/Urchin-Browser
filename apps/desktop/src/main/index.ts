@@ -42,6 +42,7 @@ import {
   registerPiWebHandlers,
   installCwdPickerControl,
   installPiWebPageEnhance,
+  pushPiTheme,
   type PiWebLauncher,
 } from './pi-web';
 import { registerPageContextHandlers } from './page-context';
@@ -53,6 +54,7 @@ import { ProviderRegistry } from './orchestrator/provider-registry';
 import { electronProcessFactory } from './orchestrator/electron-factory';
 import { StorageLayer, createSqliteDatabase, ElectronSafeStorage } from './storage';
 import { registerUrchinSchemePrivileged, registerUrchinProtocol } from './protocol';
+import { currentThemeBackground } from './theme';
 import { BookmarkPanel } from './panel/bookmark-panel';
 import {
   resolveDataLocation,
@@ -516,8 +518,41 @@ function registerIpcHandlers(): void {
   // UI 域 handler：主题切换（渲染层 ThemeProvider 调用）。
   // 设置 nativeTheme.themeSource 使：窗口标题栏/边框跟随主题；
   // 支持 prefers-color-scheme 的网页（BrowserView）跟随主题（Chrome 深色模式行为）。
+  // dev.49：设置后立刻向所有 pi 标签直推主题（page-enhance 注入脚本暴露的
+  // __ubApplyTheme）——根治 dev.48 纯 2s 轮询的滞后/偶发 fetch 失败导致的
+  // 「pi 前端主题切换阻塞」；页面内 2s 轮询降级为兜底。
+  // dev.50：同步刷新窗口与已存在 BrowserView 的背景色——消除深色模式下
+  // 网页区四周几何缝隙透出的硬编码白色（渲染层容器已同步改用主题令牌）。
   registerHandler(ipcMain, 'ui.theme.set', (req) => {
     nativeTheme.themeSource = req.theme;
+    const piUrl = piWebLauncher?.status().url;
+    pushPiTheme(
+      tabManager,
+      (url) => (piUrl ? url.startsWith(piUrl) : false),
+      nativeTheme.shouldUseDarkColors,
+    );
+    const bg = currentThemeBackground();
+    for (const managed of windowManager.getAllWindows()) {
+      const win = managed.browserWindow as unknown as {
+        setBackgroundColor?: (color: string) => void;
+      };
+      try {
+        win.setBackgroundColor?.(bg);
+      } catch {
+        /* 测试 mock 无此方法/窗口销毁中：忽略 */
+      }
+    }
+    for (const snapshot of tabManager.query({})) {
+      const tab = tabManager.getTab(snapshot.id);
+      const view = tab?.view as unknown as {
+        setBackgroundColor?: (color: string) => void;
+      };
+      try {
+        view.setBackgroundColor?.(bg);
+      } catch {
+        /* 忽略 */
+      }
+    }
     log.info('theme set', { theme: req.theme });
     return { ok: true as const };
   });

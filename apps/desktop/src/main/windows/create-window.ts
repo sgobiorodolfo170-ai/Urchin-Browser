@@ -14,6 +14,7 @@
 import { BrowserWindow, Menu, app } from 'electron';
 import { join } from 'node:path';
 import { createLogger } from '@urchin/logger';
+import { currentThemeBackground } from '../theme';
 import type { BrowserWindowLike, CreateWindowOptions } from './types';
 
 const log = createLogger('window-factory');
@@ -51,7 +52,10 @@ export function createBrowserWindow(opts: CreateWindowOptions): BrowserWindowLik
     minHeight: MIN_HEIGHT,
     show: false,
     title: 'Urchin Browser',
-    backgroundColor: '#ffffff',
+    // 背景跟随主题（dev.50）：硬编码白色在深色模式下会从窗口未覆盖区域/
+    // 几何缝隙透出白光；暗色取 --color-surface 同值。切换主题时由
+    // ui.theme.set 处理内统一刷新已存在窗口。
+    backgroundColor: currentThemeBackground(),
     icon: iconPath,
     // 隐藏菜单栏（File/Edit/View/Window/Help）。
     // autoHideMenuBar 让菜单栏默认隐藏（Alt 可临时唤起），

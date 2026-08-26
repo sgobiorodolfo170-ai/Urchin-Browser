@@ -5,30 +5,30 @@
 
 ## 一、官方架构事实(vendored 0.84.2 核验)
 
-| 包 | 浏览器安全 | 角色 |
-| --- | --- | --- |
-| `@earendil-works/pi-client` | ✅(上游 `check:browser-smoke` CI 保证) | 官方客户端 SDK,自备 ByteTransport(WebSocket 等) |
-| `@earendil-works/pi-protocol` | ✅(仅依赖 typebox,零 node: 导入) | CBOR 帧 + 消息 schema(hello / request / event / snapshot) |
-| `@earendil-works/pi-ai`(根入口) | ✅ | 统一 LLM API、模型目录(`models.generated.ts` + `providers/data/*.json`) |
-| `@earendil-works/pi-agent-core` | ✅ | Agent 运行时、AgentEvent 流 |
-| `@earendil-works/pi-server` | ❌ Node | 传输无关 CBOR 服务(PiServer + 自实现 PiServerService) |
-| `@earendil-works/pi-coding-agent` | ❌ Node | AgentSession SDK、SessionManager(JSONL 会话)、RPC 模式 |
+| 包                                | 浏览器安全                             | 角色                                                                    |
+| --------------------------------- | -------------------------------------- | ----------------------------------------------------------------------- |
+| `@earendil-works/pi-client`       | ✅(上游 `check:browser-smoke` CI 保证) | 官方客户端 SDK,自备 ByteTransport(WebSocket 等)                         |
+| `@earendil-works/pi-protocol`     | ✅(仅依赖 typebox,零 node: 导入)       | CBOR 帧 + 消息 schema(hello / request / event / snapshot)               |
+| `@earendil-works/pi-ai`(根入口)   | ✅                                     | 统一 LLM API、模型目录(`models.generated.ts` + `providers/data/*.json`) |
+| `@earendil-works/pi-agent-core`   | ✅                                     | Agent 运行时、AgentEvent 流                                             |
+| `@earendil-works/pi-server`       | ❌ Node                                | 传输无关 CBOR 服务(PiServer + 自实现 PiServerService)                   |
+| `@earendil-works/pi-coding-agent` | ❌ Node                                | AgentSession SDK、SessionManager(JSONL 会话)、RPC 模式                  |
 
 官方「自定义前端」路径:Node 侧 `PiServer` ↔ 浏览器侧 `PiClient`(WebSocket/Unix ByteTransport),快照权威 + `session_progress` 流式增量;配套 `RemoteSession`/transcript 视图模型。**上游标记 experimental、无兼容性承诺**——本项目 vendored 锁定版本,更新节奏由本项目控制,风险可控。
 
 ## 二、候选社区包审查
 
-| 项 | pi-web-ui | pi-web-chat |
-| --- | --- | --- |
-| npm 包名 | `pi-web-ui`(已验证存在于 registry) | `pi-web-chat`(已验证) |
-| 版本 / 发布 | v0.29.1,2026-08-23(活跃;2026-08-22 由 0.28.2 升级并全锚点核验,见 §六) | v0.1.19,2026-08-11(~3.5k 下载/月) |
-| 作者 / 性质 | xingshuyin,社区(非 earendil 官方) | preinpost,社区(非官方) |
-| 许可证 | MIT(与本项目兼容) | MIT |
-| 架构 | pi SDK 进程内 + WebSocket 快照推流(60ms 节流),默认仅绑 127.0.0.1,凭据留服务端 | Node + ws 服务,React 19 前端,默认 127.0.0.1,复用 pi CLI auth |
-| 启动 | `npx pi-web-ui`(默认 :8787) | `pi install npm:pi-web-chat` + `pi --web`(:3141) |
-| 环境要求 | Node ≥22.19 + node-pty 原生模块 | pi CLI 已配置 |
-| 功能面 | 模型/API Key 网页内管理、思考块、工具卡片、终端(xterm.js+node-pty)、Git 面板、主题、goal 模式 | OpenWebUI 风格:流式、markdown、工具展示、会话 fork、模型切换、图片附件、移动端适配 |
-| 本机可行性 | ✅ 系统 Node v24.19.0 / npm 11.17.0 | 需预装 pi CLI(未装) |
+| 项          | pi-web-ui                                                                                     | pi-web-chat                                                                        |
+| ----------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| npm 包名    | `pi-web-ui`(已验证存在于 registry)                                                            | `pi-web-chat`(已验证)                                                              |
+| 版本 / 发布 | v0.29.1,2026-08-23(活跃;2026-08-22 由 0.28.2 升级并全锚点核验,见 §六)                         | v0.1.19,2026-08-11(~3.5k 下载/月)                                                  |
+| 作者 / 性质 | xingshuyin,社区(非 earendil 官方)                                                             | preinpost,社区(非官方)                                                             |
+| 许可证      | MIT(与本项目兼容)                                                                             | MIT                                                                                |
+| 架构        | pi SDK 进程内 + WebSocket 快照推流(60ms 节流),默认仅绑 127.0.0.1,凭据留服务端                 | Node + ws 服务,React 19 前端,默认 127.0.0.1,复用 pi CLI auth                       |
+| 启动        | `npx pi-web-ui`(默认 :8787)                                                                   | `pi install npm:pi-web-chat` + `pi --web`(:3141)                                   |
+| 环境要求    | Node ≥22.19 + node-pty 原生模块                                                               | pi CLI 已配置                                                                      |
+| 功能面      | 模型/API Key 网页内管理、思考块、工具卡片、终端(xterm.js+node-pty)、Git 面板、主题、goal 模式 | OpenWebUI 风格:流式、markdown、工具展示、会话 fork、模型切换、图片附件、移动端适配 |
+| 本机可行性  | ✅ 系统 Node v24.19.0 / npm 11.17.0                                                           | 需预装 pi CLI(未装)                                                                |
 
 **共同风险(已向用户披露,计划批准视为知情确认)**:两者均为第三方 Node 代码,在本机以用户权限执行(pi-web-ui 含 node-pty 终端能力,等价于可执行任意命令);两者自身**无 token 鉴权**,本机其他进程理论上可访问其端口。缓解:仅绑回环 + 随机端口 + 不长期常驻;自研阶段(阶段 2)服务端内置随机 token 鉴权。
 
@@ -73,6 +73,7 @@
    (其启动时会自动调系统 `open` 拉起默认浏览器,这是此前「跳到系统浏览器」的根源);
    页面内 window.open/target=_blank 本就被 tab-manager 的 setWindowOpenHandler
    拦截在本浏览器内打开(当前标签/新标签,按 links.openInNewTab 设置)。
+
 - E2E 调试中发现:第三方说明确认标记存于主窗口 localStorage,而 DD1 布局下 sessionData
   分区不随测试临时 userData 变化——说明确认状态跨测试运行保留(测试需兼容两路径)。
 
@@ -86,6 +87,7 @@
 > 卸载本项目即同时卸载 pi。**
 
 落实措施:
+
 - **npm 前缀沙箱**:launcher spawn env 注入 `npm_config_prefix=<userData>/pi/npm-global`
   ——pi-web-ui 进程树内任何 `npm i -g`(如其「安装 pi agent」引导按钮,该按钮在
   auth.json 无凭据时出现,实为面向独立用户的 `npm i -g @earendil-works/pi-coding-agent`)
@@ -103,17 +105,17 @@
 > 升级流程:pnpm add -E 精确钉版 → 逐项核验本项目全部注入/定制锚点在新版成立
 > → 全量门禁 + pi-web E2E 全链路回归。任一锚点失效应先适配再放行。
 
-| 锚点(本项目依赖面) | 0.29.1 核验 |
-| --- | --- |
-| bin/pi-web-ui.mjs 入口 + `--no-browser` | 通过 |
-| env PORT / PI_WEB_DATA_DIR / PI_WEB_CWD / PI_CODING_AGENT_DIR | 通过 |
-| auth.json 形状 `{type:"api_key"}` + isPiConfigured(keys>0) | 通过(写入移入 modelAdmin,形状不变;另新增 clearProviderApiKey 清除凭据) |
-| DOM 类名 status-cwd / status-cwd-input / panel-projects / project-item / fp-notice | 通过(全部在) |
-| 主题键 pi-web-ui:theme / theme-change 事件 / #theme-stylesheet / pi-web-client-id | 通过 |
-| themes/light.css、favicon.svg | 通过 |
-| set_cwd 等 WS 命令 | 通过(命令 50→56:新增 scm_*/terminal_*/start_goal_wizard/write_file 等,无删除) |
-| install_pi_agent(内部 npm i -g) | 通过(仍在 → npm 前缀沙箱继续覆盖) |
-| 内嵌 pi SDK | ^0.83.0 → ^0.84.2(与本项目 vendored pi 0.84.2 对齐) |
+| 锚点(本项目依赖面)                                                                 | 0.29.1 核验                                                                   |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| bin/pi-web-ui.mjs 入口 + `--no-browser`                                            | 通过                                                                          |
+| env PORT / PI_WEB_DATA_DIR / PI_WEB_CWD / PI_CODING_AGENT_DIR                      | 通过                                                                          |
+| auth.json 形状 `{type:"api_key"}` + isPiConfigured(keys>0)                         | 通过(写入移入 modelAdmin,形状不变;另新增 clearProviderApiKey 清除凭据)        |
+| DOM 类名 status-cwd / status-cwd-input / panel-projects / project-item / fp-notice | 通过(全部在)                                                                  |
+| 主题键 pi-web-ui:theme / theme-change 事件 / #theme-stylesheet / pi-web-client-id  | 通过                                                                          |
+| themes/light.css、favicon.svg                                                      | 通过                                                                          |
+| set_cwd 等 WS 命令                                                                 | 通过(命令 50→56:新增 scm__/terminal__/start_goal_wizard/write_file 等,无删除) |
+| install_pi_agent(内部 npm i -g)                                                    | 通过(仍在 → npm 前缀沙箱继续覆盖)                                             |
+| 内嵌 pi SDK                                                                        | ^0.83.0 → ^0.84.2(与本项目 vendored pi 0.84.2 对齐)                           |
 
 验证:typecheck / 938 单测全绿 / build:main / pi-web E2E 20.3s 全绿
 (启动→auth占位→原生目录选择→主题亮色→删除按钮→提示抑制→退出杀进程全链路)。
@@ -144,25 +146,56 @@
 
 ### 本项目定制清单(上游变更时的受控面,2026-08-23 现状)
 
-| 定制 | 实现位置 | 依赖的上游锚点 |
-| --- | --- | --- |
-| 原生目录选择器 | pi-web/dir-picker.ts + urchin://pi-pick-dir | button.status-cwd、input.status-cwd-input、set_cwd、fetch 可用 |
-| 主题默认亮色 | pi-web/page-enhance.ts(主题脚本) | pi-web-ui:theme 键、theme-change 事件、#theme-stylesheet、/themes/light.css |
-| 最近项目删除+确认+路径提示抑制 | pi-web/page-enhance.ts(面板脚本) | panel-projects、project-item(title=路径)、fp-notice 文案 |
-| 更新组件隐藏(仅版本号) | page-enhance 注入 CSS | .dd-update、.update-dot |
-| auth 占位(引导抑制) | pi-web/auth-placeholder.ts | auth.json 形状、isPiConfigured |
-| npm 沙箱/进程/数据目录 | pi-web/launcher.ts + main 接线 | bin 入口、--no-browser、四个 env |
-| favicon π 统一 | urchin://pi-icon + webRequest 重定向 | /favicon.svg|.ico 路径 |
+| 定制                           | 实现位置                                    | 依赖的上游锚点                                                              |
+| ------------------------------ | ------------------------------------------- | --------------------------------------------------------------------------- |
+| 原生目录选择器                 | pi-web/dir-picker.ts + urchin://pi-pick-dir | button.status-cwd、input.status-cwd-input、set_cwd、fetch 可用              |
+| 主题默认亮色                   | pi-web/page-enhance.ts(主题脚本)            | pi-web-ui:theme 键、theme-change 事件、#theme-stylesheet、/themes/light.css |
+| 最近项目删除+确认+路径提示抑制 | pi-web/page-enhance.ts(面板脚本)            | panel-projects、project-item(title=路径)、fp-notice 文案                    |
+| 更新组件隐藏(仅版本号)         | page-enhance 注入 CSS                       | .dd-update、.update-dot                                                     |
+| auth 占位(引导抑制)            | pi-web/auth-placeholder.ts                  | auth.json 形状、isPiConfigured                                              |
+| npm 沙箱/进程/数据目录         | pi-web/launcher.ts + main 接线              | bin 入口、--no-browser、四个 env                                            |
+| favicon π 统一                 | urchin://pi-icon + webRequest 重定向        | /favicon.svg                                                                | .ico 路径 |
 
-## 八、dev.48 定制追加（2026-08-23,纳入 §七 受控面长期管控）
+## 八、dev.48 定制追加（2026-08-23，dev.49 修订，纳入 §七 受控面长期管控）
 
-| 定制 | 实现位置 | 依赖的上游锚点 |
-| --- | --- | --- |
-| 主题跟随浏览器(替代默认亮色) | page-enhance(轮询脚本) + urchin://pi-theme(主进程读 nativeTheme) | pi-web-ui:theme 键、theme-change 事件、#theme-stylesheet、/themes/light.css |
-| pi 设置内主题选择器隐藏 | page-enhance(chip-sub「主题/theme」触发器加隐藏类) | span.chip-sub 文本 |
-| 新对话按钮移植至历史对话标题行 | page-enhance(隐藏 chip.newchat + 注入 __ubNewChat 转发触发) | button.chip.newchat、.panel-sessions>.panel-section-title |
-| pi 打开的网页图标钉定 π | tab-manager(piIconPinner + favicon 不覆盖) + main 接线(读实时 pi URL) | window-open 创建路径、tab.favicon 快照字段 |
+| 定制                                                 | 实现位置                                                                                                                                        | 依赖的上游锚点                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 主题完全跟随浏览器(替代默认亮色;dev.49 直推根治阻塞) | page-enhance(注入脚本暴露 __ubApplyTheme + 2s 轮询兜底) + urchin://pi-theme(主进程读 nativeTheme) + main 接线(ui.theme.set 后 pushPiTheme 直推) | pi-web-ui:theme 键、theme-change 事件、#theme-stylesheet、/themes/light.css                                                                                                                                                                                                                                                                       |
+| pi 主题切换按钮删除(dev.49,替代 dev.48 隐藏)         | page-enhance(顶栏 chip-sub「主题/theme」所在 .dropdown 整体移除 + more 菜单 .dd-menu 内主题段删除,MutationObserver 重删防 React 重建)           | span.chip-sub 文本、.dropdown、.dd-menu、.dd-header                                                                                                                                                                                                                                                                                               |
+| 新对话按钮移植至历史对话标题行                       | page-enhance(隐藏 chip.newchat + 注入 __ubNewChat 转发触发)                                                                                     | button.chip.newchat、.panel-sessions>.panel-section-title                                                                                                                                                                                                                                                                                         |
+| pi 打开的网页图标钉定 π                              | tab-manager(piIconPinner + favicon 不覆盖) + main 接线(读实时 pi URL)                                                                           | window-open 创建路径、tab.favicon 快照字段                                                                                                                                                                                                                                                                                                        |
+| 对话输入框重构(dev.51–57,ChatGPT 风格一体大框)       | page-enhance 注入 CSS(.inputbar 前缀高优先级覆盖) + 顶栏增强                                                                                    | .inputbox、.inputbox-row(含官方隐藏的行内 attach/actions)、.input-tools/.input-tools-left/.input-tools-right、.btn.send/.btn.stop、.btn.attach-img(背景图 + 非 ::before)、.dropdown .dd-menu(向上弹)、.topbar-desktop .dropdown(模型 span.chip-model + 思考)、prefers-color-scheme、var(--text)/var(--bg)/var(--bg-elev)/var(--bg-elev2) 主题变量 |
 
 主题跟随危险度评估(用户要求先行,结论:低):仅外观层(样式表切换),不涉会话/
-凭据/进程;失败模式=不同步(页面维持当前主题)无功能损失;写入值 light/dark 均为
-官方已知值;禁用 reload(dev.47 空窗教训)。
+凭据/进程;失败模式=不同步(页面维持当前主题,2s 轮询兜底)无功能损失;写入值
+light/null 均为官方已知值;禁用 reload(dev.47 空窗教训)。dev.49 根因留痕:
+dev.48 的 300ms 延迟双步 + localStorage 前置守卫组合,在 React 重挂载改写存储
+后会永久早退(DOM 与存储脱节),且纯 2s 轮询存在 ≤2s 滞后与 fetch 偶发失败——
+表现为「浏览器切主题时 pi 前端主题阻塞」;修复=主进程直推 + 同步幂等 DOM 应用
+
+- 官方存储语义(亮 setItem 'light'/暗 removeItem),守卫与延迟全部移除。
+
+## 九、固化教训（dev.57，注入脚本字符串必须转义，防重复踩坑）
+
+**教训**：凡以 `executeJavaScript` 注入、且把 CSS/JS 内容拼进 `st.textContent = "..."` 这类
+**双引号 JS 字符串字面量**时，内容里的双引号（如 CSS `url("data:image/svg+xml,...")`）**必须转义**。
+dev.55/56 曾把整段 CSS 内联 `st.textContent = "...url("data:...")..."`——`"` 提前终止字符串，
+注入脚本抛 `Uncaught SyntaxError: Unexpected identifier 'data'`，面板+主题脚本全部失效、
+`#__ubProjStyle` 从未创建，`#.input-tools` 回落官方宽屏 `display:none`，表象是「工具条消失」，
+极易误判为「CSS 规则写错」而反复调样式（实际根源在注入源的字符串转义）。
+
+**规避（已固化到 `page-enhance.ts`）**：
+
+1. 注入的样本文本先抽成独立字符串变量（`const styleCss = '...'`），再用 **`JSON.stringify(styleCss)`**
+   嵌入 `st.textContent`——JSON.stringify 会把内嵌 `"`、`\`、换行等全部安全转义，生成合法 JS 源。
+2. 若新增含双引号/复杂字符的注入 CSS/JS，一律走该路径；禁止手工把含 `"` 的内容直接拼进
+   `st.textContent = "..."`。
+3. **注入类改动必须跑运行时诊断**：`_electron.launch` 抓 pi webContents 的
+   `console-message`（看有无 `Uncaught SyntaxError`）+ 轮询 `#__ubProjStyle` 存在性 +
+   `.input-tools` 计算 `display`——三重断言确认注入生效，而不仅是 typecheck/单测（它们只验
+   生成的字符串，验不出执行期 SyntaxError）。
+
+**排查手法**（本次定位路径）：新增 `installPiWebPageEnhance` 同款诊断脚本——
+`_electron.launch` → 打开 pi 页 → `webContents.on('console-message')` 捕获 SyntaxError →
+轮询 `#__ubProjStyle`（40s 不应为 false）→ 读 `.inputbar .input-tools` 计算样式 confirm flex。
+凡「注入后功能莫名消失」均可先走这套诊断，别先猜样式。

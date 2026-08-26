@@ -22,10 +22,12 @@
  * 曾为"网页区左上角大圆角"给 BrowserView 设置透明背景并注入 clip-path，
  * 但透明 BrowserView 是 Windows DWM 合成压力的根源——多次触发
  * LiveKernelEvent 0x1CC（GPU 引擎超时 TDR），导致整个桌面卡死。
- * 此方案已回滚：BrowserView 保持不透明白背景，不再做透明合成。
+ * 此方案已回滚：BrowserView 保持不透明背景（颜色跟随主题，dev.50；
+ * 原硬编码白色在深色模式下造成加载白闪 + 缝隙透白），不再做透明合成。
  */
 import { BrowserView } from 'electron';
 import { createLogger } from '@urchin/logger';
+import { currentThemeBackground } from '../theme';
 import type { BrowserViewLike } from './types';
 
 const log = createLogger('view-factory');
@@ -49,8 +51,11 @@ export function createBrowserView(): BrowserViewLike {
     },
   });
 
-  // 不透明白背景：避免网页加载时白闪，同时杜绝透明合成（DWM 压力 → 桌面卡死）
-  view.setBackgroundColor('#ffffff');
+  // 不透明背景（颜色跟随主题，dev.50）：避免网页加载时闪烁，同时杜绝透明
+  // 合成（DWM 压力 → 桌面卡死）。暗色取 --color-surface 同值——硬编码白
+  // 在深色模式下既造成加载白闪，也会从 BrowserView 与 React UI 的几何
+  // 缝隙透出白色分割线。切换主题时由 ui.theme.set 处理内刷新已存在 view。
+  view.setBackgroundColor(currentThemeBackground());
 
   return view as unknown as BrowserViewLike;
 }

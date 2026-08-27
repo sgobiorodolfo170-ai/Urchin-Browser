@@ -164,7 +164,7 @@
 | pi 主题切换按钮删除(dev.49,替代 dev.48 隐藏)         | page-enhance(顶栏 chip-sub「主题/theme」所在 .dropdown 整体移除 + more 菜单 .dd-menu 内主题段删除,MutationObserver 重删防 React 重建)           | span.chip-sub 文本、.dropdown、.dd-menu、.dd-header                                                                                                                                                                                                                                                                                               |
 | 新对话按钮移植至历史对话标题行                       | page-enhance(隐藏 chip.newchat + 注入 __ubNewChat 转发触发)                                                                                     | button.chip.newchat、.panel-sessions>.panel-section-title                                                                                                                                                                                                                                                                                         |
 | pi 打开的网页图标钉定 π                              | tab-manager(piIconPinner + favicon 不覆盖) + main 接线(读实时 pi URL)                                                                           | window-open 创建路径、tab.favicon 快照字段                                                                                                                                                                                                                                                                                                        |
-| 对话输入框重构(dev.51–57,ChatGPT 风格一体大框)       | page-enhance 注入 CSS(.inputbar 前缀高优先级覆盖) + 顶栏增强                                                                                    | .inputbox、.inputbox-row(含官方隐藏的行内 attach/actions)、.input-tools/.input-tools-left/.input-tools-right、.btn.send/.btn.stop、.btn.attach-img(背景图 + 非 ::before)、.dropdown .dd-menu(向上弹)、.topbar-desktop .dropdown(模型 span.chip-model + 思考)、prefers-color-scheme、var(--text)/var(--bg)/var(--bg-elev)/var(--bg-elev2) 主题变量 |
+| 对话输入框重构(dev.51–61,ChatGPT 风格一体大框) | page-enhance 注入 CSS(.inputbar 前缀高优先级覆盖) + 顶栏增强 | .inputbox、.inputbox-row(含官方隐藏的行内 attach/actions)、.input-tools/.input-tools-left/.input-tools-right、.btn.send/.btn.stop、.btn.attach-img(背景图 + 非 ::before，27px)、.dropdown .dd-menu(向上弹)、.topbar-desktop .dropdown(模型 span.chip-model + 思考)、.statusbar(statusbar 整体隐藏)、.statusbar .status-ctx(上下文用量→__ubCtxRing 圆环)、button.status-cwd(→.__ubCwdRow 项目路径行)、prefers-color-scheme、var(--text)/var(--bg)/var(--bg-elev)/var(--bg-elev2) 主题变量 |
 
 主题跟随危险度评估(用户要求先行,结论:低):仅外观层(样式表切换),不涉会话/
 凭据/进程;失败模式=不同步(页面维持当前主题,2s 轮询兜底)无功能损失;写入值
@@ -199,3 +199,45 @@ dev.55/56 曾把整段 CSS 内联 `st.textContent = "...url("data:...")..."`—�
 `_electron.launch` → 打开 pi 页 → `webContents.on('console-message')` 捕获 SyntaxError →
 轮询 `#__ubProjStyle`（40s 不应为 false）→ 读 `.inputbar .input-tools` 计算样式 confirm flex。
 凡「注入后功能莫名消失」均可先走这套诊断，别先猜样式。
+
+## 十、pi 模块「真实用户使用场景」E2E（2026-08-27 建立，dev.62）
+
+> 场景：模拟用户真实使用 pi 的 agent 工具——让 pi agent 在隔离目录里**完整开发一个实例小项目**，
+> 并让 pi 前端**同步展示**整个过程（用户消息 → 思考 → 工具调用(建文件/跑命令) → 结果）。
+> 区别于既有 pi-web-launcher E2E（只验启动链路），本场景验「agent 真干活的完整链路」。
+
+### 1. 文件与运行方式
+
+- `apps/desktop/tests/e2e/pi-agent-build.spec.ts`——注：需真实 provider key，**无 key 自动 skip**（非 CI 确定性）。
+- 运行：`powershell` 设 `$env:OPENCODE_API_KEY=<key>` → `npx playwright test tests/e2e/pi-agent-build.spec.ts`。
+
+### 2. 关键事实（坑与对策，长期有效）
+
+- **key 注入**：provider=opencode-go（项目内置），模型=MiMo V2.5，endpoint=`https://opencode.ai/zen/go/v1`。
+  pi 经 launcher 继承 `process.env` + vendor `env-api-keys.ts`（`opencode-go → OPENCODE_API_KEY`）读取。
+  key 只经环境变量传递、**绝不落盘**（不入 auth.json、不写代码）。
+- **默认模型是 kimi-k2.6（余额不足）**：pi-web-ui 默认选中列表首个模型，常为 kimi-k2.6 → 实际运行报
+  `CreditsError: Insufficient balance`。对策：**显式选中 MiMo V2.5**——Radix Dropdown 需 `pointerdown`
+  事件序列打开（`click` 无效），且模型列表异步加载（等 `.dd-menu .dd-model-name` 最多 ~15s）。
+- **`electronApp.evaluate` 闭包不跨界**：回调会被序列化到主进程执行，**不能闭包引用测试里的变量**
+  （否则 `ReferenceError: piUrl is not defined`）；URL/参数必须经 `evaluate(fn, arg)` 的 `arg` 传入。
+- **发送要真实受信点击**：`wc.sendInputEvent(mouseDown/mouseUp)` 而非 `button.click()`（后者有自动化副作用，
+  且 `.btn.send` 在 DOM 里有多份，须按 `getComputedStyle().display!=='none' && width>0` 取可见的那个）。
+- **完成判定以磁盘为准**：agent 输出随机，前端「stop 消失/助手终稿」等启发式会误判；唯一可靠信号是
+  **目标文件全部落盘**（`existsSync` 轮询）。
+- **注入 JS 必须纯 JS**：`executeJavaScript` 字符串内出现 TS 的 `as` 会抛
+  `Uncaught SyntaxError: Unexpected identifier 'as'`（同 §九 转义教训）。
+
+### 3. 验收信号（机器判定）
+
+1. pi 启动器 running + pi 页面就绪（`__ubPageEnhanceInstalled`/`__ubCwdPickerInstalled`）；
+2. 前端同步展示：完整 transcript（dump 到 `<项目目录>/__pi_transcript_dump.txt`）+ 工具调用序列；
+3. 真实开发成果：目标文件（如 package.json/index.js/todos.json）全部落盘，内容核验；
+4. 全程 0 未捕获 console/page 报错（main + pi 双通道采集）。
+
+### 4. 迭代场景（2026-08-27 续）
+
+- dev.62：todo-cli —— agent 建 package.json/index.js，`node index.js add/list` 真实运行。
+- dev.63：俄罗斯方块（Tetris，`pi-agent-tetris.spec.ts`）——agent 开发游戏逻辑 + `node:test` 测试 + demo 运行，
+  **前端保活展示全过程**，并真实运行测试；首跑命中 agent 测试真实缺陷（off-by-one），追加修复指令后
+  **8/8 全通过**。坑与对策见 dev.63 留痕（选付费精确 "MiMo V2.5" 避 Free 限额；follow-up 前须等 agent 空闲）。

@@ -50,8 +50,19 @@
  *      ① 发送/停止 38→33（各-5px）；② 「+」用 background-image SVG data-URI
  *      绘制（亮 #111827 黑 / 暗 #f3f4f6 白，弃用被官方归零的 ::before）；
  *      ③ .input-tools-left 强制 display:flex + gap:5px（模型↔思考 5px）。
- *      全部 .inputbar 前缀 + 保留主箱发送（不引入 absolute 定位），避免重蹈
- *      工具条回落官方隐藏态的覆辙。
+ *    - dev.58：① 发送/停止移入工具条最右——.input-tools 设 position:relative，
+ *      .input-tools-right .inputbox-actions 用 absolute right:10px 垂直居中
+ *      （dev.55/56 曾因此类写法联动出问题，但根因实为注入字符串未转义，已由
+ *      JSON.stringify 根治——本条纯 CSS 布局，可行）；主箱 inputbox-actions 隐藏；
+ *      ② 发送/停止 33→28（再各-5px）；③ 模型↔思考 gap 5→10px。
+ *    - dev.59：① 去工具条模型/思考 chips 边框；② 去主箱 textarea 聚焦时的大框
+ *      紫色环绕（.inputbox:focus-within 不再画 accent 光环、主箱边框保持常规色）；
+ *      ③ 「+」后注入上下文用量圆环（读 statusbar 的 .status-ctx：ctx-bar-fill 宽度%
+ *      着色 + 颜色级别 + token 文字；不显示费用）。
+ *    - dev.60：隐藏整条信息栏（statusbar，display:none——不再保留「已连接/费用/
+ *      消息数/插件状态」等）；项目路径移入工具条下方（注入 .__ubCwdRow，转发点击
+ *      原 button.status-cwd 弹原生目录选择器，路径文本从原按钮读取——其本身已含
+ *      📁 图标，不再额外加图标）。
  *    - 两种布局都靠官方 DOM 中「行内含一套 attach+actions、.input-tools-right
  *      另有一套」用高优先级规则反转可见性实现，零 DOM 移动，规避 React
  *      受控节点搬移风险。
@@ -194,20 +205,22 @@ export function buildProjectsPanelScript(): string {
     '.inputbar .inputbox-row:focus-within{border-color:color-mix(in srgb,var(--accent) 55%,var(--border))}' +
     '.inputbar .inputbox-row textarea{flex:1 1 100%;padding:10px 6px 2px}' +
     '.inputbar .inputbox-row .attach-img{display:none!important}' +
-    '.inputbar .inputbox-row .inputbox-actions{display:flex!important;margin-left:auto}' +
+    '.inputbar .inputbox-row .inputbox-actions{display:none!important}' +
     '.inputbar .inputbox .btn.send,.inputbar .inputbox .btn.stop{background:var(--text);' +
-    'border-color:var(--text);color:var(--bg);width:33px;height:33px;border-radius:10px;box-shadow:none}' +
+    'border-color:var(--text);color:var(--bg);width:28px;height:28px;border-radius:10px;box-shadow:none}' +
     '.inputbar .inputbox .btn.send:hover:not(:disabled),.inputbar .inputbox .btn.stop:hover:not(:disabled)' +
     '{background:var(--text);border-color:var(--text);opacity:.88;transform:none;box-shadow:none}' +
-    '.inputbar .input-tools{display:flex!important;justify-content:flex-start;gap:16px;' +
+    '.inputbar .input-tools{position:relative!important;display:flex!important;justify-content:flex-start;align-items:center;gap:16px;' +
     'background:var(--bg);border:1px solid var(--border);border-radius:0 0 22px 22px;' +
     'padding:6px 10px;margin-top:-1px;overflow:visible}' +
-    '.inputbar .input-tools-left{display:flex!important;align-items:center;gap:5px;margin-left:-5px}' +
-    '.inputbar .input-tools-right{display:flex!important;order:-1}' +
-    '.inputbar .input-tools-right .inputbox-actions{display:none!important}' +
+    '.inputbar .input-tools-left{display:flex!important;align-items:center;gap:10px;margin-left:-5px}' +
+    '.inputbar .input-tools-right{display:flex!important;align-items:center;order:-1}' +
+    // 发送/停止副本：absolute 拉到工具条最右（垂直居中），脱离 + 与 chips 布局
+    '.inputbar .input-tools-right .inputbox-actions{display:flex!important;position:absolute;' +
+    'right:10px;top:50%;transform:translateY(-50%);z-index:5}' +
     '.inputbar .input-tools-right .btn.attach-img{display:inline-flex!important;border:none;' +
     'background-color:transparent;background-repeat:no-repeat;background-position:center;' +
-    'background-size:15px 15px;width:22px;height:22px;padding:0;flex-shrink:0;opacity:1!important;' +
+    'background-size:18px 18px;width:27px;height:27px;padding:0;flex-shrink:0;opacity:1!important;' +
     "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M12 5v14M5 12h14' stroke='%23111827' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E\")}" +
     '.inputbar .input-tools-right .btn.attach-img:disabled{opacity:1!important}' +
     '.inputbar .input-tools-right .btn.attach-img svg{display:none!important}' +
@@ -218,7 +231,22 @@ export function buildProjectsPanelScript(): string {
     '.inputbar .input-tools .dropdown .dd-menu{position:absolute!important;' +
     'top:auto!important;bottom:calc(100% + 6px)!important;right:0!important;left:auto!important;' +
     'max-height:min(360px,50vh);z-index:80}' +
-    '.inputbar .input-tools .dropdown.left .dd-menu{left:0!important;right:auto!important}';
+    '.inputbar .input-tools .dropdown.left .dd-menu{left:0!important;right:auto!important}' +
+    // dev.59：① 去工具条模型/思考 chips 边框；② 去主箱 focus 环绕紫色；
+    //          ③ 新增上下文用量圆环（随 statusbar 数据着色）。
+    // dev.60：隐藏整条信息栏（statusbar）；新增 .__ubCwdRow——项目路径移入工具条
+    //          下方（点击转发原 button.status-cwd 弹原生目录选择器）。
+    '.inputbar .input-tools .chip{border:none;background:var(--bg)}' +
+    '.inputbar .inputbox-row:focus-within{border-color:var(--border)}' +
+    '.inputbar .inputbox:focus-within{border:none;box-shadow:none}' +
+    '.__ubCtxRing{width:20px;height:20px;border-radius:50%;margin-left:8px;flex-shrink:0;align-self:center;' +
+    'position:relative;display:inline-flex;align-items:center;justify-content:center;' +
+    '-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));' +
+    'mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px))}' +
+    '.statusbar{display:none!important}' +
+    '.__ubCwdRow{display:flex;align-items:center;gap:6px;max-width:860px;margin:6px auto 0;' +
+    'font-size:12.5px;color:var(--text-dim);cursor:pointer;padding:2px 12px;user-select:none}' +
+    '.__ubCwdRow:hover{color:var(--accent)}';
 
   return (
     '(function(){' +
@@ -337,13 +365,65 @@ export function buildProjectsPanelScript(): string {
     'if (/\\u5df2\\u5207\\u6362\\u5230\\u5de5\\u4f5c\\u76ee\\u5f55|\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55/.test(t)) notes[i].remove();' +
     '}' +
     '}' +
+    // dev.59：上下文用量圆环——在「+」后注入一只圆环，读取信息栏 statusbar 的
+    // .status-ctx（圆环自身的隐藏由 CSS 完成，此处仅读其 .ctx-bar-fill 宽度%与
+    // 颜色级别 + token 文字）实时着色；React 重渲染重建由定时器兜底补插。
+    'function ensureCtxRing(){' +
+    'var plus=document.querySelector(".inputbar .input-tools-right .btn.attach-img");' +
+    'if(!plus)return;' +
+    'var ring=document.querySelector(".inputbar .input-tools-right .__ubCtxRing");' +
+    'if(!ring){ring=document.createElement("span");ring.className="__ubCtxRing";' +
+    'plus.insertAdjacentElement("afterend",ring);}' +
+    '}' +
+    'function updateCtxRing(){' +
+    'var ring=document.querySelector(".inputbar .input-tools-right .__ubCtxRing");' +
+    'if(!ring){ensureCtxRing();ring=document.querySelector(".inputbar .input-tools-right .__ubCtxRing");}' +
+    'if(!ring)return;' +
+    'var ctx=document.querySelector(".statusbar .status-item.status-ctx");' +
+    'if(!ctx)return;' +
+    'var fill=ctx.querySelector(".ctx-bar-fill");var pct=0;' +
+    'if(fill&&fill.style.width)pct=parseFloat(fill.style.width)||0;' +
+    'var bar=ctx.querySelector(".ctx-bar");var col="#22c55e";' +
+    'if(bar){if(bar.classList.contains("warn"))col="#ef4444";else if(bar.classList.contains("mid"))col="#f59e0b";}' +
+    'var track="rgba(128,128,128,.25)";' +
+    'ring.style.background=pct>0?("conic-gradient("+col+" "+pct+"%, "+track+" 0)"):track;' +
+    'var txt=(ctx.textContent||"").replace(/\\u4e0a\\u4e0b\\u6587|Context/g,"").trim();' +
+    'ring.title=txt?("\\u4e0a\\u4e0b\\u6587 "+pct+"% · "+txt):("\\u4e0a\\u4e0b\\u6587 "+pct+"%");' +
+    '}' +
+    // dev.60：项目路径移入工具条下方——注入 .__ubCwdRow（显示路径+转发点击原 button.status-cwd）
+    'function ensureCwdRow(){' +
+    'var bar=document.querySelector(".inputbar");if(!bar)return;' +
+    'if(bar.querySelector(".__ubCwdRow"))return;' +
+    'var row=document.createElement("div");row.className="__ubCwdRow";' +
+    'row.title="\\u70b9\\u51fb\\u9009\\u62e9\\u9879\\u76ee\\u76ee\\u5f55";' +
+    // 路径文本本身已含 📁 图标（源 button.status-cwd 自带），不再额外加图标
+    'var path=document.createElement("span");path.className="__ubCwdPath";' +
+    'row.appendChild(path);' +
+    'row.addEventListener("click",function(ev){' +
+    'ev.preventDefault();ev.stopPropagation();' +
+    'var orig=document.querySelector("button.status-cwd");' +
+    'if(orig)orig.click();' +
+    '});' +
+    'var box=bar.querySelector(".inputbox");' +
+    'if(box)box.insertAdjacentElement("afterend",row);else bar.appendChild(row);' +
+    '}' +
+    'function updateCwdRow(){' +
+    'var row=document.querySelector(".inputbar .__ubCwdRow");' +
+    'if(!row){ensureCwdRow();row=document.querySelector(".inputbar .__ubCwdRow");}' +
+    'if(!row)return;' +
+    'var src=document.querySelector("button.status-cwd");' +
+    'var txt=src?(src.textContent||"").trim():"";' +
+    'var el=row.querySelector(".__ubCwdPath");' +
+    'if(el)el.textContent=txt||"(\\u9009\\u62e9\\u9879\\u76ee\\u76ee\\u5f55)";' +
+    '}' +
+    'setInterval(function(){ensureCtxRing();updateCtxRing();ensureCwdRow();updateCwdRow();},1500);' +
     'var timer = null;' +
     'function schedule(){' +
     'if (timer) return;' +
     'timer = setTimeout(function(){ timer = null; enhance(); suppressCwdNotices(); }, 80);' +
     '}' +
     'new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });' +
-    'enhance(); suppressCwdNotices();' +
+    'enhance(); suppressCwdNotices(); ensureCtxRing(); updateCtxRing(); ensureCwdRow(); updateCwdRow();' +
     '})();'
   );
 }

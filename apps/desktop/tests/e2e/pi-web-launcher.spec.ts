@@ -12,6 +12,10 @@
  * 4. piWeb.status 进入 running；新标签页加载 pi 网页（标题含 pi-web-ui）
  * 5. 服务经 HTTP 探活 200；启动过程不弹系统默认浏览器（--no-browser）
  * 6. 关闭应用 → performCleanup 终止子进程树 → 端口随即不可达（与主项目同生共死）
+ * 7. dev.65：左区重构——自有面板（#__ubLeftPanel）就绪接管官方面板：上区
+ *    「项目配置」（技能/插件启停 + .pi 配置文件）、下区「项目」（行切换 +
+ *    行内「＋」/「×」+ 当前项目下挂对话/历史）；数据/动作经注入的第二条
+ *    WebSocket（同 clientId 挂同一 ClientSession）走官方协议。
  *
  * 前置：需已构建 dist/main、dist/preload、dist/renderer（CI/本地先跑 build）+
  * pnpm install（pi-web-ui 依赖预装，运行时零下载）。
@@ -240,7 +244,16 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       confirmAsked?: boolean;
       noticeSuppressed?: boolean;
       updateCssReady?: boolean;
-      newChatMoved?: boolean;
+      lpReady?: boolean;
+      lpOfficialHidden?: boolean;
+      lpCfgRows?: number;
+      lpProjRows?: number;
+      lpActiveProj?: string;
+      lpNewBtns?: number;
+      lpSwitchWorked?: boolean;
+      lpConvGroups?: number;
+      cfgSkillsExpanded?: boolean;
+      cfgFilesListed?: boolean;
       themeSelectorHidden?: boolean;
       pinnedTabIcon?: string | null;
       error?: string;
@@ -268,30 +281,35 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           await wait(500);
         }
 
-        // dev.48：新对话移植——顶栏原按钮隐藏 + 历史对话标题行有注入按钮
-        await wait(600);
-        const newChat = (await wc.executeJavaScript(`(() => {
-          const orig = document.querySelector('button.chip.newchat');
-          const injected = document.querySelector(
-            '.panel-sessions > .panel-section-title .__ubNewChat',
-          );
-          // 右对齐用几何断言：注入按钮右缘贴近标题行右缘
-          //（margin-left:auto 的 computed 值会被解析为像素，不能直接比对）
-          let rightAligned = false;
-          if (injected) {
-            const row = injected.closest('.panel-section-title');
-            if (row) {
-              const r = injected.getBoundingClientRect();
-              const rr = row.getBoundingClientRect();
-              rightAligned = rr.right - r.right < 40;
-            }
-          }
-          return {
-            origHidden: orig ? getComputedStyle(orig).display === 'none' : false,
-            injected: !!injected,
-            rightAligned,
-          };
-        })()`)) as { origHidden: boolean; injected: boolean; rightAligned: boolean };
+        // dev.65：左区重构——自有面板就绪接管（官方面板隐藏）+ 上区配置/下区项目结构。
+        // 面板就绪依赖注入 ws 收到 snapshot（cwd），轮询等待稳定。
+        interface LpStruct {
+          ready?: boolean;
+          officialHidden?: boolean;
+          cfgRows?: number;
+          projRows?: number;
+          newBtns?: number;
+          activeProj?: string;
+        }
+        let lp: LpStruct = {};
+        for (let i = 0; i < 16; i++) {
+          lp = (await wc.executeJavaScript(`(() => {
+            const z = document.getElementById('__ubLeftPanel');
+            const official = document.querySelector('.panel-left > .panel-projects');
+            return {
+              ready: !!(z && z.classList.contains('__ubReady')),
+              officialHidden: !official || getComputedStyle(official).display === 'none',
+              cfgRows: z ? z.querySelectorAll('.__ubLPCfgRow').length : 0,
+              projRows: z ? z.querySelectorAll('.__ubLPProj').length : 0,
+              newBtns: z ? z.querySelectorAll('.__ubNewBtn').length : 0,
+              activeProj: z
+                ? (z.querySelector('.__ubLPProj.active .__ubLPProjName')?.textContent ?? '')
+                : '',
+            };
+          })()`)) as LpStruct;
+          if (lp.ready === true) break;
+          await wait(500);
+        }
 
         // dev.49：主题切换按钮被删除（顶栏无「主题」触发器——chip 不存在或其
         // .dropdown 包装已从 DOM 移除；替代 dev.48 的隐藏类方案）
@@ -307,47 +325,101 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           };
         })()`)) as { present: boolean; hidden: boolean; removed: boolean };
 
-        // 5.6 已切换到 G:/ 仓库 → 最近项目应有该条目且带删除按钮
+        // 5.6 已切换到 G:/ 仓库 → 官方「最近项目」区仍有条目（隐藏但保留 DOM，
+        // 作为自有面板未就绪时的降级路径）且带删除按钮
         await wait(1000);
         const counts = (await wc.executeJavaScript(`(() => {
           const items = document.querySelectorAll('button.project-item');
           return { items: items.length, dels: document.querySelectorAll('.__ubProjDel').length };
         })()`)) as { items: number; dels: number };
 
-        // 点击 G:/ 条目的删除按钮 → 行隐藏（dev.47：删除需先过确认——
-        // 设 __ubProjDelConfirm 钩子自动确认，避免真弹原生确认框阻塞测试）
-        let hiddenAfterDel = false;
-        let confirmAsked = false;
-        if (counts.items > 0) {
-          const delResult = (await wc.executeJavaScript(`(() => {
-            window.__ubProjDelConfirm = function () { window.__ubDelAsked = true; return true; };
-            const rows = Array.from(document.querySelectorAll('button.project-item'));
-            const row = rows.find((r) => (r.getAttribute('title') || '').includes('Urchin-Browser'));
-            if (!row) return { clicked: false };
-            const del = row.querySelector('.__ubProjDel');
-            if (!del) return { clicked: false };
-            del.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-            return new Promise((resolve) => setTimeout(() => {
-              resolve({
-                clicked: true,
-                asked: !!window.__ubDelAsked,
-                hidden: row.style.display === 'none' || !document.body.contains(row),
-              });
-            }, 400));
-          })()`)) as { clicked: boolean; asked?: boolean; hidden?: boolean };
-          hiddenAfterDel = delResult.clicked && (delResult.hidden ?? false);
-          confirmAsked = delResult.asked ?? false;
-        }
-
         // 路径提示抑制（dev.64 修正选择器）：切换目录后 1.5s 内不应存在
         // 「已切换到工作目录」提示——0.29.x 官方 toast 是 .notice（fixed 居中，
         // 未抑制时 7s 自灭，此处 1.5s 检查足以捕捉回归）；.fp-notice 一并保留。
         await wc.executeJavaScript(`window.__ubCwdPickerPick && window.__ubCwdPickerPick('C:/')`);
         await wait(1500);
-        const noticeSuppressed = (await wc.executeJavaScript(`(() => {
+        let noticeSuppressed = (await wc.executeJavaScript(`(() => {
           const notes = Array.from(document.querySelectorAll('.fp-notice, .notice'));
           return !notes.some((n) => /\\u5df2\\u5207\\u6362\\u5230\\u5de5\\u4f5c\\u76ee\\u5f55|\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55/.test(n.textContent || ''));
         })()`)) as boolean;
+
+        // dev.65：自有面板项目行点击切换（当前 C:/ → 点 G:/ 仓库行 → set_cwd
+        // 经注入 ws 生效，__ubCwdPath 跟随更新；产生的切换 toast 同时被抑制）
+        await wc.executeJavaScript(`(() => {
+          const row = document.querySelector('.__ubLPProj[data-act="proj"][title*="Urchin-Browser"]');
+          if (row) row.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        })()`);
+        await wait(3000);
+        const switchRes = (await wc.executeJavaScript(`(() => {
+          const cwdText =
+            (document.querySelector('.__ubCwdRow .__ubCwdPath')?.textContent ?? '');
+          const active = document.querySelector('.__ubLPProj.active');
+          const notes = Array.from(document.querySelectorAll('.fp-notice, .notice'));
+          return {
+            cwdSwitched: cwdText.includes('Urchin-Browser') && cwdText.includes('G:'),
+            activeFollowed: !!(active && (active.getAttribute('title') || '').includes('Urchin-Browser')),
+            convGroups: document.querySelectorAll('.__ubLPConvGroup').length,
+            stillSuppressed: !notes.some((n) =>
+              /\\u5df2\\u5207\\u6362\\u5230\\u5de5\\u4f5c\\u76ee\\u5f55|\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55/.test(n.textContent || ''),
+            ),
+          };
+        })()`)) as {
+          cwdSwitched: boolean;
+          activeFollowed: boolean;
+          convGroups: number;
+          stillSuppressed: boolean;
+        };
+        noticeSuppressed = noticeSuppressed && switchRes.stillSuppressed;
+
+        // dev.65：上区「项目配置」——展开技能小节（列表或空提示）与配置文件小节
+        //（.pi 惰性加载：无目录则空提示），验证 set_settings / list_files 通道接线
+        const cfgRes = (await wc.executeJavaScript(`(() => {
+          const clickCfg = (v) => {
+            const row = document.querySelector('.__ubLPCfgRow[data-v="' + v + '"]');
+            if (row) row.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+            return !!row;
+          };
+          return Promise.resolve()
+            .then(() => ({ skillsClicked: clickCfg('skills') }))
+            .then(() => new Promise((r) => setTimeout(() => r({
+              skillsClicked: true,
+              skillsExpanded: !!document.querySelector('.__ubLPItemList, .__ubLPHint'),
+              filesClicked: clickCfg('files'),
+            }), 400)))
+            .then(() => new Promise((r) => setTimeout(() => r({
+              skillsClicked: true,
+              skillsExpanded: !!document.querySelector('.__ubLPItemList, .__ubLPHint'),
+              filesClicked: true,
+              filesListed: !!document.querySelector('.__ubLPFile, .__ubLPHint'),
+            }), 1200)));
+        })()`)) as {
+          skillsClicked: boolean;
+          skillsExpanded: boolean;
+          filesClicked: boolean;
+          filesListed: boolean;
+        };
+
+        // dev.65：自有面板删除按钮（C:/ 行）——确认钩子 + 会话内隐藏
+        let hiddenAfterDel = false;
+        let confirmAsked = false;
+        const delResult = (await wc.executeJavaScript(`(() => {
+          window.__ubProjDelConfirm = function () { window.__ubDelAsked = true; return true; };
+          const rows = Array.from(document.querySelectorAll('.__ubLPProj[data-act="proj"]'));
+          const row = rows.find((r) => (r.getAttribute('title') || '') === 'C:\\\\' || (r.getAttribute('title') || '') === 'C:/');
+          if (!row) return { clicked: false };
+          const del = row.querySelector('.__ubProjDel');
+          if (!del) return { clicked: false };
+          del.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          return new Promise((resolve) => setTimeout(() => {
+            resolve({
+              clicked: true,
+              asked: !!window.__ubDelAsked,
+              hidden: !document.body.contains(row) || row.closest('.__ubLPProjWrap') === null,
+            });
+          }, 400));
+        })()`)) as { clicked: boolean; asked?: boolean; hidden?: boolean };
+        hiddenAfterDel = delResult.clicked && (delResult.hidden ?? false);
+        confirmAsked = delResult.asked ?? false;
 
         // dev.47：更新组件隐藏 CSS 已注入（dd-update 仅留版本行 + update-dot 隐藏）
         const updateCssReady = (await wc.executeJavaScript(`(() => {
@@ -369,7 +441,16 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           confirmAsked,
           noticeSuppressed,
           updateCssReady,
-          newChatMoved: newChat.origHidden && newChat.injected && newChat.rightAligned,
+          lpReady: lp.ready === true,
+          lpOfficialHidden: lp.officialHidden === true,
+          lpCfgRows: lp.cfgRows ?? 0,
+          lpProjRows: lp.projRows ?? 0,
+          lpActiveProj: lp.activeProj ?? '',
+          lpNewBtns: lp.newBtns ?? 0,
+          lpSwitchWorked: switchRes.cwdSwitched && switchRes.activeFollowed,
+          lpConvGroups: switchRes.convGroups,
+          cfgSkillsExpanded: cfgRes.skillsClicked && cfgRes.skillsExpanded,
+          cfgFilesListed: cfgRes.filesClicked && cfgRes.filesListed,
           themeSelectorHidden: !themeSel.present || themeSel.removed || themeSel.hidden,
         };
       },
@@ -379,14 +460,25 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       theme: 'light',
       noticeSuppressed: true,
       updateCssReady: true,
-      newChatMoved: true,
       themeSelectorHidden: true,
+      // dev.65：左区重构——自有面板就绪接管 + 上下两区结构
+      lpReady: true,
+      lpOfficialHidden: true,
+      lpSwitchWorked: true,
+      cfgSkillsExpanded: true,
+      cfgFilesListed: true,
     });
     // 至少存在一个最近项目条目且确认后删除隐藏（5.6 刚切换过 → 必有）
     expect(enhance.projectItems ?? 0).toBeGreaterThanOrEqual(1);
     expect(enhance.hiddenAfterDel).toBe(true);
     // dev.47：删除经过确认判定（钩子被调用）
     expect(enhance.confirmAsked).toBe(true);
+    // dev.65：配置三小节（技能/插件/配置文件）+ 项目行数与行内「＋」一致 + 当前项目展开
+    expect(enhance.lpCfgRows).toBe(3);
+    expect(enhance.lpProjRows ?? 0).toBeGreaterThanOrEqual(1);
+    expect(enhance.lpNewBtns).toBe(enhance.lpProjRows);
+    expect(enhance.lpConvGroups ?? 0).toBeGreaterThanOrEqual(2);
+    expect(enhance.lpActiveProj).toContain('Urchin-Browser');
 
     // dev.49：主题即时直推——ui.theme.set 后主进程立刻向 pi 标签推送
     //（根治 dev.48 纯 2s 轮询的滞后/偶发失败「阻塞」）。往返断言：

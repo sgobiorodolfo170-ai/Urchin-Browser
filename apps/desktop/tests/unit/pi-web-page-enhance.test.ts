@@ -140,6 +140,20 @@ describe('buildProjectsPanelScript', () => {
     expect(s).toContain('.update-dot{display:none!important}');
   });
 
+  it('should remove skills/extensions sections from settings dialog (dev.69)', () => {
+    const s = buildProjectsPanelScript();
+    // 管理面统一到左区（同一 settings_state/set_settings 接口），弹窗内移除
+    expect(s).toContain('removeSettingsDupSections');
+    expect(s).toContain('".set-section .set-section-title"');
+    expect(s).toContain('closest(".set-section")');
+    expect(s).toContain('sec.remove()');
+    // 标题取纯文本子节点精确匹配（防「审查可用技能」子串误删）
+    expect(s).toContain('/^(\\u6280\\u80fd|skills)$/i.test(label)');
+    expect(s).toContain('/^(\\u63d2\\u4ef6|extensions)$/i.test(label)');
+    // 挂进 MutationObserver 调度（弹窗重开重建节点时重复移除）
+    expect(s).toContain('enhance(); suppressCwdNotices(); removeSettingsDupSections();');
+  });
+
   it('should restyle composer into merged frame + + merged to chips left + popup up (dev.52)', () => {
     const s = buildProjectsPanelScript();
     // 外壳透明化 + 一体大框：gap:0 去缝、上圆角/下圆角、独立条上边框负重叠成分割线

@@ -246,6 +246,12 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       noProjDel?: boolean;
       noticeSuppressed?: boolean;
       updateCssReady?: boolean;
+      settingsDedup?: {
+        dialogSeen: boolean;
+        noSkills: boolean;
+        noExts: boolean;
+        presetsKept: boolean;
+      };
       lpReady?: boolean;
       lpOfficialHidden?: boolean;
       lpCfgRows?: number;
@@ -451,6 +457,40 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           return css.includes('.dd-update>*:not(:first-child)') && css.includes('.update-dot');
         })()`)) as boolean;
 
+        // dev.69：设置弹窗技能/插件节已移除（管理统一在左区）；预设节保留。
+        // 点顶栏「设置」chip → 等弹窗渲染 + 注入 observer 移除 → 读节标题 → 关闭。
+        await wc.executeJavaScript(`(() => {
+          const chips = Array.from(document.querySelectorAll('span.chip-sub'));
+          const chip = chips.find((c) => /^(设置|settings)$/i.test((c.textContent || '').trim()));
+          const btn = chip && chip.closest('button');
+          if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        })()`);
+        await wait(900);
+        const settingsDedup = (await wc.executeJavaScript(`(() => {
+          const labels = Array.from(
+            document.querySelectorAll('.set-section .set-section-title'),
+          ).map((t) => {
+            let label = '';
+            for (const n of t.childNodes) {
+              if (n.nodeType === 3) label += n.textContent || '';
+            }
+            return label.trim();
+          });
+          const close = document.querySelector('.modal-close');
+          if (close) close.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          return {
+            dialogSeen: labels.length > 0,
+            noSkills: !labels.some((l) => /^(技能|skills)$/i.test(l)),
+            noExts: !labels.some((l) => /^(插件|extensions)$/i.test(l)),
+            presetsKept: labels.some((l) => /^(预设|presets)$/i.test(l)),
+          };
+        })()`)) as {
+          dialogSeen: boolean;
+          noSkills: boolean;
+          noExts: boolean;
+          presetsKept: boolean;
+        };
+
         // dev.48：pi 页内 window.open 新开网页 → 标签图标钉定为 π
         //（先经主窗口开「链接新标签打开」，再从 pi 页开 example.com）
         await wc.executeJavaScript(`window.open('https://example.com')`);
@@ -465,6 +505,7 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           noProjDel,
           noticeSuppressed,
           updateCssReady,
+          settingsDedup,
           lpReady: lp.ready === true,
           lpOfficialHidden: lp.officialHidden === true,
           lpCfgRows: lp.cfgRows ?? 0,
@@ -502,6 +543,13 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     expect(enhance.noProjDel).toBe(true);
     // dev.65/68：配置五小节（技能/插件/命令/预设/配置文件）+ 项目行「＋」与行数一致
     expect(enhance.lpCfgRows).toBe(5);
+    // dev.69：设置弹窗打开过且技能/插件节已移除、预设节保留（管理统一在左区）
+    expect(enhance.settingsDedup).toMatchObject({
+      dialogSeen: true,
+      noSkills: true,
+      noExts: true,
+      presetsKept: true,
+    });
     expect(enhance.lpProjRows ?? 0).toBeGreaterThanOrEqual(1);
     expect(enhance.lpNewBtns).toBe(enhance.lpProjRows);
     // dev.66：会话合并为单一列表（无「对话/历史」小标题）；E2E 临时 profile 可能

@@ -33,6 +33,9 @@
  *    未命中；现对匹配文本的 .notice 转发点击 .notice-close 走官方 dismiss_notice
  *    通道（React 状态一致，重渲染不复活），.fp-notice 移除保留兜底；错误级提示
  *    （切换工作目录失败）不匹配文本，不受影响。
+ * 5.5 设置弹窗去重（dev.69）：技能/插件管理已统一在左区面板（同一
+ *    settings_state / set_settings 接口），弹窗内对应 .set-section 整节移除
+ *    （标题纯文本精确匹配——「审查可用技能」含子串不误删；预设/审查节保留）。
  * 6. 更新组件隐藏（dev.47）：.dd-update 仅留版本行 + update-dot 红点隐藏。
  * 7. 左区重构（dev.65，详见 left-panel.ts）：上区改「项目配置」（技能/插件启停 +
  *    .pi/ 配置文件编辑），下区改「项目」管理（项目行切换 + 行内「＋」新建对话 +
@@ -387,6 +390,25 @@ export function buildProjectsPanelScript(): string {
     '}' +
     '}' +
     '}' +
+    // dev.69：设置弹窗去重——技能/插件管理已统一在左区面板（同一 settings_state /
+    // set_settings 接口），弹窗内对应 .set-section 整节移除。标题取 title 的纯文本
+    // 子节点做精确匹配（「审查可用技能」含「技能」子串不得误删；预设/审查节保留）。
+    // React 重开弹窗重建节点由 MutationObserver 调度的本函数重复移除。
+    'function removeSettingsDupSections(){' +
+    'var titles = document.querySelectorAll(".set-section .set-section-title");' +
+    'for (var i = 0; i < titles.length; i++) {' +
+    'var t = titles[i];' +
+    'var label = "";' +
+    'for (var k = 0; k < t.childNodes.length; k++) {' +
+    'if (t.childNodes[k].nodeType === 3) label += t.childNodes[k].textContent;' +
+    '}' +
+    'label = label.trim();' +
+    'if (/^(\\u6280\\u80fd|skills)$/i.test(label) || /^(\\u63d2\\u4ef6|extensions)$/i.test(label)) {' +
+    'var sec = t.closest(".set-section");' +
+    'if (sec) sec.remove();' +
+    '}' +
+    '}' +
+    '}' +
     // dev.59：上下文用量圆环——在「+」后注入一只圆环，读取信息栏 statusbar 的
     // .status-ctx（圆环自身的隐藏由 CSS 完成，此处仅读其 .ctx-bar-fill 宽度%与
     // 颜色级别 + token 文字）实时着色；React 重渲染重建由定时器兜底补插。
@@ -442,10 +464,10 @@ export function buildProjectsPanelScript(): string {
     'var timer = null;' +
     'function schedule(){' +
     'if (timer) return;' +
-    'timer = setTimeout(function(){ timer = null; enhance(); suppressCwdNotices(); }, 80);' +
+    'timer = setTimeout(function(){ timer = null; enhance(); suppressCwdNotices(); removeSettingsDupSections(); }, 80);' +
     '}' +
     'new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });' +
-    'enhance(); suppressCwdNotices(); ensureCtxRing(); updateCtxRing(); ensureCwdRow(); updateCwdRow();' +
+    'enhance(); suppressCwdNotices(); removeSettingsDupSections(); ensureCtxRing(); updateCtxRing(); ensureCwdRow(); updateCwdRow();' +
     '})();'
   );
 }

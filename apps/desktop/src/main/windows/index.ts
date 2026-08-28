@@ -6,6 +6,19 @@
 export { WindowManager } from './window-manager';
 export { createBrowserWindow } from './create-window';
 export { registerWindowHandlers } from './register-handlers';
+export { loadWindowState, trackWindowState, WINDOW_STATE_SETTINGS_KEY } from './window-state';
+export type {
+  WindowState,
+  TrackedWindow,
+  WindowStateSettings,
+  DisplayBoundsProvider,
+} from './window-state';
+export {
+  DEFAULT_WINDOW_WIDTH,
+  DEFAULT_WINDOW_HEIGHT,
+  MIN_WINDOW_WIDTH,
+  MIN_WINDOW_HEIGHT,
+} from './window-geometry';
 export type {
   BrowserWindowLike,
   ManagedWindow,

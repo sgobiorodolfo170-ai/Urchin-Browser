@@ -102,6 +102,11 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   ['summary.baseUrl', ''],
   // 调试选项：右侧边栏折叠态下鼠标停留后延迟展开的时长（毫秒，默认 300ms）
   ['debug.sidebarHoverDelay', 300],
+  // 主窗口几何记忆（2026-08-28 用户需求）：{ x, y, width, height, isMaximized }，
+  // 由 main/windows/window-state.ts 读写（resize/move/maximize 防抖落盘，启动恢复）。
+  // null = 尚无记录（首次启动/从未改动），恢复逻辑回退默认 1280x800。
+  // 主进程内部状态，不暴露给设置页 UI。
+  ['window.bounds', null],
 ] as const;
 
 export class SettingsManager {

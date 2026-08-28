@@ -15,15 +15,15 @@ import { BrowserWindow, Menu, app } from 'electron';
 import { join } from 'node:path';
 import { createLogger } from '@urchin/logger';
 import { currentThemeBackground } from '../theme';
+import {
+  DEFAULT_WINDOW_WIDTH,
+  DEFAULT_WINDOW_HEIGHT,
+  MIN_WINDOW_WIDTH,
+  MIN_WINDOW_HEIGHT,
+} from './window-geometry';
 import type { BrowserWindowLike, CreateWindowOptions } from './types';
 
 const log = createLogger('window-factory');
-
-/** 默认窗口尺寸 */
-const DEFAULT_WIDTH = 1280;
-const DEFAULT_HEIGHT = 800;
-const MIN_WIDTH = 800;
-const MIN_HEIGHT = 600;
 
 /**
  * 创建 BrowserWindow 并配置 M18 安全边界。
@@ -32,10 +32,25 @@ const MIN_HEIGHT = 600;
  * @returns 符合 BrowserWindowLike 接口的 BrowserWindow 实例
  */
 export function createBrowserWindow(opts: CreateWindowOptions): BrowserWindowLike {
-  const width = opts.width ?? DEFAULT_WIDTH;
-  const height = opts.height ?? DEFAULT_HEIGHT;
+  const width = opts.width ?? DEFAULT_WINDOW_WIDTH;
+  const height = opts.height ?? DEFAULT_WINDOW_HEIGHT;
+  // x/y 成对且为有限数字时定位到恢复位置；否则省略，由 Electron 默认居中。
+  // （window-state 恢复链路已保证成对传入；此处的散值防御只影响 BrowserWindow 参数）
+  const hasPosition =
+    opts.x !== undefined &&
+    opts.y !== undefined &&
+    Number.isFinite(opts.x) &&
+    Number.isFinite(opts.y);
+  const position = hasPosition ? { x: opts.x, y: opts.y } : {};
 
-  log.info('creating browser window', { width, height, incognito: opts.incognito ?? false });
+  log.info('creating browser window', {
+    width,
+    height,
+    x: hasPosition ? opts.x : undefined,
+    y: hasPosition ? opts.y : undefined,
+    maximize: opts.maximize ?? false,
+    incognito: opts.incognito ?? false,
+  });
 
   // 应用图标路径：
   // - 打包后：extraResources 把图标复制到 resources 目录
@@ -48,8 +63,9 @@ export function createBrowserWindow(opts: CreateWindowOptions): BrowserWindowLik
   const win = new BrowserWindow({
     width,
     height,
-    minWidth: MIN_WIDTH,
-    minHeight: MIN_HEIGHT,
+    ...position,
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     show: false,
     title: 'Urchin Browser',
     // 背景跟随主题（dev.50）：硬编码白色在深色模式下会从窗口未覆盖区域/
@@ -75,6 +91,13 @@ export function createBrowserWindow(opts: CreateWindowOptions): BrowserWindowLik
   // Menu.setApplicationMenu(null) 移除全局默认菜单（防止新窗口继承）。
   win.setMenuBarVisibility(false);
   Menu.setApplicationMenu(null);
+
+  // 恢复上次会话最大化态（窗口状态记忆）：在 ready-to-show 显示前最大化，
+  // 避免先以正常尺寸闪现再切换成最大化。正常态 bounds 已由 width/height/x/y
+  // 传入，取消最大化时 Electron 还原到该尺寸。
+  if (opts.maximize) {
+    win.maximize();
+  }
 
   // 开发模式加载 dev server，生产模式加载打包文件
   // E2E 测试时通过 NODE_ENV=production 强制加载打包文件（app.isPackaged 在未打包时为 false）

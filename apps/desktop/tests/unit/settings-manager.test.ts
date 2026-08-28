@@ -87,11 +87,12 @@ describe('SettingsManager', () => {
 
     const entries = mgr.getAll();
 
-    // 默认 18 项（language/searchEngine/downloadsPath/data.directory/blockTrackers/doNotTrack/blockAds/links.openInNewTab/
+    // 默认 19 项（language/searchEngine/downloadsPath/data.directory/blockTrackers/doNotTrack/blockAds/links.openInNewTab/
     //   ai.model/ai.apiKey/ai.providerId/ai.baseUrl/ai.providerProfiles/
     //   summary.model/summary.apiKey/summary.providerId/summary.baseUrl/
-    //   debug.sidebarHoverDelay/ui.rightSidebarAutoExpand/home.frequentSites） + 自定义 1 项
-    expect(entries).toHaveLength(21);
+    //   debug.sidebarHoverDelay/ui.rightSidebarAutoExpand/home.frequentSites/
+    //   window.bounds 窗口几何记忆，主进程内部状态） + 自定义 1 项
+    expect(entries).toHaveLength(22);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');
@@ -111,7 +112,38 @@ describe('SettingsManager', () => {
     expect(keys).toContain('summary.apiKey');
     expect(keys).toContain('summary.providerId');
     expect(keys).toContain('summary.baseUrl');
+    expect(keys).toContain('window.bounds');
     expect(keys).toContain('customKey');
+  });
+
+  it('window.bounds: defaults to null and round-trips through persistence (窗口状态记忆)', () => {
+    const saved = { get: vi.fn().mockReturnValue(null), set: vi.fn() };
+    const mgr = new SettingsManager(saved);
+
+    // 默认 null = 尚无记录
+    expect(mgr.get('window.bounds')).toBeNull();
+
+    mgr.set('window.bounds', { x: 10, y: 20, width: 1024, height: 768, isMaximized: false });
+    expect(saved.set).toHaveBeenCalledWith('settings:window.bounds', {
+      x: 10,
+      y: 20,
+      width: 1024,
+      height: 768,
+      isMaximized: false,
+    });
+
+    // 重启场景：持久化已有记录 → 构造时覆盖默认 null
+    const restarted = new SettingsManager({
+      get: vi.fn().mockReturnValue({ x: 10, y: 20, width: 1024, height: 768, isMaximized: true }),
+      set: vi.fn(),
+    });
+    expect(restarted.get('window.bounds')).toEqual({
+      x: 10,
+      y: 20,
+      width: 1024,
+      height: 768,
+      isMaximized: true,
+    });
   });
 
   it('getAll: entries contain key and value fields', () => {

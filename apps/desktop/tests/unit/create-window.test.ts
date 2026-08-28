@@ -49,6 +49,7 @@ interface WinMock {
   loadFile: ReturnType<typeof vi.fn>;
   once: ReturnType<typeof vi.fn>;
   show: ReturnType<typeof vi.fn>;
+  maximize: ReturnType<typeof vi.fn>;
   webContents: { openDevTools: ReturnType<typeof vi.fn> };
   id: number;
 }
@@ -60,6 +61,7 @@ function makeWinMock(): WinMock {
     loadFile: vi.fn(),
     once: vi.fn(),
     show: vi.fn(),
+    maximize: vi.fn(),
     webContents: { openDevTools: vi.fn() },
     id: 1,
   };
@@ -122,6 +124,32 @@ describe('createBrowserWindow', () => {
     createBrowserWindow({ width: 1024, height: 768 });
 
     expect(getWindowArgs()).toMatchObject({ width: 1024, height: 768 });
+  });
+
+  it('should apply restored position (x/y) when provided (窗口状态记忆)', () => {
+    createBrowserWindow({ x: 120, y: 60, width: 1024, height: 768 });
+
+    expect(getWindowArgs()).toMatchObject({ x: 120, y: 60, width: 1024, height: 768 });
+  });
+
+  it('should omit x/y when not provided (Electron default centering)', () => {
+    createBrowserWindow({});
+
+    const args = getWindowArgs() as { x?: number; y?: number };
+    expect(args.x).toBeUndefined();
+    expect(args.y).toBeUndefined();
+  });
+
+  it('should maximize before show when opts.maximize is set (窗口状态记忆)', () => {
+    createBrowserWindow({ maximize: true });
+
+    expect(winMock.maximize).toHaveBeenCalledTimes(1);
+  });
+
+  it('should not maximize by default', () => {
+    createBrowserWindow({});
+
+    expect(winMock.maximize).not.toHaveBeenCalled();
   });
 
   it('should hide menu bar and remove global menu', () => {

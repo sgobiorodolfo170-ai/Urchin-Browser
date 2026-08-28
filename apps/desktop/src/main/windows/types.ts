@@ -48,6 +48,13 @@ export interface BrowserWindowLike {
   getPosition?(): number[];
   /** 设置窗口位置（屏幕坐标，Electron BrowserWindow.setPosition；拖拽窗口用） */
   setPosition?(x: number, y: number): void;
+  /**
+   * 获取正常态 bounds（最大化/全屏时 Electron 内部记住的还原尺寸；
+   * 窗口状态记忆用。可选：旧测试替身无此方法时追踪方自行降级）。
+   */
+  getNormalBounds?(): { x: number; y: number; width: number; height: number };
+  /** 是否最小化（窗口状态记忆用：最小化时 getBounds 在 Windows 返回 -32000 哨兵位） */
+  isMinimized?(): boolean;
   /** 挂载 BrowserView 到窗口（传 null 移除） */
   setBrowserView(view: unknown): void;
   /** 注册事件监听 */
@@ -89,6 +96,12 @@ export interface CreateWindowOptions {
   width?: number;
   /** 初始高度 */
   height?: number;
+  /** 初始 x 坐标（屏幕 DIP；与 y 成对提供时生效，省略则由 Electron 居中。窗口状态恢复用） */
+  x?: number;
+  /** 初始 y 坐标（屏幕 DIP；与 x 成对提供时生效。窗口状态恢复用） */
+  y?: number;
+  /** 创建后立即最大化（恢复上次会话最大化态；显示前调用避免正常尺寸闪现） */
+  maximize?: boolean;
 }
 
 /**

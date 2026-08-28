@@ -20,7 +20,14 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createLogger } from '@urchin/logger';
 
 import { PROVIDER_EVENT_CHANNEL, registerHandler, type ProviderEvent } from '@urchin/ipc-contract';
-import { WindowManager, createBrowserWindow, registerWindowHandlers } from './windows';
+import {
+  WindowManager,
+  createBrowserWindow,
+  registerWindowHandlers,
+  loadWindowState,
+  trackWindowState,
+  type CreateWindowOptions,
+} from './windows';
 import {
   TabManager,
   createBrowserView,
@@ -1192,8 +1199,35 @@ void app.whenReady().then(() => {
   const contextMenuDeps = { getDataDir: () => currentDataDir };
   disposeContextMenu = installTabContextMenu(tabManager, contextMenuDeps);
 
-  // 创建主窗口
-  const mainWindow = windowManager.createWindow({});
+  // 创建主窗口：恢复上次会话的窗口几何（尺寸/位置/最大化态，窗口状态记忆）。
+  // loadWindowState 已校验记录形状与显示器可见性（拔掉显示器/改分辨率后
+  // 自动回退默认 1280x800 居中）；screen 不可用（无头测试环境）按无记录处理。
+  let mainWindowOpts: CreateWindowOptions = {};
+  const savedWindowState = loadWindowState(settingsManager, () =>
+    screen.getAllDisplays().map((d) => d.bounds),
+  );
+  if (savedWindowState) {
+    mainWindowOpts = {
+      x: savedWindowState.x,
+      y: savedWindowState.y,
+      width: savedWindowState.width,
+      height: savedWindowState.height,
+      maximize: savedWindowState.isMaximized,
+    };
+    log.info('restoring window state from previous session', {
+      x: savedWindowState.x,
+      y: savedWindowState.y,
+      width: savedWindowState.width,
+      height: savedWindowState.height,
+      isMaximized: savedWindowState.isMaximized,
+    });
+  }
+  const mainWindow = windowManager.createWindow(mainWindowOpts);
+
+  // 追踪主窗口几何变更（resize/move 防抖 500ms，maximize/close 立即），
+  // 落盘 window.bounds 供下次启动恢复。仅主窗口追踪：拖出的新窗口/
+  // macOS activate 重建窗口不参与记忆，避免互相覆盖。
+  trackWindowState(mainWindow.browserWindow, settingsManager);
 
   // 主窗口 webContents（新标签页/设置页等 React 内部页）也挂右键菜单：
   // 复制/粘贴可用；保存网页对内部页禁用（handleContextMenu 内部按 urchin:// 前缀判断）。

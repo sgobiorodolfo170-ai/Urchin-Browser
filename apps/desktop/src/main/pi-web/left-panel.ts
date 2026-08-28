@@ -153,6 +153,26 @@ export function buildLeftPanelScript(): string {
     if (!s) s = '未命名会话';
     return s.length > SESS_NAME_MAX ? s.slice(0, SESS_NAME_MAX) + '…' : s;
   }
+  // 项目排序（dev.67）：默认按持久化顺序（首见追加 ≈ 创建/加入顺序——协议无
+  // 创建时间字段，以稳定为要义：使用项目/会话触发不改变顺序），支持手动拖拽
+  //（window.__ubPiUI.__reorder 持久化）。状态未加载前维持服务端顺序。
+  function orderedProjects(list) {
+    var ui = window.__ubPiUI;
+    if (!ui || !ui.loaded) return list;
+    var po = ui.state.po || [];
+    var known = [], unseen = [];
+    list.forEach(function (p) { (po.indexOf(p.path) >= 0 ? known : unseen).push(p); });
+    known.sort(function (a, b) { return po.indexOf(a.path) - po.indexOf(b.path); });
+    if (unseen.length) {
+      var live = {};
+      list.forEach(function (p) { live[p.path] = true; });
+      var merged = po.filter(function (pp) { return live[pp]; });
+      unseen.forEach(function (p) { merged.push(p.path); });
+      ui.state.po = merged;
+      ui.save();
+    }
+    return known.concat(unseen);
+  }
 
   // ── 面板根节点（一次性创建 + 一次性事件委托）──
   function zoneEl() {
@@ -165,9 +185,72 @@ export function buildLeftPanelScript(): string {
       z.className = '__ubLP';
       aside.insertBefore(z, aside.firstChild);
       z.addEventListener('click', onAction);
+      // dev.67：项目行拖拽排序（面板根一次性委托，innerHTML 重建免重绑）
+      z.addEventListener('dragstart', onDragStart);
+      z.addEventListener('dragover', onDragOver);
+      z.addEventListener('drop', onDrop);
+      z.addEventListener('dragend', onDragEnd);
     }
     return z;
   }
+
+  // ── 项目行拖拽排序（dev.67）──
+  var dragPath = '';
+  function clearDropMarks() {
+    var marks = document.querySelectorAll('.__ubLPProjWrap.__ubDropBefore, .__ubLPProjWrap.__ubDropAfter');
+    for (var i = 0; i < marks.length; i++) marks[i].classList.remove('__ubDropBefore', '__ubDropAfter');
+  }
+  function onDragStart(e) {
+    var row = e.target && e.target.closest ? e.target.closest('.__ubLPProj') : null;
+    if (!row) return;
+    dragPath = row.getAttribute('data-v') || '';
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', dragPath); } catch (er) { /* IE 型接口缺失 */ }
+    }
+  }
+  function onDragOver(e) {
+    if (!dragPath) return;
+    var row = e.target && e.target.closest ? e.target.closest('.__ubLPProj') : null;
+    if (!row || row.getAttribute('data-v') === dragPath) { clearDropMarks(); return; }
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    clearDropMarks();
+    var wrap = row.closest('.__ubLPProjWrap');
+    if (!wrap) return;
+    var r = row.getBoundingClientRect();
+    wrap.classList.add((e.clientY - r.top) > r.height / 2 ? '__ubDropAfter' : '__ubDropBefore');
+  }
+  function onDrop(e) {
+    if (!dragPath) return;
+    e.preventDefault();
+    var row = e.target && e.target.closest ? e.target.closest('.__ubLPProj') : null;
+    clearDropMarks();
+    if (!row) return;
+    var target = row.getAttribute('data-v') || '';
+    if (!target || target === dragPath) { dragPath = ''; return; }
+    var r = row.getBoundingClientRect();
+    var after = (e.clientY - r.top) > r.height / 2;
+    var ui = window.__ubPiUI;
+    if (ui && typeof ui.__reorder === 'function') {
+      var before = target;
+      if (after) {
+        var rows = document.querySelectorAll('.__ubLPProj');
+        var paths = Array.prototype.map.call(rows, function (w) { return w.getAttribute('data-v'); });
+        var idx = paths.indexOf(target);
+        before = idx >= 0 && idx + 1 < paths.length ? paths[idx + 1] : '';
+      }
+      ui.__reorder(dragPath, before);
+    }
+    dragPath = '';
+  }
+  function onDragEnd() {
+    dragPath = '';
+    clearDropMarks();
+  }
+  // layout.ts 的 UI 状态就绪 / 排序变化 → 重渲染（含按 po 排序）
+  document.addEventListener('__ubPiUIReady', function () { render(); });
+  document.addEventListener('__ubPiUIOrder', function () { render(); });
 
   function cfgRow(key, name, cnt) {
     return '<button type="button" class="__ubLPCfgRow" data-act="cfg" data-v="' + key + '">' +
@@ -186,7 +269,7 @@ export function buildLeftPanelScript(): string {
     z.classList.add('__ubReady');
 
     var hidden = hiddenList();
-    var projects = S.projects.filter(function (p) { return hidden.indexOf(p.path) < 0; });
+    var projects = orderedProjects(S.projects).filter(function (p) { return hidden.indexOf(p.path) < 0; });
     var st = S.settings || {};
     var skills = st.skills || [], exts = st.extensions || [];
     var piFiles = (S.piFiles || []).filter(function (f) { return f.type === 'file'; });
@@ -243,7 +326,7 @@ export function buildLeftPanelScript(): string {
     projects.forEach(function (p) {
       var act = p.path === S.cwd;
       h += '<div class="__ubLPProjWrap' + (act ? ' active' : '') + '">';
-      h += '<button type="button" class="__ubLPProj' + (act ? ' active' : '') + '" data-act="proj" data-v="' + esc(p.path) + '" title="' + esc(p.path) + '">' +
+      h += '<button type="button" class="__ubLPProj' + (act ? ' active' : '') + '" draggable="true" data-act="proj" data-v="' + esc(p.path) + '" title="' + esc(p.path) + '">' +
         '<span class="__ubLPChev">' + (act ? '▾' : '▸') + '</span>' +
         '<span class="__ubLPProjName">' + esc(baseName(p.path)) + '</span>' +
         '<span class="__ubLPTime">' + esc(fmtTime(p.lastUsed)) + '</span>' +
@@ -395,6 +478,10 @@ export function buildLeftPanelScript(): string {
     '.__ubLPProjs{flex:1;min-height:0;display:flex;flex-direction:column;padding:0 6px}' +
     '.__ubLPScroll{flex:1;overflow-y:auto;min-height:0;padding-bottom:56px}' +
     '.__ubLPProjWrap{margin-bottom:2px}' +
+    // dev.67：拖拽排序落点指示（目标行上/下缘 accent 线）
+    '.__ubLPProjWrap.__ubDropBefore{box-shadow:inset 0 2px 0 var(--accent)}' +
+    '.__ubLPProjWrap.__ubDropAfter{box-shadow:inset 0 -2px 0 var(--accent)}' +
+    '.__ubLPProj[draggable="true"]{cursor:grab}' +
     '.__ubLPProj{display:flex;align-items:center;gap:6px;width:100%;padding:7px 10px;border:none;border-radius:8px;background:transparent;color:var(--text-dim);font-size:12.5px;text-align:left;cursor:pointer}' +
     '.__ubLPProj:hover{background:var(--accent-soft)}' +
     '.__ubLPProj.active{background:var(--accent-soft);color:var(--text);border:1px solid rgba(139,92,246,.3);padding:6px 9px}' +

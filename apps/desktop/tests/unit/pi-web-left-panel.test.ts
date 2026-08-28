@@ -125,6 +125,27 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain('.panel-left:has(>.__ubLP.__ubReady)>.panel-sessions');
   });
 
+  it('should order projects by persisted order with manual drag support (dev.67)', () => {
+    const s = buildLeftPanelScript();
+    // 排序消费 window.__ubPiUI.state.po；未加载时维持服务端顺序
+    expect(s).toContain('function orderedProjects(');
+    expect(s).toContain('window.__ubPiUI');
+    expect(s).toContain('if (!ui || !ui.loaded) return list');
+    // 新项目首见追加（≈创建顺序），并存回 po
+    expect(s).toContain('unseen.forEach(function (p) { merged.push(p.path); })');
+    // 拖拽排序：行 draggable + dragstart/dragover/drop 委托 + __reorder 持久化
+    expect(s).toContain('draggable="true"');
+    expect(s).toContain("addEventListener('dragstart', onDragStart)");
+    expect(s).toContain("addEventListener('drop', onDrop)");
+    expect(s).toContain('ui.__reorder(dragPath, before)');
+    // 落点指示样式
+    expect(s).toContain('__ubDropBefore');
+    expect(s).toContain('__ubDropAfter');
+    // 布局状态就绪/排序变化 → 重渲染
+    expect(s).toContain("'__ubPiUIReady'");
+    expect(s).toContain("'__ubPiUIOrder'");
+  });
+
   it('should keep dev.45/47 delete-confirm hook and hidden-set semantics', () => {
     const s = buildLeftPanelScript();
     expect(s).toContain('__ubProjDelConfirm');

@@ -38,7 +38,11 @@
  *    .pi/ 配置文件编辑），下区改「项目」管理（项目行切换 + 行内「＋」新建对话 +
  *    当前项目下挂运行对话与历史会话）。自有面板经同 clientId 第二条 WebSocket 收发
  *    官方协议；未就绪前官方面板保持可见（:has() 降级）。
- * 8. 对话输入框重构（dev.51 → dev.54 基线，用户参考 ChatGPT 风格截图）：
+ * 8. 中区布局控制（dev.67，详见 layout.ts + ui-state.ts）：中区左右上角折叠
+ *    按钮 + 分割线拖拽调宽，状态经 urchin://pi-ui-state 主进程落盘跨会话保留；
+ *    左区项目按持久化顺序排列（首见追加，会话触发不影响）+ 行拖拽排序；
+ *    toast/[data-tip] 层叠修复（右区标题行不再遮挡提示）。
+ * 9. 对话输入框重构（dev.51 → dev.54 基线，用户参考 ChatGPT 风格截图）：
  *    纯 CSS 注入（不改第三方源码、不移动 React 持有节点）——
  *    - dev.51 布局：.inputbox 外壳透明化，主输入箱（.inputbox-row，textarea
  *      独占首行 flex-wrap 换行）与工具条（.input-tools，模型/思考 chips）拆分；
@@ -78,6 +82,7 @@
  */
 import { createLogger } from '@urchin/logger';
 import { buildLeftPanelScript } from './left-panel';
+import { buildLayoutScript } from './layout';
 
 const log = createLogger('pi-web-enhance');
 
@@ -461,8 +466,14 @@ export function installPiWebPageEnhance(tabManager: {
   query(_: unknown): readonly { id: number }[];
 }): () => void {
   const disposers: (() => void)[] = [];
-  // dev.65：左区重构脚本追加在末尾（自带幂等标志与样式，独立于面板增强）
-  const script = buildThemeFollowScript() + buildProjectsPanelScript() + buildLeftPanelScript();
+  // dev.65：左区重构脚本追加在末尾（自带幂等标志与样式，独立于面板增强）；
+  // dev.67：布局控制（layout）先于左区面板（leftPanel）注入——后者消费前者
+  // 暴露的 window.__ubPiUI（项目排序 po 与持久化通道）
+  const script =
+    buildThemeFollowScript() +
+    buildLayoutScript() +
+    buildProjectsPanelScript() +
+    buildLeftPanelScript();
 
   const injectInto = (wc: unknown): void => {
     const electronWc = wc as Electron.WebContents;

@@ -497,6 +497,117 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     expect((enhance.lpConvRows ?? 0) + (enhance.lpConvEmptyHint ? 1 : 0)).toBeGreaterThanOrEqual(1);
     expect(enhance.lpActiveProj).toContain('Urchin-Browser');
 
+    // dev.67：中区布局控制——折叠按钮 / 分割线拖拽 / 状态持久化 / 项目排序
+    interface LayoutResult {
+      error?: string;
+      init?: { btns?: number; splits?: number; leftW?: number };
+      collapsed?: boolean;
+      expanded?: boolean;
+      dragged?: { ok?: boolean; w0?: number; w1?: number };
+      reorderFrom?: string;
+      afterReorder?: string[];
+      persisted?: { ready?: boolean; w?: number; paths?: string[] };
+    }
+    const layout = await electronApp.evaluate(
+      async ({ webContents }, piUrl): Promise<LayoutResult> => {
+        const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith(piUrl));
+        if (!wc) return { error: 'pi webContents not found' };
+        const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+        const exec = (code: string) => wc.executeJavaScript(code) as Promise<unknown>;
+
+        const init = (await exec(`(() => {
+          const pane = document.querySelector('.layout > .view-pane main.main')?.closest('.view-pane');
+          const left = pane?.querySelector('aside.panel-left');
+          return {
+            btns: [...document.querySelectorAll('#__ubLTCollapse, #__ubRTCollapse')].length,
+            splits: document.querySelectorAll('.__ubSplitL, .__ubSplitR').length,
+            leftW: left ? Math.round(left.getBoundingClientRect().width) : 0,
+          };
+        })()`)) as { btns: number; splits: number; leftW: number };
+
+        // 折叠 → 左区隐藏；再点 → 展开
+        await exec(`document.getElementById('__ubLTCollapse').click()`);
+        await wait(250);
+        const collapsed = (await exec(`(() => {
+          const left = document.querySelector('.view-pane aside.panel-left');
+          return !left || getComputedStyle(left).display === 'none' || !left.getBoundingClientRect().width;
+        })()`)) as boolean;
+        await exec(`document.getElementById('__ubLTCollapse').click()`);
+        await wait(250);
+        const expanded = (await exec(
+          `!!document.querySelector('.view-pane aside.panel-left')?.getBoundingClientRect().width`,
+        )) as boolean;
+
+        // 拖拽左分割线 +120px（mousedown → document mousemove/mouseup 合成事件链）
+        const dragged = (await exec(`(() => {
+          const h = document.querySelector('.__ubSplitL');
+          const left = document.querySelector('.view-pane aside.panel-left');
+          if (!h || !left) return { ok: false };
+          const w0 = left.getBoundingClientRect().width;
+          const x = h.getBoundingClientRect().left + 3;
+          const y = h.getBoundingClientRect().top + 40;
+          const o = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y };
+          h.dispatchEvent(new MouseEvent('mousedown', o));
+          document.dispatchEvent(new MouseEvent('mousemove', { ...o, clientX: x + 120 }));
+          document.dispatchEvent(new MouseEvent('mouseup', { ...o, clientX: x + 120 }));
+          return { ok: true, w0: Math.round(w0), w1: Math.round(left.getBoundingClientRect().width) };
+        })()`)) as { ok: boolean; w0?: number; w1?: number };
+        await wait(600); // 写入防抖 300ms 后落盘
+
+        // 项目排序：首位移到末尾（__reorder → urchin://pi-ui-state 持久化）
+        const reorder = (await exec(`(() => {
+          const rows = [...document.querySelectorAll('.__ubLPProj')];
+          if (rows.length < 2 || !window.__ubPiUI) return '';
+          const p = rows[0].getAttribute('data-v') || '';
+          window.__ubPiUI.__reorder(p, '');
+          return p;
+        })()`)) as string;
+        await wait(600);
+        const afterReorder = (await exec(
+          `[...document.querySelectorAll('.__ubLPProj')].map((r) => r.getAttribute('data-v'))`,
+        )) as string[];
+
+        // 重载页面：宽度与排序应从 urchin://pi-ui-state 恢复（跨「项目关闭再打开」）
+        wc.reload();
+        let persisted: { ready?: boolean; w?: number; paths?: string[] } = {};
+        for (let i = 0; i < 24; i++) {
+          await wait(500);
+          persisted = (await exec(`(() => {
+            const left = document.querySelector('.view-pane aside.panel-left');
+            return {
+              ready: !!(document.getElementById('__ubLeftPanel')?.classList.contains('__ubReady')),
+              w: left ? Math.round(left.getBoundingClientRect().width) : 0,
+              paths: [...document.querySelectorAll('.__ubLPProj')].map((r) => r.getAttribute('data-v')),
+            };
+          })()`)) as { ready?: boolean; w?: number; paths?: string[] };
+          if (persisted.ready && (persisted.paths?.length ?? 0) >= Math.max(afterReorder.length, 1))
+            break;
+        }
+        return {
+          init,
+          collapsed,
+          expanded,
+          dragged,
+          reorderFrom: reorder,
+          afterReorder,
+          persisted,
+        };
+      },
+      url,
+    );
+    expect(layout.error).toBeUndefined();
+    expect(layout.init?.btns).toBe(2);
+    expect(layout.init?.splits).toBe(2);
+    expect(layout.collapsed).toBe(true);
+    expect(layout.expanded).toBe(true);
+    expect(layout.dragged?.ok).toBe(true);
+    expect((layout.dragged?.w1 ?? 0) - (layout.dragged?.w0 ?? 0)).toBeGreaterThanOrEqual(100);
+    // 持久化：重载后宽度 = 拖拽后宽度；被移动到末尾的项目仍在末尾
+    expect(layout.persisted?.w).toBe(layout.dragged?.w1);
+    if ((layout.afterReorder?.length ?? 0) >= 2) {
+      expect(layout.persisted?.paths?.[layout.persisted.paths.length - 1]).toBe(layout.reorderFrom);
+    }
+
     // dev.49：主题即时直推——ui.theme.set 后主进程立刻向 pi 标签推送
     //（根治 dev.48 纯 2s 轮询的滞后/偶发失败「阻塞」）。往返断言：
     // 切暗 → pi 页移除 light 样式表 + 主题键清除（官方 dark=键缺失语义）；

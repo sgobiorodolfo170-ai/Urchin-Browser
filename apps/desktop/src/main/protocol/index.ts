@@ -19,6 +19,7 @@ import { getBookmarkPanelHtml } from '../panel/bookmark-panel';
 import { getCaptureOverlayHtml } from '../screenshots/capture-overlay-html';
 import { inferMimeType } from '../files/file-kind';
 import { buildPickDirectoryResponse, PICK_DIR_HOST } from '../pi-web/dir-picker';
+import { buildUiStateResponse, UI_STATE_HOST } from '../pi-web/ui-state';
 
 const log = createLogger('urchin-protocol');
 
@@ -226,6 +227,8 @@ export function registerUrchinProtocol(opts?: {
   piIconPath?: string;
   /** 浏览器当前主题是否暗色（dev.48：pi 页主题跟随浏览器，主进程读 nativeTheme） */
   isBrowserDarkTheme?: () => boolean;
+  /** pi 页 UI 状态文件路径（dev.67：urchin://pi-ui-state 读写端点落盘位置） */
+  piUiStateFile?: string;
 }): void {
   /**
    * pi 页主题跟随端点（pi-theme host，dev.48）：返回浏览器当前主题
@@ -304,6 +307,20 @@ export function registerUrchinProtocol(opts?: {
       if (host === 'pi-theme') {
         // pi 页主题跟随浏览器（dev.48）：注入脚本轮询读取 {dark}
         return handlePiTheme();
+      }
+
+      if (host === UI_STATE_HOST) {
+        // pi 页 UI 状态持久化（dev.67）：分割线宽度/折叠状态/项目排序——
+        // pi 服务端口随机致页面 localStorage 不可跨会话，经主进程落盘。
+        // 文件未配置时返回 404（读端点），注入脚本回退默认值。
+        const file = opts?.piUiStateFile;
+        if (!file) {
+          return new Response('Not Found', {
+            status: 404,
+            headers: { 'Content-Type': 'text/plain' },
+          });
+        }
+        return buildUiStateResponse(request.headers.get('Referer') ?? '', request.url, file);
       }
 
       if (host === 'settings') {

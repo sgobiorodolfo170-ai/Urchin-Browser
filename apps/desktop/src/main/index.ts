@@ -916,6 +916,9 @@ void app.whenReady().then(() => {
     // dev.48：pi 页主题跟随浏览器——主进程读 nativeTheme 实际生效值
     //（含「跟随系统」模式的解析结果），pi 页注入脚本轮询此端点切换主题
     isBrowserDarkTheme: () => nativeTheme.shouldUseDarkColors,
+    // dev.67：pi 页 UI 状态（分割线宽度/折叠/项目排序）持久化文件——
+    // pi 端口随机致页面 localStorage 不可跨会话，改由主进程落盘
+    piUiStateFile: join(startupUserDataPath, PI_DIR_NAME, 'ui-state.json'),
   });
 
   // 初始化需要文件系统 / SQLite 的模块（W6：移入 whenReady 避免模块加载阶段崩溃）

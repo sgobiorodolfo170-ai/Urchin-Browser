@@ -339,11 +339,13 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           confirmAsked = delResult.asked ?? false;
         }
 
-        // 路径提示抑制：切换目录后 1.5s 内不应存在「已切换到工作目录」提示
+        // 路径提示抑制（dev.64 修正选择器）：切换目录后 1.5s 内不应存在
+        // 「已切换到工作目录」提示——0.29.x 官方 toast 是 .notice（fixed 居中，
+        // 未抑制时 7s 自灭，此处 1.5s 检查足以捕捉回归）；.fp-notice 一并保留。
         await wc.executeJavaScript(`window.__ubCwdPickerPick && window.__ubCwdPickerPick('C:/')`);
         await wait(1500);
         const noticeSuppressed = (await wc.executeJavaScript(`(() => {
-          const notes = Array.from(document.querySelectorAll('.fp-notice'));
+          const notes = Array.from(document.querySelectorAll('.fp-notice, .notice'));
           return !notes.some((n) => /\\u5df2\\u5207\\u6362\\u5230\\u5de5\\u4f5c\\u76ee\\u5f55|\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55/.test(n.textContent || ''));
         })()`)) as boolean;
 

@@ -27,7 +27,12 @@
  *    同功能小按钮（右对齐、尺寸贴合标题行高），点击转发触发原按钮逻辑。
  * 4. 最近项目删除按钮（dev.45/47）：行尾 ✕ + 删除确认（window.confirm，
  *    __ubProjDelConfirm 钩子供自动化）+ sessionStorage 会话内隐藏。
- * 5. 抑制中区路径提示（dev.45）：移除「已切换到/已在工作目录」notice。
+ * 5. 抑制中区路径提示（dev.45，dev.64 修正选择器）：左区切换项目时服务端发
+ *    notice「已切换到/已在工作目录」，0.29.x 渲染为 fixed 居中 toast（.notice，
+ *    .notices 容器）——dev.45 瞄准的 .fp-notice 在 0.29.1 实为「预览截断」提示
+ *    未命中；现对匹配文本的 .notice 转发点击 .notice-close 走官方 dismiss_notice
+ *    通道（React 状态一致，重渲染不复活），.fp-notice 移除保留兜底；错误级提示
+ *    （切换工作目录失败）不匹配文本，不受影响。
  * 6. 更新组件隐藏（dev.47）：.dd-update 仅留版本行 + update-dot 红点隐藏。
  * 7. 对话输入框重构（dev.51 → dev.54 基线，用户参考 ChatGPT 风格截图）：
  *    纯 CSS 注入（不改第三方源码、不移动 React 持有节点）——
@@ -357,12 +362,19 @@ export function buildProjectsPanelScript(): string {
     '}' +
     '}' +
     '}' +
-    // 移除「已切换到/已在工作目录」路径提示（其他 notice 不动）
+    // 移除「已切换到/已在工作目录」提示（其他 notice 不动）。
+    // dev.64：0.29.x 官方 toast 为 .notice（.notices 容器 fixed 居中即「中区弹窗」），
+    // 转发点击 .notice-close 走官方 dismiss_notice 通道（React 状态一致，重渲染不复活）；
+    // .fp-notice 为 dev.45 旧选择器（0.29.1 中属「预览截断」提示），保留 remove() 兜底。
     'function suppressCwdNotices(){' +
-    'var notes = document.querySelectorAll(".fp-notice");' +
+    'var notes = document.querySelectorAll(".fp-notice, .notice");' +
     'for (var i = 0; i < notes.length; i++) {' +
-    'var t = notes[i].textContent || "";' +
-    'if (/\\u5df2\\u5207\\u6362\\u5230\\u5de5\\u4f5c\\u76ee\\u5f55|\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55/.test(t)) notes[i].remove();' +
+    'var n = notes[i];' +
+    'var t = n.textContent || "";' +
+    'if (/\\u5df2\\u5207\\u6362\\u5230\\u5de5\\u4f5c\\u76ee\\u5f55|\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55/.test(t)) {' +
+    'var close = n.querySelector(".notice-close");' +
+    'if (close) close.click(); else n.remove();' +
+    '}' +
     '}' +
     '}' +
     // dev.59：上下文用量圆环——在「+」后注入一只圆环，读取信息栏 statusbar 的

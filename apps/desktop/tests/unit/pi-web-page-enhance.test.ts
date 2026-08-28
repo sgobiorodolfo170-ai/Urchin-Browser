@@ -11,7 +11,8 @@
  * 3. 新对话按钮移植（dev.48）：隐藏顶栏原 chip.newchat，历史对话标题行注入
  *    同功能小按钮（右对齐、贴合行高）
  * 4. 最近项目删除按钮 + 确认（__ubProjDelConfirm 钩子）+ 会话内隐藏
- * 5. 抑制「已切换到/已在工作目录」路径提示
+ * 5. 抑制「已切换到/已在工作目录」路径提示（dev.64：0.29.x 官方 .notice toast
+ *    转发点击 .notice-close 走官方 dismiss 通道；.fp-notice 旧选择器保留兜底）
  * 6. 更新组件隐藏（.dd-update 仅版本行 + update-dot 红点）
  * 7. 对话输入框重构（dev.51/52）：一体大框（主箱+chips 条无缝）、「+」合并至
  *    chips 条最左且换图标、发送/停止主题反色方块、工具条弹窗向上
@@ -121,9 +122,14 @@ describe('buildProjectsPanelScript', () => {
     expect(s).toContain('sessionStorage');
   });
 
-  it('should suppress only cwd-switch notices', () => {
+  it('should suppress only cwd-switch notices (dev.64: official .notice toast via close click)', () => {
     const s = buildProjectsPanelScript();
-    expect(s).toContain('.fp-notice');
+    // dev.64：0.29.x 官方 toast（.notice，.notices 容器 fixed 居中「中区弹窗」）——
+    // 转发点击 .notice-close 走官方 dismiss_notice 通道（React 状态一致不复活）
+    expect(s).toContain('".fp-notice, .notice"');
+    expect(s).toContain('querySelector(".notice-close")');
+    expect(s).toContain('close.click()');
+    // 文本匹配仍限定「已切换到/已在工作目录」（错误级「切换失败」不命中）
     expect(s).toContain('\\u5df2\\u5207\\u6362\\u5230\\u5de5\\u4f5c\\u76ee\\u5f55');
     expect(s).toContain('\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55');
   });

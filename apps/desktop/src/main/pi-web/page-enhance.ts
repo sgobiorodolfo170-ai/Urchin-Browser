@@ -492,9 +492,13 @@ export function installPiWebPageEnhance(tabManager: {
         /* 忽略 */
       }
     };
+    // dev.68：dom-ready 先注入（React 挂载前），根治启动时左区闪现官方旧 UI——
+    // 脚本同步建骨架并接管面板隐藏；did-finish-load 兜底补注入（幂等标志防叠）
+    electronWc.on('dom-ready', inject);
     electronWc.on('did-finish-load', inject);
     disposers.push(() => {
       if (typeof electronWc.removeListener === 'function') {
+        electronWc.removeListener('dom-ready', inject);
         electronWc.removeListener('did-finish-load', inject);
       }
     });

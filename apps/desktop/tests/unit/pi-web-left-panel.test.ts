@@ -83,12 +83,11 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain('ta.disabled = !!m.binary');
   });
 
-  it('should render project rows with switch/new-chat/delete and nested conversations', () => {
+  it('should render project rows with switch/new-chat and nested conversations', () => {
     const s = buildLeftPanelScript();
-    // 项目行：切换 + 行内「＋」「×」
+    // 项目行：切换 + 行内「＋」（dev.68 起「×」删除按钮已移除）
     expect(s).toContain('data-act="proj"');
     expect(s).toContain('data-act="newchat"');
-    expect(s).toContain('data-act="del"');
     expect(s).toContain("send({ type: 'set_cwd', path: v })");
     // 当前项目下挂：运行对话 + 历史会话（同一列表）
     expect(s).toContain('data-act="conv"');
@@ -115,14 +114,52 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain('__ubLPRunning');
   });
 
-  it('should degrade gracefully until the panel is ready', () => {
+  it('should take over from first frame with skeleton and degrade on timeout (dev.68)', () => {
     const s = buildLeftPanelScript();
-    // 未拿到 cwd 不加 __ubReady；官方面板仅在就绪后被 :has() 隐藏
-    expect(s).toContain("classList.remove('__ubReady')");
+    // zone 创建即 __ubOn 接管 + 骨架（配合 dom-ready 注入，官方旧 UI 零闪现）
+    expect(s).toContain("'__ubLP __ubOn'");
+    expect(s).toContain('function skeleton(');
+    expect(s).toContain('左区加载中');
+    // 6s 未就绪撤下接管降级回官方面板；数据到达重新接管
+    expect(s).toContain('TAKEOVER_TIMEOUT_MS = 6000');
+    expect(s).toContain("classList.remove('__ubOn')");
+    expect(s).toContain("classList.add('__ubOn')");
+    // 隐藏规则挂在 __ubOn（__ubReady 仅数据就绪标记）
+    expect(s).toContain('.panel-left:has(>.__ubLP.__ubOn)>.panel-projects');
+    expect(s).toContain('.panel-left:has(>.__ubLP.__ubOn)>.panel-convs');
+    expect(s).toContain('.panel-left:has(>.__ubLP.__ubOn)>.panel-sessions');
     expect(s).toContain("classList.add('__ubReady')");
-    expect(s).toContain('.panel-left:has(>.__ubLP.__ubReady)>.panel-projects');
-    expect(s).toContain('.panel-left:has(>.__ubLP.__ubReady)>.panel-convs');
-    expect(s).toContain('.panel-left:has(>.__ubLP.__ubReady)>.panel-sessions');
+  });
+
+  it('should have fold toggle before new-chat and no project delete button (dev.68)', () => {
+    const s = buildLeftPanelScript();
+    // 「＋」前的 ▾/▸ 会话折叠按钮（默认展开，sessionStorage 记忆）
+    expect(s).toContain('data-act="fold"');
+    expect(s).toContain('__ubFoldBtn');
+    expect(s).toContain("var FOLD_KEY = '__ubFoldedProjs'");
+    expect(s).toContain('function toggleFold(');
+    expect(s).toContain('if (act && !fold) {');
+    // 项目行删除按钮已按用户要求移除（预设的小 × 属独立 data-act）
+    expect(s).not.toContain('data-act="del"');
+    expect(s).not.toContain('从列表移除该项目');
+    expect(s).not.toContain('__ubProjDelConfirm');
+  });
+
+  it('should surface commands, presets and review skills in config zone (dev.68)', () => {
+    const s = buildLeftPanelScript();
+    // 命令目录：slash_commands 广播 → 只读列表（含来源标签）
+    expect(s).toContain("m.type === 'slash_commands'");
+    expect(s).toContain("cfgRow('cmds', '命令'");
+    expect(s).toContain('__ubLPSrc');
+    // 预设：点击应用 / × 删除（保存入口在官方设置弹窗）
+    expect(s).toContain("cfgRow('presets', '预设'");
+    expect(s).toContain("type: 'apply_preset', name: v");
+    expect(s).toContain("type: 'delete_preset', name: v");
+    expect(s).toContain('data-act="delpreset"');
+    // 审查技能：技能小节内第二组开关（reviewDisabledSkills）
+    expect(s).toContain('data-act="rskill"');
+    expect(s).toContain('reviewDisabledSkills');
+    expect(s).toContain('审查技能');
   });
 
   it('should order projects by persisted order with manual drag support (dev.67)', () => {
@@ -146,9 +183,9 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain("'__ubPiUIOrder'");
   });
 
-  it('should keep dev.45/47 delete-confirm hook and hidden-set semantics', () => {
+  it('should keep legacy hidden-set semantics for stale entries', () => {
     const s = buildLeftPanelScript();
-    expect(s).toContain('__ubProjDelConfirm');
+    // 项目删除按钮已移除（dev.68），但旧隐藏数据仍生效于渲染过滤
     expect(s).toContain('__ubHiddenProjects');
     expect(s).toContain('window.confirm');
   });

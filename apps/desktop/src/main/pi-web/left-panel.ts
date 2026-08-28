@@ -1,27 +1,30 @@
 /**
- * pi 网页版 · 左区重构注入（dev.65）
+ * pi 网页版 · 左区重构注入（dev.65，dev.66 会话合并，dev.68 启动防闪 + 配置面扩充）
  *
  * 用户需求（改变左区项目管理设定，仍分上下两区）：
- * - 上区（原「最近项目」）→ 「项目配置」：管理 pi 项目的技能、插件、.pi/ 配置文件
- *   （MCP 等项目级配置的实际载体即 `<项目>/.pi/` 目录；pi 栈自身无 MCP 一等概念，
- *   故以通用配置文件编辑覆盖）。技能/插件启停走官方 set_settings 通道。
+ * - 上区（原「最近项目」）→ 「项目配置」：管理 pi 项目的技能（含审查技能）、插件、
+ *   命令（slash_commands 目录：技能/模板/扩展命令）、预设（应用/删除）、.pi/ 配置
+ *   文件（MCP 等项目级配置的实际载体即 `<项目>/.pi/` 目录；pi 后端无 MCP 协议面，
+ *   以通用配置文件编辑覆盖）。启停走官方 set_settings，预设走 apply/delete_preset。
  * - 下区（原「历史对话」）→ 「项目」管理区：每个项目一行（点击切换 = 原最近项目的
- *   管理全部移入），行内「＋」在对应项目下新建对话；当前项目自动展开，下挂单一
- *   会话列表（dev.66 合并：不分「对话/历史」两组——会话名统一取第一轮提问前几字
- *   ——运行对话 title 服务端已按此生成、历史会话 firstMessage 优先；运行中对话
- *   自动排最上，streaming 优先）。
+ *   管理全部移入），行内「＋」在对应项目下新建对话，「＋」前 ▾/▸ 折叠该项目的
+ *   会话列表（默认展开，会话内记忆）；当前项目展开时下挂单一会话列表（dev.66：
+ *   会话名统一取第一轮提问前几字，运行中对话排最上，streaming 优先）。
+ *   dev.68：按用户要求移除项目行「×」删除按钮（隐藏列表机制保留兼容旧数据）。
  *
  * 数据通道（关键设计）：注入脚本以 sessionStorage 的官方 clientId（pi-web-client-id）
  * 建立第二条 WebSocket——服务端 attach(clientId) 复用同一 ClientSession 并把新 socket
  * 加入广播集（emit 广播到所有 sink），因此：
- * - 收：projects / conversations / sessions / settings_state / files / file_content /
- *   snapshot（cwd）全部广播；
+ * - 收：projects / conversations / sessions / settings_state / slash_commands / files /
+ *   file_content / snapshot（cwd）全部广播；
  * - 发：set_cwd / new_chat / switch_conversation / switch_session / set_settings /
- *   list_files / read_file / write_file 与官方 UI 同源（同一 ClientSession），
- *   状态变化经官方 UI 自己的 socket 回流，React 自动刷新。
+ *   apply_preset / delete_preset / list_files / read_file / write_file 与官方 UI
+ *   同源（同一 ClientSession），状态变化经官方 UI 自己的 socket 回流，React 自动刷新。
  *
- * 优雅降级：自有面板拿到首个 cwd 前不加 __ubReady 类，官方面板保持可见
- * （:has() CSS 控制），官方 dev.45-48 增强（删除按钮/新对话移植）保留作降级路径。
+ * 启动防闪（dev.68）：zone 创建即加 __ubOn 接管（骨架「左区加载中…」），配合
+ * page-enhance 的 dom-ready 提前注入——官方旧 UI 从第一帧起就被隐藏；6s 未就绪
+ * （ws 异常）撤下接管降级回官方面板，数据到达后重新接管。__ubReady 仅标记数据
+ * 就绪（E2E 观测用）。
  *
  * 约束与取舍（不动第三方包源码原则不变）：
  * - 会话列表协议只提供「当前项目」的 sessions/conversations（服务端按 cwd 过滤），
@@ -50,6 +53,7 @@ export function buildLeftPanelScript(): string {
     projects: [], conversations: [], activeId: null, sessions: [],
     cwd: '', settings: null, piFiles: null, piListed: false,
     openCfg: '', pendNew: '', pendNewAt: 0, editor: null,
+    commands: null,
   };
   var sock = null, retryTimer = null;
 
@@ -91,6 +95,7 @@ export function buildLeftPanelScript(): string {
     else if (m.type === 'conversations') { S.conversations = m.conversations || []; S.activeId = m.activeId; render(); }
     else if (m.type === 'sessions') { S.sessions = m.sessions || []; render(); }
     else if (m.type === 'settings_state') { S.settings = m.settings || null; render(); }
+    else if (m.type === 'slash_commands') { S.commands = m.commands || []; render(); }
     else if (m.type === 'files') {
       if ((m.path || '') === '.pi') { S.piFiles = m.entries || []; render(); }
     } else if (m.type === 'file_content') {
@@ -175,6 +180,13 @@ export function buildLeftPanelScript(): string {
   }
 
   // ── 面板根节点（一次性创建 + 一次性事件委托）──
+  // dev.68：创建即接管（__ubOn）+ 骨架——配合 dom-ready 提前注入，官方旧 UI
+  // 从启动第一帧起就被隐藏（根治「闪现修改前界面」）；6s 内未就绪（ws 异常）
+  // 则撤下接管降级回官方面板，数据到达后 render 重新接管。
+  var TAKEOVER_TIMEOUT_MS = 6000;
+  function skeleton(z) {
+    z.innerHTML = '<div class="__ubLPHint" style="padding:10px 12px">左区加载中…</div>';
+  }
   function zoneEl() {
     var aside = document.querySelector('.panel.panel-left');
     if (!aside) return null;
@@ -182,16 +194,41 @@ export function buildLeftPanelScript(): string {
     if (!z) {
       z = document.createElement('div');
       z.id = '__ubLeftPanel';
-      z.className = '__ubLP';
+      z.className = '__ubLP __ubOn';
       aside.insertBefore(z, aside.firstChild);
+      skeleton(z);
       z.addEventListener('click', onAction);
       // dev.67：项目行拖拽排序（面板根一次性委托，innerHTML 重建免重绑）
       z.addEventListener('dragstart', onDragStart);
       z.addEventListener('dragover', onDragOver);
       z.addEventListener('drop', onDrop);
       z.addEventListener('dragend', onDragEnd);
+      // dev.68：超时降级——官方面板恢复可见（ws 起不来时功能仍可用）
+      setTimeout(function () {
+        if (!z.classList.contains('__ubReady')) {
+          z.classList.remove('__ubOn');
+          z.innerHTML = '';
+        }
+      }, TAKEOVER_TIMEOUT_MS);
     }
     return z;
+  }
+
+  // ── 会话折叠（dev.68）：项目行「＋」前的 ▾/▸，默认展开，会话内记忆 ──
+  var FOLD_KEY = '__ubFoldedProjs';
+  function foldedSet() {
+    try { return JSON.parse(sessionStorage.getItem(FOLD_KEY) || '[]'); } catch (e) { return []; }
+  }
+  function saveFolded(l) {
+    try { sessionStorage.setItem(FOLD_KEY, JSON.stringify(l)); } catch (e) {}
+  }
+  function isFolded(path) { return foldedSet().indexOf(path) >= 0; }
+  function toggleFold(path) {
+    var l = foldedSet();
+    var i = l.indexOf(path);
+    if (i >= 0) l.splice(i, 1); else l.push(path);
+    saveFolded(l);
+    render();
   }
 
   // ── 项目行拖拽排序（dev.67）──
@@ -264,8 +301,10 @@ export function buildLeftPanelScript(): string {
   function render() {
     var z = zoneEl();
     if (!z) return;
-    // 优雅降级：未拿到 cwd（ws 未就绪/失败）不接管，官方面板保持可见
-    if (!S.cwd && !S.projects.length) { z.classList.remove('__ubReady'); z.innerHTML = ''; return; }
+    // 未就绪（ws 数据未到）：保持接管 + 骨架（官方旧 UI 不闪现；超时由
+    // zoneEl 的降级定时器兜底撤下）
+    if (!S.cwd && !S.projects.length) { z.classList.remove('__ubReady'); skeleton(z); return; }
+    z.classList.add('__ubOn');
     z.classList.add('__ubReady');
 
     var hidden = hiddenList();
@@ -290,6 +329,19 @@ export function buildLeftPanelScript(): string {
         });
         h += '</div>';
       } else h += emptyHint('当前项目无技能（项目 .pi/skills/ 或用户级技能目录）');
+      // dev.68：审查技能（reviewSkills——审查流程启用的另一组开关）
+      var rsk = st.reviewSkills || [];
+      if (rsk.length) {
+        h += '<div class="__ubLPRGroup">审查技能</div>';
+        h += '<div class="__ubLPItemList">';
+        rsk.forEach(function (s) {
+          h += '<div class="__ubLPItem" title="' + esc(s.description || s.name) + '">' +
+            '<span class="__ubLPItemName">' + esc(s.name) + '</span>' +
+            '<button type="button" class="__ubLPSwitch' + (s.enabled ? ' on' : '') + '" data-act="rskill" data-v="' + esc(s.name) + '"' +
+            ' title="' + (s.enabled ? '停用' : '启用') + '"><i></i></button></div>';
+        });
+        h += '</div>';
+      }
     }
     h += cfgRow('exts', '插件', S.settings ? (exts.length ? nOn(exts) + '/' + exts.length : '0') : '…');
     if (S.openCfg === 'exts') {
@@ -303,6 +355,37 @@ export function buildLeftPanelScript(): string {
         });
         h += '</div>';
       } else h += emptyHint('当前项目无插件');
+    }
+    // dev.68：命令目录（slash_commands 广播：技能/模板/扩展命令，只读展示）
+    h += cfgRow('cmds', '命令', S.commands === null ? '…' : S.commands.length + ' 个');
+    if (S.openCfg === 'cmds') {
+      if (S.commands && S.commands.length) {
+        h += '<div class="__ubLPItemList">';
+        S.commands.slice(0, 60).forEach(function (c) {
+          h += '<div class="__ubLPItem" title="' + esc(c.description || c.name) + '">' +
+            '<span class="__ubLPItemName">/' + esc(c.name) + '</span>' +
+            '<span class="__ubLPSrc">' + esc(c.source || '') + '</span></div>';
+        });
+        h += '</div>';
+      } else if (S.commands) {
+        h += emptyHint('无可用命令（技能 / 模板 / 扩展命令会出现在这里）');
+      } else {
+        h += emptyHint('加载中…');
+      }
+    }
+    // dev.68：预设（settings.presets：点击应用，× 删除；保存入口在官方设置弹窗）
+    var presets = st.presets || [];
+    h += cfgRow('presets', '预设', S.settings ? presets.length + ' 个' : '…');
+    if (S.openCfg === 'presets') {
+      if (presets.length) {
+        h += '<div class="__ubLPItemList">';
+        presets.forEach(function (p) {
+          h += '<div class="__ubLPItem" title="点击应用该预设">' +
+            '<button type="button" class="__ubLPFile" data-act="preset" data-v="' + esc(p.name) + '">' + esc(p.name) + '</button>' +
+            '<span class="__ubLPDel" data-act="delpreset" data-v="' + esc(p.name) + '" title="删除该预设">×</span></div>';
+        });
+        h += '</div>';
+      } else h += emptyHint('暂无预设（可在官方设置弹窗保存当前配置为预设）');
     }
     h += cfgRow('files', '配置文件 .pi/', S.piListed ? (S.piFiles ? piFiles.length + ' 个' : '…') : '展开查看');
     if (S.openCfg === 'files') {
@@ -325,15 +408,16 @@ export function buildLeftPanelScript(): string {
     if (!projects.length) h += emptyHint('暂无项目');
     projects.forEach(function (p) {
       var act = p.path === S.cwd;
+      var fold = isFolded(p.path);
       h += '<div class="__ubLPProjWrap' + (act ? ' active' : '') + '">';
       h += '<button type="button" class="__ubLPProj' + (act ? ' active' : '') + '" draggable="true" data-act="proj" data-v="' + esc(p.path) + '" title="' + esc(p.path) + '">' +
-        '<span class="__ubLPChev">' + (act ? '▾' : '▸') + '</span>' +
+        '<span class="__ubLPChev">' + (act && !fold ? '▾' : '▸') + '</span>' +
         '<span class="__ubLPProjName">' + esc(baseName(p.path)) + '</span>' +
         '<span class="__ubLPTime">' + esc(fmtTime(p.lastUsed)) + '</span>' +
+        '<span class="__ubFoldBtn" data-act="fold" data-v="' + esc(p.path) + '" title="' + (fold ? '展开会话' : '折叠会话') + '">' + (fold ? '▸' : '▾') + '</span>' +
         '<span class="__ubNewBtn" data-act="newchat" data-v="' + esc(p.path) + '" title="新建对话">＋</span>' +
-        '<span class="__ubProjDel" data-act="del" data-v="' + esc(p.path) + '" title="从列表移除该项目">×</span>' +
         '</button>';
-      if (act) {
+      if (act && !fold) {
         // dev.66：会话管理不再分「对话/历史」两组——单一列表，会话名取第一轮
         // 提问前几字；运行中对话自动排最上（streaming 优先），其后历史会话
         //（服务端已按 modified 降序）
@@ -378,22 +462,23 @@ export function buildLeftPanelScript(): string {
     } else if (act === 'newchat') {
       if (v === S.cwd) send({ type: 'new_chat' });
       else { S.pendNew = v; S.pendNewAt = Date.now(); send({ type: 'set_cwd', path: v }); }
-    } else if (act === 'del') {
-      var ok = (typeof window.__ubProjDelConfirm === 'function')
-        ? window.__ubProjDelConfirm(v)
-        : window.confirm('确认从最近项目列表移除？\\n' + v);
-      if (!ok) return;
-      var l = hiddenList();
-      if (v && l.indexOf(v) < 0) { l.push(v); saveHidden(l); }
-      render();
+    } else if (act === 'fold') {
+      // dev.68：折叠/展开该项目的会话列表（默认展开，会话内记忆）
+      toggleFold(v);
     } else if (act === 'conv') {
       if (v !== String(S.activeId)) send({ type: 'switch_conversation', id: Number(v) });
     } else if (act === 'sess') {
       send({ type: 'switch_session', path: v });
     } else if (act === 'skill') {
       send({ type: 'set_settings', disabledSkills: toggleArr((S.settings && S.settings.disabledSkills) || [], v) });
+    } else if (act === 'rskill') {
+      send({ type: 'set_settings', reviewDisabledSkills: toggleArr((S.settings && S.settings.reviewDisabledSkills) || [], v) });
     } else if (act === 'ext') {
       send({ type: 'set_settings', disabledExtensions: toggleArr((S.settings && S.settings.disabledExtensions) || [], v) });
+    } else if (act === 'preset') {
+      send({ type: 'apply_preset', name: v });
+    } else if (act === 'delpreset') {
+      if (window.confirm('确认删除预设「' + v + '」？')) send({ type: 'delete_preset', name: v });
     } else if (act === 'cfg') {
       S.openCfg = S.openCfg === v ? '' : v;
       // 惰性加载 .pi 目录：list_files 会重置服务端单目录文件监视
@@ -455,9 +540,11 @@ export function buildLeftPanelScript(): string {
   var css =
     '.__ubLP{flex:1;min-height:0;display:flex;flex-direction:column;width:100%}' +
     // 优雅降级：面板就绪（拿到 cwd）才隐藏官方三区，ws 失败时官方行为完整保留
-    '.panel-left:has(>.__ubLP.__ubReady)>.panel-projects,' +
-    '.panel-left:has(>.__ubLP.__ubReady)>.panel-convs,' +
-    '.panel-left:has(>.__ubLP.__ubReady)>.panel-sessions{display:none!important}' +
+    // dev.68：接管类改为 __ubOn——zone 一创建（dom-ready 注入）即隐藏官方三区，
+    // 根治启动闪现旧 UI；__ubReady 仅标记数据就绪（E2E 观测用）
+    '.panel-left:has(>.__ubLP.__ubOn)>.panel-projects,' +
+    '.panel-left:has(>.__ubLP.__ubOn)>.panel-convs,' +
+    '.panel-left:has(>.__ubLP.__ubOn)>.panel-sessions{display:none!important}' +
     '.__ubLPCfg{flex-shrink:0;max-height:45%;overflow-y:auto;padding:6px 6px 8px;border-bottom:2px solid var(--border)}' +
     '.__ubLPCfg .panel-section-title{display:flex;align-items:center;gap:6px}' +
     '.__ubLPCfgProj{font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim);font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
@@ -489,9 +576,14 @@ export function buildLeftPanelScript(): string {
     '.__ubLPTime{font-size:10.5px;color:var(--text-faint);flex-shrink:0}' +
     '.__ubNewBtn{width:20px;height:20px;line-height:18px;text-align:center;border-radius:5px;color:var(--text-dim);flex-shrink:0;font-size:13px}' +
     '.__ubNewBtn:hover{background:var(--accent);color:#fff}' +
-    // __ubProjDel 与官方行内删除共用类名（E2E 钩子），此处覆盖官方绝对定位
-    '.__ubLPProj .__ubProjDel{position:static;opacity:.65;margin-left:2px}' +
-    '.__ubLPProj:hover .__ubProjDel{opacity:1}' +
+    // dev.68：「＋」前的会话折叠/展开按钮（默认展开 ▾）
+    '.__ubFoldBtn{width:18px;height:20px;line-height:18px;text-align:center;color:var(--text-faint);flex-shrink:0;font-size:11px}' +
+    '.__ubFoldBtn:hover{color:var(--accent)}' +
+    // dev.68：命令来源标签 / 审查技能子标题 / 预设删除小钮
+    '.__ubLPSrc{font-size:10px;color:var(--text-faint);flex-shrink:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0 4px}' +
+    '.__ubLPRGroup{padding:6px 10px 2px;font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--text-faint)}' +
+    '.__ubLPDel{width:16px;height:16px;line-height:14px;text-align:center;border-radius:4px;color:#e5484d;font-size:12px;flex-shrink:0;opacity:.55}' +
+    '.__ubLPDel:hover{opacity:1;background:rgba(229,72,77,.08)}' +
     '.__ubLPConvGroup{margin:0 0 6px 14px;border-left:2px solid var(--border);padding-left:4px}' +
     // 运行中对话（列表最上）：正文色 + 标题前小圆点，与历史会话（次级色）区分
     '.__ubLPRunning{color:var(--text)}' +

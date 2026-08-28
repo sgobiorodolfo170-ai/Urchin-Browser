@@ -242,6 +242,8 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       delButtons?: number;
       hiddenAfterDel?: boolean;
       confirmAsked?: boolean;
+      foldOk?: boolean;
+      noProjDel?: boolean;
       noticeSuppressed?: boolean;
       updateCssReady?: boolean;
       lpReady?: boolean;
@@ -409,27 +411,38 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           filesListed: boolean;
         };
 
-        // dev.65：自有面板删除按钮（C:/ 行）——确认钩子 + 会话内隐藏
-        let hiddenAfterDel = false;
-        let confirmAsked = false;
-        const delResult = (await wc.executeJavaScript(`(() => {
-          window.__ubProjDelConfirm = function () { window.__ubDelAsked = true; return true; };
-          const rows = Array.from(document.querySelectorAll('.__ubLPProj[data-act="proj"]'));
-          const row = rows.find((r) => (r.getAttribute('title') || '') === 'C:\\\\' || (r.getAttribute('title') || '') === 'C:/');
-          if (!row) return { clicked: false };
-          const del = row.querySelector('.__ubProjDel');
-          if (!del) return { clicked: false };
-          del.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        // dev.68：会话折叠/展开——「＋」前的 ▾ 按钮（默认展开；折叠后组消失，再点恢复）
+        const foldRes = (await wc.executeJavaScript(`(() => {
+          const clickFold = () => {
+            const btn = document.querySelector('.__ubLPProj.active .__ubFoldBtn');
+            if (!btn) return false;
+            btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+            return true;
+          };
+          const groups = () => document.querySelectorAll('.__ubLPConvGroup').length;
+          const g0 = groups();
+          const c1 = clickFold();
           return new Promise((resolve) => setTimeout(() => {
-            resolve({
-              clicked: true,
-              asked: !!window.__ubDelAsked,
-              hidden: !document.body.contains(row) || row.closest('.__ubLPProjWrap') === null,
-            });
-          }, 400));
-        })()`)) as { clicked: boolean; asked?: boolean; hidden?: boolean };
-        hiddenAfterDel = delResult.clicked && (delResult.hidden ?? false);
-        confirmAsked = delResult.asked ?? false;
+            const g1 = groups();
+            const c2 = clickFold();
+            setTimeout(() => resolve({
+              ok: c1 && c2,
+              expandedByDefault: g0 >= 1,
+              foldedToZero: g1 === 0,
+              restored: groups() >= 1,
+            }), 250);
+          }, 250));
+        })()`)) as {
+          ok: boolean;
+          expandedByDefault: boolean;
+          foldedToZero: boolean;
+          restored: boolean;
+        };
+
+        // dev.68：项目行不再有「×」删除按钮（预设的 × 属独立 data-act="delpreset"）
+        const noProjDel = (await wc.executeJavaScript(
+          `document.querySelectorAll('.__ubLPProj .__ubProjDel, .__ubLPProj [data-act="del"]').length === 0`,
+        )) as boolean;
 
         // dev.47：更新组件隐藏 CSS 已注入（dd-update 仅留版本行 + update-dot 隐藏）
         const updateCssReady = (await wc.executeJavaScript(`(() => {
@@ -447,8 +460,9 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           theme,
           projectItems: counts.items,
           delButtons: counts.dels,
-          hiddenAfterDel,
-          confirmAsked,
+          foldOk:
+            foldRes.ok && foldRes.expandedByDefault && foldRes.foldedToZero && foldRes.restored,
+          noProjDel,
           noticeSuppressed,
           updateCssReady,
           lpReady: lp.ready === true,
@@ -481,13 +495,13 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       cfgSkillsExpanded: true,
       cfgFilesListed: true,
     });
-    // 至少存在一个最近项目条目且确认后删除隐藏（5.6 刚切换过 → 必有）
+    // 至少存在一个最近项目条目（5.6 刚切换过 → 必有）
     expect(enhance.projectItems ?? 0).toBeGreaterThanOrEqual(1);
-    expect(enhance.hiddenAfterDel).toBe(true);
-    // dev.47：删除经过确认判定（钩子被调用）
-    expect(enhance.confirmAsked).toBe(true);
-    // dev.65：配置三小节（技能/插件/配置文件）+ 项目行数与行内「＋」一致 + 当前项目展开
-    expect(enhance.lpCfgRows).toBe(3);
+    // dev.68：会话折叠/展开正常（默认展开 → 折叠归零 → 恢复）；项目行无「×」删除按钮
+    expect(enhance.foldOk).toBe(true);
+    expect(enhance.noProjDel).toBe(true);
+    // dev.65/68：配置五小节（技能/插件/命令/预设/配置文件）+ 项目行「＋」与行数一致
+    expect(enhance.lpCfgRows).toBe(5);
     expect(enhance.lpProjRows ?? 0).toBeGreaterThanOrEqual(1);
     expect(enhance.lpNewBtns).toBe(enhance.lpProjRows);
     // dev.66：会话合并为单一列表（无「对话/历史」小标题）；E2E 临时 profile 可能

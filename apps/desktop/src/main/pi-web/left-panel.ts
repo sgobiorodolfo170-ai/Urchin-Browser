@@ -6,8 +6,10 @@
  *   （MCP 等项目级配置的实际载体即 `<项目>/.pi/` 目录；pi 栈自身无 MCP 一等概念，
  *   故以通用配置文件编辑覆盖）。技能/插件启停走官方 set_settings 通道。
  * - 下区（原「历史对话」）→ 「项目」管理区：每个项目一行（点击切换 = 原最近项目的
- *   管理全部移入），行内「＋」在对应项目下新建对话；当前项目自动展开，下挂其
- *   「对话」（运行中）与「历史」（会话文件）——历史对话放入对应项目名下管理。
+ *   管理全部移入），行内「＋」在对应项目下新建对话；当前项目自动展开，下挂单一
+ *   会话列表（dev.66 合并：不分「对话/历史」两组——会话名统一取第一轮提问前几字
+ *   ——运行对话 title 服务端已按此生成、历史会话 firstMessage 优先；运行中对话
+ *   自动排最上，streaming 优先）。
  *
  * 数据通道（关键设计）：注入脚本以 sessionStorage 的官方 clientId（pi-web-client-id）
  * 建立第二条 WebSocket——服务端 attach(clientId) 复用同一 ClientSession 并把新 socket
@@ -143,6 +145,14 @@ export function buildLeftPanelScript(): string {
     if (i >= 0) s.splice(i, 1); else s.push(v);
     return s;
   }
+  // 会话名（dev.66）：统一取第一轮提问前几字（运行对话的 title 服务端已按此生成
+  // ——首个 user 消息规范化 + 30 字截断；历史会话 firstMessage 优先于自定义 name）
+  var SESS_NAME_MAX = 30;
+  function sessName(t) {
+    var s = String(t == null ? '' : t).trim().replace(/\\s+/g, ' ');
+    if (!s) s = '未命名会话';
+    return s.length > SESS_NAME_MAX ? s.slice(0, SESS_NAME_MAX) + '…' : s;
+  }
 
   // ── 面板根节点（一次性创建 + 一次性事件委托）──
   function zoneEl() {
@@ -241,22 +251,27 @@ export function buildLeftPanelScript(): string {
         '<span class="__ubProjDel" data-act="del" data-v="' + esc(p.path) + '" title="从列表移除该项目">×</span>' +
         '</button>';
       if (act) {
-        h += '<div class="__ubLPConvGroup"><div class="__ubLPMini">对话</div>';
-        if (!S.conversations.length) h += '<div class="__ubLPHint" style="padding:2px 8px 6px">（无运行中对话）</div>';
-        S.conversations.forEach(function (c) {
-          h += '<button type="button" class="__ubLPConv' + (c.id === S.activeId ? ' active' : '') + '" data-act="conv" data-v="' + esc(String(c.id)) + '" title="' + esc(c.title || '') + '">' +
-            '<span class="__ubLPConvTitle">' + esc(c.title || '新对话') + '</span>' +
+        // dev.66：会话管理不再分「对话/历史」两组——单一列表，会话名取第一轮
+        // 提问前几字；运行中对话自动排最上（streaming 优先），其后历史会话
+        //（服务端已按 modified 降序）
+        h += '<div class="__ubLPConvGroup">';
+        if (!S.conversations.length && !S.sessions.length) {
+          h += '<div class="__ubLPHint" style="padding:2px 8px 6px">（暂无会话）</div>';
+        }
+        var convs = S.conversations.slice().sort(function (a, b) {
+          return (b.isStreaming ? 1 : 0) - (a.isStreaming ? 1 : 0);
+        });
+        convs.forEach(function (c) {
+          h += '<button type="button" class="__ubLPConv __ubLPRunning' + (c.id === S.activeId ? ' active' : '') + '" data-act="conv" data-v="' + esc(String(c.id)) + '" title="' + esc(c.title || '') + '">' +
+            '<span class="__ubLPConvTitle">' + esc(sessName(c.title)) + '</span>' +
             (c.isStreaming
               ? '<span class="__ubLPStream" title="生成中">●</span>'
               : '<span class="__ubLPSub">' + (c.messageCount || 0) + ' 条</span>') +
             '</button>';
         });
-        h += '</div>';
-        h += '<div class="__ubLPConvGroup"><div class="__ubLPMini">历史</div>';
-        if (!S.sessions.length) h += '<div class="__ubLPHint" style="padding:2px 8px 6px">（无历史会话）</div>';
         S.sessions.slice(0, 50).forEach(function (ss) {
-          h += '<button type="button" class="__ubLPConv __ubLPSess" data-act="sess" data-v="' + esc(ss.path) + '" title="' + esc(ss.path) + '">' +
-            '<span class="__ubLPConvTitle">' + esc(ss.name || ss.firstMessage || '未命名会话') + '</span>' +
+          h += '<button type="button" class="__ubLPConv" data-act="sess" data-v="' + esc(ss.path) + '" title="' + esc(ss.path) + '">' +
+            '<span class="__ubLPConvTitle">' + esc(sessName(ss.firstMessage || ss.name)) + '</span>' +
             '<span class="__ubLPSub">' + esc(fmtTime(ss.modified)) + '</span>' +
             '</button>';
         });
@@ -391,7 +406,10 @@ export function buildLeftPanelScript(): string {
     '.__ubLPProj .__ubProjDel{position:static;opacity:.65;margin-left:2px}' +
     '.__ubLPProj:hover .__ubProjDel{opacity:1}' +
     '.__ubLPConvGroup{margin:0 0 6px 14px;border-left:2px solid var(--border);padding-left:4px}' +
-    '.__ubLPMini{padding:4px 8px 2px;font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--text-faint);text-transform:uppercase}' +
+    // 运行中对话（列表最上）：正文色 + 标题前小圆点，与历史会话（次级色）区分
+    '.__ubLPRunning{color:var(--text)}' +
+    '.__ubLPRunning .__ubLPConvTitle::before{content:"";display:inline-block;width:6px;height:6px;' +
+    'border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:middle}' +
     '.__ubLPConv{display:flex;align-items:center;gap:6px;width:100%;padding:6px 8px;border:none;border-radius:0 8px 8px 0;background:transparent;color:var(--text-dim);font-size:12px;text-align:left;cursor:pointer;margin-bottom:1px}' +
     '.__ubLPConv:hover{background:var(--accent-soft);color:var(--text)}' +
     '.__ubLPConv.active{background:var(--accent-soft);color:var(--text)}' +

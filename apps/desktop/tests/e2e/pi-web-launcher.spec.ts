@@ -252,6 +252,9 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       lpNewBtns?: number;
       lpSwitchWorked?: boolean;
       lpConvGroups?: number;
+      lpConvRows?: number;
+      lpMiniLabels?: number;
+      lpConvEmptyHint?: boolean;
       cfgSkillsExpanded?: boolean;
       cfgFilesListed?: boolean;
       themeSelectorHidden?: boolean;
@@ -359,6 +362,10 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
             cwdSwitched: cwdText.includes('Urchin-Browser') && cwdText.includes('G:'),
             activeFollowed: !!(active && (active.getAttribute('title') || '').includes('Urchin-Browser')),
             convGroups: document.querySelectorAll('.__ubLPConvGroup').length,
+          convRows: document.querySelectorAll('.__ubLPConv').length,
+          // dev.66：合并后无「对话/历史」分组小标题；空项目显示「暂无会话」提示
+          miniLabels: document.querySelectorAll('.__ubLPMini').length,
+          convEmptyHint: !!document.querySelector('.__ubLPConvGroup .__ubLPHint'),
             stillSuppressed: !notes.some((n) =>
               /\\u5df2\\u5207\\u6362\\u5230\\u5de5\\u4f5c\\u76ee\\u5f55|\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55/.test(n.textContent || ''),
             ),
@@ -367,6 +374,9 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           cwdSwitched: boolean;
           activeFollowed: boolean;
           convGroups: number;
+          convRows: number;
+          miniLabels: number;
+          convEmptyHint: boolean;
           stillSuppressed: boolean;
         };
         noticeSuppressed = noticeSuppressed && switchRes.stillSuppressed;
@@ -449,6 +459,9 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           lpNewBtns: lp.newBtns ?? 0,
           lpSwitchWorked: switchRes.cwdSwitched && switchRes.activeFollowed,
           lpConvGroups: switchRes.convGroups,
+          lpConvRows: switchRes.convRows,
+          lpMiniLabels: switchRes.miniLabels,
+          lpConvEmptyHint: switchRes.convEmptyHint,
           cfgSkillsExpanded: cfgRes.skillsClicked && cfgRes.skillsExpanded,
           cfgFilesListed: cfgRes.filesClicked && cfgRes.filesListed,
           themeSelectorHidden: !themeSel.present || themeSel.removed || themeSel.hidden,
@@ -477,7 +490,11 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     expect(enhance.lpCfgRows).toBe(3);
     expect(enhance.lpProjRows ?? 0).toBeGreaterThanOrEqual(1);
     expect(enhance.lpNewBtns).toBe(enhance.lpProjRows);
-    expect(enhance.lpConvGroups ?? 0).toBeGreaterThanOrEqual(2);
+    // dev.66：会话合并为单一列表（无「对话/历史」小标题）；E2E 临时 profile 可能
+    // 无历史会话文件与运行对话（空白对话不列入）——有行或显示「暂无会话」提示即可
+    expect(enhance.lpConvGroups).toBe(1);
+    expect(enhance.lpMiniLabels).toBe(0);
+    expect((enhance.lpConvRows ?? 0) + (enhance.lpConvEmptyHint ? 1 : 0)).toBeGreaterThanOrEqual(1);
     expect(enhance.lpActiveProj).toContain('Urchin-Browser');
 
     // dev.49：主题即时直推——ui.theme.set 后主进程立刻向 pi 标签推送

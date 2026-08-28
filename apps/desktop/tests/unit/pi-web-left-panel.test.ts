@@ -9,8 +9,9 @@
  * 2. 跨项目「＋」时序：set_cwd 后等 snapshot 确认 cwd 再 new_chat（防落在旧 cwd）
  * 3. 上区「项目配置」：技能/插件启停（set_settings disabled*）+ .pi 配置文件编辑
  *    （read_file/write_file + body 级编辑浮层）
- * 4. 下区「项目」：项目行（set_cwd 切换）+ 行内「＋」/「×」+ 当前项目下挂
- *    「对话」（switch_conversation）/「历史」（switch_session）
+ * 4. 下区「项目」：项目行（set_cwd 切换）+ 行内「＋」/「×」+ 当前项目下挂单一
+ *    会话列表（dev.66 合并：switch_conversation/switch_session；会话名取第一轮
+ *    提问前几字；运行中对话排最上）
  * 5. 优雅降级：面板未就绪（无 cwd）不加 __ubReady，:has() 不隐藏官方面板
  * 6. 删除确认沿用 __ubProjDelConfirm 钩子 + sessionStorage __ubHiddenProjects
  */
@@ -89,14 +90,29 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain('data-act="newchat"');
     expect(s).toContain('data-act="del"');
     expect(s).toContain("send({ type: 'set_cwd', path: v })");
-    // 当前项目下挂：运行对话 + 历史会话
+    // 当前项目下挂：运行对话 + 历史会话（同一列表）
     expect(s).toContain('data-act="conv"');
     expect(s).toContain("send({ type: 'switch_conversation', id: Number(v) })");
     expect(s).toContain('data-act="sess"');
     expect(s).toContain("send({ type: 'switch_session', path: v })");
-    // 分组小标题「对话」「历史」
-    expect(s).toContain('对话');
-    expect(s).toContain('历史');
+  });
+
+  it('should merge conversations and history into one list named by first prompt (dev.66)', () => {
+    const s = buildLeftPanelScript();
+    // 会话名统一取第一轮提问前几字（30 字截断 + 空白规范化）
+    expect(s).toContain('function sessName(');
+    expect(s).toContain('SESS_NAME_MAX = 30');
+    // 历史会话 firstMessage 优先于自定义 name；运行对话用 title
+    //（服务端 conversationTitle 已按首个 user 消息生成）
+    expect(s).toContain('sessName(ss.firstMessage || ss.name)');
+    expect(s).toContain('sessName(c.title)');
+    // 运行中对话排最上：isStreaming 优先，其余保持服务端顺序
+    expect(s).toContain('(b.isStreaming ? 1 : 0) - (a.isStreaming ? 1 : 0)');
+    // 不再分「对话/历史」两组：无分组小标题
+    expect(s).not.toContain('__ubLPMini');
+    expect(s).not.toContain('__ubLPMini">对话');
+    // 运行行视觉区分：__ubLPRunning 样式
+    expect(s).toContain('__ubLPRunning');
   });
 
   it('should degrade gracefully until the panel is ready', () => {

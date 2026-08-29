@@ -638,9 +638,11 @@ function FileViewerInner({
           />
         )}
         {session.mode === 'read' && (renderAs === 'text' || renderAs === 'json') && (
-          // 铺满全宽：滚动条（纵向+长行横向）挂在外层全宽滚动容器上，贴窗口边缘；
-          // 此前的 max-w 居中窄盒会把滚动条带到页面中部（2026-08-30 用户反馈）
-          <pre className="w-full px-6 py-4 font-mono text-sm leading-relaxed">{content}</pre>
+          // 阅读列居中限宽（与 Markdown 列一致的网页式阅读体验）；
+          // 滚动（纵向 + 长行横向）归外层全宽容器——滚动条贴窗口边缘而非列缘
+          <pre className="mx-auto max-w-3xl px-6 py-4 font-mono text-sm leading-relaxed">
+            {content}
+          </pre>
         )}
         {session.mode === 'read' && (kind === 'binary' || kind === 'html') && (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-text-secondary">

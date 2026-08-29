@@ -46,6 +46,11 @@
  *    左区项目按持久化顺序排列（首见追加，会话触发不影响）+ 行拖拽排序；
  *    toast/[data-tip] 层叠修复（右区标题行不再遮挡提示）。
  * 9. 对话输入框重构（dev.51 → dev.54 基线，用户参考 ChatGPT 风格截图）：
+ *    【dev.71 起 0.47.0 上游原生实现了同款设计（.inputbox 直含 textarea +
+ *    .composer-tools，模型/思考下拉移入工具条左、发送在右、下拉原生向上弹），
+ *    dev.51-58 的结构性 hack 全部退役，仅保留视觉定制：发送/停止主题反色、
+ *    「+」background-image 绘制、上下文圆环、信息栏隐藏 + 项目路径行——
+ *    选择器按新类名映射 input-tools* → composer-tools*。下列历史细节仅存档】
  *    纯 CSS 注入（不改第三方源码、不移动 React 持有节点）——
  *    - dev.51 布局：.inputbox 外壳透明化，主输入箱（.inputbox-row，textarea
  *      独占首行 flex-wrap 换行）与工具条（.input-tools，模型/思考 chips）拆分；
@@ -213,50 +218,28 @@ export function buildProjectsPanelScript(): string {
     '.__ubNewChat:hover{opacity:1;background:rgba(128,128,128,.12)}' +
     '.dd-update>*:not(:first-child){display:none!important}' +
     '.update-dot{display:none!important}' +
-    // 输入框重构（dev.51/52/53/54 基线 + dev.57 三项微调）：主箱+工具条一体大框、
-    // 发送回主箱右下（-5px=33）、+ 用 background-image（黑/白随主题）、模型↔思考 5px
-    '.inputbar .inputbox{background:transparent;border:none;box-shadow:none;padding:0;gap:0;overflow:visible}' +
-    '.inputbar .inputbox:focus-within{border:none;box-shadow:0 0 0 3px var(--accent-soft)}' +
-    '.inputbar .inputbox-row{flex-wrap:wrap;align-items:center;background:var(--bg-elev);' +
-    'border:1px solid var(--border);border-radius:22px 22px 0 0;padding:4px 10px 8px;' +
-    'transition:border-color .2s ease,box-shadow .2s ease;overflow:visible}' +
-    '.inputbar .inputbox-row:focus-within{border-color:color-mix(in srgb,var(--accent) 55%,var(--border))}' +
-    '.inputbar .inputbox-row textarea{flex:1 1 100%;padding:10px 6px 2px}' +
-    '.inputbar .inputbox-row .attach-img{display:none!important}' +
-    '.inputbar .inputbox-row .inputbox-actions{display:none!important}' +
-    '.inputbar .inputbox .btn.send,.inputbar .inputbox .btn.stop{background:var(--text);' +
+    // 输入框区（dev.71 适配 0.47.0）：上游原生实现了 ChatGPT 式单框设计
+    //（.inputbox 直含 textarea + .composer-tools，模型/思考下拉在工具条左、
+    // 发送在右，下拉原生向上弹）——dev.51-58 的结构性 hack 全部退役，仅保留
+    // 用户逐轮迭代的视觉定制：① 发送/停止主题反色 28px 方块；②「+」
+    // background-image 绘制（亮黑/暗白）；③ 上下文用量圆环；④ 信息栏隐藏 +
+    // 项目路径行。选择器按新类名映射（input-tools* → composer-tools*）。
+    '.inputbar .btn.send,.inputbar .btn.stop{background:var(--text);' +
     'border-color:var(--text);color:var(--bg);width:28px;height:28px;border-radius:10px;box-shadow:none}' +
-    '.inputbar .inputbox .btn.send:hover:not(:disabled),.inputbar .inputbox .btn.stop:hover:not(:disabled)' +
+    '.inputbar .btn.send:hover:not(:disabled),.inputbar .btn.stop:hover:not(:disabled)' +
     '{background:var(--text);border-color:var(--text);opacity:.88;transform:none;box-shadow:none}' +
-    '.inputbar .input-tools{position:relative!important;display:flex!important;justify-content:flex-start;align-items:center;gap:16px;' +
-    'background:var(--bg);border:1px solid var(--border);border-radius:0 0 22px 22px;' +
-    'padding:6px 10px;margin-top:-1px;overflow:visible}' +
-    '.inputbar .input-tools-left{display:flex!important;align-items:center;gap:10px;margin-left:-5px}' +
-    '.inputbar .input-tools-right{display:flex!important;align-items:center;order:-1}' +
-    // 发送/停止副本：absolute 拉到工具条最右（垂直居中），脱离 + 与 chips 布局
-    '.inputbar .input-tools-right .inputbox-actions{display:flex!important;position:absolute;' +
-    'right:10px;top:50%;transform:translateY(-50%);z-index:5}' +
-    '.inputbar .input-tools-right .btn.attach-img{display:inline-flex!important;border:none;' +
+    '.inputbar .composer-tools-left .btn.attach-img{border:none;' +
     'background-color:transparent;background-repeat:no-repeat;background-position:center;' +
     'background-size:18px 18px;width:27px;height:27px;padding:0;flex-shrink:0;opacity:1!important;' +
     "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M12 5v14M5 12h14' stroke='%23111827' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E\")}" +
-    '.inputbar .input-tools-right .btn.attach-img:disabled{opacity:1!important}' +
-    '.inputbar .input-tools-right .btn.attach-img svg{display:none!important}' +
-    '.inputbar .input-tools-right .btn.attach-img:hover{background-color:var(--accent-soft);border-radius:6px}' +
-    '@media (prefers-color-scheme: dark){.inputbar .input-tools-right .btn.attach-img{' +
+    '.inputbar .composer-tools-left .btn.attach-img:disabled{opacity:1!important}' +
+    '.inputbar .composer-tools-left .btn.attach-img svg{display:none!important}' +
+    '.inputbar .composer-tools-left .btn.attach-img:hover{background-color:var(--accent-soft);border-radius:6px}' +
+    '@media (prefers-color-scheme: dark){.inputbar .composer-tools-left .btn.attach-img{' +
     "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M12 5v14M5 12h14' stroke='%23f3f4f6' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E\")!important}}" +
-    '.inputbar .input-tools .dropdown{position:relative}' +
-    '.inputbar .input-tools .dropdown .dd-menu{position:absolute!important;' +
-    'top:auto!important;bottom:calc(100% + 6px)!important;right:0!important;left:auto!important;' +
-    'max-height:min(360px,50vh);z-index:80}' +
-    '.inputbar .input-tools .dropdown.left .dd-menu{left:0!important;right:auto!important}' +
-    // dev.59：① 去工具条模型/思考 chips 边框；② 去主箱 focus 环绕紫色；
-    //          ③ 新增上下文用量圆环（随 statusbar 数据着色）。
-    // dev.60：隐藏整条信息栏（statusbar）；新增 .__ubCwdRow——项目路径移入工具条
-    //          下方（点击转发原 button.status-cwd 弹原生目录选择器）。
-    '.inputbar .input-tools .chip{border:none;background:var(--bg)}' +
-    '.inputbar .inputbox-row:focus-within{border-color:var(--border)}' +
-    '.inputbar .inputbox:focus-within{border:none;box-shadow:none}' +
+    // dev.59：上下文用量圆环（随 statusbar 数据着色）。
+    // dev.60：隐藏整条信息栏（statusbar）；新增 .__ubCwdRow——项目路径移入
+    //          输入框下方（点击转发原 button.status-cwd 弹原生目录选择器）。
     '.__ubCtxRing{width:20px;height:20px;border-radius:50%;margin-left:8px;flex-shrink:0;align-self:center;' +
     'position:relative;display:inline-flex;align-items:center;justify-content:center;' +
     '-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));' +
@@ -391,13 +374,24 @@ export function buildProjectsPanelScript(): string {
     '}' +
     '}' +
     // dev.69：设置弹窗去重——技能/插件管理已统一在左区面板（同一 settings_state /
-    // set_settings 接口），弹窗内对应 .set-section 整节移除。标题取 title 的纯文本
-    // 子节点做精确匹配（「审查可用技能」含「技能」子串不得误删；预设/审查节保留）。
-    // React 重开弹窗重建节点由 MutationObserver 调度的本函数重复移除。
+    // set_settings 接口）。dev.71 适配 0.47.0 标签页布局：技能/插件成了
+    // nav.settings-rail 里的 button.settings-tab（title 属性=精确标签），删除
+    // tab 项即整节不可达（内容区只渲染激活 tab；默认激活「提示词」不受影响）。
+    // 「审查可用技能」「界面插件」含子串，靠 title 精确匹配防误删；旧版
+    // .set-section 内容级移除保留作兜底。React 重开弹窗重建由 observer 重复删。
     'function removeSettingsDupSections(){' +
+    'var tabs = document.querySelectorAll("button.settings-tab");' +
+    'for (var i = 0; i < tabs.length; i++) {' +
+    'var tl = (tabs[i].getAttribute("title") || "").trim();' +
+    'if (/^(\\u6280\\u80fd|skills)$/i.test(tl) || /^(\\u63d2\\u4ef6|extensions)$/i.test(tl)) tabs[i].remove();' +
+    '}' +
+    'if (!document.querySelector("button.settings-tab.active")) {' +
+    'var first = document.querySelector("button.settings-tab");' +
+    'if (first) first.click();' +
+    '}' +
     'var titles = document.querySelectorAll(".set-section .set-section-title");' +
-    'for (var i = 0; i < titles.length; i++) {' +
-    'var t = titles[i];' +
+    'for (var j = 0; j < titles.length; j++) {' +
+    'var t = titles[j];' +
     'var label = "";' +
     'for (var k = 0; k < t.childNodes.length; k++) {' +
     'if (t.childNodes[k].nodeType === 3) label += t.childNodes[k].textContent;' +
@@ -413,15 +407,15 @@ export function buildProjectsPanelScript(): string {
     // .status-ctx（圆环自身的隐藏由 CSS 完成，此处仅读其 .ctx-bar-fill 宽度%与
     // 颜色级别 + token 文字）实时着色；React 重渲染重建由定时器兜底补插。
     'function ensureCtxRing(){' +
-    'var plus=document.querySelector(".inputbar .input-tools-right .btn.attach-img");' +
+    'var plus=document.querySelector(".inputbar .composer-tools-left .btn.attach-img");' +
     'if(!plus)return;' +
-    'var ring=document.querySelector(".inputbar .input-tools-right .__ubCtxRing");' +
+    'var ring=document.querySelector(".inputbar .composer-tools-left .__ubCtxRing");' +
     'if(!ring){ring=document.createElement("span");ring.className="__ubCtxRing";' +
     'plus.insertAdjacentElement("afterend",ring);}' +
     '}' +
     'function updateCtxRing(){' +
-    'var ring=document.querySelector(".inputbar .input-tools-right .__ubCtxRing");' +
-    'if(!ring){ensureCtxRing();ring=document.querySelector(".inputbar .input-tools-right .__ubCtxRing");}' +
+    'var ring=document.querySelector(".inputbar .composer-tools-left .__ubCtxRing");' +
+    'if(!ring){ensureCtxRing();ring=document.querySelector(".inputbar .composer-tools-left .__ubCtxRing");}' +
     'if(!ring)return;' +
     'var ctx=document.querySelector(".statusbar .status-item.status-ctx");' +
     'if(!ctx)return;' +

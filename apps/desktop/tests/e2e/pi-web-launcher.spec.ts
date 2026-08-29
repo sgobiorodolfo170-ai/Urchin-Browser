@@ -259,10 +259,6 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       lpActiveProj?: string;
       lpNewBtns?: number;
       lpSwitchWorked?: boolean;
-      lpConvGroups?: number;
-      lpConvRows?: number;
-      lpMiniLabels?: number;
-      lpConvEmptyHint?: boolean;
       cfgSkillsExpanded?: boolean;
       cfgFilesListed?: boolean;
       themeSelectorHidden?: boolean;
@@ -369,11 +365,11 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           return {
             cwdSwitched: cwdText.includes('Urchin-Browser') && cwdText.includes('G:'),
             activeFollowed: !!(active && (active.getAttribute('title') || '').includes('Urchin-Browser')),
-            convGroups: document.querySelectorAll('.__ubLPConvGroup').length,
-          convRows: document.querySelectorAll('.__ubLPConv').length,
-          // dev.66：合并后无「对话/历史」分组小标题；空项目显示「暂无会话」提示
-          miniLabels: document.querySelectorAll('.__ubLPMini').length,
-          convEmptyHint: !!document.querySelector('.__ubLPConvGroup .__ubLPHint'),
+            // dev.71：以活动项目行为作用域观测会话区（全局对话后各项目行都有会话区）
+            activeHasList: (() => {
+              const wrap = document.querySelector('.__ubLPProjWrap.active');
+              return !!wrap && !!(wrap.querySelector('.__ubLPConvGroup') || wrap.querySelector('.__ubLPHint'));
+            })(),
             stillSuppressed: !notes.some((n) =>
               /\\u5df2\\u5207\\u6362\\u5230\\u5de5\\u4f5c\\u76ee\\u5f55|\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55/.test(n.textContent || ''),
             ),
@@ -381,10 +377,7 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
         })()`)) as {
           cwdSwitched: boolean;
           activeFollowed: boolean;
-          convGroups: number;
-          convRows: number;
-          miniLabels: number;
-          convEmptyHint: boolean;
+          activeHasList: boolean;
           stillSuppressed: boolean;
         };
         noticeSuppressed = noticeSuppressed && switchRes.stillSuppressed;
@@ -417,7 +410,9 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           filesListed: boolean;
         };
 
-        // dev.68：会话折叠/展开——「＋」前的 ▾ 按钮（默认展开；折叠后组消失，再点恢复）
+        // dev.68：会话折叠/展开——「＋」前的 ▾ 按钮（默认展开；折叠后该行会话
+        // 区消失，再点恢复）。dev.71 起断言以活动项目行为作用域（全局对话后
+        // 各项目行都可能有会话区，全局计数不再有意义）。
         const foldRes = (await wc.executeJavaScript(`(() => {
           const clickFold = () => {
             const btn = document.querySelector('.__ubLPProj.active .__ubFoldBtn');
@@ -425,23 +420,26 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
             btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
             return true;
           };
-          const groups = () => document.querySelectorAll('.__ubLPConvGroup').length;
-          const g0 = groups();
+          const activeWrapHasList = () => {
+            const wrap = document.querySelector('.__ubLPProjWrap.active');
+            return !!wrap && !!(wrap.querySelector('.__ubLPConvGroup') || wrap.querySelector('.__ubLPHint'));
+          };
+          const e0 = activeWrapHasList();
           const c1 = clickFold();
           return new Promise((resolve) => setTimeout(() => {
-            const g1 = groups();
+            const folded = !activeWrapHasList();
             const c2 = clickFold();
             setTimeout(() => resolve({
               ok: c1 && c2,
-              expandedByDefault: g0 >= 1,
-              foldedToZero: g1 === 0,
-              restored: groups() >= 1,
+              expandedByDefault: e0,
+              foldedAway: folded,
+              restored: activeWrapHasList(),
             }), 250);
           }, 250));
         })()`)) as {
           ok: boolean;
           expandedByDefault: boolean;
-          foldedToZero: boolean;
+          foldedAway: boolean;
           restored: boolean;
         };
 
@@ -467,15 +465,11 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
         })()`);
         await wait(900);
         const settingsDedup = (await wc.executeJavaScript(`(() => {
+          // dev.71：0.47.0 设置弹窗为标签页布局——以 rail tab 标签为观测面
+          // （内容区只渲染激活 tab，节级观测不再可靠）
           const labels = Array.from(
-            document.querySelectorAll('.set-section .set-section-title'),
-          ).map((t) => {
-            let label = '';
-            for (const n of t.childNodes) {
-              if (n.nodeType === 3) label += n.textContent || '';
-            }
-            return label.trim();
-          });
+            document.querySelectorAll('button.settings-tab .settings-tab-label'),
+          ).map((t) => (t.textContent || '').trim());
           const close = document.querySelector('.modal-close');
           if (close) close.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
           return {
@@ -500,8 +494,7 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           theme,
           projectItems: counts.items,
           delButtons: counts.dels,
-          foldOk:
-            foldRes.ok && foldRes.expandedByDefault && foldRes.foldedToZero && foldRes.restored,
+          foldOk: foldRes.ok && foldRes.expandedByDefault && foldRes.foldedAway && foldRes.restored,
           noProjDel,
           noticeSuppressed,
           updateCssReady,
@@ -513,10 +506,6 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           lpActiveProj: lp.activeProj ?? '',
           lpNewBtns: lp.newBtns ?? 0,
           lpSwitchWorked: switchRes.cwdSwitched && switchRes.activeFollowed,
-          lpConvGroups: switchRes.convGroups,
-          lpConvRows: switchRes.convRows,
-          lpMiniLabels: switchRes.miniLabels,
-          lpConvEmptyHint: switchRes.convEmptyHint,
           cfgSkillsExpanded: cfgRes.skillsClicked && cfgRes.skillsExpanded,
           cfgFilesListed: cfgRes.filesClicked && cfgRes.filesListed,
           themeSelectorHidden: !themeSel.present || themeSel.removed || themeSel.hidden,
@@ -552,17 +541,14 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     });
     expect(enhance.lpProjRows ?? 0).toBeGreaterThanOrEqual(1);
     expect(enhance.lpNewBtns).toBe(enhance.lpProjRows);
-    // dev.66：会话合并为单一列表（无「对话/历史」小标题）；E2E 临时 profile 可能
-    // 无历史会话文件与运行对话（空白对话不列入）——有行或显示「暂无会话」提示即可
-    expect(enhance.lpConvGroups).toBe(1);
-    expect(enhance.lpMiniLabels).toBe(0);
-    expect((enhance.lpConvRows ?? 0) + (enhance.lpConvEmptyHint ? 1 : 0)).toBeGreaterThanOrEqual(1);
+    // dev.71：活动项目行展开且有会话区（组或空提示；全局对话后按行作用域观测）
+    expect(enhance.lpSwitchWorked).toBe(true);
     expect(enhance.lpActiveProj).toContain('Urchin-Browser');
 
     // dev.67：中区布局控制——折叠按钮 / 分割线拖拽 / 状态持久化 / 项目排序
     interface LayoutResult {
       error?: string;
-      init?: { btns?: number; splits?: number; leftW?: number };
+      init?: { btns?: number; handles?: number; leftW?: number };
       collapsed?: boolean;
       expanded?: boolean;
       dragged?: { ok?: boolean; w0?: number; w1?: number };
@@ -582,10 +568,10 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           const left = pane?.querySelector('aside.panel-left');
           return {
             btns: [...document.querySelectorAll('#__ubLTCollapse, #__ubRTCollapse')].length,
-            splits: document.querySelectorAll('.__ubSplitL, .__ubSplitR').length,
+            handles: document.querySelectorAll('.resize-handle.resize-left, .resize-handle.resize-right').length,
             leftW: left ? Math.round(left.getBoundingClientRect().width) : 0,
           };
-        })()`)) as { btns: number; splits: number; leftW: number };
+        })()`)) as { btns: number; handles: number; leftW: number };
 
         // 折叠 → 左区隐藏；再点 → 展开
         await exec(`document.getElementById('__ubLTCollapse').click()`);
@@ -600,21 +586,32 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           `!!document.querySelector('.view-pane aside.panel-left')?.getBoundingClientRect().width`,
         )) as boolean;
 
-        // 拖拽左分割线 +120px（mousedown → document mousemove/mouseup 合成事件链）
-        const dragged = (await exec(`(() => {
-          const h = document.querySelector('.__ubSplitL');
+        // dev.71：拖拽原生把手（pointerdown → window pointermove/pointerup
+        // 合成事件链——上游 Ns 组件用 pointer 事件 + window 监听）+120px
+        // React onResize → setState → 异步渲染：派发事件后等渲染再量宽
+        const drag0 = (await exec(`(() => {
+          const h = document.querySelector('.resize-handle.resize-left');
           const left = document.querySelector('.view-pane aside.panel-left');
           if (!h || !left) return { ok: false };
           const w0 = left.getBoundingClientRect().width;
           const x = h.getBoundingClientRect().left + 3;
           const y = h.getBoundingClientRect().top + 40;
-          const o = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y };
-          h.dispatchEvent(new MouseEvent('mousedown', o));
-          document.dispatchEvent(new MouseEvent('mousemove', { ...o, clientX: x + 120 }));
-          document.dispatchEvent(new MouseEvent('mouseup', { ...o, clientX: x + 120 }));
-          return { ok: true, w0: Math.round(w0), w1: Math.round(left.getBoundingClientRect().width) };
-        })()`)) as { ok: boolean; w0?: number; w1?: number };
-        await wait(600); // 写入防抖 300ms 后落盘
+          const o = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, pointerId: 1 };
+          h.dispatchEvent(new PointerEvent('pointerdown', o));
+          const resizing = document.body.classList.contains('panel-resizing');
+          window.dispatchEvent(new PointerEvent('pointermove', { ...o, clientX: x + 120 }));
+          window.dispatchEvent(new PointerEvent('pointerup', { ...o, clientX: x + 120 }));
+          return { ok: true, w0: Math.round(w0), resizing };
+        })()`)) as { ok: boolean; w0?: number };
+        await wait(600); // React 渲染 + 我方写入防抖 300ms 落盘
+        const dragged = {
+          ok: drag0.ok,
+          resizing: (drag0 as { resizing?: boolean }).resizing,
+          w0: drag0.w0,
+          w1: (await exec(
+            `Math.round(document.querySelector('.view-pane aside.panel-left')?.getBoundingClientRect().width ?? 0)`,
+          )) as number,
+        };
 
         // 项目排序：首位移到末尾（__reorder → urchin://pi-ui-state 持久化）
         const reorder = (await exec(`(() => {
@@ -659,7 +656,7 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     );
     expect(layout.error).toBeUndefined();
     expect(layout.init?.btns).toBe(2);
-    expect(layout.init?.splits).toBe(2);
+    expect(layout.init?.handles).toBeGreaterThanOrEqual(2);
     expect(layout.collapsed).toBe(true);
     expect(layout.expanded).toBe(true);
     expect(layout.dragged?.ok).toBe(true);

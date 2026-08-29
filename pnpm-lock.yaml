@@ -96,8 +96,8 @@ importers:
         specifier: 18.0.5
         version: 18.0.5
       pi-web-ui:
-        specifier: 0.29.1
-        version: 0.29.1(@types/react@18.3.31)(zod@3.25.76)
+        specifier: 0.47.0
+        version: 0.47.0(@types/react@18.3.31)(zod@3.25.76)
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -287,11 +287,11 @@ importers:
   vendor/pi/packages/agent:
     dependencies:
       '@earendil-works/pi-ai':
-        specifier: ^0.84.2
-        version: 0.84.2(ws@8.21.1)(zod@3.25.76)
+        specifier: ^0.84.3
+        version: 0.84.3(ws@8.21.1)(zod@3.25.76)
       '@earendil-works/pi-telemetry':
-        specifier: ^0.84.2
-        version: 0.84.2
+        specifier: ^0.84.3
+        version: 0.84.3
       diff:
         specifier: 8.0.4
         version: 8.0.4
@@ -306,8 +306,8 @@ importers:
         version: 2.9.0
     devDependencies:
       '@types/node':
-        specifier: 24.12.4
-        version: 24.12.4
+        specifier: 22.19.19
+        version: 22.19.19
       '@vitest/coverage-v8':
         specifier: 4.1.9
         version: 4.1.9(vitest@4.1.9)
@@ -316,7 +316,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@24.12.4))
+        version: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@22.19.19)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@22.19.19))
 
   vendor/pi/packages/ai:
     dependencies:
@@ -327,14 +327,11 @@ importers:
         specifier: 3.1048.0
         version: 3.1048.0
       '@earendil-works/pi-telemetry':
-        specifier: ^0.84.2
-        version: 0.84.2
+        specifier: ^0.84.3
+        version: 0.84.3
       '@google/genai':
         specifier: 1.52.0
         version: 1.52.0
-      '@opentelemetry/api':
-        specifier: 1.9.0
-        version: 1.9.0
       '@smithy/node-http-handler':
         specifier: 4.7.3
         version: 4.7.3
@@ -355,20 +352,20 @@ importers:
         version: 1.3.7
     devDependencies:
       '@types/node':
-        specifier: 24.12.4
-        version: 24.12.4
+        specifier: 22.19.19
+        version: 22.19.19
       canvas:
         specifier: 3.2.3
         version: 3.2.3
       vitest:
         specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@24.12.4))
+        version: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@22.19.19)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@22.19.19))
 
   vendor/pi/packages/client:
     dependencies:
       '@earendil-works/pi-protocol':
-        specifier: ^0.84.2
-        version: 0.84.2
+        specifier: ^0.84.3
+        version: 0.84.3
     devDependencies:
       shx:
         specifier: 0.4.0
@@ -380,20 +377,20 @@ importers:
   vendor/pi/packages/coding-agent:
     dependencies:
       '@earendil-works/pi-agent-core':
-        specifier: ^0.84.2
-        version: 0.84.2(ws@8.21.1)(zod@3.25.76)
+        specifier: ^0.84.3
+        version: 0.84.3(ws@8.21.1)(zod@3.25.76)
       '@earendil-works/pi-ai':
-        specifier: ^0.84.2
-        version: 0.84.2(ws@8.21.1)(zod@3.25.76)
+        specifier: ^0.84.3
+        version: 0.84.3(ws@8.21.1)(zod@3.25.76)
       '@earendil-works/pi-client':
-        specifier: ^0.84.2
-        version: 0.84.2
+        specifier: ^0.84.3
+        version: 0.84.3
       '@earendil-works/pi-protocol':
-        specifier: ^0.84.2
-        version: 0.84.2
+        specifier: ^0.84.3
+        version: 0.84.3
       '@earendil-works/pi-tui':
-        specifier: ^0.84.2
-        version: 0.84.2
+        specifier: ^0.84.3
+        version: 0.84.3
       '@silvia-odwyer/photon-node':
         specifier: 0.3.4
         version: 0.3.4
@@ -406,9 +403,6 @@ importers:
       diff:
         specifier: 8.0.4
         version: 8.0.4
-      glob:
-        specifier: 13.0.6
-        version: 13.0.6
       grok-mermaid:
         specifier: 0.2.2
         version: 0.2.2
@@ -450,18 +444,12 @@ importers:
       '@types/cross-spawn':
         specifier: 6.0.6
         version: 6.0.6
-      '@types/diff':
-        specifier: 7.0.2
-        version: 7.0.2
       '@types/hosted-git-info':
         specifier: 3.0.5
         version: 3.0.5
-      '@types/ms':
-        specifier: 2.1.0
-        version: 2.1.0
       '@types/node':
-        specifier: 24.12.4
-        version: 24.12.4
+        specifier: 22.19.19
+        version: 22.19.19
       '@types/proper-lockfile':
         specifier: 4.1.4
         version: 4.1.4
@@ -476,19 +464,19 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@24.12.4))
+        version: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@22.19.19)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@22.19.19))
 
   vendor/pi/packages/evals:
     devDependencies:
       '@earendil-works/pi-ai':
-        specifier: ^0.84.2
-        version: 0.84.2(ws@8.21.1)(zod@3.25.76)
+        specifier: ^0.84.3
+        version: 0.84.3(ws@8.21.1)(zod@3.25.76)
       '@earendil-works/pi-coding-agent':
-        specifier: ^0.84.2
-        version: 0.84.2(ws@8.21.1)(zod@3.25.76)
+        specifier: ^0.84.3
+        version: 0.84.3(ws@8.21.1)(zod@3.25.76)
       '@types/node':
-        specifier: 24.12.4
-        version: 24.12.4
+        specifier: 22.19.19
+        version: 22.19.19
       shx:
         specifier: 0.4.0
         version: 0.4.0
@@ -497,7 +485,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@24.12.4))
+        version: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@22.19.19)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@22.19.19))
       vitest-evals:
         specifier: 0.15.0
         version: 0.15.0(tinyrainbow@3.1.1)(vitest@4.1.9)(zod@3.25.76)
@@ -518,11 +506,11 @@ importers:
   vendor/pi/packages/server:
     dependencies:
       '@earendil-works/pi-ai':
-        specifier: ^0.84.2
-        version: 0.84.2(ws@8.21.1)(zod@3.25.76)
+        specifier: ^0.84.3
+        version: 0.84.3(ws@8.21.1)(zod@3.25.76)
       '@earendil-works/pi-protocol':
-        specifier: ^0.84.2
-        version: 0.84.2
+        specifier: ^0.84.3
+        version: 0.84.3
     devDependencies:
       shx:
         specifier: 0.4.0
@@ -534,11 +522,11 @@ importers:
   vendor/pi/packages/telemetry:
     devDependencies:
       '@types/node':
-        specifier: 24.12.4
-        version: 24.12.4
+        specifier: 22.19.19
+        version: 22.19.19
       vitest:
         specifier: 4.1.9
-        version: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@24.12.4))
+        version: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@22.19.19)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@22.19.19))
 
   vendor/pi/packages/tui:
     dependencies:
@@ -896,34 +884,34 @@ packages:
     resolution: {integrity: sha512-0cp4PsWQ/9avqTVMCtZ+GirikIA36ikvjtHweU4/j8yLtgObI0+JUPhYFScgwlteveGB1rt3Cm8UhN04XayDig==}
     engines: {node: '>= 8.9.0'}
 
-  '@earendil-works/pi-agent-core@0.84.2':
-    resolution: {integrity: sha512-8Pn3wSCxj0cfo5I6jxQYVB/3uuQRmHhAlEclyjqpOuMEdQMIODHizRogv56FLdbU+dTiGnybeHQ2N+sV1/L2YA==}
+  '@earendil-works/pi-agent-core@0.84.3':
+    resolution: {integrity: sha512-VURr+xBRl3RxYcw3kT9Pn3yfi6LbRoCJgHF7h1mAblMjtLNV/MfG/RyF0uJizBAM886AEakSiw3j9c/aSngppg==}
     engines: {node: '>=22.19.0'}
 
-  '@earendil-works/pi-ai@0.84.2':
-    resolution: {integrity: sha512-6MzsrYIYNVlE7SfpbL2yYb67Qo58p/7Q+xWG1RZvoX1P80aRCHSod2/13aFpxkow1lPO2LEh3c495J0Gwmyjig==}
-    engines: {node: '>=22.19.0'}
-    hasBin: true
-
-  '@earendil-works/pi-client@0.84.2':
-    resolution: {integrity: sha512-/RFSPhD/bZbpOp1oJj+UneSUFSgZhWxzcSENUY+8+8xhoBrWXMYI2t77XNx4Yf+c8YK2qTHquForhNcelYpXvg==}
-    engines: {node: '>=22.19.0'}
-
-  '@earendil-works/pi-coding-agent@0.84.2':
-    resolution: {integrity: sha512-l4E+B7hgXKWddRo8bC/eSue2aWZjEgJ9xIpf5p0Og+lq8a2TArCwJ0HCoCPCgaBP/tN4zbYH/wOwvx9pJpeLCA==}
+  '@earendil-works/pi-ai@0.84.3':
+    resolution: {integrity: sha512-M0YUV8vNO3y2WwWSyY8ijKJV5W4gkSUixuvk+Z00ZBjsyMfsdXfITsHEwP1UIf09YRWXT6oGn0GlCamt+P32XQ==}
     engines: {node: '>=22.19.0'}
     hasBin: true
 
-  '@earendil-works/pi-protocol@0.84.2':
-    resolution: {integrity: sha512-jbBh03fkeckWEroHpcZBr4w5/Ibat8WwdXFlXHivYQImrQNFtLpDeL0t1cku4hmK0q3pceIRQHkw4fwbM4YILQ==}
+  '@earendil-works/pi-client@0.84.3':
+    resolution: {integrity: sha512-zfErYane+390W0xpBJ/FWCp6aktPpkpcIcXUeZiAziWLoxE80ZNQALRyOSa/gGS5V+1OkNnMYxRxbzN0zUvnOA==}
     engines: {node: '>=22.19.0'}
 
-  '@earendil-works/pi-telemetry@0.84.2':
-    resolution: {integrity: sha512-wg5caea7uIv1BHRBm2Y116RvFG4oSAiP5qk9tA2463PDGIr4K8M1Ceyyg5DOpF/shUUl0gk826yQJAeAcHYB9g==}
+  '@earendil-works/pi-coding-agent@0.84.3':
+    resolution: {integrity: sha512-Yr2p9PubrbFZmYEPYI+C8KmZP9xlFuLDnAG64RtU0ZDgrdiXYWa+y7WGyJO5OlqPliOkVCMd9IzVszO3/t0D0w==}
+    engines: {node: '>=22.19.0'}
+    hasBin: true
+
+  '@earendil-works/pi-protocol@0.84.3':
+    resolution: {integrity: sha512-9a4g6WhLOvRqvsIOFaWxg/2gdrbY4Thclwj5ipLUPAWChfsDJ/8XdPc2sRhSOkD6EsxpEFJz3xppcfwI6EcZDg==}
     engines: {node: '>=22.19.0'}
 
-  '@earendil-works/pi-tui@0.84.2':
-    resolution: {integrity: sha512-ds2TLihOnM5sLJB3VpXV6y0uR5efVuHf4MN7yDpsty6hA2DUO/EDVzjp/0od0G2JslzVLMjT8T8zavtxVb+qbg==}
+  '@earendil-works/pi-telemetry@0.84.3':
+    resolution: {integrity: sha512-sgEkWoKrvSGaKn+YfLLFZmn+/A7B/w62eLwTD57nI+C9to8ITlFFVbgC2OtwvPnT3NFGHdCd53qhBEMIlptD1g==}
+    engines: {node: '>=22.19.0'}
+
+  '@earendil-works/pi-tui@0.84.3':
+    resolution: {integrity: sha512-fS6OEQKEEALnKa6Uw8LcgZZ+9CWck7f3MQSCETQp6leUgIFwMEDtKmOUnL9nsYm+RIPmy7OmplVxYRbV6hiaFg==}
     engines: {node: '>=22.19.0'}
 
   '@electron/asar@3.4.1':
@@ -1765,9 +1753,6 @@ packages:
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
 
-  '@types/diff@7.0.2':
-    resolution: {integrity: sha512-JSWRMozjFKsGlEjiiKajUjIJVKuKdE3oVy2DNtK+fUo8q82nhFZ2CPQwicAIkXrofahDXrWJ7mjelvZphMS98Q==}
-
   '@types/estree-jsx@1.0.5':
     resolution: {integrity: sha512-52CcUVNFyfb1A2ALocQw/Dd1BQFNmSdkuC3BkZ6iqhdMfQz7JWOFRuJFloOzjk+6WijU56m9oKXFAXc7o3Towg==}
 
@@ -1800,6 +1785,9 @@ packages:
 
   '@types/node@20.19.43':
     resolution: {integrity: sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA==}
+
+  '@types/node@22.19.19':
+    resolution: {integrity: sha512-dyh/xO2Fh5bYrfWaaqGrRQQGkNdmYw6AmaAUvYeUMNTWQtvb796ikLdmTchRmOlOiIJ1TDXfWgVx1QkUlQ6Hew==}
 
   '@types/node@22.20.1':
     resolution: {integrity: sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q==}
@@ -3247,10 +3235,6 @@ packages:
     deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
-  glob@13.0.6:
-    resolution: {integrity: sha512-Wjlyrolmm8uDpm/ogGyXZXb1Z+Ca2B8NbJwqBVg0axK9GbBeoS7yGV6vjXnYdGm6X53iehEuxxbyiKp8QmN4Vw==}
-    engines: {node: 18 || 20 || >=22}
-
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
     deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
@@ -4497,10 +4481,6 @@ packages:
     resolution: {integrity: sha512-Xa4Nw17FS9ApQFJ9umLiJS4orGjm7ZzwUrwamcGQuHSzDyth9boKDaycYdDcZDuqYATXw4HFXgaqWTctW/v1HA==}
     engines: {node: '>=16 || 14 >=14.18'}
 
-  path-scurry@2.0.2:
-    resolution: {integrity: sha512-3O/iVVsJAPsOnpwWIeD+d6z/7PmqApyQePUtCndjatj/9I5LylHvt5qluFaBT3I5h3r1ejfR056c+FCv+NnNXg==}
-    engines: {node: 18 || 20 || >=22}
-
   path-to-regexp@0.1.13:
     resolution: {integrity: sha512-A/AGNMFN3c8bOlvV9RreMdrv7jsmF9XIfDeCd87+I8RNg6s78BhJxMu69NEMHBSJFxKidViTEdruRwEk/WIKqA==}
 
@@ -4521,8 +4501,8 @@ packages:
   pend@1.2.0:
     resolution: {integrity: sha512-F3asv42UuXchdzt+xXqfW1OGlVBe+mxa2mqI0pg5yAHZPvFmY3Y6drSf/GQ1A86WgWEN9Kzh/WrgKa6iGcHXLg==}
 
-  pi-web-ui@0.29.1:
-    resolution: {integrity: sha512-YIADGEW9i6UsiQN0WUqBG7wNwee8NrOL8MmXPRtOoUb41rhAdDeBnwPT+hMA9s/vaBGNL//AAfEbuQnezA/2YQ==}
+  pi-web-ui@0.47.0:
+    resolution: {integrity: sha512-k9g0vVrs5HUnU+4CxEPveKm+yT+cwZ6mH8gDv/gERM6WYcxVFO67nAn0OCXe7Lztd8kTXwQwwxZzbw5/htn/4Q==}
     engines: {node: '>=22.19.0'}
     hasBin: true
 
@@ -6273,10 +6253,10 @@ snapshots:
       ajv: 6.15.0
       ajv-keywords: 3.5.2(ajv@6.15.0)
 
-  '@earendil-works/pi-agent-core@0.84.2(ws@8.21.1)(zod@3.25.76)':
+  '@earendil-works/pi-agent-core@0.84.3(ws@8.21.1)(zod@3.25.76)':
     dependencies:
-      '@earendil-works/pi-ai': 0.84.2(ws@8.21.1)(zod@3.25.76)
-      '@earendil-works/pi-telemetry': 0.84.2
+      '@earendil-works/pi-ai': 0.84.3(ws@8.21.1)(zod@3.25.76)
+      '@earendil-works/pi-telemetry': 0.84.3
       diff: 8.0.4
       ignore: 7.0.5
       typebox: 1.3.7
@@ -6289,13 +6269,12 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@0.84.2(ws@8.21.1)(zod@3.25.76)':
+  '@earendil-works/pi-ai@0.84.3(ws@8.21.1)(zod@3.25.76)':
     dependencies:
       '@anthropic-ai/sdk': 0.91.1(zod@3.25.76)
       '@aws-sdk/client-bedrock-runtime': 3.1048.0
-      '@earendil-works/pi-telemetry': 0.84.2
+      '@earendil-works/pi-telemetry': 0.84.3
       '@google/genai': 1.52.0
-      '@opentelemetry/api': 1.9.0
       '@smithy/node-http-handler': 4.7.3
       http-proxy-agent: 7.0.2
       https-proxy-agent: 7.0.6
@@ -6310,22 +6289,21 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-client@0.84.2':
+  '@earendil-works/pi-client@0.84.3':
     dependencies:
-      '@earendil-works/pi-protocol': 0.84.2
+      '@earendil-works/pi-protocol': 0.84.3
 
-  '@earendil-works/pi-coding-agent@0.84.2(ws@8.21.1)(zod@3.25.76)':
+  '@earendil-works/pi-coding-agent@0.84.3(ws@8.21.1)(zod@3.25.76)':
     dependencies:
-      '@earendil-works/pi-agent-core': 0.84.2(ws@8.21.1)(zod@3.25.76)
-      '@earendil-works/pi-ai': 0.84.2(ws@8.21.1)(zod@3.25.76)
-      '@earendil-works/pi-client': 0.84.2
-      '@earendil-works/pi-protocol': 0.84.2
-      '@earendil-works/pi-tui': 0.84.2
+      '@earendil-works/pi-agent-core': 0.84.3(ws@8.21.1)(zod@3.25.76)
+      '@earendil-works/pi-ai': 0.84.3(ws@8.21.1)(zod@3.25.76)
+      '@earendil-works/pi-client': 0.84.3
+      '@earendil-works/pi-protocol': 0.84.3
+      '@earendil-works/pi-tui': 0.84.3
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 5.6.2
       cross-spawn: 7.0.6
       diff: 8.0.4
-      glob: 13.0.6
       grok-mermaid: 0.2.2
       highlight.js: 10.7.3
       hosted-git-info: 9.0.3
@@ -6347,13 +6325,13 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-protocol@0.84.2':
+  '@earendil-works/pi-protocol@0.84.3':
     dependencies:
       typebox: 1.3.7
 
-  '@earendil-works/pi-telemetry@0.84.2': {}
+  '@earendil-works/pi-telemetry@0.84.3': {}
 
-  '@earendil-works/pi-tui@0.84.2':
+  '@earendil-works/pi-tui@0.84.3':
     dependencies:
       get-east-asian-width: 1.6.0
       marked: 18.0.5
@@ -6778,7 +6756,8 @@ snapshots:
       mkdirp: 1.0.4
       rimraf: 3.0.2
 
-  '@opentelemetry/api@1.9.0': {}
+  '@opentelemetry/api@1.9.0':
+    optional: true
 
   '@pkgjs/parseargs@0.11.0':
     optional: true
@@ -7020,7 +6999,7 @@ snapshots:
     dependencies:
       '@types/http-cache-semantics': 4.2.0
       '@types/keyv': 3.1.4
-      '@types/node': 22.20.1
+      '@types/node': 22.19.19
       '@types/responselike': 1.0.3
 
   '@types/chai@5.2.3':
@@ -7030,19 +7009,17 @@ snapshots:
 
   '@types/conventional-commits-parser@5.0.2':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.19.19
 
   '@types/cross-spawn@6.0.6':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.19.19
 
   '@types/debug@4.1.13':
     dependencies:
       '@types/ms': 2.1.0
 
   '@types/deep-eql@4.0.2': {}
-
-  '@types/diff@7.0.2': {}
 
   '@types/estree-jsx@1.0.5':
     dependencies:
@@ -7052,7 +7029,7 @@ snapshots:
 
   '@types/fs-extra@9.0.13':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.19.19
 
   '@types/hast@3.0.5':
     dependencies:
@@ -7066,7 +7043,7 @@ snapshots:
 
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.19.19
 
   '@types/mdast@4.0.4':
     dependencies:
@@ -7078,6 +7055,10 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/node@22.19.19':
+    dependencies:
+      undici-types: 6.21.0
+
   '@types/node@22.20.1':
     dependencies:
       undici-types: 6.21.0
@@ -7085,10 +7066,11 @@ snapshots:
   '@types/node@24.12.4':
     dependencies:
       undici-types: 7.16.0
+    optional: true
 
   '@types/plist@3.0.5':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.19.19
       xmlbuilder: 15.1.1
     optional: true
 
@@ -7109,7 +7091,7 @@ snapshots:
 
   '@types/responselike@1.0.3':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.19.19
 
   '@types/retry@0.12.0': {}
 
@@ -7126,7 +7108,7 @@ snapshots:
 
   '@types/yauzl@2.10.3':
     dependencies:
-      '@types/node': 22.20.1
+      '@types/node': 22.19.19
     optional: true
 
   '@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)':
@@ -7290,7 +7272,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@24.12.4))
+      vitest: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@22.19.19)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@22.19.19))
 
   '@vitest/expect@2.1.9':
     dependencies:
@@ -7323,6 +7305,14 @@ snapshots:
       magic-string: 0.30.21
     optionalDependencies:
       vite: 5.4.21(@types/node@24.12.4)
+
+  '@vitest/mocker@4.1.9(vite@5.4.21(@types/node@22.19.19))':
+    dependencies:
+      '@vitest/spy': 4.1.9
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 5.4.21(@types/node@22.19.19)
 
   '@vitest/mocker@4.1.9(vite@5.4.21(@types/node@24.12.4))':
     dependencies:
@@ -8979,12 +8969,6 @@ snapshots:
       package-json-from-dist: 1.0.1
       path-scurry: 1.11.1
 
-  glob@13.0.6:
-    dependencies:
-      minimatch: 10.2.5
-      minipass: 7.1.3
-      path-scurry: 2.0.2
-
   glob@7.2.3:
     dependencies:
       fs.realpath: 1.0.0
@@ -10478,11 +10462,6 @@ snapshots:
       lru-cache: 10.4.3
       minipass: 7.1.3
 
-  path-scurry@2.0.2:
-    dependencies:
-      lru-cache: 11.5.2
-      minipass: 7.1.3
-
   path-to-regexp@0.1.13: {}
 
   pathe@1.1.2: {}
@@ -10495,9 +10474,9 @@ snapshots:
 
   pend@1.2.0: {}
 
-  pi-web-ui@0.29.1(@types/react@18.3.31)(zod@3.25.76):
+  pi-web-ui@0.47.0(@types/react@18.3.31)(zod@3.25.76):
     dependencies:
-      '@earendil-works/pi-coding-agent': 0.84.2(ws@8.21.1)(zod@3.25.76)
+      '@earendil-works/pi-coding-agent': 0.84.3(ws@8.21.1)(zod@3.25.76)
       '@xterm/addon-fit': 0.11.0
       '@xterm/xterm': 6.0.0
       compression: 1.8.1
@@ -10661,7 +10640,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.2
-      '@types/node': 22.20.1
+      '@types/node': 22.19.19
       long: 5.3.2
 
   proxy-addr@2.0.7:
@@ -11575,7 +11554,8 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  undici-types@7.16.0: {}
+  undici-types@7.16.0:
+    optional: true
 
   undici@8.9.0: {}
 
@@ -11704,6 +11684,15 @@ snapshots:
       - supports-color
       - terser
 
+  vite@5.4.21(@types/node@22.19.19):
+    dependencies:
+      esbuild: 0.21.5
+      postcss: 8.5.24
+      rollup: 4.62.3
+    optionalDependencies:
+      '@types/node': 22.19.19
+      fsevents: 2.3.3
+
   vite@5.4.21(@types/node@22.20.1):
     dependencies:
       esbuild: 0.21.5
@@ -11727,7 +11716,7 @@ snapshots:
       '@vitest-evals/core': 0.15.0
       '@vitest-evals/report-ui': 0.15.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@24.12.4))
+      vitest: 4.1.9(@opentelemetry/api@1.9.0)(@types/node@22.19.19)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@22.19.19))
     optionalDependencies:
       zod: 3.25.76
 
@@ -11802,6 +11791,36 @@ snapshots:
       - sugarss
       - supports-color
       - terser
+
+  vitest@4.1.9(@opentelemetry/api@1.9.0)(@types/node@22.19.19)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@22.19.19)):
+    dependencies:
+      '@vitest/expect': 4.1.9
+      '@vitest/mocker': 4.1.9(vite@5.4.21(@types/node@22.19.19))
+      '@vitest/pretty-format': 4.1.9
+      '@vitest/runner': 4.1.9
+      '@vitest/snapshot': 4.1.9
+      '@vitest/spy': 4.1.9
+      '@vitest/utils': 4.1.9
+      es-module-lexer: 2.3.1
+      expect-type: 1.4.0
+      magic-string: 0.30.21
+      obug: 2.1.4
+      pathe: 2.0.3
+      picomatch: 4.0.5
+      std-env: 4.2.0
+      tinybench: 2.9.0
+      tinyexec: 1.2.4
+      tinyglobby: 0.2.17
+      tinyrainbow: 3.1.1
+      vite: 5.4.21(@types/node@22.19.19)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@opentelemetry/api': 1.9.0
+      '@types/node': 22.19.19
+      '@vitest/coverage-v8': 4.1.9(vitest@4.1.9)
+      jsdom: 30.0.1(canvas@3.2.3)
+    transitivePeerDependencies:
+      - msw
 
   vitest@4.1.9(@opentelemetry/api@1.9.0)(@types/node@24.12.4)(@vitest/coverage-v8@4.1.9)(jsdom@30.0.1(canvas@3.2.3))(vite@5.4.21(@types/node@24.12.4)):
     dependencies:

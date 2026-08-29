@@ -140,86 +140,58 @@ describe('buildProjectsPanelScript', () => {
     expect(s).toContain('.update-dot{display:none!important}');
   });
 
-  it('should remove skills/extensions sections from settings dialog (dev.69)', () => {
+  it('should remove skills/extensions tabs and sections from settings dialog (dev.69/71)', () => {
     const s = buildProjectsPanelScript();
-    // 管理面统一到左区（同一 settings_state/set_settings 接口），弹窗内移除
+    // 管理面统一到左区（同一 settings_state/set_settings 接口），弹窗内移除。
+    // dev.71：0.47.0 弹窗为标签页布局——删 nav.settings-rail 里的
+    // button.settings-tab（title 属性=精确标签）即整节不可达
     expect(s).toContain('removeSettingsDupSections');
+    expect(s).toContain('"button.settings-tab"');
+    expect(s).toContain('tabs[i].remove()');
+    // 激活 tab 兜底（被删 tab 若为激活项，点第一个剩余 tab 保持内容区有效）
+    expect(s).toContain('button.settings-tab.active');
+    expect(s).toContain('first.click()');
+    // .set-section 内容级移除保留作兜底（旧布局/激活态节）
     expect(s).toContain('".set-section .set-section-title"');
     expect(s).toContain('closest(".set-section")');
     expect(s).toContain('sec.remove()');
-    // 标题取纯文本子节点精确匹配（防「审查可用技能」子串误删）
+    // title/纯文本精确匹配（防「审查可用技能」「界面插件」子串误删）
+    expect(s).toContain('/^(\\u6280\\u80fd|skills)$/i.test(tl)');
+    expect(s).toContain('/^(\\u63d2\\u4ef6|extensions)$/i.test(tl)');
     expect(s).toContain('/^(\\u6280\\u80fd|skills)$/i.test(label)');
-    expect(s).toContain('/^(\\u63d2\\u4ef6|extensions)$/i.test(label)');
     // 挂进 MutationObserver 调度（弹窗重开重建节点时重复移除）
     expect(s).toContain('enhance(); suppressCwdNotices(); removeSettingsDupSections();');
   });
 
-  it('should restyle composer into merged frame + + merged to chips left + popup up (dev.52)', () => {
+  it('should keep only visual composer customizations on 0.47.0 native structure (dev.71)', () => {
     const s = buildProjectsPanelScript();
-    // 外壳透明化 + 一体大框：gap:0 去缝、上圆角/下圆角、独立条上边框负重叠成分割线
-    expect(s).toContain('.inputbar .inputbox{background:transparent');
-    expect(s).toContain('.inputbar .inputbox-row{flex-wrap:wrap');
-    expect(s).toContain('.inputbar .inputbox-row textarea{flex:1 1 100%');
-    expect(s).toContain('border-radius:22px 22px 0 0');
-    expect(s).toContain('border-radius:0 0 22px 22px');
-    expect(s).toContain('margin-top:-1px');
-    // 主箱内 attach/actions 均隐藏（+ 与发送都移到工具条；dev.58）
-    expect(s).toContain('.inputbar .inputbox-row .attach-img{display:none!important}');
-    expect(s).toContain('.inputbar .inputbox-row .inputbox-actions{display:none!important}');
-    // 发送/停止：主题反色圆角方块 + 尺寸 28（33-5）
-    expect(s).toContain(
-      '.inputbar .inputbox .btn.send,.inputbar .inputbox .btn.stop{background:var(--text)',
-    );
+    // dev.71：上游 0.47.0 原生 ChatGPT 式单框（.inputbox 直含 .composer-tools）
+    // ——dev.51-58 结构性 hack 退役，断言其不再出现
+    expect(s).not.toContain('.inputbox-row');
+    expect(s).not.toContain('.input-tools');
+    expect(s).not.toContain('position:absolute;right:10px');
+    expect(s).not.toContain('border-radius:22px 22px 0 0');
+    // 保留视觉定制 ①：发送/停止主题反色 28px 方块（选择器放宽到 .inputbar 级）
+    expect(s).toContain('.inputbar .btn.send,.inputbar .btn.stop{background:var(--text)');
     expect(s).toContain('width:28px;height:28px;border-radius:10px');
-    // 工具条：+ 最左（order:-1）；发送 absolute 拉最右；.input-tools 需 position:relative
+    // 保留视觉定制 ②：「+」background-image 绘制（新选择器 composer-tools-left）
     expect(s).toContain(
-      '.inputbar .input-tools{position:relative!important;display:flex!important',
+      '.inputbar .composer-tools-left .btn.attach-img svg{display:none!important}',
     );
     expect(s).toContain(
-      '.inputbar .input-tools-right{display:flex!important;align-items:center;order:-1}',
-    );
-    expect(s).toContain(
-      '.inputbar .input-tools-right .inputbox-actions{display:flex!important;position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:5}',
-    );
-    // dev.58：模型↔思考 gap 10px（原 5+5）+ 模型左移 5px
-    expect(s).toContain(
-      '.inputbar .input-tools-left{display:flex!important;align-items:center;gap:10px;margin-left:-5px}',
-    );
-    expect(s).toContain('background:var(--bg);border:1px solid var(--border)');
-    // 「+」：藏官方 SVG，改用 background-image SVG data-URI（亮 #111827 黑 / 暗 #f3f4f6 白）
-    // 注意：CSS 经 JSON.stringify 嵌入 st.textContent，内部双引号以 \" 转义
-    expect(s).toContain('.inputbar .input-tools-right .btn.attach-img svg{display:none!important}');
-    expect(s).toContain(
-      '.inputbar .input-tools-right .btn.attach-img{display:inline-flex!important;border:none;background-color:transparent;background-repeat:no-repeat;background-position:center;background-size:18px 18px;width:27px;height:27px',
+      '.inputbar .composer-tools-left .btn.attach-img{border:none;background-color:transparent;background-repeat:no-repeat;background-position:center;background-size:18px 18px;width:27px;height:27px',
     );
     expect(s).toContain('url(\\"data:image/svg+xml');
     expect(s).toContain('%23111827');
     expect(s).toContain('%23f3f4f6');
+    expect(s).toContain(
+      '.inputbar .composer-tools-left .btn.attach-img:disabled{opacity:1!important}',
+    );
     // 确保整段 CSS 是作为 st.textContent 字符串赋值（JSON.stringify 转义后无引号破坏）
     expect(s).toContain('st.textContent = ');
-    expect(s).toContain(
-      '.inputbar .input-tools-right .btn.attach-img:disabled{opacity:1!important}',
-    );
-    // 弹窗一律向上开（absolute + bottom:100%，覆盖官方朝下与 ≤768px fixed 贴底）
-    expect(s).toContain('.inputbar .input-tools .dropdown .dd-menu{position:absolute!important;');
-    expect(s).toContain('bottom:calc(100% + 6px)!important');
-    // dev.59：① 去工具条 chips 边框；② 去主箱 focus 紫色环绕；③ 上下文圆环
-    expect(s).toContain('.inputbar .input-tools .chip{border:none;background:var(--bg)}');
-    expect(s).toContain(
-      '.inputbar .input-tools{position:relative!important;display:flex!important;justify-content:flex-start;align-items:center;gap:16px',
-    );
-    expect(s).toContain(
-      '.inputbar .input-tools-right{display:flex!important;align-items:center;order:-1}',
-    );
-    expect(s).toContain(
-      '__ubCtxRing{width:20px;height:20px;border-radius:50%;margin-left:8px;flex-shrink:0;align-self:center',
-    );
-    expect(s).toContain('.inputbar .inputbox-row:focus-within{border-color:var(--border)}');
-    expect(s).toContain('.inputbar .inputbox:focus-within{border:none;box-shadow:none}');
+    // dev.59：上下文圆环（注入点随 + 移到 composer-tools-left）
     expect(s).toContain('__ubCtxRing');
-    expect(s).toContain(
-      'mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px))',
-    );
+    expect(s).toContain('composer-tools-left .__ubCtxRing');
     expect(s).toContain('conic-gradient');
     expect(s).toContain('insertAdjacentElement("afterend",ring)');
     // dev.60：隐藏整条信息栏 + 项目路径行（转发原 button.status-cwd 点击）
@@ -228,10 +200,8 @@ describe('buildProjectsPanelScript', () => {
     expect(s).toContain('insertAdjacentElement("afterend",row)');
     expect(s).toContain('button.status-cwd');
     expect(s).toContain('__ubCwdPath');
-    // dev.54：删除顶栏（.topbar-desktop）模型 + 思考选择框（模型=含 span.chip-model，
-    // 思考=紧随其后的 .dropdown）
+    // dev.54 顶栏模型/思考移除：0.47.0 上游已原生移除（保留为无害兜底）
     expect(s).toContain('span.chip-model');
     expect(s).toContain('.topbar-desktop');
-    expect(s).toContain('tds[ti].querySelector("span.chip-model")');
   });
 });

@@ -154,7 +154,7 @@ export function PiWebLauncherView({ onOpenUrl, autoStart = false }: PiWebLaunche
           <div className="flex flex-col gap-2 text-xs leading-relaxed text-text-secondary">
             <p>
               启动将运行第三方开源包{' '}
-              <code className="rounded bg-surface px-1">pi-web-ui@0.28.2</code>
+              <code className="rounded bg-surface px-1">pi-web-ui@0.47.0</code>
               （社区作者 xingshuyin，MIT 许可）——它在你的电脑上以本机权限运行 Node
               代码（含终端能力），服务仅监听本机回环地址（127.0.0.1）。 依赖审查记录见项目
               docs/pi-web-评估.md。

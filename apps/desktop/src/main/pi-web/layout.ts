@@ -1,5 +1,5 @@
 /**
- * pi 网页版 · 中区布局控制注入（dev.67）
+ * pi 网页版 · 中区布局控制注入（dev.67 建立，dev.71 适配 0.47.0 原生拖拽把手）
  *
  * 用户需求：
  * 1. 中区左上角 / 右上角各一个折叠按钮——折叠/展开左区、右区。
@@ -10,9 +10,15 @@
  *    （.notices z-50）提到 70（高于窄屏抽屉 z-60）；[data-tip] 提示
  *    （z-40）提到 80，确保任何相邻内容都盖不住它。
  *
- * 布局事实（0.29.1，桌面 >768px）：.panel-drawer{display:contents}——
- * 左区 aside.panel-left（240px）与右区 aside.panel-right 是 .view-pane
- * flex 行的静态项；≤768px 变 fixed 抽屉（本组控件在该区间整体隐藏）。
+ * dev.71（0.47.0 适配）：上游原生提供 .resize-handle 拖拽把手（0.30.0 起），
+ * 我方 dev.67 自绘分割线退役——**持久化挂到原生把手上**（原生拖拽 UX +
+ * 我方落盘，pointerup 时读两区宽度写 ui-state）；宽度恢复仍由本脚本
+ * applyAll 承担（原生宽度是 React 态，重载即失，我方落盘补跨会话）。
+ * 折叠按钮无原生等价物，保留。
+ *
+ * 布局事实（0.47.0，桌面 >768px）：.panel-drawer{display:contents}——
+ * 左区 aside.panel-left 与右区 aside.panel-right 是 .view-pane flex 行的
+ * 静态项，.resize-handle 夹在中间；≤768px 原生把手 display:none（抽屉模式）。
  *
  * 与 left-panel.ts 的共享契约：本脚本先注入，暴露 window.__ubPiUI
  * {state:{lw,rw,lc,rc,po}, loaded, save(), __reorder()}；左区项目排序消费
@@ -95,20 +101,17 @@ export function buildLayoutScript(): string {
     '.__ubCornerBtn:hover{background:var(--accent-soft);color:var(--accent)}' +
     '#__ubLTCollapse{left:8px}' +
     '#__ubRTCollapse{right:8px}' +
-    '.__ubSplit{width:6px;margin:0 -3px;cursor:col-resize;flex-shrink:0;position:relative;' +
-    'z-index:30;border:none;background:transparent}' +
-    '.__ubSplit:hover,.__ubSplit.__ubDrag{background:var(--accent-soft)}' +
-    // 折叠：官方抽屉包装 display:contents，隐藏包装即隐藏面板；分割线随藏
-    //（注意后代选择器——.view-pane 在 #root 深层，非 html 直接子级）
+    // 折叠：官方抽屉包装 display:contents，隐藏包装即隐藏面板；原生把手随藏
+    //（原生把手自带 resize-left/right 侧别类；后代选择器——.view-pane 非 html 直接子级）
     '.__ubNoLeft .drawer-left{display:none!important}' +
-    '.__ubNoLeft .__ubSplitL{display:none!important}' +
+    '.__ubNoLeft .resize-handle.resize-left{display:none!important}' +
     '.__ubNoRight .drawer-right{display:none!important}' +
-    '.__ubNoRight .__ubSplitR{display:none!important}' +
+    '.__ubNoRight .resize-handle.resize-right{display:none!important}' +
     // dev.67 层叠修复：toast 提到抽屉之上；data-tip 提示提到 toast 之上
     '.notices{z-index:70!important}' +
     '[data-tip]:after{z-index:80!important}' +
     // 窄屏（≤768px 官方抽屉模式）：本组桌面控件整体隐藏，面板宽度交给官方
-    '@media(max-width:768px){.__ubSplit,#__ubLTCollapse,#__ubRTCollapse{display:none!important}' +
+    '@media(max-width:768px){#__ubLTCollapse,#__ubRTCollapse{display:none!important}' +
     '.panel-left,.panel-right{width:auto!important}}';
   if (!document.getElementById('__ubLayoutStyle')) {
     var stEl = document.createElement('style');
@@ -158,50 +161,37 @@ export function buildLayoutScript(): string {
       });
       main.appendChild(br);
     }
-    var mainPrev = main.previousElementSibling;
-    if (!mainPrev || !mainPrev.classList || !mainPrev.classList.contains('__ubSplitL')) {
-      var sl = document.createElement('div');
-      sl.className = '__ubSplit __ubSplitL';
-      pane.insertBefore(sl, main);
-      bindDrag(sl, 'lw', 'left');
-    }
-    var drawerRight = pane.querySelector(':scope > .drawer-right');
-    var mainNext = main.nextElementSibling;
-    if ((!mainNext || !mainNext.classList || !mainNext.classList.contains('__ubSplitR')) && drawerRight) {
-      var sr = document.createElement('div');
-      sr.className = '__ubSplit __ubSplitR';
-      pane.insertBefore(sr, drawerRight);
-      bindDrag(sr, 'rw', 'right');
+    // dev.71：原生 .resize-handle（自带 resize-left/right 类 + localStorage
+    // 持久化——但 pi 端口随机致 localStorage 跨会话失效）挂持久化：pointerdown
+    // 后在 window 上补一次 pointerup 读两区宽度落盘（拖拽中光标会离开把手，
+    // 原生的 pointerup 派发在 window 而非把手，钩子必须同层才能收到）。
+    // 读宽必须延后（~120ms）：pointerup 同步读的是 React 提交前的旧宽度，
+    // 存进 UI.state 后会被 applyAll 用旧值把面板拽回去（实测复现）。
+    // 跨重启保留是原生 localStorage 做不到的部分。
+    // React 重建把手后由本函数重挂（__ubPersistHooked 防重复绑定）。
+    var handles = pane.querySelectorAll(':scope > .resize-handle');
+    for (var i = 0; i < handles.length; i++) {
+      var h = handles[i];
+      if (!h.__ubPersistHooked) {
+        h.__ubPersistHooked = true;
+        h.addEventListener('pointerdown', function () {
+          var done = function () {
+            window.removeEventListener('pointerup', done);
+            setTimeout(function () {
+              var pane2 = chatViewPane();
+              if (!pane2) return;
+              var left = pane2.querySelector('aside.panel-left');
+              var right = pane2.querySelector('aside.panel-right');
+              if (left) UI.state.lw = Math.round(left.getBoundingClientRect().width);
+              if (right) UI.state.rw = Math.round(right.getBoundingClientRect().width);
+              UI.save();
+            }, 120);
+          };
+          window.addEventListener('pointerup', done);
+        });
+      }
     }
     applyAll();
-  }
-
-  // ── 拖拽（mousedown + document mousemove/mouseup，合成事件可驱动 E2E）──
-  function bindDrag(handle, key, side) {
-    handle.addEventListener('mousedown', function (e) {
-      e.preventDefault();
-      var pane = chatViewPane();
-      if (!pane) return;
-      var panel = pane.querySelector(side === 'left' ? 'aside.panel-left' : 'aside.panel-right');
-      if (!panel) return;
-      var startX = e.clientX;
-      var startW = panel.getBoundingClientRect().width;
-      handle.classList.add('__ubDrag');
-      function mm(ev) {
-        var d = side === 'left' ? ev.clientX - startX : startX - ev.clientX;
-        var w = Math.min(520, Math.max(180, Math.round(startW + d)));
-        panel.style.width = w + 'px';
-        UI.state[key] = w;
-      }
-      function mu() {
-        document.removeEventListener('mousemove', mm);
-        document.removeEventListener('mouseup', mu);
-        handle.classList.remove('__ubDrag');
-        UI.save();
-      }
-      document.addEventListener('mousemove', mm);
-      document.addEventListener('mouseup', mu);
-    });
   }
 
   // ── 应用状态到 DOM（宽度 + 折叠类 + 按钮方向）──
@@ -215,10 +205,19 @@ export function buildLayoutScript(): string {
     var br = document.getElementById('__ubRTCollapse');
     if (br) br.textContent = UI.state.rc ? '\\u00ab' : '\\u00bb';
     if (!pane) return;
-    var left = pane.querySelector('aside.panel-left');
-    if (left && !UI.state.lc) left.style.width = Math.round(UI.state.lw) + 'px';
-    var right = pane.querySelector('aside.panel-right');
-    if (right && !UI.state.rc) right.style.width = Math.round(UI.state.rw) + 'px';
+    // 宽度守护（dev.71）：0.47.0 原生用 .layout 上的 CSS 变量控宽
+    // （--left-w/--right-w → .panel-left/right{width:var(...)}）——恢复/守护
+    // 必须写变量而非 aside 内联宽度（内联会遮蔽变量，原生拖拽将失效，实测复现）。
+    // 原生拖拽期间（body.panel-resizing）避让：React 是拖拽中的宽度作者，
+    // 我方 pointerup 钩子（延迟读宽）会把最终宽度同步进 UI.state，之后一致。
+    // 原生 React 重渲染会用它自己的 state（重载后为默认值）重写变量，我方
+    // 不守护会弹回默认。
+    var resizing = document.body.classList.contains('panel-resizing');
+    if (resizing) return;
+    var layout = pane.closest('.layout');
+    if (!layout) return;
+    if (!UI.state.lc) layout.style.setProperty('--left-w', Math.round(UI.state.lw) + 'px');
+    if (!UI.state.rc) layout.style.setProperty('--right-w', Math.round(UI.state.rw) + 'px');
   }
 
   new MutationObserver(function () { ensureDom(); }).observe(document.documentElement, {

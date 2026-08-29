@@ -274,7 +274,7 @@ export class PiDriver {
           try { el.dispatchEvent(new MouseEvent(t, { bubbles: true, cancelable: true, view: window, button: 0 })); } catch (e) {}
         });
       }
-      const trig = document.querySelector('.inputbar .input-tools-left .chip-model');
+      const trig = document.querySelector('.inputbar .composer-tools-left .chip-model');
       if (!trig) return { ok: false, why: 'no chip-model' };
       const trigger = trig.closest('button') || trig.closest('[role="combobox"]') || trig.closest('.dropdown') || trig;
       fire(trigger);
@@ -293,7 +293,7 @@ export class PiDriver {
     })()`);
     await new Promise((r) => setTimeout(r, 900));
     const currentModel = await this.piEval<string>(
-      `(() => { const c = document.querySelector('.inputbar .input-tools-left .chip-model'); return c ? (c.textContent || '').trim() : null; })()`,
+      `(() => { const c = document.querySelector('.inputbar .composer-tools-left .chip-model'); return c ? (c.textContent || '').trim() : null; })()`,
     );
     return { sel, currentModel };
   }

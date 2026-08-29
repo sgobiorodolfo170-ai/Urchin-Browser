@@ -8,9 +8,12 @@
  *   以通用配置文件编辑覆盖）。启停走官方 set_settings，预设走 apply/delete_preset。
  * - 下区（原「历史对话」）→ 「项目」管理区：每个项目一行（点击切换 = 原最近项目的
  *   管理全部移入），行内「＋」在对应项目下新建对话，「＋」前 ▾/▸ 折叠该项目的
- *   会话列表（默认展开，会话内记忆）；当前项目展开时下挂单一会话列表（dev.66：
- *   会话名统一取第一轮提问前几字，运行中对话排最上，streaming 优先）。
+ *   会话列表（默认展开，会话内记忆）；展开时下挂单一会话列表（dev.66：会话名
+ *   统一取第一轮提问前几字，运行中对话排最上，streaming 优先）。
  *   dev.68：按用户要求移除项目行「×」删除按钮（隐藏列表机制保留兼容旧数据）。
+ *   dev.71（0.47.0）：conversations 广播跨项目全局——各项目运行对话按 cwd
+ *   归位到各自项目行下；点击跨项目对话直发 switch_conversation（服务端已
+ *   同步 set_cwd 全套副作用）。历史会话（sessions）上游仍按项目。
  *
  * 数据通道（关键设计）：注入脚本以 sessionStorage 的官方 clientId（pi-web-client-id）
  * 建立第二条 WebSocket——服务端 attach(clientId) 复用同一 ClientSession 并把新 socket
@@ -27,8 +30,11 @@
  * 就绪（E2E 观测用）。
  *
  * 约束与取舍（不动第三方包源码原则不变）：
- * - 会话列表协议只提供「当前项目」的 sessions/conversations（服务端按 cwd 过滤），
- *   故非当前项目不展开子列表——展开即切换（官方数据模型语义）。
+ * - 历史会话协议仍只提供「当前项目」的 sessions（上游未全局化）——非当前
+ *   项目行下仅显示其运行对话（0.47.0 conversations 全局广播），历史仍需切换。
+ * - 「＋」跨项目新建 = set_cwd 后等 snapshot 确认 cwd 已切换再发 new_chat
+ *  （两条消息直发会交错：服务端 dispatch 不 await setCwd，new_chat 会落在旧
+ *   cwd；switch_conversation 无此问题——服务端自己处理跨项目同步）。
  * - 「＋」跨项目新建 = set_cwd 后等 snapshot 确认 cwd 已切换再发 new_chat
  *  （两条消息直发会交错：服务端 dispatch 不 await setCwd，new_chat 会落在旧 cwd）。
  * - list_files('.pi') 会重置服务端文件监视目录（单目录 watch），故惰性加载：
@@ -411,38 +417,42 @@ export function buildLeftPanelScript(): string {
       var fold = isFolded(p.path);
       h += '<div class="__ubLPProjWrap' + (act ? ' active' : '') + '">';
       h += '<button type="button" class="__ubLPProj' + (act ? ' active' : '') + '" draggable="true" data-act="proj" data-v="' + esc(p.path) + '" title="' + esc(p.path) + '">' +
-        '<span class="__ubLPChev">' + (act && !fold ? '▾' : '▸') + '</span>' +
+        '<span class="__ubLPChev">' + (fold ? '▸' : '▾') + '</span>' +
         '<span class="__ubLPProjName">' + esc(baseName(p.path)) + '</span>' +
         '<span class="__ubLPTime">' + esc(fmtTime(p.lastUsed)) + '</span>' +
         '<span class="__ubFoldBtn" data-act="fold" data-v="' + esc(p.path) + '" title="' + (fold ? '展开会话' : '折叠会话') + '">' + (fold ? '▸' : '▾') + '</span>' +
         '<span class="__ubNewBtn" data-act="newchat" data-v="' + esc(p.path) + '" title="新建对话">＋</span>' +
         '</button>';
-      if (act && !fold) {
-        // dev.66：会话管理不再分「对话/历史」两组——单一列表，会话名取第一轮
-        // 提问前几字；运行中对话自动排最上（streaming 优先），其后历史会话
-        //（服务端已按 modified 降序）
-        h += '<div class="__ubLPConvGroup">';
-        if (!S.conversations.length && !S.sessions.length) {
+      if (!fold) {
+        // dev.66：单一会话列表（不分对话/历史），会话名取第一轮提问前几字；
+        // 运行中对话排最上（streaming 优先），其后历史会话（按 modified 降序）。
+        // dev.71（0.47.0 全局对话）：conversations 广播跨项目全局——各项目的
+        // 运行对话按 c.cwd 归位到各自项目行下（不再要求「展开即切换」）；
+        // 历史会话仍仅当前项目（上游 sessions 未全局化）。点击跨项目对话
+        // 直发 switch_conversation（上游已同步 cwd 全套副作用）。
+        var convs = S.conversations.filter(function (c) { return c.cwd === p.path; })
+          .sort(function (a, b) { return (b.isStreaming ? 1 : 0) - (a.isStreaming ? 1 : 0); });
+        var sess = act ? S.sessions.slice(0, 50) : [];
+        if (!convs.length && !sess.length) {
           h += '<div class="__ubLPHint" style="padding:2px 8px 6px">（暂无会话）</div>';
+        } else {
+          h += '<div class="__ubLPConvGroup">';
+          convs.forEach(function (c) {
+            h += '<button type="button" class="__ubLPConv __ubLPRunning' + (c.id === S.activeId ? ' active' : '') + '" data-act="conv" data-v="' + esc(String(c.id)) + '" title="' + esc(c.title || '') + '">' +
+              '<span class="__ubLPConvTitle">' + esc(sessName(c.title)) + '</span>' +
+              (c.isStreaming
+                ? '<span class="__ubLPStream" title="生成中">●</span>'
+                : '<span class="__ubLPSub">' + (c.messageCount || 0) + ' 条</span>') +
+              '</button>';
+          });
+          sess.forEach(function (ss) {
+            h += '<button type="button" class="__ubLPConv" data-act="sess" data-v="' + esc(ss.path) + '" title="' + esc(ss.path) + '">' +
+              '<span class="__ubLPConvTitle">' + esc(sessName(ss.firstMessage || ss.name)) + '</span>' +
+              '<span class="__ubLPSub">' + esc(fmtTime(ss.modified)) + '</span>' +
+              '</button>';
+          });
+          h += '</div>';
         }
-        var convs = S.conversations.slice().sort(function (a, b) {
-          return (b.isStreaming ? 1 : 0) - (a.isStreaming ? 1 : 0);
-        });
-        convs.forEach(function (c) {
-          h += '<button type="button" class="__ubLPConv __ubLPRunning' + (c.id === S.activeId ? ' active' : '') + '" data-act="conv" data-v="' + esc(String(c.id)) + '" title="' + esc(c.title || '') + '">' +
-            '<span class="__ubLPConvTitle">' + esc(sessName(c.title)) + '</span>' +
-            (c.isStreaming
-              ? '<span class="__ubLPStream" title="生成中">●</span>'
-              : '<span class="__ubLPSub">' + (c.messageCount || 0) + ' 条</span>') +
-            '</button>';
-        });
-        S.sessions.slice(0, 50).forEach(function (ss) {
-          h += '<button type="button" class="__ubLPConv" data-act="sess" data-v="' + esc(ss.path) + '" title="' + esc(ss.path) + '">' +
-            '<span class="__ubLPConvTitle">' + esc(sessName(ss.firstMessage || ss.name)) + '</span>' +
-            '<span class="__ubLPSub">' + esc(fmtTime(ss.modified)) + '</span>' +
-            '</button>';
-        });
-        h += '</div>';
       }
       h += '</div>';
     });
@@ -466,6 +476,8 @@ export function buildLeftPanelScript(): string {
       // dev.68：折叠/展开该项目的会话列表（默认展开，会话内记忆）
       toggleFold(v);
     } else if (act === 'conv') {
+      // dev.71：0.47.0 起运行对话跨项目全局，switch_conversation 跨项目时
+      // 服务端已同步 set_cwd 全套副作用（文件树/会话历史/项目顺序/命令目录）
       if (v !== String(S.activeId)) send({ type: 'switch_conversation', id: Number(v) });
     } else if (act === 'sess') {
       send({ type: 'switch_session', path: v });

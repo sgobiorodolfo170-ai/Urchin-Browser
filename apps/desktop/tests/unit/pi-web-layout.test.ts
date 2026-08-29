@@ -1,15 +1,15 @@
 /**
- * pi 中区布局控制注入单元测试（dev.67）
+ * pi 中区布局控制注入单元测试（dev.67 建立，dev.71 适配 0.47.0 原生拖拽把手）
  *
  * 验证脚本内容关键要素（字符串断言，行为由 E2E 端到端覆盖）：
  * 1. 折叠按钮：main.main 内左上/右上角（#__ubLTCollapse / #__ubRTCollapse），
  *    切换 html 根类 __ubNoLeft / __ubNoRight 隐藏官方抽屉包装
- * 2. 分割线：.view-pane 内 .__ubSplitL / .__ubSplitR，mousedown 拖拽改
- *    panel 内联宽度（180–520 钳制），mouseup 持久化
- * 3. 持久化：urchin://pi-ui-state 读 + a=set 写（防抖 300ms），暴露
- *    window.__ubPiUI（state/save/__reorder）供左区面板消费
+ * 2. 持久化（dev.71）：自绘分割线退役（上游原生 .resize-handle 承担拖拽），
+ *    我方给原生把手打 data-ub-side 标记 + pointerup 读两区宽度落盘
+ *    （urchin://pi-ui-state）；宽度恢复仍由 applyAll 承担
+ * 3. 共享契约：暴露 window.__ubPiUI（state/save/__reorder）供左区面板消费
  * 4. 层叠修复：.notices z-index 70（高于窄屏抽屉 60）、[data-tip]:after 80
- * 5. 窄屏降级：≤768px 控件隐藏 + 面板宽度交还官方
+ * 5. 窄屏降级：≤768px 折叠钮隐藏 + 面板宽度交还官方
  */
 import { describe, it, expect } from 'vitest';
 import { buildLayoutScript } from '../../src/main/pi-web/layout';
@@ -48,15 +48,23 @@ describe('buildLayoutScript', () => {
     expect(s).toContain('.__ubNoRight .drawer-right{display:none!important}');
   });
 
-  it('should create draggable splitters with width clamping', () => {
+  it('should hook native resize handles for persistence instead of own splitters (dev.71)', () => {
     const s = buildLayoutScript();
-    expect(s).toContain('__ubSplitL');
-    expect(s).toContain('__ubSplitR');
-    expect(s).toContain("bindDrag(sl, 'lw', 'left')");
-    expect(s).toContain("bindDrag(sr, 'rw', 'right')");
-    expect(s).toContain('Math.min(520, Math.max(180');
-    expect(s).toContain("panel.style.width = w + 'px'");
+    // 自绘分割线退役（0.47.0 原生 .resize-handle 承担拖拽）
+    expect(s).not.toContain('__ubSplitL');
+    expect(s).not.toContain('bindDrag');
+    // 原生把手挂持久化：pointerdown 时在 window 补 pointerup（拖拽中光标离开
+    // 把手，原生的 up 派发在 window）读两区宽度落盘
+    expect(s).toContain(".querySelectorAll(':scope > .resize-handle')");
+    expect(s).toContain("addEventListener('pointerdown'");
+    expect(s).toContain("window.addEventListener('pointerup', done)");
+    expect(s).toContain('getBoundingClientRect().width');
     expect(s).toContain('UI.save()');
+    // 折叠时隐藏对应侧的原生把手（原生自带 resize-left/right 类）
+    expect(s).toContain('.__ubNoLeft .resize-handle.resize-left{display:none!important}');
+    expect(s).toContain('.__ubNoRight .resize-handle.resize-right{display:none!important}');
+    // 宽度守护避开原生拖拽期（body.panel-resizing），其余时机防 React 弹回默认
+    expect(s).toContain("classList.contains('panel-resizing')");
   });
 
   it('should fix stacking: notices above drawers, tooltips above notices', () => {

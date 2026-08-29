@@ -108,11 +108,11 @@ describe('PiWebLauncherView', () => {
     mockStatus('stopped');
     render(<PiWebLauncherView onOpenUrl={onOpenUrl} />);
 
-    expect(await screen.findByText(/pi-web-ui@0.28.2/)).toBeInTheDocument();
+    expect(await screen.findByText(/pi-web-ui@0.47.0/)).toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole('button', { name: /我已知晓/ }));
     await waitFor(() => {
-      expect(screen.queryByText(/pi-web-ui@0.28.2/)).toBeNull();
+      expect(screen.queryByText(/pi-web-ui@0.47.0/)).toBeNull();
     });
     expect(localStorage.getItem('urchin.pi-web.notice-ack-v1')).toBe('1');
   });

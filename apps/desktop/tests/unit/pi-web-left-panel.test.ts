@@ -96,6 +96,16 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain("send({ type: 'switch_session', path: v })");
   });
 
+  it('should group global conversations under their own project rows (dev.71)', () => {
+    const s = buildLeftPanelScript();
+    // 0.47.0 conversations 跨项目全局广播 → 按 c.cwd 归位到各项目行
+    expect(s).toContain('c.cwd === p.path');
+    // 跨项目对话直发 switch_conversation（服务端同步 cwd），无 set_cwd 前置
+    expect(s).toContain("send({ type: 'switch_conversation', id: Number(v) })");
+    // 历史会话仍仅当前项目（上游 sessions 未全局化）
+    expect(s).toContain('var sess = act ? S.sessions.slice(0, 50) : [];');
+  });
+
   it('should merge conversations and history into one list named by first prompt (dev.66)', () => {
     const s = buildLeftPanelScript();
     // 会话名统一取第一轮提问前几字（30 字截断 + 空白规范化）
@@ -138,7 +148,7 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain('__ubFoldBtn');
     expect(s).toContain("var FOLD_KEY = '__ubFoldedProjs'");
     expect(s).toContain('function toggleFold(');
-    expect(s).toContain('if (act && !fold) {');
+    expect(s).toContain('if (!fold) {');
     // 项目行删除按钮已按用户要求移除（预设的小 × 属独立 data-act）
     expect(s).not.toContain('data-act="del"');
     expect(s).not.toContain('从列表移除该项目');

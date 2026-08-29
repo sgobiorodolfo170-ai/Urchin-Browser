@@ -21,7 +21,7 @@
 | 项          | pi-web-ui                                                                                     | pi-web-chat                                                                        |
 | ----------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | npm 包名    | `pi-web-ui`(已验证存在于 registry)                                                            | `pi-web-chat`(已验证)                                                              |
-| 版本 / 发布 | v0.29.1,2026-08-23(活跃;2026-08-22 由 0.28.2 升级并全锚点核验,见 §六)                         | v0.1.19,2026-08-11(~3.5k 下载/月)                                                  |
+| 版本 / 发布 | v0.47.0,2026-08-28(活跃;2026-08-29 由 0.29.1 升级并全锚点核验,见 §六A)                         | v0.1.19,2026-08-11(~3.5k 下载/月)                                                  |
 | 作者 / 性质 | xingshuyin,社区(非 earendil 官方)                                                             | preinpost,社区(非官方)                                                             |
 | 许可证      | MIT(与本项目兼容)                                                                             | MIT                                                                                |
 | 架构        | pi SDK 进程内 + WebSocket 快照推流(60ms 节流),默认仅绑 127.0.0.1,凭据留服务端                 | Node + ws 服务,React 19 前端,默认 127.0.0.1,复用 pi CLI auth                       |
@@ -119,6 +119,28 @@
 
 验证:typecheck / 938 单测全绿 / build:main / pi-web E2E 20.3s 全绿
 (启动→auth占位→原生目录选择→主题亮色→删除按钮→提示抑制→退出杀进程全链路)。
+
+## 六A、pi-web-ui 升级核验记录(0.29.1 → 0.47.0,2026-08-29,dev.71)
+
+> 跨 18 个 minor(95 commits,21 个版本)。锚点审计结果:绝大多数存活,三类变化已适配。
+
+| 锚点 | 0.47.0 核验 | 适配 |
+| --- | --- | --- |
+| 左区容器 .panel-left/.panel-projects/.panel-convs/.panel-sessions/.panel-section-title | 存活(新增 panel-conv-group 按 cwd 分组) | 无需改(:has() 接管照常) |
+| 顶栏 chip.newchat / chip-sub / topbar-desktop | 存活 | 无需改 |
+| 状态栏 statusbar / status-cwd / status-cwd-input / status-ctx / ctx-bar-fill | 存活 | 无需改(dir-picker/cwd 行/圆环数据链完好) |
+| toast .notice/.notice-close + 文案「已切换到/已在工作目录」 | 存活 | 无需改(dev.64 抑制正则仍命中) |
+| 设置弹窗 | **改为标签页布局**(.settings-rail + button.settings-tab,title=精确标签;技能/插件/界面插件/审查/视觉桥/预设为 tab) | dev.69 去重从「删节」改「删 tab」+ 激活兜底;.set-section 内容级移除保留兜底 |
+| 输入框区 | **类名整体改名**:inputbox-row→(无,.inputbox 直含)、input-tools*→composer-tools*;上游原生实现 ChatGPT 式单框(模型/思考移入工具条、发送在右、下拉原生向上) | dev.51-58 结构性 hack 退役;保留视觉定制(发送反色/「+」绘制/圆环/信息栏隐藏+cwd 行),选择器映射 composer-tools-left |
+| 侧栏拖拽 | **新增原生 .resize-handle**(resize-left/right,180-520 钳制,localStorage 持久化——但 pi 端口随机致跨会话失效) | dev.67 自绘分割线退役;持久化挂原生把手(pointerdown→window pointerup 延迟 120ms 读宽);宽度守护改写 .layout 的 --left-w/--right-w CSS 变量(写 aside 内联会遮蔽变量致拖拽失效,实测复现);拖拽期(body.panel-resizing)避让 |
+| 折叠按钮 | 无原生等价物 | dev.67 折叠按钮保留 |
+| 全局对话 | **conversations 跨项目全局广播**(switch_conversation 跨项目同步 set_cwd 全套副作用;sessions 仍按项目) | 左区面板按 c.cwd 分组归位各项目行;跨项目切对话直发;pendNew 守卫(new_chat)保留 |
+| 协议消息(pi-web-client-id//ws/hello/set_cwd/new_chat/switch_conversation/switch_session/set_settings/apply_preset/delete_preset/list_*/read_file/write_file) | 全部存活,ConversationSummary 形状不变(范围语义全局化) | 无需改 |
+| 新增面(本项目未接) | MCP 工具桥、界面插件系统(dataDir/plugins)、全局搜索 Ctrl+K、思考显示开关、clone_provider、终端接管 bash、上游 Electron 壳+三平台 CI | 按升级管控流程留待用户决策 |
+| 内嵌 pi SDK | ^0.84.2(本项目 vendored 已同步 0.84.3,兼容) | 无需改 |
+
+验证:typecheck / **1004 单测全绿** / build:main / pi-web E2E 全绿(启动→全局对话分组→折叠→原生把手拖拽 +120→重载宽度与排序恢复→设置弹窗 tab 去重→主题直推→图标钉定→退出杀进程)。
+遗留观察:pi-agent-build/tetris E2E(需真实 API key,本地未跑)的模型下拉选择器已同步映射 composer-tools-left,待有 key 会话回归。
 
 ## 七、pi-web-ui 升级管控流程(2026-08-23 用户八次决策确立,长期有效)
 

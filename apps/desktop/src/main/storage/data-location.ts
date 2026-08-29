@@ -40,6 +40,7 @@ const DATA_SUBDIRS: readonly string[] = [
   'pages', // 网页保存（预留）
   'downloads', // 默认下载目录
   'extensions', // 扩展命名空间 db
+  'editor-drafts', // 文件编辑器会话草稿（启动清扫，见 files/editor-handlers.ts）
 ];
 
 /** 指针文件内容 */

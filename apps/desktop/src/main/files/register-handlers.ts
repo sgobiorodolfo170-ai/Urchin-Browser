@@ -6,24 +6,29 @@
  *    供渲染层统一路由（目录开浏览页 / 文件开查看器）
  * 2. file.read：按 UTF-8 读取文本文件内容（有界读取：只分配 min(size, maxBytes) 内存，
  *    超上限截断并标记 truncated，由渲染层显示「已显示前 X / 共 Y」横幅）
- * 3. file.open：原生路径选择器（openFile，单选文件），
+ * 3. file.write：覆盖写入文本内容（编辑器「保存」到原文件或另存对话框已选定路径）
+ * 4. file.saveAs：系统另存对话框（showSaveDialog）+ 写盘一通道完成
+ * 5. file.open：原生路径选择器（openFile，单选文件），
  *    供左侧栏按钮/Ctrl+O/拖放入口使用
- * 4. file.dir：列目录（子目录在前 + 文件按名排序），供文件夹浏览页与同目录连续查看使用
+ * 6. file.dir：列目录（子目录在前 + 文件按名排序），供文件夹浏览页与同目录连续查看使用
  *
  * 安全边界（agents.md §六 跨进程边界 + 项目特化审查点）：
  * - 所有入参/出参经 zod schema 双向校验（registerHandler 统一执行）
  * - 路径来自用户显式选择或地址栏输入，不做隐式目录遍历
  * - file.read 内存峰值恒为 maxBytes（默认 5MB），与文件实际大小无关——
  *   超大文件不再整读/拒载，防主进程内存冲击
+ * - file.write/file.saveAs 的调用面为 urchin:// 内部页（preload 仅对受信协议暴露），
+ *   目标路径来自已打开文件或系统另存对话框；日志只记路径与字节数不记内容（隐私）
  *
- * 可测试性（依赖注入）：fs 的 stat/readFile/readdir 经 deps 注入（默认 node 实现），
+ * 可测试性（依赖注入）：fs 的 stat/open/readdir/writeFile 与 dialog 的
+ * showSaveDialog 经 deps 注入（默认 node/electron 实现），
  * 单测传入 mock——vitest jsdom 下 node 内置模块导出无法 mock/spy，
  * 与 settings-manager 注入 mock 持久层的测试约定一致。
  */
 import type { IpcMain } from 'electron';
 import { BrowserWindow, dialog } from 'electron';
-import { open, stat, readdir } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { open, stat, readdir, writeFile } from 'node:fs/promises';
+import { basename, extname, join } from 'node:path';
 import { IpcError, IpcErrorCode, registerHandler } from '@urchin/ipc-contract';
 import { createLogger } from '@urchin/logger';
 import { classifyFileKind, inferMimeType } from './file-kind';
@@ -42,6 +47,16 @@ export const VIEWABLE_KINDS: ReadonlySet<string> = new Set([
   'text',
 ]);
 
+/** Windows 非法文件名字符（含控制字符），另存默认名净化用（同 summary-manager 惯例）。 */
+// eslint-disable-next-line no-control-regex -- 文件名净化需要剔除控制字符
+const ILLEGAL_FILENAME_CHARS = /[<>:"/\\|?*\x00-\x1f]/g;
+
+/** 另存对话框默认文件名净化：非法字符→下划线、截断 80 字符、空名兜底。 */
+function sanitizeFileName(name: string): string {
+  const cleaned = name.replace(ILLEGAL_FILENAME_CHARS, '_').trim();
+  return cleaned.length > 0 ? cleaned.slice(0, 80) : 'untitled';
+}
+
 /** 默认读取上限：5MB——也是 file.read 的内存峰值上限（有界读取）。
  * 实测该体量纯文本 <pre> 渲染 ≈0.35s，渲染进程与主进程均安全。 */
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
@@ -55,6 +70,10 @@ export interface FileHandlersDeps {
   readonly open?: typeof open;
   /** 目录读取实现（默认 node:fs/promises.readdir）。 */
   readonly readdir?: typeof readdir;
+  /** 文件写入实现（默认 node:fs/promises.writeFile，file.write/file.saveAs 用）。 */
+  readonly writeFile?: typeof writeFile;
+  /** 另存对话框实现（默认 electron dialog.showSaveDialog）。 */
+  readonly showSaveDialog?: typeof dialog.showSaveDialog;
 }
 
 /**
@@ -64,6 +83,73 @@ export function registerFileHandlers(deps: FileHandlersDeps): void {
   const { ipcMain } = deps;
   const fsStat = deps.stat ?? stat;
   const fsOpen = deps.open ?? open;
+  const fsWriteFile = deps.writeFile ?? writeFile;
+  // 另存对话框：优先 DI（单测），默认直接走 electron dialog（懒调用，不绑定——
+  // 单测的 electron mock 可能只提供部分 dialog 方法）
+  const showSave = deps.showSaveDialog;
+
+  /** 写盘失败的错误映射：目标不存在 → NOT_FOUND，其余 → INTERNAL。 */
+  const writeError = (path: string, err: unknown): IpcError => {
+    const notFound = (err as NodeJS.ErrnoException)?.code === 'ENOENT';
+    log.warn('file write failed', { path, error: String(err) });
+    return new IpcError(
+      notFound ? IpcErrorCode.NOT_FOUND : IpcErrorCode.INTERNAL,
+      `Cannot write file: ${path}`,
+      { channel: 'file.write' },
+    );
+  };
+
+  // file.write：覆盖写入文本内容（编辑器保存）
+  registerHandler(ipcMain, 'file.write', async (req) => {
+    try {
+      await fsWriteFile(req.path, req.content, 'utf-8');
+      const bytesWritten = Buffer.byteLength(req.content, 'utf-8');
+      log.info('file written', { path: req.path, bytes: bytesWritten });
+      return { bytesWritten };
+    } catch (err) {
+      throw writeError(req.path, err);
+    }
+  });
+
+  // file.saveAs：系统另存对话框 + 写盘一通道完成（取消返回 null）。
+  // 默认文件名做非法字符净化（同 summary-manager 惯例）；选定路径缺扩展名时
+  // 补默认扩展名（保存网页 context-menu 先例）。
+  registerHandler(ipcMain, 'file.saveAs', async (req) => {
+    const baseName = sanitizeFileName(req.defaultName);
+    const ext = extname(baseName).replace(/^\./, '') || 'txt';
+    const options: Electron.SaveDialogOptions = {
+      title: '另存为',
+      defaultPath: req.defaultDir ? join(req.defaultDir, baseName) : baseName,
+      filters: [
+        { name: `${ext.toUpperCase()} 文件`, extensions: [ext] },
+        { name: '所有文件', extensions: ['*'] },
+      ],
+      buttonLabel: '保存',
+    };
+    const focused = BrowserWindow.getFocusedWindow();
+    const result =
+      showSave !== undefined
+        ? focused
+          ? await showSave(focused, options)
+          : await showSave(options)
+        : focused
+          ? await dialog.showSaveDialog(focused, options)
+          : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) {
+      return { path: null };
+    }
+    let target = result.filePath;
+    if (!extname(target)) {
+      target = `${target}.${ext}`;
+    }
+    try {
+      await fsWriteFile(target, req.content, 'utf-8');
+      log.info('file saved as', { path: target, bytes: Buffer.byteLength(req.content, 'utf-8') });
+      return { path: target };
+    } catch (err) {
+      throw writeError(target, err);
+    }
+  });
 
   // file.stat：读文件/目录元数据 + 类型分类
   // 目录返回 isDir:true（kind 置 binary 占位），渲染层据此打开目录浏览页；

@@ -627,6 +627,65 @@ export const fileOpenReqSchema = z.object({
 });
 export type FileOpenReq = z.infer<typeof fileOpenReqSchema>;
 
+// ── 本地文件写入（编辑器保存）──
+
+export const fileWriteReqSchema = z.object({
+  /** 覆盖写入目标（编辑会话的原文件，或另存对话框已选定的路径）。 */
+  path: filePathSchema,
+  /** 写入内容（UTF-8 文本）。8M 字符上限：可编辑文件源 ≤5MB 字节，余量覆盖多字节展开。 */
+  content: z.string().max(8 * 1024 * 1024),
+});
+export type FileWriteReq = z.infer<typeof fileWriteReqSchema>;
+
+export const fileWriteResSchema = z.object({
+  bytesWritten: z.number().int().nonnegative(),
+});
+export type FileWriteRes = z.infer<typeof fileWriteResSchema>;
+
+export const fileSaveAsReqSchema = z.object({
+  content: z.string().max(8 * 1024 * 1024),
+  /** 另存对话框默认文件名（主进程做非法字符净化）。 */
+  defaultName: z.string().min(1).max(256),
+  /** 另存对话框默认目录（通常为原文件所在目录），可选。 */
+  defaultDir: filePathSchema.optional(),
+});
+export type FileSaveAsReq = z.infer<typeof fileSaveAsReqSchema>;
+
+export const fileSaveAsResSchema = z.object({
+  /** 用户选定并写入成功的绝对路径；取消为 null。 */
+  path: z.string().min(1).nullable(),
+});
+export type FileSaveAsRes = z.infer<typeof fileSaveAsResSchema>;
+
+// ── 编辑器草稿（会话内自动临时保存）──
+
+export const draftKeySchema = z
+  .string()
+  .regex(/^[A-Za-z0-9-]{1,80}$/, 'draft key 只允许字母/数字/连字符');
+
+export const editorSaveDraftReqSchema = z.object({
+  /** 草稿键：渲染层由原文件绝对路径哈希生成——原路径不出本机，主进程写入
+   * editor-drafts 目录时以 key 拼接、无路径入参，天然杜绝目录遍历。 */
+  key: draftKeySchema,
+  content: z.string().max(8 * 1024 * 1024),
+});
+export type EditorSaveDraftReq = z.infer<typeof editorSaveDraftReqSchema>;
+
+export const editorSaveDraftResSchema = z.object({
+  draftPath: z.string().min(1),
+});
+export type EditorSaveDraftRes = z.infer<typeof editorSaveDraftResSchema>;
+
+export const editorCleanupDraftReqSchema = z.object({
+  key: draftKeySchema,
+});
+export type EditorCleanupDraftReq = z.infer<typeof editorCleanupDraftReqSchema>;
+
+export const editorCleanupDraftResSchema = z.object({
+  removed: z.boolean(),
+});
+export type EditorCleanupDraftRes = z.infer<typeof editorCleanupDraftResSchema>;
+
 export const fileOpenResSchema = z.object({
   /** 选中的文件路径，用户取消时为 null。 */
   path: z.string().nullable(),
@@ -1276,8 +1335,12 @@ export const ipcSchema = {
   },
   'file.stat': { req: fileStatReqSchema, res: fileStatResSchema },
   'file.read': { req: fileReadReqSchema, res: fileReadResSchema },
+  'file.write': { req: fileWriteReqSchema, res: fileWriteResSchema },
+  'file.saveAs': { req: fileSaveAsReqSchema, res: fileSaveAsResSchema },
   'file.open': { req: fileOpenReqSchema, res: fileOpenResSchema },
   'file.dir': { req: fileDirReqSchema, res: fileDirResSchema },
+  'editor.saveDraft': { req: editorSaveDraftReqSchema, res: editorSaveDraftResSchema },
+  'editor.cleanupDraft': { req: editorCleanupDraftReqSchema, res: editorCleanupDraftResSchema },
   'file-association.register': {
     req: fileAssociationRegisterReqSchema,
     res: fileAssociationRegisterResSchema,

@@ -8,3 +8,4 @@
 export { registerFileHandlers } from './register-handlers';
 export { classifyFileKind, getExt, getExtensionsForKind, inferMimeType } from './file-kind';
 export { VIEWABLE_KINDS } from './register-handlers';
+export { registerEditorHandlers, sweepDrafts, resolveDraftPath } from './editor-handlers';

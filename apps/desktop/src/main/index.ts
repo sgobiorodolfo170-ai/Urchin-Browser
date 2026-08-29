@@ -54,7 +54,12 @@ import {
 } from './pi-web';
 import { registerPageContextHandlers } from './page-context';
 import { SummaryManager, registerSummaryHandlers } from './summary';
-import { registerFileHandlers, classifyFileKind } from './files';
+import {
+  registerFileHandlers,
+  registerEditorHandlers,
+  sweepDrafts,
+  classifyFileKind,
+} from './files';
 import { registerFileAssociationHandlers, parseFileArg } from './file-association';
 import { Orchestrator } from './orchestrator/orchestrator';
 import { ProviderRegistry } from './orchestrator/provider-registry';
@@ -479,9 +484,15 @@ function registerIpcHandlers(): void {
     windowManager,
   });
 
-  // 本地文件域 handler（file.stat / file.read / file.open）
+  // 本地文件域 handler（file.stat / file.read / file.write / file.saveAs / file.open / file.dir）
   // 支撑「以网页形式打开本地文件」：音视频/PDF/图片原生渲染，文本类文档查看器渲染
   registerFileHandlers({ ipcMain });
+
+  // 编辑器草稿域（editor.*，会话内自动临时保存）：
+  // 启动清扫上一会话残留草稿后注册（目录已由 ensureDataDir 预创建）
+  const editorDraftsDir = join(currentDataDir, 'editor-drafts');
+  void sweepDrafts(editorDraftsDir);
+  registerEditorHandlers({ ipcMain, draftsDir: editorDraftsDir });
 
   // 文件关联域 handler（默认应用）：注册/查询 HKCU 文件关联
   // 使用 process.execPath 作为打开命令的可执行文件路径

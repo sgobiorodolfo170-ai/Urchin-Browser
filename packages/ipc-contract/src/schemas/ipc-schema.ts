@@ -599,7 +599,7 @@ export type FileStatRes = z.infer<typeof fileStatResSchema>;
 
 export const fileReadReqSchema = z.object({
   path: filePathSchema,
-  /** 读取上限（字节），默认 5MB；超过时抛 IpcError(FILE_TOO_LARGE)。 */
+  /** 读取上限（字节），默认 5MB；超过时只读前 maxBytes 字节并在 truncated 标记（不再抛 FILE_TOO_LARGE）。 */
   maxBytes: z
     .number()
     .int()
@@ -610,8 +610,14 @@ export const fileReadReqSchema = z.object({
 export type FileReadReq = z.infer<typeof fileReadReqSchema>;
 
 export const fileReadResSchema = z.object({
-  /** 文件文本内容（UTF-8）。 */
+  /** 文件文本内容（UTF-8；截断时为前 readBytes 字节解码的内容）。 */
   content: z.string(),
+  /** 是否因超过 maxBytes 被截断（渲染层据此显示「已显示前 X / 共 Y」横幅）。 */
+  truncated: z.boolean(),
+  /** 文件完整大小（字节）。 */
+  totalSize: z.number().int().nonnegative(),
+  /** 实际读取的字节数（≤ min(maxBytes, totalSize)）。 */
+  readBytes: z.number().int().nonnegative(),
 });
 export type FileReadRes = z.infer<typeof fileReadResSchema>;
 

@@ -17,7 +17,7 @@
  * - STATE：当前状态不允许该操作（如对已关闭 tab 调用 reload）
  * - ABORTED：用户主动中止（如 ai.chat.abort）
  * - UNAVAILABLE：目标子系统不可用（如 Provider 未加载）
- * - FILE_TOO_LARGE：文件超过读取上限（如 file.read 超过 maxBytes）
+ * - FILE_TOO_LARGE：文件超过读取上限（file.read 已改截断语义不再抛出，码位为契约 B §4 保留）
  */
 export const IpcErrorCode = {
   INTERNAL: 'INTERNAL',
@@ -116,4 +116,36 @@ export function isIpcErrorPayload(value: unknown): value is IpcErrorPayload {
   if (typeof value !== 'object' || value === null) return false;
   const v = value as Record<string, unknown>;
   return typeof v.code === 'string' && typeof v.message === 'string' && v.code in IpcErrorCode;
+}
+
+// ───────────────── contextBridge 错误码信封 ─────────────────
+
+/**
+ * 错误码跨桥信封（[CODE] 前缀）。
+ *
+ * 设计理由（2026-08-30 实测）：Electron contextBridge 会把 preload 侧抛出的
+ * Error 重构为只剩 message 的普通 Error——code/name/自定义属性全部丢失，
+ * 渲染层无法按 err.code 分支，契约 B §4 的错误码语义就此失效。桥只能保真
+ * message，故 client.ts 抛错时把错误码以 `[CODE] ` 前缀嵌入 message 跨桥，
+ * 渲染层用 extractIpcCode 还原后按码分支。
+ * 前缀格式收紧为「[大写字母/下划线] + 空格」，普通业务消息以同样形态开头的
+ * 概率极低；前缀命中但非合法错误码时按无信封处理（不吞合法内容）。
+ */
+const IPC_CODE_ENVELOPE_RE = /^\[([A-Z][A-Z_]*)\] /;
+
+/** 把错误码嵌入 message（client.ts 跨桥抛错用）。 */
+export function embedIpcCode(code: IpcErrorCode, message: string): string {
+  return `[${code}] ${message}`;
+}
+
+/** 从 message 还原错误码；无信封或前缀非合法错误码时 code 为 undefined、message 原样返回。 */
+export function extractIpcCode(message: string): {
+  code: IpcErrorCode | undefined;
+  message: string;
+} {
+  const match = IPC_CODE_ENVELOPE_RE.exec(message);
+  if (!match) return { code: undefined, message };
+  const prefix = match[1];
+  if (!prefix || !(prefix in IpcErrorCode)) return { code: undefined, message };
+  return { code: prefix as IpcErrorCode, message: message.slice(match[0].length) };
 }

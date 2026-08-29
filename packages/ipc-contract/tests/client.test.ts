@@ -43,7 +43,9 @@ describe('typedInvoke', () => {
     expect(renderer.invocations[0]?.channel).toBe('tab.create');
   });
 
-  it('should throw IpcError when Main returns error payload', async () => {
+  it('should throw Error with [CODE] envelope when Main returns error payload', async () => {
+    // contextBridge 会把 preload 抛出的 Error 重构为只剩 message 的普通 Error，
+    // code 属性无法跨桥保真——错误码以 [CODE] 前缀嵌入 message（见 errors.ts）
     const renderer = createMockRenderer();
     renderer.setNextResponse({
       code: IpcErrorCode.NOT_FOUND,
@@ -53,10 +55,9 @@ describe('typedInvoke', () => {
     });
     const invoke = createTypedInvoke(renderer);
 
-    await expect(invoke('tab.close', { tabId: 999 })).rejects.toMatchObject({
-      code: IpcErrorCode.NOT_FOUND,
-      message: 'tab not found',
-    });
+    await expect(invoke('tab.close', { tabId: 999 })).rejects.toThrowError(
+      '[NOT_FOUND] tab not found',
+    );
   });
 
   it('should throw when res fails validation', async () => {

@@ -27,6 +27,7 @@ import {
   parentDir,
   dirname,
 } from '../../src/renderer/files/FileViewer';
+import { HEAD_PREVIEW_BYTES, planTextRender } from '../../src/renderer/files/read-plan';
 
 const mockInvoke = vi.fn();
 beforeEach(() => {
@@ -102,6 +103,34 @@ describe('formatJsonContent', () => {
   });
 });
 
+describe('planTextRender', () => {
+  const MB = 1024 * 1024;
+
+  it('should keep native render within per-kind full threshold', () => {
+    expect(planTextRender('text', 5 * MB)).toEqual({ maxBytes: 5 * MB, renderAs: 'text' });
+    expect(planTextRender('json', 5 * MB)).toEqual({ maxBytes: 5 * MB, renderAs: 'json' });
+    expect(planTextRender('markdown', 2 * MB)).toEqual({ maxBytes: 2 * MB, renderAs: 'markdown' });
+  });
+
+  it('should degrade to head plain-text beyond threshold (constant cost)', () => {
+    expect(planTextRender('text', 5 * MB + 1)).toEqual({
+      maxBytes: HEAD_PREVIEW_BYTES,
+      renderAs: 'text',
+    });
+    expect(planTextRender('json', 6 * MB)).toEqual({
+      maxBytes: HEAD_PREVIEW_BYTES,
+      renderAs: 'text',
+    });
+    // markdown 阈值更严（2MB）：2MB+1 即降级
+    expect(planTextRender('markdown', 2 * MB + 1)).toEqual({
+      maxBytes: HEAD_PREVIEW_BYTES,
+      renderAs: 'text',
+    });
+    // 500MB 日志同样只读头部
+    expect(planTextRender('text', 500 * MB).maxBytes).toBe(HEAD_PREVIEW_BYTES);
+  });
+});
+
 // ── 组件测试 · 文件查看模式 ──
 
 /** 基础文件查看 mock：stat + 可选的 dir（序列）。 */
@@ -124,7 +153,13 @@ function mockFileViewLoad(overrides: {
       return Promise.resolve({ entries: overrides.dirEntries ?? [] });
     }
     if (channel === 'file.read') {
-      return Promise.resolve({ content: overrides.readContent ?? 'content' });
+      const content = overrides.readContent ?? 'content';
+      return Promise.resolve({
+        content,
+        truncated: false,
+        totalSize: content.length,
+        readBytes: content.length,
+      });
     }
     return Promise.reject(new Error(`unexpected channel ${channel}`));
   });
@@ -345,23 +380,59 @@ describe('FileViewer · 文件查看', () => {
     );
   });
 
-  it('should show too-large notice without rendering content', async () => {
-    mockFileViewLoad({ stat: { name: 'big.txt', size: 100000000, kind: 'text' } });
-    mockInvoke.mockImplementation((channel: string) => {
+  it('should show truncation banner with plain-text head for oversized file', async () => {
+    const TOTAL = 50 * 1024 * 1024;
+    mockInvoke.mockImplementation((channel: string, req?: { maxBytes?: number }) => {
       if (channel === 'file.stat') {
-        return Promise.resolve({ name: 'big.txt', size: 100000000, ext: 'txt', kind: 'text' });
+        return Promise.resolve({ name: 'big.log', size: TOTAL, ext: 'log', kind: 'text' });
       }
       if (channel === 'file.read') {
-        return Promise.reject(Object.assign(new Error('too large'), { code: 'FILE_TOO_LARGE' }));
+        // 读取上限应为截断头部大小（而非全量阈值）——内存与渲染耗时均恒定
+        expect(req?.maxBytes).toBe(HEAD_PREVIEW_BYTES);
+        return Promise.resolve({
+          content: 'head of the log',
+          truncated: true,
+          totalSize: TOTAL,
+          readBytes: HEAD_PREVIEW_BYTES,
+        });
       }
       return Promise.reject(new Error(`unexpected channel ${channel}`));
     });
 
-    render(<FileViewer url="urchin://file-viewer/?path=C%3A%5Cbig.txt" />);
+    render(<FileViewer url="urchin://file-viewer/?path=C%3A%5Cbig.log" />);
 
     await waitFor(() => {
-      expect(screen.getByText(/文件过大/)).toBeDefined();
+      expect(screen.getByText(/文件较大（共 50\.0 MB）.*已显示前 2\.00 MB/)).toBeDefined();
+      expect(screen.getByText('head of the log')).toBeDefined();
     });
+  });
+
+  it('should show truncation banner and plain-text head for above-threshold md', async () => {
+    const TOTAL = 3 * 1024 * 1024;
+    mockInvoke.mockImplementation((channel: string, req?: { maxBytes?: number }) => {
+      if (channel === 'file.stat') {
+        return Promise.resolve({ name: 'big.md', size: TOTAL, ext: 'md', kind: 'markdown' });
+      }
+      if (channel === 'file.read') {
+        // md 超 2MB 阈值：只读头部且降级纯文本（marked 解析实测 ≈1.8s/MB，必须跳过）
+        expect(req?.maxBytes).toBe(HEAD_PREVIEW_BYTES);
+        return Promise.resolve({
+          content: '# Title\nhead of md',
+          truncated: true,
+          totalSize: TOTAL,
+          readBytes: HEAD_PREVIEW_BYTES,
+        });
+      }
+      return Promise.reject(new Error(`unexpected channel ${channel}`));
+    });
+
+    render(<FileViewer url="urchin://file-viewer/?path=C%3A%5Cbig.md" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/文件较大（共 3\.00 MB）.*已显示前 2\.00 MB/)).toBeDefined();
+      expect(screen.getByText(/# Title/)).toBeDefined();
+    });
+    expect(document.querySelector('.prose-viewer')).toBeNull();
   });
 
   it('should show error when stat fails', async () => {

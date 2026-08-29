@@ -9,7 +9,7 @@
  * 4. 检测 IpcErrorPayload 并抛出 IpcError，让业务层 try/catch
  */
 import { ipcSchema, type IpcChannel, type IpcReqInput, type IpcRes } from './schemas/index';
-import { IpcError, IpcErrorCode, isIpcErrorPayload } from './errors';
+import { IpcErrorCode, embedIpcCode, isIpcErrorPayload } from './errors';
 
 /** IpcRenderer 的最小依赖接口（便于测试 mock，不直接依赖 electron 包）。 */
 export interface IpcRendererLike {
@@ -38,7 +38,7 @@ export function createTypedInvoke(ipcRenderer: IpcRendererLike) {
   ): Promise<IpcRes<C>> {
     const schema = ipcSchema[channel];
     if (!schema) {
-      throw new IpcError(IpcErrorCode.INTERNAL, `未知 IPC 通道: ${channel}`);
+      throw new Error(embedIpcCode(IpcErrorCode.INTERNAL, `未知 IPC 通道: ${channel}`));
     }
 
     // 1. 入参校验（渲染层自我保护）
@@ -47,9 +47,11 @@ export function createTypedInvoke(ipcRenderer: IpcRendererLike) {
     // 2. 调用 Main
     const raw = await ipcRenderer.invoke(channel, parsedReq);
 
-    // 3. 错误解包
+    // 3. 错误解包：以 [CODE] 前缀信封抛出——本函数运行在 preload 隔离世界，
+    //    抛出的 Error 穿过 contextBridge 时 code/name 等属性会被剥掉（只能保真
+    //    message），渲染层经 extractIpcError/extractIpcCode 还原错误码分支
     if (isIpcErrorPayload(raw)) {
-      throw IpcError.fromPayload(raw);
+      throw new Error(embedIpcCode(raw.code, raw.message));
     }
 
     // 4. 出参校验

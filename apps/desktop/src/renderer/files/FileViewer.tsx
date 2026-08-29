@@ -23,6 +23,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { marked, type Tokens } from 'marked';
 import { Folder, FileText, ArrowLeft, ArrowRight, ArrowUp } from 'lucide-react';
 import type { FileKind } from '@urchin/ipc-contract';
+import { isTextKind, planTextRender, type TextKind } from './read-plan';
 import { getCurrentWindowId } from '../lib/current-window';
 
 // ───────────────── 常量 ─────────────────
@@ -75,6 +76,9 @@ interface FileStatResult {
 /** file.read IPC 出参。 */
 interface FileReadResult {
   readonly content: string;
+  readonly truncated: boolean;
+  readonly totalSize: number;
+  readonly readBytes: number;
 }
 
 // ───────────────── 工具函数（纯函数，便于单测） ─────────────────
@@ -196,8 +200,16 @@ export function FileViewer({ url, onNavigate }: FileViewerProps) {
 type LoadState =
   | { readonly status: 'loading' }
   | { readonly status: 'ready' }
-  | { readonly status: 'too-large'; readonly limitMb: number }
   | { readonly status: 'error'; readonly message: string };
+
+/** 预览提示（内容区上方横幅）：超阈值 → 头部截断预览。
+ * 语义说明：plan.renderAs 降级（如 markdown >2MB）必然伴随截断
+ * （阈值 = 头部大小），故无需单独的「降级未截断」形态。 */
+type PreviewNote = {
+  readonly type: 'truncated';
+  readonly totalSize: number;
+  readonly readBytes: number;
+} | null;
 
 /** 文件查看（单文件渲染 + 同类型连续导航）。 */
 function FileViewerInner({
@@ -211,6 +223,10 @@ function FileViewerInner({
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [content, setContent] = useState<string>('');
   const [markdownHtml, setMarkdownHtml] = useState<string>('');
+  // 文本渲染形态（read-plan 决策结果）：markdown 原生渲染 / json 美化 / 纯文本
+  const [renderAs, setRenderAs] = useState<TextKind>('text');
+  // 预览横幅：截断预览（超大文件）或 markdown 降级提示
+  const [previewNote, setPreviewNote] = useState<PreviewNote>(null);
   // 同目录序列：同目录下全部可预览文件（自动捕获所在文件夹），用于上/下一个自由切换
   const [sequence, setSequence] = useState<readonly string[]>([]);
   const [seqIndex, setSeqIndex] = useState(-1);
@@ -242,6 +258,7 @@ function FileViewerInner({
       return;
     }
     let cancelled = false;
+    setPreviewNote(null);
     void (async () => {
       try {
         const statRes = (await window.urchin.invoke('file.stat', { path })) as FileStatResult;
@@ -272,13 +289,17 @@ function FileViewerInner({
           setSeqIndex(-1);
         }
 
-        // 文本类（markdown/json/text）读内容渲染；媒体/PDF/图片不读内容（资源协议加载）
-        const textKinds: ReadonlySet<FileKind> = new Set(['markdown', 'json', 'text']);
-        if (textKinds.has(statRes.kind)) {
-          const readRes = (await window.urchin.invoke('file.read', { path })) as FileReadResult;
+        // 文本类（markdown/json/text）读内容渲染；媒体/PDF/图片不读内容（资源协议加载）。
+        // 渲染护栏（read-plan）：超阈值不整读，只取头部降级纯文本——
+        // markdown 解析实测 ≈1.8s/MB，json 美化 4.9MB ≈2.9s，截断/降级保证耗时恒定。
+        if (isTextKind(statRes.kind)) {
+          const plan = planTextRender(statRes.kind, statRes.size);
+          const readRes = (await window.urchin.invoke('file.read', {
+            path,
+            maxBytes: plan.maxBytes,
+          })) as FileReadResult;
           if (cancelled) return;
-          setContent(readRes.content);
-          if (statRes.kind === 'markdown') {
+          if (plan.renderAs === 'markdown') {
             const html = await marked.parse(readRes.content, {
               gfm: true,
               breaks: true,
@@ -286,25 +307,29 @@ function FileViewerInner({
             });
             if (cancelled) return;
             setMarkdownHtml(html);
-          } else if (statRes.kind === 'json') {
+          } else if (plan.renderAs === 'json') {
             setContent(formatJsonContent(readRes.content));
+          } else {
+            setContent(readRes.content);
           }
+          setRenderAs(plan.renderAs);
+          setPreviewNote(
+            readRes.truncated
+              ? {
+                  type: 'truncated',
+                  totalSize: readRes.totalSize,
+                  readBytes: readRes.readBytes,
+                }
+              : null,
+          );
         }
         setState({ status: 'ready' });
       } catch (err) {
         if (cancelled) return;
-        if (
-          typeof err === 'object' &&
-          err !== null &&
-          (err as { code?: string }).code === 'FILE_TOO_LARGE'
-        ) {
-          setState({ status: 'too-large', limitMb: 5 });
-        } else {
-          setState({
-            status: 'error',
-            message: (err as Error)?.message ?? String(err),
-          });
-        }
+        setState({
+          status: 'error',
+          message: (err as Error)?.message ?? String(err),
+        });
       }
     })();
     return () => {
@@ -416,23 +441,21 @@ function FileViewerInner({
     );
   }
 
-  if (state.status === 'too-large') {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 bg-surface text-text-secondary">
-        <p className="text-text">文件过大（超过 {state.limitMb}MB），不适合在浏览器内预览</p>
-        <p className="text-sm">建议用外部程序打开该文件</p>
-      </div>
-    );
-  }
-
   const kind = meta?.kind ?? 'text';
   const resource = path ? fileResourceUrl(path) : '';
-  const isMarkdown = kind === 'markdown';
   const canPrev = seqIndex > 0;
   const canNext = seqIndex >= 0 && seqIndex < sequence.length - 1;
 
   return (
     <div className="flex h-full flex-col bg-surface text-text">
+      {/* 预览横幅：超大文件头部截断预览（read-plan 护栏；md 降级必然伴随截断） */}
+      {previewNote && (
+        <div className="shrink-0 border-b border-border bg-warning/10 px-6 py-2 text-xs text-text-secondary">
+          {`文件较大（共 ${formatBytes(previewNote.totalSize)}），已显示前 ${formatBytes(
+            previewNote.readBytes,
+          )}，完整内容请用外部程序打开`}
+        </div>
+      )}
       {/* 内容区：按 kind 渲染（唯一滚动容器，上下滑动不影响底部工具栏） */}
       <div className="flex-1 overflow-auto">
         {kind === 'image' && (
@@ -482,11 +505,13 @@ function FileViewerInner({
         )}
         {kind === 'pdf' && (
           <div className="h-full">
-            {/* Chromium 内置 PDF 查看器：缩放/翻页/打印保留 */}
+            {/* Chromium 内置 PDF 查看器：缩放/翻页/打印保留。
+             * 内容经 file-resource 协议流式加载（Range 支持），读取侧无文件大小上限，
+             * 50MB 级 PDF 实测正常加载（2026-08-30）；更大文件由 Chromium 按需解析。 */}
             <iframe src={resource} title={meta?.name ?? 'PDF'} className="h-full w-full" />
           </div>
         )}
-        {isMarkdown && (
+        {renderAs === 'markdown' && (
           <div
             className="prose-viewer mx-auto max-w-3xl px-6 py-4"
             onClick={handleMarkdownClick}
@@ -494,7 +519,7 @@ function FileViewerInner({
             dangerouslySetInnerHTML={{ __html: markdownHtml }}
           />
         )}
-        {(kind === 'text' || kind === 'json') && (
+        {(renderAs === 'text' || renderAs === 'json') && (
           <pre className="mx-auto max-w-3xl overflow-x-auto px-6 py-4 font-mono text-sm leading-relaxed">
             {content}
           </pre>

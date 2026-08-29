@@ -21,9 +21,14 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { marked, type Tokens } from 'marked';
-import { Folder, FileText, ArrowLeft, ArrowRight, ArrowUp } from 'lucide-react';
+import { Folder, FileText, ArrowLeft, ArrowRight, ArrowUp, Pencil, Check } from 'lucide-react';
 import type { FileKind } from '@urchin/ipc-contract';
-import { isTextKind, planTextRender, type TextKind } from './read-plan';
+import { isTextKind, planTextRender, type ReadPlan, type TextKind } from './read-plan';
+import { useEditSession } from './editor/use-edit-session';
+import { MarkdownEditor } from './editor/MarkdownEditor';
+import { PlainTextEditor } from './editor/PlainTextEditor';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { Button } from '../components/ui/button';
 import { getCurrentWindowId } from '../lib/current-window';
 
 // ───────────────── 常量 ─────────────────
@@ -186,15 +191,19 @@ interface FileViewerProps {
   readonly url: string;
   /** 导航回调（同标签切换到下一张/上级目录等），由 App 注入 handleNavigate。 */
   readonly onNavigate?: (url: string) => void;
+  /** 所属标签 id（编辑守卫注册归属）。 */
+  readonly tabId?: number;
+  /** 轻提示（保存失败等），由 App 注入 toast。 */
+  readonly onToast?: (msg: string) => void;
 }
 
 /** 入口：按 URL 参数分发到文件查看 / 目录浏览。 */
-export function FileViewer({ url, onNavigate }: FileViewerProps) {
+export function FileViewer({ url, onNavigate, tabId, onToast }: FileViewerProps) {
   const { path, dir } = getViewerParams(url);
   if (dir !== null && path === null) {
     return <DirBrowser dir={dir} onNavigate={onNavigate} />;
   }
-  return <FileViewerInner path={path} onNavigate={onNavigate} />;
+  return <FileViewerInner path={path} onNavigate={onNavigate} tabId={tabId} onToast={onToast} />;
 }
 
 type LoadState =
@@ -211,13 +220,17 @@ type PreviewNote = {
   readonly readBytes: number;
 } | null;
 
-/** 文件查看（单文件渲染 + 同类型连续导航）。 */
+/** 文件查看（单文件渲染 + 同类型连续导航 + 编辑模式）。 */
 function FileViewerInner({
   path,
   onNavigate,
+  tabId,
+  onToast,
 }: {
   readonly path: string | null;
   readonly onNavigate?: (url: string) => void;
+  readonly tabId?: number;
+  readonly onToast?: (msg: string) => void;
 }) {
   const [meta, setMeta] = useState<FileStatResult | null>(null);
   const [state, setState] = useState<LoadState>({ status: 'loading' });
@@ -225,8 +238,12 @@ function FileViewerInner({
   const [markdownHtml, setMarkdownHtml] = useState<string>('');
   // 文本渲染形态（read-plan 决策结果）：markdown 原生渲染 / json 美化 / 纯文本
   const [renderAs, setRenderAs] = useState<TextKind>('text');
-  // 预览横幅：截断预览（超大文件）或 markdown 降级提示
+  // 预览横幅：截断预览（超大文件）
   const [previewNote, setPreviewNote] = useState<PreviewNote>(null);
+  // 读取计划（编辑会话取 maxBytes 用；null = 尚未就绪）
+  const [plan, setPlan] = useState<ReadPlan | null>(null);
+  // 保存后回读盘上内容刷新阅读态（+1 触发加载 effect 重跑）
+  const [reloadKey, setReloadKey] = useState(0);
   // 同目录序列：同目录下全部可预览文件（自动捕获所在文件夹），用于上/下一个自由切换
   const [sequence, setSequence] = useState<readonly string[]>([]);
   const [seqIndex, setSeqIndex] = useState(-1);
@@ -237,6 +254,17 @@ function FileViewerInner({
   const [volume, setVolume] = useState(1);
   const [volumeVisible, setVolumeVisible] = useState(false);
   const volumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 编辑会话（阅读/编辑互切、脏状态、草稿、保存/放弃、离开确认）
+  const noopToast = useRef((msg: string): void => {
+    if (msg) console.info(msg);
+  });
+  const session = useEditSession({
+    path: path ?? '',
+    maxBytes: plan?.maxBytes ?? 0,
+    tabId,
+    onToast: onToast ?? noopToast.current,
+  });
 
   // 卸载时清理音量浮层计时器（避免卸载后 setState）
   useEffect(() => {
@@ -293,13 +321,14 @@ function FileViewerInner({
         // 渲染护栏（read-plan）：超阈值不整读，只取头部降级纯文本——
         // markdown 解析实测 ≈1.8s/MB，json 美化 4.9MB ≈2.9s，截断/降级保证耗时恒定。
         if (isTextKind(statRes.kind)) {
-          const plan = planTextRender(statRes.kind, statRes.size);
+          const planLocal = planTextRender(statRes.kind, statRes.size);
+          setPlan(planLocal);
           const readRes = (await window.urchin.invoke('file.read', {
             path,
-            maxBytes: plan.maxBytes,
+            maxBytes: planLocal.maxBytes,
           })) as FileReadResult;
           if (cancelled) return;
-          if (plan.renderAs === 'markdown') {
+          if (planLocal.renderAs === 'markdown') {
             const html = await marked.parse(readRes.content, {
               gfm: true,
               breaks: true,
@@ -307,12 +336,12 @@ function FileViewerInner({
             });
             if (cancelled) return;
             setMarkdownHtml(html);
-          } else if (plan.renderAs === 'json') {
+          } else if (planLocal.renderAs === 'json') {
             setContent(formatJsonContent(readRes.content));
           } else {
             setContent(readRes.content);
           }
-          setRenderAs(plan.renderAs);
+          setRenderAs(planLocal.renderAs);
           setPreviewNote(
             readRes.truncated
               ? {
@@ -322,6 +351,8 @@ function FileViewerInner({
                 }
               : null,
           );
+        } else {
+          setPlan(null);
         }
         setState({ status: 'ready' });
       } catch (err) {
@@ -335,18 +366,59 @@ function FileViewerInner({
     return () => {
       cancelled = true;
     };
-  }, [path]);
+  }, [path, reloadKey]);
 
-  /** 同类型序列导航：delta ±1；越界或无序列不动作。 */
+  // ── 编辑模式接线 ──
+
+  /** 可编辑判定：文本家族且内容完整加载（未截断）。截断文件只展示头部，
+   * 编辑会产生残缺保存——明确禁用并提示。 */
+  const editable =
+    state.status === 'ready' && meta !== null && isTextKind(meta.kind) && previewNote === null;
+  const showEditToggle = state.status === 'ready' && meta !== null && isTextKind(meta.kind);
+
+  /** 离开编辑后的统一动作（守卫通过才执行）。查看器内导航（序列/目录）用。 */
+  const guardedNavigate = useCallback(
+    (url: string): void => {
+      void (async () => {
+        if (session.mode === 'edit') {
+          const ok = await session.requestExit();
+          if (!ok) return;
+        }
+        onNavigate?.(url);
+      })();
+    },
+    [session, onNavigate],
+  );
+
+  /** 完成（退出编辑）：守卫通过后回读盘上内容刷新阅读态。 */
+  const handleFinishEdit = useCallback((): void => {
+    void (async () => {
+      const ok = await session.requestExit();
+      if (!ok) return;
+      setReloadKey((k) => k + 1);
+    })();
+  }, [session]);
+
+  /** 另存为成功 → 导航到新文件（阅读态展示已保存内容）。 */
+  const handleSaveAs = useCallback((): void => {
+    void (async () => {
+      const r = await session.saveAs();
+      if (r.saved && r.savedAsPath) {
+        onNavigate?.(`urchin://file-viewer/?path=${encodeURIComponent(r.savedAsPath)}`);
+      }
+    })();
+  }, [session, onNavigate]);
+
+  /** 同类型序列导航：delta ±1；越界或无序列不动作（脏时先过离开守卫）。 */
   const navigateSeq = useCallback(
     (delta: number) => {
       if (seqIndex < 0 || sequence.length <= 1) return;
       const next = seqIndex + delta;
       if (next < 0 || next >= sequence.length) return;
       const target = sequence[next];
-      if (target) onNavigate?.(`urchin://file-viewer/?path=${encodeURIComponent(target)}`);
+      if (target) guardedNavigate(`urchin://file-viewer/?path=${encodeURIComponent(target)}`);
     },
-    [seqIndex, sequence, onNavigate],
+    [seqIndex, sequence, guardedNavigate],
   );
 
   // 键盘：视频查看模式 ←/→ = 进度后退/前进、↑/↓ = 音量减小/增大（阻止 video 原生默认避免双触发）；
@@ -447,7 +519,37 @@ function FileViewerInner({
   const canNext = seqIndex >= 0 && seqIndex < sequence.length - 1;
 
   return (
-    <div className="flex h-full flex-col bg-surface text-text">
+    <div className="relative flex h-full flex-col bg-surface text-text">
+      {/* 右上角 编辑/完成 切换按钮（编辑会话入口；可编辑性见 editable 判定） */}
+      {showEditToggle && (
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
+          {session.mode === 'edit' && (
+            <>
+              <Button size="sm" variant="secondary" onClick={() => void session.saveWithFallback()}>
+                保存
+              </Button>
+              <Button size="sm" variant="ghost" onClick={handleSaveAs}>
+                另存为
+              </Button>
+            </>
+          )}
+          {session.mode === 'edit' ? (
+            <Button size="sm" variant="primary" onClick={handleFinishEdit}>
+              <Check className="mr-1 h-3.5 w-3.5" /> 完成
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!editable || session.starting}
+              title={editable ? '进入编辑' : '该文件不支持编辑（类型或体量超出限制）'}
+              onClick={session.startEdit}
+            >
+              <Pencil className="mr-1 h-3.5 w-3.5" /> 编辑
+            </Button>
+          )}
+        </div>
+      )}
       {/* 预览横幅：超大文件头部截断预览（read-plan 护栏；md 降级必然伴随截断） */}
       {previewNote && (
         <div className="shrink-0 border-b border-border bg-warning/10 px-6 py-2 text-xs text-text-secondary">
@@ -456,9 +558,24 @@ function FileViewerInner({
           )}，完整内容请用外部程序打开`}
         </div>
       )}
-      {/* 内容区：按 kind 渲染（唯一滚动容器，上下滑动不影响底部工具栏） */}
+      {/* 内容区：按 kind 渲染（唯一滚动容器，上下滑动不影响底部工具栏）；
+       * 编辑模式下替换为编辑器（会话 value 回写 → 脏判定 + 草稿调度） */}
       <div className="flex-1 overflow-auto">
-        {kind === 'image' && (
+        {session.mode === 'edit' && meta?.kind === 'markdown' && (
+          <MarkdownEditor
+            key={session.version}
+            initialContent={session.value}
+            onChange={session.setValue}
+          />
+        )}
+        {session.mode === 'edit' && meta?.kind !== 'markdown' && (
+          <PlainTextEditor
+            key={session.version}
+            initialContent={session.value}
+            onChange={session.setValue}
+          />
+        )}
+        {session.mode === 'read' && kind === 'image' && (
           // 容器铺满网页（无内边距），图片按比例 contain 居中自适应
           <div className="flex h-full w-full items-center justify-center bg-surface-secondary/50">
             <img
@@ -468,7 +585,7 @@ function FileViewerInner({
             />
           </div>
         )}
-        {kind === 'video' && (
+        {session.mode === 'read' && kind === 'video' && (
           // 容器铺满网页（无内边距/宽度限制），视频按比例 contain 铺满
           <div className="relative flex h-full w-full items-center justify-center">
             {/* 内嵌视频播放：file-resource 协议流式加载（主进程 Range 支持拖动 seek）；
@@ -498,12 +615,12 @@ function FileViewerInner({
             )}
           </div>
         )}
-        {kind === 'audio' && (
+        {session.mode === 'read' && kind === 'audio' && (
           <div className="flex h-full w-full items-center justify-center">
             <audio controls src={resource} className="w-full max-w-2xl" />
           </div>
         )}
-        {kind === 'pdf' && (
+        {session.mode === 'read' && kind === 'pdf' && (
           <div className="h-full">
             {/* Chromium 内置 PDF 查看器：缩放/翻页/打印保留。
              * 内容经 file-resource 协议流式加载（Range 支持），读取侧无文件大小上限，
@@ -511,7 +628,7 @@ function FileViewerInner({
             <iframe src={resource} title={meta?.name ?? 'PDF'} className="h-full w-full" />
           </div>
         )}
-        {renderAs === 'markdown' && (
+        {session.mode === 'read' && renderAs === 'markdown' && (
           <div
             className="prose-viewer mx-auto max-w-3xl px-6 py-4"
             onClick={handleMarkdownClick}
@@ -519,12 +636,12 @@ function FileViewerInner({
             dangerouslySetInnerHTML={{ __html: markdownHtml }}
           />
         )}
-        {(renderAs === 'text' || renderAs === 'json') && (
+        {session.mode === 'read' && (renderAs === 'text' || renderAs === 'json') && (
           <pre className="mx-auto max-w-3xl overflow-x-auto px-6 py-4 font-mono text-sm leading-relaxed">
             {content}
           </pre>
         )}
-        {(kind === 'binary' || kind === 'html') && (
+        {session.mode === 'read' && (kind === 'binary' || kind === 'html') && (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-text-secondary">
             <p className="text-text">此文件类型不支持在浏览器内预览</p>
             <p className="text-sm">请用外部程序打开</p>
@@ -571,6 +688,31 @@ function FileViewerInner({
           </div>
         )}
       </div>
+
+      {/* 离开编辑确认（模式切换 / 查看器内导航；关闭/切换标签的守卫在 App 层） */}
+      <ConfirmDialog
+        open={session.confirm !== null}
+        title="未保存的更改"
+        message="文档有未保存的修改，要保存后再离开吗？（保存写入原文件）"
+        onDismiss={session.cancelExit}
+        actions={[
+          {
+            label: '保存并继续',
+            variant: 'primary',
+            autoFocus: true,
+            onClick: () => session.confirm?.onSave(),
+          },
+          {
+            label: '不保存',
+            variant: 'danger',
+            onClick: () => session.confirm?.onDiscard(),
+          },
+          {
+            label: '取消',
+            onClick: () => session.confirm?.onCancel(),
+          },
+        ]}
+      />
     </div>
   );
 }

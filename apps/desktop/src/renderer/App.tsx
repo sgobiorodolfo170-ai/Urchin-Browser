@@ -44,6 +44,8 @@ import { PiWebLauncherView } from './pi-web/launcher-view';
 import { SettingsPage } from './settings/SettingsPage';
 import { NewTabPage } from './home/NewTabPage';
 import { FileViewer } from './files/FileViewer';
+import { ConfirmDialog } from './components/ui/confirm-dialog';
+import { getEditGuardSession, closeNeedsGuard, switchNeedsGuard } from './lib/edit-guard';
 import { lookupBuiltinSite, builtinIconUrl } from './home/site-directory-lookup';
 import { PiSettingsDialog } from './omnibox/pi-settings-dialog';
 import { useTheme } from './theme/theme-provider';
@@ -423,6 +425,9 @@ export function App() {
   // 按钮位于地址栏 omnibox.tsx，点击直接调用 summary.run IPC（纯本地操作，不依赖 LLM）
   const [summaryRunning, setSummaryRunning] = useState(false);
   const [summaryToast, setSummaryToast] = useState<string | null>(null);
+  // 编辑器轻提示（保存失败等）：稳定引用（useEditSession 依赖稳定性需要）。
+  // showEditorToast / editorGuardAsk / handleCloseTab / handleSelectTab 声明于
+  // 上方「编辑守卫」区（tab 事件订阅 effect 之前，供事件路径守卫引用）。
   // pi 设置对话框显示状态：齿轮按钮位于 AiChatView 中区 header 右上角，
   // 通过此状态与 PiSettingsDialog 解耦（PiSettingsDialog 在 App.tsx 渲染）
   const [showPiSettings, setShowPiSettings] = useState(false);
@@ -674,6 +679,75 @@ export function App() {
     void loadTabs();
   }, []);
 
+  // ── 编辑守卫：标签关闭/切换拦截 + 确认弹窗状态 ──
+  // 声明在 tab 事件订阅 effect 之前：事件路径（新建标签等绕过 handleSelectTab
+  // 的激活）的守卫同样要弹此对话框并落位。
+
+  const doCloseTab = useCallback(async (tabId: number) => {
+    try {
+      await window.urchin.invoke('tab.close', { tabId });
+    } catch (e) {
+      console.error('Failed to close tab:', e);
+    }
+  }, []);
+
+  const doSelectTab = useCallback(async (tabId: number) => {
+    try {
+      await window.urchin.invoke('tab.setActive', { tabId });
+    } catch (e) {
+      console.error('Failed to set active tab:', e);
+    }
+  }, []);
+
+  /** 关闭标签：目标标签处于脏编辑会话时先弹三键确认（保存并关闭/不保存/取消）。 */
+  const handleCloseTab = useCallback(
+    (tabId: number) => {
+      if (closeNeedsGuard(tabId)) {
+        setEditorGuardAsk({ kind: 'close', tabId, run: () => void doCloseTab(tabId) });
+        return;
+      }
+      void doCloseTab(tabId);
+    },
+    [doCloseTab],
+  );
+
+  /** 切换标签：将从脏编辑会话所在标签离开时先弹三键确认。 */
+  const handleSelectTab = useCallback(
+    (tabId: number) => {
+      if (switchNeedsGuard(tabId)) {
+        setEditorGuardAsk({ kind: 'switch', tabId, run: () => void doSelectTab(tabId) });
+        return;
+      }
+      void doSelectTab(tabId);
+    },
+    [doSelectTab],
+  );
+
+  const [editorGuardAsk, setEditorGuardAsk] = useState<{
+    kind: 'close' | 'switch';
+    tabId: number;
+    run: () => void;
+  } | null>(null);
+
+  // 编辑器轻提示（保存失败等）：稳定引用（useEditSession 依赖稳定性需要）
+  const showEditorToast = useCallback((msg: string): void => {
+    if (msg) setSummaryToast(msg);
+  }, []);
+
+  // 窗口整体关闭兜底：存在脏编辑会话时阻止静默关闭（Electron 弹原生确认）。
+  // 标签级守卫只覆盖渲染层的关闭/切换入口，覆盖不到窗口 X 按钮/退出。
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent): void => {
+      const s = getEditGuardSession();
+      if (s?.isDirty()) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
+
   // 订阅 tab 事件推送
   // 性能：did-navigate / did-start-loading 等事件在页面加载高峰期高频触发，
   // updated 事件做 16ms 去抖合并（对齐一帧），避免每事件全量 setTabs 重渲染导致的卡顿。
@@ -686,6 +760,25 @@ export function App() {
       pending = null;
       if (!evt?.snapshot) return;
       const snapshot = evt.snapshot;
+      // 编辑守卫（事件路径）：新建标签/程序化激活绕过 handleSelectTab，
+      // 若将激活事件会把用户从脏编辑标签带离——立即弹回脏标签并弹三键确认，
+      // 用户选择后再落位到目标标签。弹回引发的再次 activated 事件
+      // （目标即会话标签）不会命中 switchNeedsGuard，无循环。
+      if (
+        (evt.type === 'activated' || (evt.type === 'created' && snapshot.active)) &&
+        switchNeedsGuard(snapshot.id)
+      ) {
+        const session = getEditGuardSession();
+        if (session) {
+          void window.urchin.invoke('tab.setActive', { tabId: session.tabId });
+          setEditorGuardAsk({
+            kind: 'switch',
+            tabId: snapshot.id,
+            run: () => void doSelectTab(snapshot.id),
+          });
+          return;
+        }
+      }
       setTabs((prev) => {
         switch (evt.type) {
           case 'created':
@@ -737,7 +830,8 @@ export function App() {
       if (timer) clearTimeout(timer);
       unsubscribe();
     };
-  }, []);
+    // doSelectTab 为稳定引用（[] 依赖），守卫落位闭包依赖它
+  }, [doSelectTab]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
@@ -882,21 +976,8 @@ export function App() {
     }
   }, []);
 
-  const handleCloseTab = useCallback(async (tabId: number) => {
-    try {
-      await window.urchin.invoke('tab.close', { tabId });
-    } catch (e) {
-      console.error('Failed to close tab:', e);
-    }
-  }, []);
-
-  const handleSelectTab = useCallback(async (tabId: number) => {
-    try {
-      await window.urchin.invoke('tab.setActive', { tabId });
-    } catch (e) {
-      console.error('Failed to set active tab:', e);
-    }
-  }, []);
+  // doCloseTab / doSelectTab / handleCloseTab / handleSelectTab / editorGuardAsk /
+  // beforeunload 兜底声明于上方「编辑守卫」区（tab 事件订阅 effect 之前）。
 
   /**
    * 标签拖出浏览器窗口：自定义指针拖拽，检测到鼠标移出窗口边界时
@@ -1429,10 +1510,59 @@ export function App() {
               /* 本地文件查看器/文件夹浏览器：React 组件渲染（urchin://file-viewer），
                * ?path= 查看文件（媒体/PDF/图片内嵌 + 同类型连续切换），?dir= 浏览文件夹。
                * onNavigate 走 handleNavigate：同标签导航（上/下一个、进入子目录）不堆标签 */
-              <FileViewer url={activeTab?.url ?? ''} onNavigate={(u) => void handleNavigate(u)} />
+              <FileViewer
+                url={activeTab?.url ?? ''}
+                onNavigate={(u) => void handleNavigate(u)}
+                tabId={activeTabId ?? undefined}
+                onToast={showEditorToast}
+              />
             ) : null /* 普通网页：由 Electron BrowserView 渲染，React 仅留空 */
           }
         </div>
+
+        {/* 编辑守卫确认弹窗（关闭/切换标签时目标涉及脏编辑会话） */}
+        <ConfirmDialog
+          open={editorGuardAsk !== null}
+          title={editorGuardAsk?.kind === 'close' ? '关闭前保存更改？' : '切换前保存更改？'}
+          message="当前文档有未保存的修改。（保存写入原文件；失败可改用查看器右上角「另存为」）"
+          onDismiss={() => setEditorGuardAsk(null)}
+          actions={[
+            {
+              label: editorGuardAsk?.kind === 'close' ? '保存并关闭' : '保存并切换',
+              variant: 'primary',
+              autoFocus: true,
+              onClick: () => {
+                void (async () => {
+                  const s = getEditGuardSession();
+                  if (!s || !editorGuardAsk) {
+                    setEditorGuardAsk(null);
+                    return;
+                  }
+                  const ok = await s.save();
+                  setEditorGuardAsk(null);
+                  if (ok) editorGuardAsk.run();
+                })();
+              },
+            },
+            {
+              label: '不保存',
+              variant: 'danger',
+              onClick: () => {
+                void (async () => {
+                  const s = getEditGuardSession();
+                  const ask = editorGuardAsk;
+                  setEditorGuardAsk(null);
+                  if (s && ask) await s.discard();
+                  if (ask) ask.run();
+                })();
+              },
+            },
+            {
+              label: '取消',
+              onClick: () => setEditorGuardAsk(null),
+            },
+          ]}
+        />
 
         {/* 下侧边栏：地址栏 + 导航按钮（被左右侧栏夹住）
          *  AI 标签页隐藏地址栏：AI 模块作为独立全屏对话应用，不需要 URL 导航 */}

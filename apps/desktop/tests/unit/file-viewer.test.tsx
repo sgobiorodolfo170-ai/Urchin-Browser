@@ -28,6 +28,27 @@ import {
   dirname,
 } from '../../src/renderer/files/FileViewer';
 import { HEAD_PREVIEW_BYTES, planTextRender } from '../../src/renderer/files/read-plan';
+import { setEditGuardSession } from '../../src/renderer/lib/edit-guard';
+
+// 编辑器组件以桩替换（Tiptap 不进 jsdom；真实编辑器由 e2e 覆盖）
+vi.mock('../../src/renderer/files/editor/MarkdownEditor', () => ({
+  MarkdownEditor: (props: { initialContent: string; onChange: (v: string) => void }) => (
+    <textarea
+      data-testid="md-editor-stub"
+      defaultValue={props.initialContent}
+      onChange={(e) => props.onChange(e.target.value)}
+    />
+  ),
+}));
+vi.mock('../../src/renderer/files/editor/PlainTextEditor', () => ({
+  PlainTextEditor: (props: { initialContent: string; onChange: (v: string) => void }) => (
+    <textarea
+      data-testid="plain-editor-stub"
+      defaultValue={props.initialContent}
+      onChange={(e) => props.onChange(e.target.value)}
+    />
+  ),
+}));
 
 const mockInvoke = vi.fn();
 beforeEach(() => {
@@ -442,6 +463,138 @@ describe('FileViewer · 文件查看', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/无法打开文件/)).toBeDefined();
+    });
+  });
+});
+
+// ── 组件测试 · 编辑模式 ──
+
+/** 可编辑文件 mock：md 全量加载 + file.write/草稿清理通道。 */
+function mockEditableLoad(dirEntries?: unknown[]) {
+  mockInvoke.mockImplementation((channel: string, req?: { path?: string; maxBytes?: number }) => {
+    void req;
+    if (channel === 'file.stat') {
+      return Promise.resolve({ name: 'a.md', size: 100, ext: 'md', kind: 'markdown' });
+    }
+    if (channel === 'file.dir') {
+      return Promise.resolve({ entries: dirEntries ?? [] });
+    }
+    if (channel === 'file.read') {
+      return Promise.resolve({ content: '# raw', truncated: false, totalSize: 5, readBytes: 5 });
+    }
+    if (channel === 'file.write') return Promise.resolve({ bytesWritten: 5 });
+    if (channel === 'editor.saveDraft') return Promise.resolve({ draftPath: 'C:\\d\\k' });
+    if (channel === 'editor.cleanupDraft') return Promise.resolve({ removed: true });
+    return Promise.reject(new Error(`unexpected channel ${channel}`));
+  });
+}
+
+describe('FileViewer · 编辑模式', () => {
+  beforeEach(() => {
+    setEditGuardSession(null);
+  });
+
+  it('should show enabled edit button for full-loaded markdown and enter edit on click', async () => {
+    mockEditableLoad();
+    render(<FileViewer url="urchin://file-viewer/?path=C%3A%5Cdocs%5Ca.md" tabId={1} />);
+
+    const btn = await screen.findByRole('button', { name: /编辑/ });
+    expect((btn as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(btn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('md-editor-stub')).toBeDefined();
+      expect(screen.getByRole('button', { name: /完成/ })).toBeDefined();
+    });
+    // 进入编辑重读原文（maxBytes = markdown 全量阈值）
+    expect(mockInvoke).toHaveBeenCalledWith('file.read', {
+      path: 'C:\\docs\\a.md',
+      maxBytes: 2 * 1024 * 1024,
+    });
+  });
+
+  it('should disable edit button for truncated file', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'file.stat') {
+        return Promise.resolve({
+          name: 'big.log',
+          size: 50 * 1024 * 1024,
+          ext: 'log',
+          kind: 'text',
+        });
+      }
+      if (channel === 'file.dir') return Promise.resolve({ entries: [] });
+      if (channel === 'file.read') {
+        return Promise.resolve({
+          content: 'head',
+          truncated: true,
+          totalSize: 50 * 1024 * 1024,
+          readBytes: HEAD_PREVIEW_BYTES,
+        });
+      }
+      return Promise.reject(new Error(`unexpected channel ${channel}`));
+    });
+    render(<FileViewer url="urchin://file-viewer/?path=C%3A%5Cbig.log" />);
+
+    const btn = await screen.findByRole('button', { name: /编辑/ });
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('should not show edit button for non-text kind (image)', async () => {
+    mockFileViewLoad({ stat: { name: 'a.png', kind: 'image' } });
+    render(<FileViewer url="urchin://file-viewer/?path=C%3A%5Ca.png" />);
+    await waitFor(() => expect(document.querySelector('img')).not.toBeNull());
+    expect(screen.queryByRole('button', { name: /编辑/ })).toBeNull();
+  });
+
+  it('should guard in-viewer navigation when dirty (不保存 → onNavigate)', async () => {
+    mockEditableLoad([
+      { name: 'a.md', path: 'C:\\docs\\a.md', kind: 'markdown', isDir: false, size: 5 },
+      { name: 'b.md', path: 'C:\\docs\\b.md', kind: 'markdown', isDir: false, size: 6 },
+    ]);
+    const onNavigate = vi.fn();
+    render(
+      <FileViewer
+        url="urchin://file-viewer/?path=C%3A%5Cdocs%5Ca.md"
+        onNavigate={onNavigate}
+        tabId={1}
+      />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /编辑/ }));
+    await waitFor(() => expect(screen.getByTestId('md-editor-stub')).toBeDefined());
+    fireEvent.change(screen.getByTestId('md-editor-stub'), { target: { value: '# dirty' } });
+
+    // 下一个 → 弹离开守卫
+    fireEvent.click(screen.getByLabelText('下一个'));
+    await waitFor(() => expect(screen.getByText('未保存的更改')).toBeDefined());
+    expect(onNavigate).not.toHaveBeenCalled();
+
+    // 不保存 → 放弃更改并继续导航
+    fireEvent.click(screen.getByRole('button', { name: '不保存' }));
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledTimes(1));
+    expect(onNavigate).toHaveBeenCalledWith(
+      'urchin://file-viewer/?path=' + encodeURIComponent('C:\\docs\\b.md'),
+    );
+    expect(mockInvoke.mock.calls.some((c) => c[0] === 'editor.cleanupDraft')).toBe(true);
+  });
+
+  it('finish edit with save: writes file and returns to read mode', async () => {
+    mockEditableLoad();
+    render(<FileViewer url="urchin://file-viewer/?path=C%3A%5Cdocs%5Ca.md" tabId={1} />);
+    fireEvent.click(await screen.findByRole('button', { name: /编辑/ }));
+    await waitFor(() => expect(screen.getByTestId('md-editor-stub')).toBeDefined());
+    fireEvent.change(screen.getByTestId('md-editor-stub'), { target: { value: '# saved' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /完成/ }));
+    await waitFor(() => expect(screen.getByText('未保存的更改')).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: '保存并继续' }));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('md-editor-stub')).toBeNull();
+      expect(mockInvoke).toHaveBeenCalledWith('file.write', {
+        path: 'C:\\docs\\a.md',
+        content: '# saved',
+      });
     });
   });
 });

@@ -520,9 +520,10 @@ function FileViewerInner({
 
   return (
     <div className="relative flex h-full flex-col bg-surface text-text">
-      {/* 右上角 编辑/完成 切换按钮（编辑会话入口；可编辑性见 editable 判定） */}
+      {/* 编辑/完成 切换按钮行：独立 flex 头部行（非悬浮），内容区从其下方开始——
+       * 正文与按钮互不遮挡，同时为正文提供顶部留白（2026-08-30 用户反馈） */}
       {showEditToggle && (
-        <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5">
+        <div className="flex h-11 shrink-0 items-center justify-end gap-1.5 px-3">
           {session.mode === 'edit' && (
             <>
               <Button size="sm" variant="secondary" onClick={() => void session.saveWithFallback()}>
@@ -637,9 +638,9 @@ function FileViewerInner({
           />
         )}
         {session.mode === 'read' && (renderAs === 'text' || renderAs === 'json') && (
-          <pre className="mx-auto max-w-3xl overflow-x-auto px-6 py-4 font-mono text-sm leading-relaxed">
-            {content}
-          </pre>
+          // 铺满全宽：滚动条（纵向+长行横向）挂在外层全宽滚动容器上，贴窗口边缘；
+          // 此前的 max-w 居中窄盒会把滚动条带到页面中部（2026-08-30 用户反馈）
+          <pre className="w-full px-6 py-4 font-mono text-sm leading-relaxed">{content}</pre>
         )}
         {session.mode === 'read' && (kind === 'binary' || kind === 'html') && (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-text-secondary">

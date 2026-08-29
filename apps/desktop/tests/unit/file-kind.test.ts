@@ -86,6 +86,35 @@ describe('classifyFileKind', () => {
   });
 });
 
+describe('classifyFileKind · 点文件（dotfile）整文件名', () => {
+  it('should classify .env as text (设置页宣称支持 .env)', () => {
+    expect(classifyFileKind('.env')).toBe('text');
+  });
+
+  it('should classify .gitignore / .editorconfig as text (整名键)', () => {
+    expect(classifyFileKind('.gitignore')).toBe('text');
+    expect(classifyFileKind('.editorconfig')).toBe('text');
+  });
+
+  it('should fall back to suffix for dotfile with known inner extension (.eslintrc.json → json)', () => {
+    expect(classifyFileKind('.eslintrc.json')).toBe('json');
+    expect(classifyFileKind('.prettierrc.yml')).toBe('text');
+  });
+
+  it('should classify dotfile of known media suffix (.mp3 → audio)', () => {
+    expect(classifyFileKind('.mp3')).toBe('audio');
+  });
+
+  it('should classify unknown dotfile as binary', () => {
+    expect(classifyFileKind('.unknownrc')).toBe('binary');
+    expect(classifyFileKind('.env.production')).toBe('binary');
+  });
+
+  it('should be case-insensitive for dotfile full names (.ENV → text)', () => {
+    expect(classifyFileKind('.ENV')).toBe('text');
+  });
+});
+
 describe('inferMimeType', () => {
   it('should return mapped mime type', () => {
     expect(inferMimeType('a.mp3')).toBe('audio/mpeg');

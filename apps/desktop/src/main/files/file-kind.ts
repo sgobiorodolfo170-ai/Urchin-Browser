@@ -9,6 +9,8 @@
  * 设计理由（安全优先）：
  * 未知/无扩展名文件一律归 binary，不做文本嗅探——避免二进制内容被当 UTF-8
  * 读入渲染层产生乱码与潜在渲染问题；用户可改扩展名或在外部程序中打开。
+ * 例外：点文件（.env / .gitignore 等整名以点开头）按「去点全名」查表，
+ * 与设置页「默认应用」宣称的支持清单保持一致（见 classifyFileKind）。
  * 纯函数模块，无 IO，便于单元测试。
  */
 import type { FileKind } from '@urchin/ipc-contract';
@@ -152,12 +154,21 @@ export function getExt(name: string): string {
 /**
  * 按文件名分类文件类型。
  *
+ * 点文件（.env / .gitignore 等整名以点开头）经 getExt 取不到后缀（返回空串），
+ * 会错误落入 binary——先按「去点全名」查表（EXT_KIND 的 env/gitignore/editorconfig
+ * 等键同时承担「xxx.env 后缀」与「.env 整名」两种语义）；未命中再回退 getExt
+ * （如 .eslintrc.json 取内层 json），仍未知才归 binary。
+ *
  * @param name 文件名
  * @returns kind：分类表命中返回对应类型，未知/无扩展名返回 binary
  */
 export function classifyFileKind(name: string): FileKind {
-  const ext = getExt(name);
-  return EXT_KIND[ext] ?? 'binary';
+  const lower = name.toLowerCase();
+  if (lower.startsWith('.')) {
+    const byFullName = EXT_KIND[lower.slice(1)];
+    if (byFullName) return byFullName;
+  }
+  return EXT_KIND[getExt(name)] ?? 'binary';
 }
 
 /**
@@ -176,7 +187,8 @@ export function inferMimeType(name: string): string {
  * 供「默认应用」关联功能使用：把 EXT_KIND 分类表作为扩展名单一真源，
  * 关联注册的扩展名与查看器类型分类永远不漂移。
  * 注意：EXT_KIND 含 gitignore/editorconfig 等 dotfile 语义键（对应 .gitignore /
- * .editorconfig 整文件名，非文件后缀），已显式排除。
+ * .editorconfig 整文件名，经 classifyFileKind 的点文件全名查表命中；env 键同理
+ * 兼顾 xxx.env 后缀与 .env 整名），这些键非文件后缀语义，已显式排除出关联注册。
  *
  * @param kind 文件类型分类
  * @returns 该 kind 对应的扩展名数组（不含点、小写），未知 kind 返回空数组

@@ -97,88 +97,92 @@ export function MarkdownEditor({ initialContent, onChange }: MarkdownEditorProps
 
   return (
     <div className="flex h-full flex-col">
-      {/* 格式工具条（v1 最小集：撤销重做/加粗/斜体/删除线/标题/列表/引用/代码） */}
-      <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border bg-surface-secondary px-3 py-1.5">
-        <ToolButton title="撤销" onClick={() => chain().undo().run()}>
-          <Undo2 className="h-4 w-4" />
-        </ToolButton>
-        <ToolButton title="重做" onClick={() => chain().redo().run()}>
-          <Redo2 className="h-4 w-4" />
-        </ToolButton>
-        <span className="mx-1 h-4 w-px bg-border" />
-        <ToolButton
-          title="加粗"
-          active={editor.isActive('bold')}
-          onClick={() => chain().toggleBold().run()}
-        >
-          <Bold className="h-4 w-4" />
-        </ToolButton>
-        <ToolButton
-          title="斜体"
-          active={editor.isActive('italic')}
-          onClick={() => chain().toggleItalic().run()}
-        >
-          <Italic className="h-4 w-4" />
-        </ToolButton>
-        <ToolButton
-          title="删除线"
-          active={editor.isActive('strike')}
-          onClick={() => chain().toggleStrike().run()}
-        >
-          <Strikethrough className="h-4 w-4" />
-        </ToolButton>
-        <span className="mx-1 h-4 w-px bg-border" />
-        <ToolButton
-          title="二级标题"
-          active={editor.isActive('heading', { level: 2 })}
-          onClick={() => chain().toggleHeading({ level: 2 }).run()}
-        >
-          <Heading2 className="h-4 w-4" />
-        </ToolButton>
-        <ToolButton
-          title="三级标题"
-          active={editor.isActive('heading', { level: 3 })}
-          onClick={() => chain().toggleHeading({ level: 3 }).run()}
-        >
-          <Heading3 className="h-4 w-4" />
-        </ToolButton>
-        <span className="mx-1 h-4 w-px bg-border" />
-        <ToolButton
-          title="无序列表"
-          active={editor.isActive('bulletList')}
-          onClick={() => chain().toggleBulletList().run()}
-        >
-          <List className="h-4 w-4" />
-        </ToolButton>
-        <ToolButton
-          title="有序列表"
-          active={editor.isActive('orderedList')}
-          onClick={() => chain().toggleOrderedList().run()}
-        >
-          <ListOrdered className="h-4 w-4" />
-        </ToolButton>
-        <ToolButton
-          title="引用"
-          active={editor.isActive('blockquote')}
-          onClick={() => chain().toggleBlockquote().run()}
-        >
-          <Quote className="h-4 w-4" />
-        </ToolButton>
-        <span className="mx-1 h-4 w-px bg-border" />
-        <ToolButton
-          title="行内代码"
-          active={editor.isActive('code')}
-          onClick={() => chain().toggleCode().run()}
-        >
-          <Code className="h-4 w-4" />
-        </ToolButton>
-        <ToolButton
-          title="代码块"
-          active={editor.isActive('codeBlock')}
-          onClick={() => chain().toggleCodeBlock().run()}
-        >
-          <Braces className="h-4 w-4" />
-        </ToolButton>
+      {/* 格式工具条（v1 最小集：撤销重做/加粗/斜体/删除线/标题/列表/引用/代码）。
+       * 内层与正文同宽（max-w-3xl + px-6）居中，按钮左缘与正文左缘对齐；
+       * 外层条背景/分隔线保持通栏 */}
+      <div className="shrink-0 border-b border-border bg-surface-secondary px-3 py-1.5">
+        <div className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-0.5 px-6">
+          <ToolButton title="撤销" onClick={() => chain().undo().run()}>
+            <Undo2 className="h-4 w-4" />
+          </ToolButton>
+          <ToolButton title="重做" onClick={() => chain().redo().run()}>
+            <Redo2 className="h-4 w-4" />
+          </ToolButton>
+          <span className="mx-1 h-4 w-px bg-border" />
+          <ToolButton
+            title="加粗"
+            active={editor.isActive('bold')}
+            onClick={() => chain().toggleBold().run()}
+          >
+            <Bold className="h-4 w-4" />
+          </ToolButton>
+          <ToolButton
+            title="斜体"
+            active={editor.isActive('italic')}
+            onClick={() => chain().toggleItalic().run()}
+          >
+            <Italic className="h-4 w-4" />
+          </ToolButton>
+          <ToolButton
+            title="删除线"
+            active={editor.isActive('strike')}
+            onClick={() => chain().toggleStrike().run()}
+          >
+            <Strikethrough className="h-4 w-4" />
+          </ToolButton>
+          <span className="mx-1 h-4 w-px bg-border" />
+          <ToolButton
+            title="二级标题"
+            active={editor.isActive('heading', { level: 2 })}
+            onClick={() => chain().toggleHeading({ level: 2 }).run()}
+          >
+            <Heading2 className="h-4 w-4" />
+          </ToolButton>
+          <ToolButton
+            title="三级标题"
+            active={editor.isActive('heading', { level: 3 })}
+            onClick={() => chain().toggleHeading({ level: 3 }).run()}
+          >
+            <Heading3 className="h-4 w-4" />
+          </ToolButton>
+          <span className="mx-1 h-4 w-px bg-border" />
+          <ToolButton
+            title="无序列表"
+            active={editor.isActive('bulletList')}
+            onClick={() => chain().toggleBulletList().run()}
+          >
+            <List className="h-4 w-4" />
+          </ToolButton>
+          <ToolButton
+            title="有序列表"
+            active={editor.isActive('orderedList')}
+            onClick={() => chain().toggleOrderedList().run()}
+          >
+            <ListOrdered className="h-4 w-4" />
+          </ToolButton>
+          <ToolButton
+            title="引用"
+            active={editor.isActive('blockquote')}
+            onClick={() => chain().toggleBlockquote().run()}
+          >
+            <Quote className="h-4 w-4" />
+          </ToolButton>
+          <span className="mx-1 h-4 w-px bg-border" />
+          <ToolButton
+            title="行内代码"
+            active={editor.isActive('code')}
+            onClick={() => chain().toggleCode().run()}
+          >
+            <Code className="h-4 w-4" />
+          </ToolButton>
+          <ToolButton
+            title="代码块"
+            active={editor.isActive('codeBlock')}
+            onClick={() => chain().toggleCodeBlock().run()}
+          >
+            <Braces className="h-4 w-4" />
+          </ToolButton>
+        </div>
       </div>
 
       {/* 编辑区：复用阅读态 prose-viewer 排版（globals.css），编辑器自身去掉外框 */}

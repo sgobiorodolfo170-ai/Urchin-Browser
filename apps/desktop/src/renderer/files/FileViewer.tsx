@@ -529,7 +529,7 @@ function FileViewerInner({
               <Button size="sm" variant="secondary" onClick={() => void session.saveWithFallback()}>
                 保存
               </Button>
-              <Button size="sm" variant="ghost" onClick={handleSaveAs}>
+              <Button size="sm" variant="secondary" onClick={handleSaveAs}>
                 另存为
               </Button>
             </>

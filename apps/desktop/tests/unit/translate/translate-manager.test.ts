@@ -8,7 +8,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   TranslateManager,
-  TRANSLATE_PROGRESS_CHANNEL,
   type TranslateProgressPayload,
 } from '../../../src/main/translate/translate-manager';
 import { EngineError } from '../../../src/main/translate/engines/types';
@@ -150,15 +149,17 @@ function createEnv(options?: {
     ),
   };
   const resolveProxy = vi.fn().mockResolvedValue(options?.proxyInfo ?? 'DIRECT');
+  const progressEvents: TranslateProgressPayload[] = [];
 
   const manager = new TranslateManager({
     tabManager,
     settings: { get: (key: string) => settings.get(key) },
     resolveProxy,
     engines: { microsoft, google },
+    notifyProgress: (tabId, payload) => progressEvents.push(payload),
   });
 
-  return { manager, wc, tabs, settings, microsoft, google, resolveProxy };
+  return { manager, wc, tabs, settings, microsoft, google, resolveProxy, progressEvents };
 }
 
 afterEach(() => {
@@ -186,9 +187,7 @@ describe('TranslateManager.start（整页翻译主干）', () => {
       { id: 1, text: '【译】Hello' },
       { id: 2, text: '【译】World' },
     ]);
-    const phases = env.wc._sent
-      .filter((e) => e.channel === TRANSLATE_PROGRESS_CHANNEL)
-      .map((e) => e.data.phase);
+    const phases = env.progressEvents.map((e) => e.phase);
     expect(phases).toContain('collecting');
     expect(phases).toContain('translating');
     expect(phases).toContain('done');
@@ -225,7 +224,7 @@ describe('TranslateManager.start（整页翻译主干）', () => {
     await env.manager.whenSettled(1);
 
     expect(env.google.translateBatch).toHaveBeenCalled();
-    const messages = env.wc._sent.map((e) => e.data.message ?? '');
+    const messages = env.progressEvents.map((e) => e.message ?? '');
     expect(messages.some((m) => m.includes('谷歌'))).toBe(true);
     expect(env.manager.getStatus(1)).toMatchObject({ active: true, resolvedEngine: 'google' });
   });
@@ -239,8 +238,8 @@ describe('TranslateManager.start（整页翻译主干）', () => {
     await env.manager.whenSettled(1);
 
     expect(env.wc._applied).toHaveLength(0);
-    const done = env.wc._sent.find((e) => e.data.phase === 'done');
-    expect(done?.data.message).toContain('2 段翻译失败');
+    const done = env.progressEvents.find((e) => e.phase === 'done');
+    expect(done?.message).toContain('2 段翻译失败');
   });
 
   it('should skip when page language matches target language', async () => {

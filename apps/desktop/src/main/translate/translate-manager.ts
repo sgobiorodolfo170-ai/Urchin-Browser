@@ -86,6 +86,12 @@ export interface TranslateManagerDeps {
   readonly resolveProxy: (url: string) => Promise<string>;
   /** 引擎注册表（TD6）：生产装配方注入 net.fetch 版双引擎；单测注入 mock */
   readonly engines: Record<EngineId, TranslateEngine>;
+  /**
+   * 进度事件出口（dev.82 修正：必须发往主窗口渲染层而非页面 webContents——
+   * 页面 world 无 preload 无监听能力，发错对象事件即丢失）。生产注入
+   * sendToMainWindow（TRANSLATE_PROGRESS_CHANNEL）；单测注入收集数组。
+   */
+  readonly notifyProgress: (tabId: number, payload: TranslateProgressPayload) => void;
   readonly pollIntervalMs?: number;
 }
 
@@ -750,11 +756,7 @@ export class TranslateManager {
   }
 
   private emitProgress(tabId: number, payload: Omit<TranslateProgressPayload, 'tabId'>): void {
-    const tab = this.deps.tabManager.getTab(tabId);
-    tab?.webContents.send?.(TRANSLATE_PROGRESS_CHANNEL, {
-      tabId,
-      ...payload,
-    } satisfies TranslateProgressPayload);
+    this.deps.notifyProgress(tabId, { tabId, ...payload });
   }
 
   /** 带超时保护的 executeJavaScript（page-context extractor 同款竞速模式） */

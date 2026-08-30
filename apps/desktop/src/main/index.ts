@@ -80,7 +80,7 @@ import { CaptureOverlay } from './screenshots/capture-overlay';
 import { registerScreenshotHandlers } from './screenshots/register-handlers';
 import { installTabContextMenu, handleContextMenu } from './context-menu';
 import { installZoomControl, applyZoomByDelta } from './zoom';
-import { TranslateManager } from './translate/translate-manager';
+import { TranslateManager, TRANSLATE_PROGRESS_CHANNEL } from './translate/translate-manager';
 import { registerTranslateHandlers } from './translate/register-handlers';
 import { createMicrosoftEngine } from './translate/engines/microsoft';
 import { createGoogleEngine } from './translate/engines/google';
@@ -395,13 +395,31 @@ function registerIpcHandlers(): void {
     });
     return { status: res.status, text: await res.text() };
   };
+  // E2E 注入口（dev.82）：URCHIN_TRANSLATE_TEST_BASE 指向本地假翻译服务时，
+  // 双引擎端点整体切换到该基址（/microsoft/auth、/microsoft/translate、/google/translate_a/t），
+  // 生产环境未设置该变量时使用真实免费接口端点。
+  const translateTestBase = process.env.URCHIN_TRANSLATE_TEST_BASE;
   const translateManager = new TranslateManager({
     tabManager,
     settings: settingsManager,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
+    // 进度事件发往主窗口渲染层（页面 world 无监听能力，dev.82 修正）
+    notifyProgress: (tabId, payload) => sendToMainWindow(TRANSLATE_PROGRESS_CHANNEL, payload),
     engines: {
-      microsoft: createMicrosoftEngine({ transport: translateHttpTransport }),
-      google: createGoogleEngine({ transport: translateHttpTransport }),
+      microsoft: createMicrosoftEngine(
+        translateTestBase
+          ? {
+              transport: translateHttpTransport,
+              authUrl: `${translateTestBase}/microsoft/auth`,
+              baseUrl: `${translateTestBase}/microsoft`,
+            }
+          : { transport: translateHttpTransport },
+      ),
+      google: createGoogleEngine(
+        translateTestBase
+          ? { transport: translateHttpTransport, baseUrl: `${translateTestBase}/google` }
+          : { transport: translateHttpTransport },
+      ),
     },
   });
   registerTranslateHandlers({ ipcMain, translateManager, tabManager });

@@ -132,6 +132,24 @@ export function useEditSession(opts: {
     setDirtyBoth(false);
   }, [autoSaver, setDirtyBoth]);
 
+  // 路径切换复位（关键防错）：FileViewer 在「文件查看标签 → 文件查看标签」切换时
+  // 不卸载（激活标签始终是 file-viewer），仅 path 变化——编辑会话若不复位，
+  // 旧文件的编辑态（含旧内容与保存目标）会套在新文件上：显示旧内容、
+  // 保存把旧内容写进新文件。脏状态不可能走到这里（脏时切换被守卫拦截，
+  // 保存/放弃后才会放行），复位丢弃的只是与磁盘一致的只读编辑态。
+  useEffect(() => {
+    setMode('read');
+    autoSaver.cancel();
+    setDirtyBoth(false);
+    valueRef.current = '';
+    savedRef.current = '';
+    keyRef.current = '';
+    setValueState('');
+    setVersion((v) => v + 1);
+    setConfirm(null);
+    confirmResolveRef.current = null;
+  }, [path, autoSaver, setDirtyBoth]);
+
   const discard = useCallback(async (): Promise<void> => {
     autoSaver.cancel();
     valueRef.current = savedRef.current;

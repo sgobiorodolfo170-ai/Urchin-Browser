@@ -30,14 +30,22 @@ import {
 import { HEAD_PREVIEW_BYTES, planTextRender } from '../../src/renderer/files/read-plan';
 import { setEditGuardSession } from '../../src/renderer/lib/edit-guard';
 
-// 编辑器组件以桩替换（Tiptap 不进 jsdom；真实编辑器由 e2e 覆盖）
+// 编辑器组件以桩替换（Tiptap 不进 jsdom；真实编辑器由 e2e 覆盖）。
+// 桩同时渲染 actions 槽（验证 FileViewer 向工具条注入保存/另存为/完成）。
 vi.mock('../../src/renderer/files/editor/MarkdownEditor', () => ({
-  MarkdownEditor: (props: { initialContent: string; onChange: (v: string) => void }) => (
-    <textarea
-      data-testid="md-editor-stub"
-      defaultValue={props.initialContent}
-      onChange={(e) => props.onChange(e.target.value)}
-    />
+  MarkdownEditor: (props: {
+    initialContent: string;
+    onChange: (v: string) => void;
+    actions?: React.ReactNode;
+  }) => (
+    <div>
+      <div data-testid="md-toolbar-actions">{props.actions}</div>
+      <textarea
+        data-testid="md-editor-stub"
+        defaultValue={props.initialContent}
+        onChange={(e) => props.onChange(e.target.value)}
+      />
+    </div>
   ),
 }));
 vi.mock('../../src/renderer/files/editor/PlainTextEditor', () => ({

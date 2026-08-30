@@ -216,6 +216,29 @@ describe('useEditSession', () => {
     );
   });
 
+  it('resets session when path changes (stale edit state must not leak to new file)', async () => {
+    const { result, rerender } = renderHook(
+      (props: { path: string }) =>
+        useEditSession({ path: props.path, maxBytes: 1024, onToast: () => undefined }),
+      { initialProps: { path: 'C:\\docs\\a.md' } },
+    );
+    act(() => result.current.startEdit());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => result.current.setValue('a content'));
+    expect(result.current.mode).toBe('edit');
+
+    // 换文件（同组件实例）：会话复位到阅读态，不残留旧内容
+    await act(async () => {
+      rerender({ path: 'C:\\docs\\b.txt' });
+      await Promise.resolve();
+    });
+    expect(result.current.mode).toBe('read');
+    expect(result.current.dirty).toBe(false);
+    expect(result.current.value).toBe('');
+  });
+
   it('registers guard session while editing (tabId) and clears on unmount', async () => {
     const { result, unmount } = setup({ tabId: 7 });
     expect(getEditGuardSession()).toBeNull();

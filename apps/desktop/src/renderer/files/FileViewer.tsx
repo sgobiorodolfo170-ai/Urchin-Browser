@@ -520,37 +520,42 @@ function FileViewerInner({
 
   return (
     <div className="relative flex h-full flex-col bg-surface text-text">
-      {/* 编辑/完成 切换按钮行：独立 flex 头部行（非悬浮），内容区从其下方开始——
-       * 正文与按钮互不遮挡，同时为正文提供顶部留白（2026-08-30 用户反馈） */}
-      {showEditToggle && (
-        <div className="flex h-11 shrink-0 items-center justify-end gap-1.5 px-3">
-          {session.mode === 'edit' && (
-            <>
-              <Button size="sm" variant="secondary" onClick={() => void session.saveWithFallback()}>
-                保存
+      {/* 编辑模式动作按钮（保存/另存为/完成）：Markdown 编辑时注入编辑器工具条右端
+       * （与格式按钮同一行），其余形态用独立头部行；showEditToggle 限定文本家族 */}
+      {showEditToggle && !(session.mode === 'edit' && meta?.kind === 'markdown') ? (
+        <div className="flex h-11 shrink-0 items-center px-3">
+          {/* 内层与正文列同宽居中：按钮右缘对齐正文列右缘（非网页最右侧） */}
+          <div className="mx-auto flex w-full max-w-3xl items-center justify-end gap-1.5 px-6">
+            {session.mode === 'edit' ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void session.saveWithFallback()}
+                >
+                  保存
+                </Button>
+                <Button size="sm" variant="secondary" onClick={handleSaveAs}>
+                  另存为
+                </Button>
+                <Button size="sm" variant="primary" onClick={handleFinishEdit}>
+                  <Check className="mr-1 h-3.5 w-3.5" /> 完成
+                </Button>
+              </>
+            ) : (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!editable || session.starting}
+                title={editable ? '进入编辑' : '该文件不支持编辑（类型或体量超出限制）'}
+                onClick={session.startEdit}
+              >
+                <Pencil className="mr-1 h-3.5 w-3.5" /> 编辑
               </Button>
-              <Button size="sm" variant="secondary" onClick={handleSaveAs}>
-                另存为
-              </Button>
-            </>
-          )}
-          {session.mode === 'edit' ? (
-            <Button size="sm" variant="primary" onClick={handleFinishEdit}>
-              <Check className="mr-1 h-3.5 w-3.5" /> 完成
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={!editable || session.starting}
-              title={editable ? '进入编辑' : '该文件不支持编辑（类型或体量超出限制）'}
-              onClick={session.startEdit}
-            >
-              <Pencil className="mr-1 h-3.5 w-3.5" /> 编辑
-            </Button>
-          )}
+            )}
+          </div>
         </div>
-      )}
+      ) : null}
       {/* 预览横幅：超大文件头部截断预览（read-plan 护栏；md 降级必然伴随截断） */}
       {previewNote && (
         <div className="shrink-0 border-b border-border bg-warning/10 px-6 py-2 text-xs text-text-secondary">
@@ -567,6 +572,23 @@ function FileViewerInner({
             key={session.version}
             initialContent={session.value}
             onChange={session.setValue}
+            actions={
+              <>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void session.saveWithFallback()}
+                >
+                  保存
+                </Button>
+                <Button size="sm" variant="secondary" onClick={handleSaveAs}>
+                  另存为
+                </Button>
+                <Button size="sm" variant="primary" onClick={handleFinishEdit}>
+                  <Check className="mr-1 h-3.5 w-3.5" /> 完成
+                </Button>
+              </>
+            }
           />
         )}
         {session.mode === 'edit' && meta?.kind !== 'markdown' && (

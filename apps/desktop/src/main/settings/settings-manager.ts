@@ -102,6 +102,15 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   ['summary.baseUrl', ''],
   // 调试选项：右侧边栏折叠态下鼠标停留后延迟展开的时长（毫秒，默认 300ms）
   ['debug.sidebarHoverDelay', 300],
+  // 网页翻译（M24，dev.79）：目标语言（2026-08-30 评审确认 zh-CN 默认必含；
+  // 全集见 ipc-schema TRANSLATE_TARGET_LANGS）。
+  ['translate.targetLang', 'zh-CN'],
+  // 引擎选择：auto = 直连微软优先 / 走系统代理谷歌优先（resolveProxy 判定，双引擎互为兜底）；
+  // 可手动锁定 'microsoft' | 'google'。免费接口引擎，无敏感键。
+  ['translate.engine', 'auto'],
+  // 自动翻译开关（TD4 修订：opt-in 默认关）——开启后外语页（documentElement.lang 判定）
+  // 加载完成自动翻译为 translate.targetLang；关闭则仅手动触发。
+  ['translate.autoTranslate', false],
   // 主窗口几何记忆（2026-08-28 用户需求）：{ x, y, width, height, isMaximized }，
   // 由 main/windows/window-state.ts 读写（resize/move/maximize 防抖落盘，启动恢复）。
   // null = 尚无记录（首次启动/从未改动），恢复逻辑回退默认 1280x800。

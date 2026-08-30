@@ -1283,6 +1283,91 @@ export const summaryDeleteResSchema = z.object({
 export type SummaryDeleteRes = z.infer<typeof summaryDeleteResSchema>;
 
 // ============================================================================
+// Translate 域（M24 网页翻译 · 免费接口引擎，与 AI Provider / pi 模块完全隔离）
+// ============================================================================
+
+/**
+ * v1 支持的目标语言（2026-08-30 评审确认：zh-CN 必含且为默认）。
+ * 各引擎内部做自身代码映射（微软 zh-Hans/zh-Hant，谷歌原样），对外统一用本表代码。
+ */
+export const TRANSLATE_TARGET_LANGS = [
+  'zh-CN',
+  'zh-TW',
+  'en',
+  'ja',
+  'ko',
+  'fr',
+  'de',
+  'ru',
+  'es',
+] as const;
+export type TranslateTargetLang = (typeof TRANSLATE_TARGET_LANGS)[number];
+export const translateTargetLangSchema = z.enum(TRANSLATE_TARGET_LANGS);
+
+/**
+ * 引擎选择：auto = 按网络环境自动（直连微软优先 / 走系统代理谷歌优先，双引擎互为兜底，
+ * 判定规则见 main/translate/translate-manager.ts §7.5 设计），或手动锁定某一引擎。
+ */
+export const translateEngineSettingSchema = z.enum(['auto', 'microsoft', 'google']);
+export type TranslateEngineSetting = z.infer<typeof translateEngineSettingSchema>;
+
+/** translate.start：对指定 tab 启动整页翻译（已激活时先恢复原文再重新采集）；返回后经 translate:progress 事件推送进度 */
+export const translateStartReqSchema = z.object({
+  tabId: tabIdSchema,
+  targetLang: translateTargetLangSchema.optional(),
+  engine: translateEngineSettingSchema.optional(),
+});
+export type TranslateStartReq = z.infer<typeof translateStartReqSchema>;
+
+export const translateStartResSchema = z.object({
+  status: z.enum(['started', 'skipped']),
+  /** 源语言（页面 lang 属性或引擎检测） */
+  detectedLang: z.string().optional(),
+  segmentCount: z.number().int().nonnegative().optional(),
+  message: z.string().optional(),
+});
+export type TranslateStartRes = z.infer<typeof translateStartResSchema>;
+
+/** translate.stop：停止翻译并恢复原文 */
+export const translateStopReqSchema = z.object({ tabId: tabIdSchema });
+export type TranslateStopReq = z.infer<typeof translateStopReqSchema>;
+
+export const translateStopResSchema = z.object({
+  /** restored = 曾激活且已恢复；idle = 本就未在翻译 */
+  status: z.enum(['restored', 'idle']),
+});
+export type TranslateStopRes = z.infer<typeof translateStopResSchema>;
+
+/** translate.getStatus：地址栏翻译按钮态查询 */
+export const translateGetStatusReqSchema = z.object({ tabId: tabIdSchema });
+export type TranslateGetStatusReq = z.infer<typeof translateGetStatusReqSchema>;
+
+export const translateGetStatusResSchema = z.object({
+  active: z.boolean(),
+  /** 设置中的引擎选择（auto/microsoft/google） */
+  engine: translateEngineSettingSchema.optional(),
+  /** auto 解析 / 手动锁定后实际生效的引擎（failover 切换后随之更新） */
+  resolvedEngine: z.enum(['microsoft', 'google']).optional(),
+  targetLang: z.string().optional(),
+  segmentCount: z.number().int().nonnegative().optional(),
+});
+export type TranslateGetStatusRes = z.infer<typeof translateGetStatusResSchema>;
+
+/** translate.translateSelection：划词翻译（右键菜单 selectionText，不走页面注入） */
+export const translateSelectionReqSchema = z.object({
+  tabId: tabIdSchema,
+  text: z.string().min(1).max(5000),
+  targetLang: translateTargetLangSchema.optional(),
+});
+export type TranslateSelectionReq = z.infer<typeof translateSelectionReqSchema>;
+
+export const translateSelectionResSchema = z.object({
+  result: z.string(),
+  detectedLang: z.string().optional(),
+});
+export type TranslateSelectionRes = z.infer<typeof translateSelectionResSchema>;
+
+// ============================================================================
 // IPC Schema 总表
 // ============================================================================
 
@@ -1379,6 +1464,14 @@ export const ipcSchema = {
   'summary.run': { req: summaryRunReqSchema, res: summaryRunResSchema },
   'summary.open': { req: summaryOpenReqSchema, res: summaryOpenResSchema },
   'summary.delete': { req: summaryDeleteReqSchema, res: summaryDeleteResSchema },
+  // Translate 域（M24 网页翻译 · 免费双引擎，进度经 translate:progress 事件推送）
+  'translate.start': { req: translateStartReqSchema, res: translateStartResSchema },
+  'translate.stop': { req: translateStopReqSchema, res: translateStopResSchema },
+  'translate.getStatus': { req: translateGetStatusReqSchema, res: translateGetStatusResSchema },
+  'translate.translateSelection': {
+    req: translateSelectionReqSchema,
+    res: translateSelectionResSchema,
+  },
 } as const;
 
 /** IPC schema 的类型推导工具：取 channel 名联合。 */

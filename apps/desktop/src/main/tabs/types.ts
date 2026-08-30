@@ -53,6 +53,10 @@ export interface WebContentsLike {
   /** 注册事件监听 */
   on(event: string, handler: (...args: unknown[]) => void): void;
   once(event: string, handler: (...args: unknown[]) => void): void;
+  /** 移除事件监听（可选，Electron webContents 才有；翻译导航钩子卸载用） */
+  removeListener?(event: string, handler: (...args: unknown[]) => void): void;
+  /** 主进程 → 渲染进程事件（可选，Electron webContents 才有；翻译进度推送用） */
+  send?(channel: string, data: unknown): void;
   /** 在页面上下文执行脚本并返回结果（M14 PageContextExtractor 用） */
   executeJavaScript<T = unknown>(code: string, userGesture?: boolean): Promise<T>;
   /** 向页面注入 CSS（广告浮窗屏蔽用；可选，Electron webContents 才有） */

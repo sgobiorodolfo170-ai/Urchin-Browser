@@ -14,7 +14,7 @@
 // Polyfill 必须在所有其他模块之前加载：undici 顶层 require node:worker_threads
 // 并解构 markAsUncloneable（Node 22.3+ 才有），Electron 32/Node 20 缺失会导致启动崩溃。
 import './polyfills/worker-threads-polyfill';
-import { app, ipcMain, dialog, BrowserWindow, nativeTheme, screen, session } from 'electron';
+import { app, ipcMain, dialog, BrowserWindow, nativeTheme, screen, session, net } from 'electron';
 import { join, basename } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createLogger } from '@urchin/logger';
@@ -80,6 +80,11 @@ import { CaptureOverlay } from './screenshots/capture-overlay';
 import { registerScreenshotHandlers } from './screenshots/register-handlers';
 import { installTabContextMenu, handleContextMenu } from './context-menu';
 import { installZoomControl, applyZoomByDelta } from './zoom';
+import { TranslateManager } from './translate/translate-manager';
+import { registerTranslateHandlers } from './translate/register-handlers';
+import { createMicrosoftEngine } from './translate/engines/microsoft';
+import { createGoogleEngine } from './translate/engines/google';
+import type { HttpTransport } from './translate/engines/types';
 import { resolvePortableUserData } from './portable';
 
 const log = createLogger('main');
@@ -288,6 +293,8 @@ let disposeZoomControl: (() => void) | null = null;
 let disposeCwdPicker: (() => void) | null = null;
 /** pi 页体验增强注入卸载句柄（dev.45，installPiWebPageEnhance 返回）。 */
 let disposePiEnhance: (() => void) | null = null;
+/** 网页翻译管理器卸载句柄（dev.79，M24：停轮询/移除导航钩子/清状态）。 */
+let disposeTranslateManager: (() => void) | null = null;
 /** 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
 let bookmarkPanel: BookmarkPanel | null = null;
 /**
@@ -363,6 +370,30 @@ function registerIpcHandlers(): void {
 
   // M23 download 域 handler
   registerDownloadHandlers(ipcMain, downloadManager);
+
+  // M24 网页翻译域 handler（dev.79）：微软/谷歌免费双引擎互为兜底（TD2）。
+  // HTTP 经 net.fetch（Chromium 网络栈）——系统代理下谷歌可达，auto 引擎的
+  // resolveProxy 判定（直连微软优先/走代理谷歌优先）才与真实路由一致。
+  const translateHttpTransport: HttpTransport = async (url, init) => {
+    const res = await net.fetch(url, {
+      method: init?.method,
+      headers: init?.headers,
+      body: init?.body,
+      signal: init?.signal,
+    });
+    return { status: res.status, text: await res.text() };
+  };
+  const translateManager = new TranslateManager({
+    tabManager,
+    settings: settingsManager,
+    resolveProxy: (url) => session.defaultSession.resolveProxy(url),
+    engines: {
+      microsoft: createMicrosoftEngine({ transport: translateHttpTransport }),
+      google: createGoogleEngine({ transport: translateHttpTransport }),
+    },
+  });
+  registerTranslateHandlers({ ipcMain, translateManager, tabManager });
+  disposeTranslateManager = () => translateManager.dispose();
 
   // 截图域 handler（地址栏截图按钮）：弹出整屏框选覆盖窗口，确认后裁剪保存到
   // <数据目录>/screenshots/。CaptureOverlay 单例持覆盖窗口与截图缓存。
@@ -1454,6 +1485,16 @@ async function performCleanup(): Promise<void> {
         log.error('Failed to dispose pi enhance on quit', { error: String(e) });
       }
       disposePiEnhance = null;
+    }
+
+    // 4.9 网页翻译管理器清理（dev.79）：停 pending 轮询、移除 did-finish-load 钩子、清每 tab 状态
+    if (disposeTranslateManager) {
+      try {
+        disposeTranslateManager();
+      } catch (e) {
+        log.error('Failed to dispose translate manager on quit', { error: String(e) });
+      }
+      disposeTranslateManager = null;
     }
 
     // 5. 宽限期：utility process 的 kill 信号已发出但进程实际退出需要短暂时间，

@@ -87,12 +87,13 @@ describe('SettingsManager', () => {
 
     const entries = mgr.getAll();
 
-    // 默认 19 项（language/searchEngine/downloadsPath/data.directory/blockTrackers/doNotTrack/blockAds/links.openInNewTab/
+    // 默认 24 项（language/searchEngine/downloadsPath/data.directory/blockTrackers/doNotTrack/blockAds/links.openInNewTab/
     //   ai.model/ai.apiKey/ai.providerId/ai.baseUrl/ai.providerProfiles/
     //   summary.model/summary.apiKey/summary.providerId/summary.baseUrl/
     //   debug.sidebarHoverDelay/ui.rightSidebarAutoExpand/home.frequentSites/
-    //   window.bounds 窗口几何记忆，主进程内部状态） + 自定义 1 项
-    expect(entries).toHaveLength(22);
+    //   window.bounds 窗口几何记忆，主进程内部状态/
+    //   translate.targetLang/translate.engine/translate.autoTranslate 网页翻译 dev.79） + 自定义 1 项
+    expect(entries).toHaveLength(25);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');
@@ -113,6 +114,9 @@ describe('SettingsManager', () => {
     expect(keys).toContain('summary.providerId');
     expect(keys).toContain('summary.baseUrl');
     expect(keys).toContain('window.bounds');
+    expect(keys).toContain('translate.targetLang');
+    expect(keys).toContain('translate.engine');
+    expect(keys).toContain('translate.autoTranslate');
     expect(keys).toContain('customKey');
   });
 

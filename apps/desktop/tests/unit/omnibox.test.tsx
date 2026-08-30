@@ -168,3 +168,30 @@ describe('Omnibox', () => {
     expect(screen.getByLabelText<HTMLButtonElement>('提取网页内容并保存').disabled).toBe(true);
   });
 });
+
+// ===== 翻译按钮（M24 dev.81） =====
+
+describe('Omnibox 翻译按钮', () => {
+  it('should render translate button and trigger onTranslate on click', () => {
+    const onTranslate = vi.fn();
+    renderOmnibox({ onTranslate, translateActive: false, translateDisabled: false });
+    fireEvent.click(screen.getByLabelText('翻译网页'));
+    expect(onTranslate).toHaveBeenCalledTimes(1);
+  });
+
+  it('should switch to 恢复原文 label when translation is active', () => {
+    renderOmnibox({ onTranslate: vi.fn(), translateActive: true });
+    expect(screen.getByLabelText('恢复原文')).toBeTruthy();
+    expect(screen.queryByLabelText('翻译网页')).toBeNull();
+  });
+
+  it('should disable translate button for non-http(s) pages', () => {
+    renderOmnibox({ onTranslate: vi.fn(), translateDisabled: true });
+    expect(screen.getByLabelText('翻译网页')).toHaveProperty('disabled', true);
+  });
+
+  it('should disable translate button when no onTranslate provided', () => {
+    renderOmnibox({ onTranslate: undefined });
+    expect(screen.getByLabelText('翻译网页')).toHaveProperty('disabled', true);
+  });
+});

@@ -835,6 +835,117 @@ export function App() {
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
 
+  // ===== 网页翻译（M24 dev.81） =====
+
+  /** 翻译激活态镜像（活跃 tab；地址栏按钮高亮/恢复原文判定，主进程为权威源） */
+  const [translateActive, setTranslateActive] = useState(false);
+
+  /** 划词翻译结果卡（右键菜单 → 主进程翻译 → translate:selection-result 事件回传；坐标为窗口相对坐标） */
+  const [selectionCard, setSelectionCard] = useState<{
+    x: number;
+    y: number;
+    source: string;
+    result?: string;
+    error?: string;
+  } | null>(null);
+
+  /**
+   * 网页翻译开关（地址栏按钮）：未激活 → translate.start（引擎/目标语言取设置）；
+   * 激活 → translate.stop 恢复原文。进度经 translate:progress 事件推送（见下方订阅）。
+   */
+  const handleTranslate = useCallback(async () => {
+    if (!activeTabId) return;
+    try {
+      if (translateActive) {
+        await window.urchin.invoke('translate.stop', { tabId: activeTabId });
+        setTranslateActive(false);
+        setSummaryToast('已恢复原文');
+      } else {
+        const res = (await window.urchin.invoke('translate.start', { tabId: activeTabId })) as {
+          status: 'started' | 'skipped';
+          message?: string;
+          segmentCount?: number;
+        };
+        if (res.status === 'skipped') {
+          setSummaryToast('页面语言与目标语言一致，无需翻译');
+        } else {
+          setSummaryToast(`正在翻译（共 ${res.segmentCount ?? 0} 段）…`);
+        }
+      }
+    } catch (e) {
+      setSummaryToast(`翻译失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }, [activeTabId, translateActive]);
+
+  // 活跃 tab / URL 变化时刷新翻译激活态（导航自动重译由主进程自持，UI 仅镜像）
+  useEffect(() => {
+    if (!activeTabId) {
+      setTranslateActive(false);
+      return;
+    }
+    let cancelled = false;
+    window.urchin
+      .invoke('translate.getStatus', { tabId: activeTabId })
+      .then((res) => {
+        if (!cancelled) setTranslateActive((res as { active: boolean }).active);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTabId, activeTab?.url]);
+
+  // 翻译进度事件 + 划词结果卡事件订阅（只响应活跃 tab，避免后台 tab 噪音）
+  useEffect(() => {
+    const offProgress = window.urchin.on('translate:progress', (payload) => {
+      const data = payload as {
+        tabId: number;
+        phase: 'collecting' | 'translating' | 'done' | 'error';
+        done?: number;
+        total?: number;
+        message?: string;
+      };
+      if (data.tabId !== activeTabIdRef.current) return;
+      if (data.phase === 'translating') {
+        setSummaryToast(`正在翻译 ${data.done ?? 0}/${data.total ?? 0} 段…`);
+      } else if (data.phase === 'done') {
+        setSummaryToast(
+          data.message ?? (data.total ? `翻译完成（共 ${data.total} 段）` : '已恢复原文'),
+        );
+        window.urchin
+          .invoke('translate.getStatus', { tabId: data.tabId })
+          .then((res) => {
+            setTranslateActive((res as { active: boolean }).active);
+          })
+          .catch(() => undefined);
+      } else if (data.phase === 'error') {
+        setSummaryToast(data.message ?? '翻译失败');
+      }
+    });
+    const offSelection = window.urchin.on('translate:selection-result', (payload) => {
+      const data = payload as {
+        tabId: number;
+        source: string;
+        result?: string;
+        error?: string;
+        x: number;
+        y: number;
+      };
+      if (data.tabId !== activeTabIdRef.current) return;
+      setSelectionCard({
+        x: data.x,
+        y: data.y,
+        source: data.source,
+        result: data.result,
+        error: data.error,
+      });
+    });
+    return () => {
+      offProgress();
+      offSelection();
+    };
+  }, []);
+
   const handleNewTab = useCallback(async () => {
     try {
       // 新标签页打开内嵌主页（urchin://newtab，无法自由更换）
@@ -1628,6 +1739,9 @@ export function App() {
               }
               onScreenshot={() => void handleScreenshot()}
               screenshotDisabled={!activeTabId}
+              onTranslate={() => void handleTranslate()}
+              translateActive={translateActive}
+              translateDisabled={!activeTab?.url || !/^https?:\/\//i.test(activeTab.url)}
               searchEngine={searchEngine}
             />
 
@@ -1641,6 +1755,38 @@ export function App() {
               <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border flex items-center gap-1.5">
                 {summaryRunning && <RotateCw className="h-3 w-3 animate-spin" />}
                 <span>{summaryToast}</span>
+              </div>
+            )}
+
+            {/* 划词翻译结果卡（M24 dev.81）：右键菜单触发，主进程翻译后经事件回传；
+                定位用右键菜单同款窗口相对坐标（已含 BrowserView 偏移补偿），防溢出夹边 */}
+            {selectionCard && (
+              <div
+                className="fixed z-50 max-w-md rounded-lg border border-border bg-surface p-3 shadow-dropdown"
+                style={{
+                  left: Math.max(8, Math.min(selectionCard.x, window.innerWidth - 420)),
+                  top: Math.min(selectionCard.y + 12, window.innerHeight - 180),
+                }}
+              >
+                <div className="mb-1.5 flex items-start justify-between gap-3">
+                  <div
+                    className="min-w-0 flex-1 truncate text-xs text-text-secondary"
+                    title={selectionCard.source}
+                  >
+                    {selectionCard.source}
+                  </div>
+                  <button
+                    type="button"
+                    className="shrink-0 text-text-secondary hover:text-text"
+                    onClick={() => setSelectionCard(null)}
+                    aria-label="关闭划词翻译"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="whitespace-pre-wrap text-sm leading-relaxed text-text">
+                  {selectionCard.error ?? selectionCard.result}
+                </div>
               </div>
             )}
           </div>

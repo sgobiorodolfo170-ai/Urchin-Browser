@@ -25,6 +25,7 @@ import {
   Bookmark as BookmarkIcon,
   Sparkles,
   Scissors,
+  Languages,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { parseInput } from './parse-input';
@@ -58,6 +59,12 @@ export interface OmniboxProps {
   readonly onScreenshot?: () => void;
   /** 截图按钮是否禁用（如无活跃网页可截） */
   readonly screenshotDisabled?: boolean;
+  /** 翻译当前页面回调（M24 dev.81：未激活→整页翻译；激活→恢复原文） */
+  readonly onTranslate?: () => void;
+  /** 当前页面是否处于翻译激活态（按钮高亮 + title 切换） */
+  readonly translateActive?: boolean;
+  /** 翻译按钮是否禁用（非 http(s) 页面） */
+  readonly translateDisabled?: boolean;
   /** 当前搜索引擎标识（searchEngine 设置；供搜索词生成搜索 URL） */
   readonly searchEngine?: string;
 }
@@ -87,6 +94,9 @@ export function Omnibox({
   summarizeDisabled = false,
   onScreenshot,
   screenshotDisabled = false,
+  onTranslate,
+  translateActive = false,
+  translateDisabled = false,
   searchEngine,
 }: OmniboxProps) {
   const [input, setInput] = useState(currentUrl);
@@ -247,6 +257,21 @@ export function Omnibox({
         title="提取网页内容并保存"
       >
         <Sparkles className="h-4 w-4" />
+      </button>
+
+      {/* 翻译按钮（M24 dev.81）：未激活→整页翻译，激活→恢复原文；激活态高亮 */}
+      <button
+        type="button"
+        className={cn(
+          'flex shrink-0 items-center justify-center rounded-md p-1.5 hover:bg-surface-secondary disabled:opacity-40 disabled:hover:bg-transparent',
+          translateActive ? 'text-primary' : 'text-text-secondary hover:text-text',
+        )}
+        onClick={() => onTranslate?.()}
+        disabled={translateDisabled || !onTranslate}
+        aria-label={translateActive ? '恢复原文' : '翻译网页'}
+        title={translateActive ? '恢复原文' : '翻译网页'}
+      >
+        <Languages className="h-4 w-4" />
       </button>
 
       {/* 加载进度条（OM8 决策） */}

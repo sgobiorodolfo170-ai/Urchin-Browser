@@ -153,6 +153,40 @@ const GENERAL_FIELDS: readonly SettingField[] = [
       { value: 'true', label: '悬停自动展开' },
     ],
   },
+  {
+    key: 'translate.targetLang',
+    label: '网页翻译目标语言',
+    desc: '整页翻译与划词翻译的目标语言（默认简体中文）',
+    type: 'select',
+    options: [
+      { value: 'zh-CN', label: '简体中文' },
+      { value: 'zh-TW', label: '繁體中文' },
+      { value: 'en', label: 'English' },
+      { value: 'ja', label: '日本語' },
+      { value: 'ko', label: '한국어' },
+      { value: 'fr', label: 'Français' },
+      { value: 'de', label: 'Deutsch' },
+      { value: 'ru', label: 'Русский' },
+      { value: 'es', label: 'Español' },
+    ],
+  },
+  {
+    key: 'translate.engine',
+    label: '翻译引擎',
+    desc: '自动（推荐）：直连网络优先微软翻译、走代理优先谷歌翻译，任一引擎失败自动切换另一家；也可手动锁定单一引擎',
+    type: 'select',
+    options: [
+      { value: 'auto', label: '自动（推荐）' },
+      { value: 'microsoft', label: '微软翻译' },
+      { value: 'google', label: '谷歌翻译' },
+    ],
+  },
+  {
+    key: 'translate.autoTranslate',
+    label: '自动翻译外语页面',
+    desc: '开启后打开外语网页时自动翻译为目标语言（默认关闭）。隐私提示：翻译时页面文本将发送至所选翻译服务（微软/谷歌）；关闭时仅在手动点击翻译后发送',
+    type: 'toggle',
+  },
 ];
 
 const AI_FIELDS: readonly SettingField[] = [
@@ -208,6 +242,9 @@ const DEFAULTS: Record<string, unknown> = {
   'summary.baseUrl': '',
   'ai.providerProfiles': [],
   'debug.sidebarHoverDelay': 300,
+  'translate.targetLang': 'zh-CN',
+  'translate.engine': 'auto',
+  'translate.autoTranslate': false,
 };
 
 // ───────────────── 工具函数 ─────────────────

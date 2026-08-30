@@ -44,6 +44,17 @@ const HTML_FILTERS = [{ name: 'HTML 文件', extensions: ['html', 'htm'] }];
 export interface ContextMenuDeps {
   /** 用户数据目录绝对路径（保存网页默认目录 <数据目录>/saved-pages/ 的父目录） */
   getDataDir: () => string;
+  /**
+   * 网页翻译动作（M24 dev.81，可选注入；未注入时翻译菜单项不出现）。
+   * 划词结果的展示由主进程侧经事件回传渲染层结果卡，坐标为窗口相对坐标。
+   */
+  translate?: {
+    /** 该 tab 当前是否处于翻译激活态（决定「翻译页面」vs「恢复原文」） */
+    isActive: (tabId: number) => boolean;
+    translatePage: (tabId: number) => void;
+    translateSelection: (tabId: number, text: string, x: number, y: number) => void;
+    restore: (tabId: number) => void;
+  };
 }
 
 /** 菜单项（原生 MenuItemConstructorOptions 的测试友好子集） */
@@ -54,6 +65,8 @@ export type ContextMenuTemplateItem =
 export interface ContextMenuParamsLite {
   isEditable?: boolean;
   editFlags?: { canCopy?: boolean; canPaste?: boolean };
+  /** 选中文本（划词翻译用；无选区时缺省） */
+  selectionText?: string;
 }
 
 /** 右键菜单目标页信息（用于「保存网页」默认文件名与内部页禁用判断） */
@@ -78,14 +91,51 @@ export interface ContextMenuTabInfo {
 export function buildMenuTemplate(
   params: ContextMenuParamsLite,
   tab: ContextMenuTabInfo | undefined,
-  actions: { copy: () => void; paste: () => void; save: () => void },
+  actions: {
+    copy: () => void;
+    paste: () => void;
+    save: () => void;
+    /** 划词翻译（有选区时出现；坐标已由安装方绑定） */
+    translateSelection?: (text: string) => void;
+    /** 整页翻译（无选区、未激活时出现） */
+    translatePage?: () => void;
+    /** 恢复原文（翻译激活时替代「翻译页面」） */
+    restore?: () => void;
+    /** 翻译激活态查询（无 tab 或未注入时视为未激活） */
+    isTranslating?: () => boolean;
+  },
 ): ContextMenuTemplateItem[] {
   const canCopy = params.editFlags?.canCopy ?? true;
   const canPaste = params.editFlags?.canPaste ?? true;
   const isInternalPage = tab?.url.startsWith(INTERNAL_URL_PREFIX) ?? false;
+  const isHttpPage = /^https?:\/\//i.test(tab?.url ?? '');
+
+  // 翻译组（M24 dev.81）：有选区 → 划词翻译；无选区 → 激活态显示恢复原文，否则显示翻译页面。
+  // 内部页（urchin://，React 渲染）无翻译意义，整页翻译置灰；划词不受限（文本已在手）。
+  const translateItems: ContextMenuTemplateItem[] = [];
+  const selection = params.selectionText?.trim();
+  if (selection && actions.translateSelection) {
+    translateItems.push({
+      label: '翻译选中文字',
+      enabled: true,
+      click: () => actions.translateSelection!(selection),
+    });
+  } else if (!selection) {
+    if (actions.restore && actions.isTranslating?.()) {
+      translateItems.push({ label: '恢复原文', enabled: true, click: () => actions.restore!() });
+    } else if (actions.translatePage) {
+      translateItems.push({
+        label: '翻译页面',
+        enabled: !isInternalPage && isHttpPage,
+        click: () => actions.translatePage!(),
+      });
+    }
+  }
+
   return [
     { label: '复制', enabled: canCopy, click: () => actions.copy() },
     { label: '粘贴', enabled: canPaste, click: () => actions.paste() },
+    ...(translateItems.length > 0 ? [{ type: 'separator' } as const, ...translateItems] : []),
     { type: 'separator' },
     { label: '保存网页为…', enabled: !isInternalPage, click: () => actions.save() },
   ];
@@ -222,6 +272,29 @@ export function handleContextMenu(
         });
       }
     },
+    // 翻译动作（M24 dev.81）：deps.translate 未注入（如部分测试场景）时模板自动省略
+    translateSelection: (text) => {
+      if (tabInfo?.id !== undefined && deps.translate) {
+        deps.translate.translateSelection(
+          tabInfo.id,
+          text,
+          Math.round(params.x + offset.x),
+          Math.round(params.y + offset.y),
+        );
+      }
+    },
+    translatePage: () => {
+      if (tabInfo?.id !== undefined && deps.translate) {
+        deps.translate.translatePage(tabInfo.id);
+      }
+    },
+    restore: () => {
+      if (tabInfo?.id !== undefined && deps.translate) {
+        deps.translate.restore(tabInfo.id);
+      }
+    },
+    isTranslating: () =>
+      tabInfo?.id !== undefined && deps.translate ? deps.translate.isActive(tabInfo.id) : false,
   });
 
   try {

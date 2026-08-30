@@ -462,3 +462,92 @@ describe('handleContextMenu', () => {
     expect(wc.savePage).toHaveBeenCalledWith('C:\\saved\\示例.html', 'HTMLComplete');
   });
 });
+
+// ===== 翻译菜单项（M24 dev.81） =====
+
+describe('buildMenuTemplate 翻译项', () => {
+  const baseTab: ContextMenuTabInfo = { id: 1, url: 'https://example.com/', title: 'Example' };
+  const baseActions = { copy: vi.fn(), paste: vi.fn(), save: vi.fn() };
+
+  it('should append 翻译选中文字 with trimmed selection when wired', () => {
+    const translateSelection = vi.fn();
+    const items = buildMenuTemplate({ selectionText: ' Hello world ' }, baseTab, {
+      ...baseActions,
+      translateSelection,
+    });
+    const item = items.find((i) => 'label' in i && i.label === '翻译选中文字');
+    expect(item).toBeDefined();
+    if ('click' in item!) item.click?.();
+    expect(translateSelection).toHaveBeenCalledWith('Hello world');
+  });
+
+  it('should show 恢复原文 instead of 翻译页面 while translation is active', () => {
+    const restore = vi.fn();
+    const items = buildMenuTemplate({}, baseTab, {
+      ...baseActions,
+      restore,
+      isTranslating: () => true,
+    });
+    expect(items.some((i) => 'label' in i && i.label === '恢复原文')).toBe(true);
+    expect(items.some((i) => 'label' in i && i.label === '翻译页面')).toBe(false);
+  });
+
+  it('should show enabled 翻译页面 on http page when inactive', () => {
+    const translatePage = vi.fn();
+    const items = buildMenuTemplate({}, baseTab, { ...baseActions, translatePage });
+    const item = items.find((i) => 'label' in i && i.label === '翻译页面');
+    expect(item).toMatchObject({ enabled: true });
+  });
+
+  it('should disable 翻译页面 on internal urchin:// pages', () => {
+    const items = buildMenuTemplate(
+      {},
+      { ...baseTab, url: 'urchin://settings' },
+      {
+        ...baseActions,
+        translatePage: vi.fn(),
+      },
+    );
+    const item = items.find((i) => 'label' in i && i.label === '翻译页面');
+    expect(item).toMatchObject({ enabled: false });
+  });
+
+  it('should omit all translate items when no translate actions wired', () => {
+    const items = buildMenuTemplate({}, baseTab, baseActions);
+    expect(
+      items.some(
+        (i) =>
+          'label' in i &&
+          (i.label === '翻译页面' || i.label === '翻译选中文字' || i.label === '恢复原文'),
+      ),
+    ).toBe(false);
+  });
+
+  it('handleContextMenu should pass tabId and offset-compensated coords to translateSelection', () => {
+    const translate = {
+      isActive: vi.fn().mockReturnValue(false),
+      translatePage: vi.fn(),
+      translateSelection: vi.fn(),
+      restore: vi.fn(),
+    };
+    const wc = {
+      copy: vi.fn(),
+      paste: vi.fn(),
+      savePage: vi.fn(),
+    } as unknown as Electron.WebContents;
+    handleContextMenu(
+      wc,
+      {
+        x: 5,
+        y: 6,
+        selectionText: 'Hi',
+        editFlags: { canCopy: true, canPaste: false },
+      } as Electron.ContextMenuParams,
+      baseTab,
+      { getDataDir: () => 'C:/data', translate },
+      { x: 10, y: 20 },
+    );
+    clickItem(contextMenuRuntime.lastTemplate!, '翻译选中文字');
+    expect(translate.translateSelection).toHaveBeenCalledWith(1, 'Hi', 15, 26);
+  });
+});

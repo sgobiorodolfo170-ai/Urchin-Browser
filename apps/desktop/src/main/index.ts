@@ -293,8 +293,20 @@ let disposeZoomControl: (() => void) | null = null;
 let disposeCwdPicker: (() => void) | null = null;
 /** pi 页体验增强注入卸载句柄（dev.45，installPiWebPageEnhance 返回）。 */
 let disposePiEnhance: (() => void) | null = null;
-/** 网页翻译管理器卸载句柄（dev.79，M24：停轮询/移除导航钩子/清状态）。 */
+/** 网页翻译管理器卸载句柄（dev.80，M24：停轮询/移除导航钩子/清状态）。 */
 let disposeTranslateManager: (() => void) | null = null;
+/** 网页翻译管理器引用（dev.81：右键菜单翻译动作与划词结果回传使用）。 */
+let translateManagerRef: TranslateManager | null = null;
+
+/** 向主窗口渲染层发事件（划词结果卡等；窗口动态解析，无窗口时静默丢弃） */
+function sendToMainWindow(channel: string, payload: unknown): void {
+  const entry = windowManager.getAllWindows()[0];
+  try {
+    entry?.browserWindow.webContents?.send(channel, payload);
+  } catch (err) {
+    log.warn('send to main window failed', { channel, error: String(err) });
+  }
+}
 /** 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
 let bookmarkPanel: BookmarkPanel | null = null;
 /**
@@ -394,6 +406,7 @@ function registerIpcHandlers(): void {
   });
   registerTranslateHandlers({ ipcMain, translateManager, tabManager });
   disposeTranslateManager = () => translateManager.dispose();
+  translateManagerRef = translateManager;
 
   // 截图域 handler（地址栏截图按钮）：弹出整屏框选覆盖窗口，确认后裁剪保存到
   // <数据目录>/screenshots/。CaptureOverlay 单例持覆盖窗口与截图缓存。
@@ -1241,7 +1254,48 @@ void app.whenReady().then(() => {
   // context-menu 监听，菜单动作全部在主进程执行。
   // 保存网页单独立项（用户决策 2026-08-18）：默认目录 <数据目录>/saved-pages/，
   // 不依赖下载相关设计（不读 downloadsPath、不接入 DownloadManager），仅需数据目录。
-  const contextMenuDeps = { getDataDir: () => currentDataDir };
+  const contextMenuDeps = {
+    getDataDir: () => currentDataDir,
+    // 网页翻译动作（M24 dev.81）：划词结果经事件回传渲染层结果卡（坐标为窗口相对坐标，
+    // 与右键菜单 popup 同一补偿口径）。窗口动态解析（此处早于主窗口创建）。
+    translate: {
+      isActive: (tabId: number) => translateManagerRef?.getStatus(tabId).active ?? false,
+      translatePage: (tabId: number) => {
+        void translateManagerRef?.start(tabId).catch((err) => {
+          log.warn('context-menu translate page failed', { tabId, error: String(err) });
+        });
+      },
+      translateSelection: (tabId: number, text: string, x: number, y: number) => {
+        const mgr = translateManagerRef;
+        if (!mgr) return;
+        void mgr
+          .translateSelection(tabId, text)
+          .then((res) => {
+            sendToMainWindow('translate:selection-result', {
+              tabId,
+              source: text,
+              result: res.result,
+              x,
+              y,
+            });
+          })
+          .catch(() => {
+            sendToMainWindow('translate:selection-result', {
+              tabId,
+              source: text,
+              error: '翻译失败，请检查网络后重试',
+              x,
+              y,
+            });
+          });
+      },
+      restore: (tabId: number) => {
+        void translateManagerRef?.stop(tabId).catch((err) => {
+          log.warn('context-menu restore failed', { tabId, error: String(err) });
+        });
+      },
+    },
+  };
   disposeContextMenu = installTabContextMenu(tabManager, contextMenuDeps);
 
   // 创建主窗口：恢复上次会话的窗口几何（尺寸/位置/最大化态，窗口状态记忆）。

@@ -7,11 +7,12 @@
  *      executeJavaScript 调注入脚本暴露的 `window.__ubApplyTheme`，不再
  *      依赖 2s 轮询滞后（轮询降级为兜底，覆盖页面加载/推送竞态）。
  *    - **同步幂等应用**：applyTheme 直接同步增删 #theme-stylesheet
- *      （亮=官方 light.css，暗=移除回内置默认），去掉 dev.48 的 300ms
- *      延迟双步——那次双步与 localStorage 前置守卫组合会在 React 重挂载
+ *      （亮=官方浅色主题 white.css，暗=移除回内置默认），去掉 dev.48 的
+ *      300ms 延迟双步——那次双步与 localStorage 前置守卫组合会在 React 重挂载
  *      改写存储后永久早退，造成 DOM 主题与浏览器脱节（「阻塞」根因）。
- *    - **官方存储语义**：亮写 key='light'、暗移除 key（与 pi-web-ui 的
- *      da()/Yt() 一致），React 挂载时读到的状态与 DOM 恒一致，不打架。
+ *    - **官方存储语义**：亮写 key='white'（0.90.0 起主题=主题名，light.css
+ *      已移除）、暗移除 key（与 pi-web-ui 主题引擎一致），React 挂载时读到
+ *      的状态与 DOM 恒一致，不打架。
  *    - 仍派发官方 theme-change 事件（无人监听也零副作用）。**禁止整页
  *      reload**（reload 空窗会令目录选择拦截器短暂失效，dev.47 教训）。
  *    - 危险度评估（用户要求先行）：仅外观层（样式表切换），不涉会话/
@@ -106,12 +107,14 @@ const THEME_POLL_MS = 2000;
 /**
  * 构建主题跟随浏览器脚本（纯字符串，可单测）。
  *
- * dev.49 重构（根治 dev.48「切主题卡住」）：
+ * dev.49 重构（根治 dev.48「切主题卡住」）；dev.84 适配 pi-web-ui 0.90.0
+ * 主题引擎重构（主题=主题名，样式表 /themes/<name>.css；旧 light.css 已移除，
+ * 亮色统一映射官方浅色主题 white.css——applyTheme 对外仍收 'light'/'dark'）：
  * - 暴露 window.__ubApplyTheme(t) 供主进程直推调用——**同步、幂等、DOM 权威**：
  *   每次调用都按 t 强制对齐 #theme-stylesheet（存在性 + href），无任何
  *   localStorage 前置守卫（dev.48 的守卫会在 React 重挂载改写存储后永久早退）。
- * - 存储跟随官方语义：亮 setItem 'light'、暗 removeItem（pi-web-ui 的
- *   Yt()/da() 同义），保证 React 挂载/重挂载读到的状态与 DOM 一致。
+ * - 存储跟随官方语义：亮 setItem 'white'（官方浅色主题名）、暗 removeItem
+ *   （0.90.0 引擎默认 dark=键缺失），保证 React 挂载/重挂载读到的状态与 DOM 一致。
  * - 派发官方 theme-change 事件（零监听者、零副作用，保留未来兼容面）。
  * - 2s 轮询 urchin://pi-theme + visibilitychange 兜底（页面加载即对齐、
  *   推送竞态自愈）。
@@ -120,14 +123,15 @@ export function buildThemeFollowScript(): string {
   return (
     '(function(){' +
     'function applyTheme(t){' +
+    "var name=t==='light'?'white':null;" +
     "var link=document.getElementById('theme-stylesheet');" +
-    "if(t==='light'){" +
+    'if(name){' +
     'if(!link){link=document.createElement("link");link.id="theme-stylesheet";' +
     'link.rel="stylesheet";document.head.appendChild(link);}' +
-    'if(!/light/.test(link.href||""))link.href="/themes/light.css";' +
+    'if(!/white\\.css/.test(link.href||""))link.href="/themes/"+name+".css";' +
     '}else if(link){link.remove();}' +
     'try{' +
-    "if(t==='light'){localStorage.setItem('pi-web-ui:theme','light');}" +
+    "if(name){localStorage.setItem('pi-web-ui:theme',name);}" +
     "else{localStorage.removeItem('pi-web-ui:theme');}" +
     '}catch(e){}' +
     "document.dispatchEvent(new CustomEvent('pi-web-ui:theme-change',{detail:t}));" +

@@ -233,7 +233,8 @@ export function registerUrchinProtocol(opts?: {
   /**
    * pi 页主题跟随端点（pi-theme host，dev.48）：返回浏览器当前主题
    * {dark:boolean}。pi 页注入脚本轮询此端点并驱动 pi 主题切换
-   * （亮=light.css，暗=移除样式表回默认）。只读、无副作用。
+   * （亮=white.css 浅色主题，暗=移除样式表回默认；dev.84 适配 0.90.0
+   * 主题引擎重构）。只读、无副作用。
    */
   const handlePiTheme = (): Response => {
     const dark = opts?.isBrowserDarkTheme?.() ?? false;

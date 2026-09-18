@@ -279,12 +279,12 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
         if (!wc) return { error: 'pi webContents not found' };
         const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-        // 主题跟随浏览器（dev.48）：E2E 环境浏览器为亮色 → pi 应跟进 light
+        // 主题跟随浏览器（dev.48）：E2E 环境浏览器为亮色 → pi 应跟进 white 浅色主题
         let theme: string | null = null;
         for (let i = 0; i < 16; i++) {
           theme = (await wc.executeJavaScript(`localStorage.getItem('pi-web-ui:theme')`)) as
             string | null;
-          if (theme === 'light') break;
+          if (theme === 'white') break;
           await wait(500);
         }
 
@@ -350,21 +350,26 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           return !notes.some((n) => /\\u5df2\\u5207\\u6362\\u5230\\u5de5\\u4f5c\\u76ee\\u5f55|\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55/.test(n.textContent || ''));
         })()`)) as boolean;
 
-        // dev.65：自有面板项目行点击切换（当前 C:/ → 点 G:/ 仓库行 → set_cwd
-        // 经注入 ws 生效，__ubCwdPath 跟随更新；产生的切换 toast 同时被抑制）
+        // dev.84：0.90.0 起「最近项目」=保存记录+会话历史+当前 cwd（不再含进程 cwd），
+        // 且服务端项目列表带 15s TTL 缓存——切换后短期窗口内列表=缓存+当前 cwd。
+        // 因此目标取「非当前项目行」（窗口中必然存在的另一行），断言按该行 path
+        // 动态比对（真实用户路径：点项目行 → set_cwd → cwd/active 跟随；toast 同抑制）。
+        const targetPath = (await wc.executeJavaScript(
+          `(document.querySelector('.__ubLPProj[data-act="proj"]:not(.active)')?.getAttribute('title') ?? '')`,
+        )) as string;
         await wc.executeJavaScript(`(() => {
-          const row = document.querySelector('.__ubLPProj[data-act="proj"][title*="Urchin-Browser"]');
+          const row = document.querySelector('.__ubLPProj[data-act="proj"]:not(.active)');
           if (row) row.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         })()`);
         await wait(3000);
-        const switchRes = (await wc.executeJavaScript(`(() => {
+        const switchRaw = (await wc.executeJavaScript(`(() => {
           const cwdText =
             (document.querySelector('.__ubCwdRow .__ubCwdPath')?.textContent ?? '');
           const active = document.querySelector('.__ubLPProj.active');
           const notes = Array.from(document.querySelectorAll('.fp-notice, .notice'));
           return {
-            cwdSwitched: cwdText.includes('Urchin-Browser') && cwdText.includes('G:'),
-            activeFollowed: !!(active && (active.getAttribute('title') || '').includes('Urchin-Browser')),
+            cwdText,
+            activeTitle: active ? (active.getAttribute('title') || '') : '',
             // dev.71：以活动项目行为作用域观测会话区（全局对话后各项目行都有会话区）
             activeHasList: (() => {
               const wrap = document.querySelector('.__ubLPProjWrap.active');
@@ -375,12 +380,18 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
             ),
           };
         })()`)) as {
-          cwdSwitched: boolean;
-          activeFollowed: boolean;
+          cwdText: string;
+          activeTitle: string;
           activeHasList: boolean;
           stillSuppressed: boolean;
         };
-        noticeSuppressed = noticeSuppressed && switchRes.stillSuppressed;
+        // 路径归一（反斜杠/正斜杠等价、大小写不敏感）后比对
+        const normPath = (s: string): string => s.replace(/[\\/]+/g, '\\').toLowerCase();
+        const switchOk =
+          !!targetPath &&
+          normPath(switchRaw.cwdText).includes(normPath(targetPath)) &&
+          normPath(switchRaw.activeTitle) === normPath(targetPath);
+        noticeSuppressed = noticeSuppressed && switchRaw.stillSuppressed;
 
         // dev.65：上区「项目配置」——展开技能小节（列表或空提示）与配置文件小节
         //（.pi 惰性加载：无目录则空提示），验证 set_settings / list_files 通道接线
@@ -505,7 +516,7 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           lpProjRows: lp.projRows ?? 0,
           lpActiveProj: lp.activeProj ?? '',
           lpNewBtns: lp.newBtns ?? 0,
-          lpSwitchWorked: switchRes.cwdSwitched && switchRes.activeFollowed,
+          lpSwitchWorked: switchOk,
           cfgSkillsExpanded: cfgRes.skillsClicked && cfgRes.skillsExpanded,
           cfgFilesListed: cfgRes.filesClicked && cfgRes.filesListed,
           themeSelectorHidden: !themeSel.present || themeSel.removed || themeSel.hidden,
@@ -514,7 +525,7 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       url,
     );
     expect(enhance).toMatchObject({
-      theme: 'light',
+      theme: 'white',
       noticeSuppressed: true,
       updateCssReady: true,
       themeSelectorHidden: true,
@@ -543,7 +554,8 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     expect(enhance.lpNewBtns).toBe(enhance.lpProjRows);
     // dev.71：活动项目行展开且有会话区（组或空提示；全局对话后按行作用域观测）
     expect(enhance.lpSwitchWorked).toBe(true);
-    expect(enhance.lpActiveProj).toContain('Urchin-Browser');
+    // dev.84：0.90.0 起初始最近项目为 pi 数据目录（非进程 cwd），仅断言面板有活动项目行
+    expect(enhance.lpActiveProj ?? '').not.toBe('');
 
     // dev.67：中区布局控制——折叠按钮 / 分割线拖拽 / 状态持久化 / 项目排序
     interface LayoutResult {
@@ -670,7 +682,7 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     // dev.49：主题即时直推——ui.theme.set 后主进程立刻向 pi 标签推送
     //（根治 dev.48 纯 2s 轮询的滞后/偶发失败「阻塞」）。往返断言：
     // 切暗 → pi 页移除 light 样式表 + 主题键清除（官方 dark=键缺失语义）；
-    // 切亮 → pi 页恢复 light 样式表 + 主题键='light'。
+    // 切亮 → pi 页恢复浅色样式表（white）+ 主题键='white'（dev.84 映射）。
     const invokeUiTheme = async (theme: 'dark' | 'light') => {
       await window.evaluate(async (t) => {
         const w = window as unknown as {
@@ -707,7 +719,7 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     expect(await waitPiThemeState(url, (s) => s.key === null && !s.link)).toBe(true);
 
     await invokeUiTheme('light');
-    expect(await waitPiThemeState(url, (s) => s.key === 'light' && s.link)).toBe(true);
+    expect(await waitPiThemeState(url, (s) => s.key === 'white' && s.link)).toBe(true);
 
     // dev.48：pi 页打开的网页标签图标 = π（urchin://pi-icon 钉定）
     const tabList = await window.evaluate(async () => {

@@ -2,7 +2,7 @@
  * PiWebLauncher 单元测试
  *
  * 验证状态机与进程生命周期（全部依赖注入 mock，不真实 spawn）：
- * - launch 成功流：starting → running，URL 正确，env 注入 PORT/数据目录
+ * - launch 成功流：starting → running，URL 正确，env 注入 PI_WEB_PORT/数据目录
  * - 并发 launch 复用同一次启动；running 时 launch 直接返回端口
  * - 子进程即退 → 抛错且状态 error
  * - 健康检查超时 → 杀进程树 + 状态 error
@@ -105,7 +105,8 @@ describe('PiWebLauncher', () => {
     );
     // 目录经 env 注入（不经命令行）；PI_CODING_AGENT_DIR 把会话库隔离到 userData/pi
     const env = h.children[0]!.spawnEnv;
-    expect(env.PORT).toBe('45001');
+    // dev.84：0.90.0 官方仅认 PI_WEB_PORT（v0.60.0 移除 PORT 兼容）
+    expect(env.PI_WEB_PORT).toBe('45001');
     expect(env.PI_WEB_DATA_DIR).toBe('/fake/userData/pi/web-ui');
     expect(env.PI_WEB_CWD).toBe('/fake/userData/pi/web-ui');
     expect(env.PI_CODING_AGENT_DIR).toBe('/fake/userData/pi/agent');

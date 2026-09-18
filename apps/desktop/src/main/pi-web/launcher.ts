@@ -289,7 +289,8 @@ export class PiWebLauncher {
       // 目录经环境变量传递（不经命令行，路径含空格安全）
       env: {
         ...process.env,
-        PORT: String(port),
+        // 0.90.0 起官方仅认 PI_WEB_PORT（v0.60.0 移除了 PORT 兼容，见 pi-web-评估 §六B）
+        PI_WEB_PORT: String(port),
         PI_WEB_DATA_DIR: this.opts.dataDir,
         PI_WEB_CWD: this.opts.cwd,
         // 会话库/agent 配置根：未设则 pi 落全局 ~/.pi（污染用户主目录，DD1 不符）

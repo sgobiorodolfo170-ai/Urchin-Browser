@@ -144,6 +144,39 @@
 验证:typecheck / **1004 单测全绿** / build:main / pi-web E2E 全绿(启动→全局对话分组→折叠→原生把手拖拽 +120→重载宽度与排序恢复→设置弹窗 tab 去重→主题直推→图标钉定→退出杀进程)。
 遗留观察:pi-agent-build/tetris E2E(需真实 API key,本地未跑)的模型下拉选择器已同步映射 composer-tools-left,待有 key 会话回归。
 
+## 六B、pi-web-ui 升级核验记录(0.47.0 → 0.90.0,2026-09-18,dev.84)
+
+> 跨 43 个版本(0.48.0~0.90.0,含插件宿主 v11/DSH 引擎/定时任务等大功能面)。
+> 按 §七 流程先 `npm pack` 取比对源做锚点审计(不动依赖),锚点整体存活;
+> 两类破坏性变化已适配(launcher env / 主题机制),其余为语义微调或新增面。
+
+| 锚点(本项目依赖面) | 0.90.0 核验 | 适配 |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| bin/pi-web-ui.mjs + --no-browser | 存活 | 无需改 |
+| env: PI_WEB_PORT / PI_WEB_DATA_DIR / PI_WEB_CWD / PI_CODING_AGENT_DIR | 存活;**PORT 已移除**(v0.60.0 起仅认 PI_WEB_PORT;CLI 同时旗标化 --port/--cwd/--data-dir/--engine/--host/--agent-dir) | launcher.ts spawn env `PORT`→`PI_WEB_PORT`(启动器单测同步) |
+| 主题键 pi-web-ui:theme / theme-change / #theme-stylesheet / pi-web-client-id | 存活,但**语义重构**:theme=主题名,样式表 `/themes/<name>.css`;**旧 light.css 已移除**(浅色主题为 white/paper/mist/sakura 等) | applyTheme 对外仍收 light/dark;亮色映射官方浅色主题 **white**(键写 'white'、href `/themes/white.css`);暗=键缺失+移除样式表(官方默认)。旧版遗留键 'light' 由轮询/直推自愈 |
+| DOM: status-cwd / status-cwd-input / status-ctx / ctx-bar-fill | 存活 | 无需改(dir-picker / 上下文圆环链路完好) |
+| DOM: panel-left/right / panel-projects/convs/sessions / panel-section-title / project-item | 存活(新增 panel-conv-group / panel-crumbs / panel-rail / panel-widgets 等) | `:has()` 接管照常;E2E 全绿 |
+| DOM: chip-sub / chip-model / button.chip.newchat | 存活 | 无需改(主题按钮删除/新对话移植/顶栏模型移除照常) |
+| DOM: inputbox / composer-tools-left / composer-tools-right / btn send / btn stop / attach-img | 存活(**input-tools 已无**——0.47 起即改名 composer-tools,本项目 dev.71 已迁移;0.88 新增 composer.leading 槽、0.89 新增输入框拖高) | 视觉定制选择器全部命中;E2E 全绿 |
+| DOM: dd-menu / dd-header / dd-update / update-dot / fp-notice / notice-close | 存活 | 无需改(更新组件隐藏 / 提示抑制照常) |
+| DOM: panel-resizing / resize-handle / settings-rail / settings-tab / set-section | 存活 | 设置弹窗 tab 去重(技能/插件)E2E 断言仍通过 |
+| toast 文案「已切换到/已在工作目录」 | 存活(server agent-service 仍发同文案) | dev.64 抑制正则无需改 |
+| WS 协议(set_cwd / new_chat / switch_conversation / switch_session / set_settings / list_files / read_file / write_file / list_projects / list_sessions / apply_preset / delete_preset / snapshot / settings_state / files / file_content) | 全部存活;新增 dismiss_conversation(force) / reload_models_config / retry_last / start_goal_wizard / terminal_create(agentBash) / page_request 等 | 注入第二条 WS(同 clientId)`sinks` 广播语义不变;左区面板全链路 E2E 通过 |
+| 「最近项目」语义 | **改为 保存记录+会话历史+当前 cwd**(不再含进程 cwd),且带 15s TTL 缓存(窗口内列表=缓存+当前 cwd) | 产品行为随上游;E2E 改为点「非当前项目行」并按行 path 动态断言(不再依赖进程 cwd 自动入列) |
+| 更新组件 / 桌面壳 | 新增 electron-updater 桌面更新通道、Electron 壳与三平台 CI | 本项目启动器集成不变;桌面更新属新增面,留待决策 |
+| 新增面(本项目未接) | 插件宿主 API v11(UI 槽位/权限/目录授权/会话/LLM/schedule)、定时任务、额外工作区根、OAuth 登录、语音输入、PWA/通知、@ 文件提及、草稿恢复、模型目录整表刷新、子代理模板 | 按 §七 留待用户逐项决策;本次不动 |
+| 内嵌 pi SDK | ^0.85.1(与本项目 vendored 0.85.1 完全对齐) | 无需改 |
+
+**本次适配改动**(全部经门禁 + E2E 验证,见 CHANGELOG dev.84):
+
+1. `apps/desktop/src/main/pi-web/launcher.ts` — spawn env `PORT` → `PI_WEB_PORT`;
+2. `apps/desktop/src/main/pi-web/page-enhance.ts` — 主题跟随映射 light→white(`/themes/white.css`、localStorage 'white'),暗色语义不变;
+3. `apps/desktop/src/main/protocol/index.ts` — `urchin://pi-theme` 注释同步;
+4. 单测/E2E 断言同步(launcher env、主题键、左栏切换按行 path 动态比对)。
+
+验证:typecheck 9 包 / lint 0 error / 桌面 **1104 单测全绿** / build:main / pi-web E2E 全链路 29.4s 通过(启动→dir-picker 拦截→主题直推往返→设置 tab 去重→左栏接管与行切换→提示抑制→图标钉定→退出杀进程);全量 E2E 8 过 2 跳过(需真实 key)+ 2 败(perf/tab-order 为 dev.82 已留痕存量腐化)。
+
 ## 七、pi-web-ui 升级管控流程(2026-08-23 用户八次决策确立,长期有效)
 
 > **原则:本项目对 pi 前端的定制(注入/拦截/锚点,见 §六 核验表)优先于上游迭代。

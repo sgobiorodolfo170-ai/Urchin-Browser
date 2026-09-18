@@ -33,9 +33,10 @@ describe('buildThemeFollowScript', () => {
     expect(s).toContain("fetch('urchin://pi-theme'");
     expect(s).toContain('visibilitychange');
     expect(s).toContain('setInterval');
-    // 亮：官方 key 写 'light' + 直接替换样式表（与官方切换同 URL）
-    expect(s).toContain("localStorage.setItem('pi-web-ui:theme','light')");
-    expect(s).toContain('link.href="/themes/light.css"');
+    // dev.84：亮色映射官方浅色主题 white（0.90.0 主题=主题名，light.css 已移除）
+    expect(s).toContain("var name=t==='light'?'white':null");
+    expect(s).toContain("localStorage.setItem('pi-web-ui:theme',name)");
+    expect(s).toContain('link.href="/themes/"+name+".css"');
     // 暗：移除 key（官方 dark 语义=键缺失）+ 移除样式表回内置默认
     expect(s).toContain("localStorage.removeItem('pi-web-ui:theme')");
     expect(s).toContain('link.remove()');

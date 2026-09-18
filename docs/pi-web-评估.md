@@ -16,6 +16,8 @@
 
 官方「自定义前端」路径:Node 侧 `PiServer` ↔ 浏览器侧 `PiClient`(WebSocket/Unix ByteTransport),快照权威 + `session_progress` 流式增量;配套 `RemoteSession`/transcript 视图模型。**上游标记 experimental、无兼容性承诺**——本项目 vendored 锁定版本,更新节奏由本项目控制,风险可控。
 
+> 当前 vendored 版本:**0.85.1**(2026-09-18 由 0.84.3 升级;上游 releases 0.84.4/0.85.0/0.85.1;适配面核验与门禁见 CHANGELOG dev.83)。
+
 ## 二、候选社区包审查
 
 | 项          | pi-web-ui                                                                                     | pi-web-chat                                                                        |

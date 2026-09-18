@@ -16,7 +16,10 @@
       "electron",
       "better-sqlite3",
       "esbuild"
-    ]
+    ],
+    "patchedDependencies": {
+      "@electron/rebuild@3.6.1": "patches/@electron__rebuild@3.6.1.patch"
+    }
   },
   "scripts": {
     "dev": "pnpm --filter @urchin/desktop dev",

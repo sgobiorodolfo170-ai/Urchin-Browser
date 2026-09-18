@@ -17,6 +17,9 @@ files:
   - dist/renderer/**/*
   - package.json
   - '!**/*.map'
+  # 排除工作区包内被 symlink 带入的测试产物（gitignore 已忽略，避免 asar 打包报错）
+  - '!**/coverage/**'
+  - '!**/*.tsbuildinfo'
 
 # 额外资源：图标文件复制到 resources 目录（运行时窗口图标用）
 extraResources:

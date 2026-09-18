@@ -13,7 +13,8 @@
  *    会话列表（dev.66 合并：switch_conversation/switch_session；会话名取第一轮
  *    提问前几字；运行中对话排最上）
  * 5. 优雅降级：面板未就绪（无 cwd）不加 __ubReady，:has() 不隐藏官方面板
- * 6. 删除确认沿用 __ubProjDelConfirm 钩子 + sessionStorage __ubHiddenProjects
+ * 6. 项目删除（dev.86 决策迁移）：行内 × + 确认（__ubProjDelConfirm 钩子）
+ *    经官方 remove_project（持久 tombstone；旧 sessionStorage 隐藏列表已退役）
  */
 import { describe, it, expect } from 'vitest';
 import { buildLeftPanelScript } from '../../src/main/pi-web/left-panel';
@@ -85,7 +86,7 @@ describe('buildLeftPanelScript', () => {
 
   it('should render project rows with switch/new-chat and nested conversations', () => {
     const s = buildLeftPanelScript();
-    // 项目行：切换 + 行内「＋」（dev.68 起「×」删除按钮已移除）
+    // 项目行：切换 + 行内「＋」+ 行内 ×（dev.86：官方 remove_project 删除）
     expect(s).toContain('data-act="proj"');
     expect(s).toContain('data-act="newchat"');
     expect(s).toContain("send({ type: 'set_cwd', path: v })");
@@ -141,7 +142,7 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain("classList.add('__ubReady')");
   });
 
-  it('should have fold toggle before new-chat and no project delete button (dev.68)', () => {
+  it('should have fold toggle before new-chat and migrate project delete to official remove_project (dev.86)', () => {
     const s = buildLeftPanelScript();
     // 「＋」前的 ▾/▸ 会话折叠按钮（默认展开，sessionStorage 记忆）
     expect(s).toContain('data-act="fold"');
@@ -149,10 +150,12 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain("var FOLD_KEY = '__ubFoldedProjs'");
     expect(s).toContain('function toggleFold(');
     expect(s).toContain('if (!fold) {');
-    // 项目行删除按钮已按用户要求移除（预设的小 × 属独立 data-act）
-    expect(s).not.toContain('data-act="del"');
-    expect(s).not.toContain('从列表移除该项目');
-    expect(s).not.toContain('__ubProjDelConfirm');
+    // dev.86 决策：项目删除改用官方 remove_project（持久 tombstone）；
+    // 确认语义保留 __ubProjDelConfirm 自动化钩子；旧会话内隐藏列表已退役
+    expect(s).toContain('data-act="delproj"');
+    expect(s).toContain("type: 'remove_project'");
+    expect(s).toContain('__ubProjDelConfirm');
+    expect(s).not.toContain('__ubHiddenProjects');
   });
 
   it('should surface commands, presets and review skills in config zone (dev.68)', () => {
@@ -193,10 +196,12 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain("'__ubPiUIOrder'");
   });
 
-  it('should keep legacy hidden-set semantics for stale entries', () => {
+  it('should render project delete affordance with confirm hook (dev.86)', () => {
     const s = buildLeftPanelScript();
-    // 项目删除按钮已移除（dev.68），但旧隐藏数据仍生效于渲染过滤
-    expect(s).toContain('__ubHiddenProjects');
+    // 删除按钮挂项目行内（悬停显形），点击走确认 + 官方 remove_project
+    expect(s).toContain('class="__ubProjDel" data-act="delproj"');
+    expect(s).toContain('window.__ubProjDelConfirm');
+    expect(s).toContain("if (okDel) send({ type: 'remove_project', path: v })");
     expect(s).toContain('window.confirm');
   });
 
@@ -205,5 +210,13 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain('function esc(');
     expect(s).toContain('&amp;');
     expect(s).toContain('&#39;');
+  });
+
+  it('should generate syntactically valid injectable script (guard)', () => {
+    // 教训（dev.86 实测）：模板字符串中未转义的 \n 会展开为真实换行，
+    // 注入后 SyntaxError → 整段脚本（含接管 CSS）失效、官方 UI 泄漏。
+    // 编译期守卫：生成脚本必须能通过 JS 解析（仅编译不执行）。
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval -- 注入脚本编译期守卫（不执行）
+    expect(() => new Function(buildLeftPanelScript())).not.toThrow();
   });
 });

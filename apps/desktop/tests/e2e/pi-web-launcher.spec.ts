@@ -243,15 +243,9 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       hiddenAfterDel?: boolean;
       confirmAsked?: boolean;
       foldOk?: boolean;
-      noProjDel?: boolean;
+      delRes?: { ok: boolean; reason?: string; title?: string };
       noticeSuppressed?: boolean;
       updateCssReady?: boolean;
-      settingsDedup?: {
-        dialogSeen: boolean;
-        noSkills: boolean;
-        noExts: boolean;
-        presetsKept: boolean;
-      };
       lpReady?: boolean;
       lpOfficialHidden?: boolean;
       lpCfgRows?: number;
@@ -259,6 +253,22 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       lpActiveProj?: string;
       lpNewBtns?: number;
       lpSwitchWorked?: boolean;
+      featureSurface?: {
+        hasScheduler: boolean;
+        hasTools: boolean;
+        hasUiLayout: boolean;
+        hasSubagentTpl: boolean;
+      };
+      featureProbe?: {
+        notification: string;
+        composerResize: boolean;
+        quickChips: number;
+        attachImg: boolean;
+        swRegs: number;
+        ua: string;
+      };
+      globalSearch?: { opened: boolean; hasPlaceholder: boolean };
+      officialLeak?: string[];
       cfgSkillsExpanded?: boolean;
       cfgFilesListed?: boolean;
       themeSelectorHidden?: boolean;
@@ -317,6 +327,21 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           if (lp.ready === true) break;
           await wait(500);
         }
+
+        // dev.85：接管完整性——.panel-left 直接子节点中除我方 __ub* 外不得可见
+        //（0.90 重构新增 panel-drawer/panel-rail 等结构时，防官方面板泄漏并与
+        // 自有面板重叠渲染）
+        const officialLeak = (await wc.executeJavaScript(`(() => {
+          const lpRoot = document.querySelector('.panel-left');
+          if (!lpRoot) return [];
+          return Array.from(lpRoot.children)
+            .filter((el) => !String(el.className || '').includes('__ub'))
+            .filter((el) => {
+              const cs = getComputedStyle(el);
+              return cs.display !== 'none' && el.getBoundingClientRect().height > 0;
+            })
+            .map((el) => String(el.className));
+        })()`)) as string[];
 
         // dev.49：主题切换按钮被删除（顶栏无「主题」触发器——chip 不存在或其
         // .dropdown 包装已从 DOM 移除；替代 dev.48 的隐藏类方案）
@@ -454,11 +479,6 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           restored: boolean;
         };
 
-        // dev.68：项目行不再有「×」删除按钮（预设的 × 属独立 data-act="delpreset"）
-        const noProjDel = (await wc.executeJavaScript(
-          `document.querySelectorAll('.__ubLPProj .__ubProjDel, .__ubLPProj [data-act="del"]').length === 0`,
-        )) as boolean;
-
         // dev.47：更新组件隐藏 CSS 已注入（dd-update 仅留版本行 + update-dot 隐藏）
         const updateCssReady = (await wc.executeJavaScript(`(() => {
           const st = document.getElementById('__ubProjStyle');
@@ -466,8 +486,10 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           return css.includes('.dd-update>*:not(:first-child)') && css.includes('.update-dot');
         })()`)) as boolean;
 
-        // dev.69：设置弹窗技能/插件节已移除（管理统一在左区）；预设节保留。
-        // 点顶栏「设置」chip → 等弹窗渲染 + 注入 observer 移除 → 读节标题 → 关闭。
+        // dev.85：功能面运行时核验——0.90 新增设置页（定时任务/工具/界面布局/子代理模板）
+        // 全部保留（dev.86 已按决策清理已惰性的设置去重代码；上游设置页无「技能/插件」tab）；
+        // 通知权限/Service Worker（PWA）、输入框拖高与快捷短语在位；Ctrl+K 全局搜索可打开。
+        await wait(400);
         await wc.executeJavaScript(`(() => {
           const chips = Array.from(document.querySelectorAll('span.chip-sub'));
           const chip = chips.find((c) => /^(设置|settings)$/i.test((c.textContent || '').trim()));
@@ -475,26 +497,74 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           if (btn) btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         })()`);
         await wait(900);
-        const settingsDedup = (await wc.executeJavaScript(`(() => {
-          // dev.71：0.47.0 设置弹窗为标签页布局——以 rail tab 标签为观测面
-          // （内容区只渲染激活 tab，节级观测不再可靠）
-          const labels = Array.from(
-            document.querySelectorAll('button.settings-tab .settings-tab-label'),
-          ).map((t) => (t.textContent || '').trim());
+        const featureSurface = (await wc.executeJavaScript(`(() => {
+          const labels = Array.from(document.querySelectorAll('button.settings-tab .settings-tab-label')).map((t) => (t.textContent || '').trim());
           const close = document.querySelector('.modal-close');
           if (close) close.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
           return {
-            dialogSeen: labels.length > 0,
-            noSkills: !labels.some((l) => /^(技能|skills)$/i.test(l)),
-            noExts: !labels.some((l) => /^(插件|extensions)$/i.test(l)),
-            presetsKept: labels.some((l) => /^(预设|presets)$/i.test(l)),
+            hasScheduler: labels.some((l) => /定时任务/.test(l)),
+            hasTools: labels.some((l) => /^工具$/.test(l)),
+            hasUiLayout: labels.some((l) => /界面布局/.test(l)),
+            hasSubagentTpl: labels.some((l) => /子代理模板/.test(l)),
           };
         })()`)) as {
-          dialogSeen: boolean;
-          noSkills: boolean;
-          noExts: boolean;
-          presetsKept: boolean;
+          hasScheduler: boolean;
+          hasTools: boolean;
+          hasUiLayout: boolean;
+          hasSubagentTpl: boolean;
         };
+        const featureProbe = (await wc.executeJavaScript(`(async () => {
+          const out = {
+            notification: (typeof Notification !== 'undefined') ? Notification.permission : 'none',
+            composerResize: !!document.querySelector('.composer-resize'),
+            quickChips: document.querySelectorAll('.quick-chip').length,
+            attachImg: !!document.querySelector('.btn.attach-img'),
+            ua: navigator.userAgent,
+          };
+          try {
+            const regs = navigator.serviceWorker ? await navigator.serviceWorker.getRegistrations() : [];
+            out.swRegs = regs.length;
+          } catch (e) { out.swRegs = -1; }
+          return out;
+        })()`)) as {
+          notification: string;
+          composerResize: boolean;
+          quickChips: number;
+          attachImg: boolean;
+          swRegs: number;
+          ua: string;
+        };
+        // Ctrl+K 全局搜索（0.90 新增；验证 Urchin 内未被浏览器快捷键吞掉）
+        wc.focus();
+        wc.sendInputEvent({ type: 'keyDown', keyCode: 'K', modifiers: ['control'] });
+        wc.sendInputEvent({ type: 'keyUp', keyCode: 'K', modifiers: ['control'] });
+        await wait(700);
+        const globalSearch = (await wc.executeJavaScript(`(() => {
+          const modal = document.querySelector('.gs-modal');
+          const input = modal ? modal.querySelector('input') : null;
+          const close = document.querySelector('.gs-close');
+          if (close) close.click();
+          return { opened: !!modal, hasPlaceholder: !!(input && input.getAttribute('placeholder')) };
+        })()`)) as { opened: boolean; hasPlaceholder: boolean };
+
+        // dev.86：项目删除迁移官方 remove_project——先造出第二个项目行（非活动），
+        // 挂确认钩子后点行内 ×，断言：行消失（服务端持久 tombstone 广播刷新面板）
+        await wc.executeJavaScript(`window.__ubCwdPickerPick && window.__ubCwdPickerPick('C:/')`);
+        await wait(2000);
+        const delRes = (await wc.executeJavaScript(`(async () => {
+          window.__ubProjDelConfirm = function(){ return true; };
+          const rows = Array.from(document.querySelectorAll('.__ubLPProj[data-act="proj"]'));
+          const target = rows.find(function(r){ return !r.classList.contains('active'); });
+          if (!target) return { ok: false, reason: 'no-non-active-row' };
+          const title = target.getAttribute('title') || '';
+          const btn = target.querySelector('[data-act="delproj"]');
+          if (!btn) return { ok: false, reason: 'no-del-button', title };
+          btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          await new Promise(function(r){ setTimeout(r, 2500); });
+          const still = Array.from(document.querySelectorAll('.__ubLPProj[data-act="proj"]'))
+            .some(function(r){ return (r.getAttribute('title') || '') === title; });
+          return { ok: !still, title };
+        })()`)) as { ok: boolean; reason?: string; title?: string };
 
         // dev.48：pi 页内 window.open 新开网页 → 标签图标钉定为 π
         //（先经主窗口开「链接新标签打开」，再从 pi 页开 example.com）
@@ -506,10 +576,9 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           projectItems: counts.items,
           delButtons: counts.dels,
           foldOk: foldRes.ok && foldRes.expandedByDefault && foldRes.foldedAway && foldRes.restored,
-          noProjDel,
+          delRes,
           noticeSuppressed,
           updateCssReady,
-          settingsDedup,
           lpReady: lp.ready === true,
           lpOfficialHidden: lp.officialHidden === true,
           lpCfgRows: lp.cfgRows ?? 0,
@@ -517,6 +586,10 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           lpActiveProj: lp.activeProj ?? '',
           lpNewBtns: lp.newBtns ?? 0,
           lpSwitchWorked: switchOk,
+          featureSurface,
+          featureProbe,
+          globalSearch,
+          officialLeak,
           cfgSkillsExpanded: cfgRes.skillsClicked && cfgRes.skillsExpanded,
           cfgFilesListed: cfgRes.filesClicked && cfgRes.filesListed,
           themeSelectorHidden: !themeSel.present || themeSel.removed || themeSel.hidden,
@@ -524,6 +597,28 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       },
       url,
     );
+    // dev.85：功能面运行时核验——0.90 新设置页保留（去重仅移除技能/插件）、
+    // 通知权限 granted / SW 已注册（PWA 面可用）、输入框拖高/快捷短语在位、
+    // Ctrl+K 全局搜索在 Urchin 内可打开
+    expect(enhance.featureSurface).toMatchObject({
+      hasScheduler: true,
+      hasTools: true,
+      hasUiLayout: true,
+      hasSubagentTpl: true,
+    });
+    expect(enhance.featureProbe).toMatchObject({
+      notification: 'granted',
+      composerResize: true,
+      attachImg: true,
+    });
+    expect(enhance.featureProbe?.quickChips ?? 0).toBeGreaterThanOrEqual(1);
+    expect(enhance.featureProbe?.swRegs ?? 0).toBeGreaterThanOrEqual(1);
+    expect(enhance.globalSearch).toMatchObject({ opened: true, hasPlaceholder: true });
+    expect(enhance.officialLeak ?? []).toEqual([]);
+    // dev.86（A1 决策）：UA 中的 Electron 标记已抹除——pi 页按 Web 形态运行
+    //（否则官方 isDesktop 判定会禁用浏览器操作/pageCall、更新面板走桌面分支）
+    expect(enhance.featureProbe?.ua ?? '').not.toContain('Electron/');
+
     expect(enhance).toMatchObject({
       theme: 'white',
       noticeSuppressed: true,
@@ -540,16 +635,10 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     expect(enhance.projectItems ?? 0).toBeGreaterThanOrEqual(1);
     // dev.68：会话折叠/展开正常（默认展开 → 折叠归零 → 恢复）；项目行无「×」删除按钮
     expect(enhance.foldOk).toBe(true);
-    expect(enhance.noProjDel).toBe(true);
+    // dev.86：项目删除走官方 remove_project（持久 tombstone）——非活动行点 × 后消失
+    expect(enhance.delRes?.ok).toBe(true);
     // dev.65/68：配置五小节（技能/插件/命令/预设/配置文件）+ 项目行「＋」与行数一致
     expect(enhance.lpCfgRows).toBe(5);
-    // dev.69：设置弹窗打开过且技能/插件节已移除、预设节保留（管理统一在左区）
-    expect(enhance.settingsDedup).toMatchObject({
-      dialogSeen: true,
-      noSkills: true,
-      noExts: true,
-      presetsKept: true,
-    });
     expect(enhance.lpProjRows ?? 0).toBeGreaterThanOrEqual(1);
     expect(enhance.lpNewBtns).toBe(enhance.lpProjRows);
     // dev.71：活动项目行展开且有会话区（组或空提示；全局对话后按行作用域观测）

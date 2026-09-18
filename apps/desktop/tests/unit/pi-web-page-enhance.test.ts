@@ -10,7 +10,8 @@
  *    整体移除 + more 菜单（.dd-menu）内主题段删除（替代 dev.48 隐藏类）
  * 3. 新对话按钮移植（dev.48）：隐藏顶栏原 chip.newchat，历史对话标题行注入
  *    同功能小按钮（右对齐、贴合行高）
- * 4. 最近项目删除按钮 + 确认（__ubProjDelConfirm 钩子）+ 会话内隐藏
+ * 4. 最近项目删除注入（dev.45/47）已退役（dev.86）——删除迁至左区面板走官方
+ *    remove_project；本文件断言注入不再残留
  * 5. 抑制「已切换到/已在工作目录」路径提示（dev.64：0.29.x 官方 .notice toast
  *    转发点击 .notice-close 走官方 dismiss 通道；.fp-notice 旧选择器保留兜底）
  * 6. 更新组件隐藏（.dd-update 仅版本行 + update-dot 红点）
@@ -19,11 +20,38 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  buildWebFormScript,
   buildThemeFollowScript,
   buildThemePushCall,
   pushPiTheme,
   buildProjectsPanelScript,
 } from '../../src/main/pi-web/page-enhance';
+
+describe('buildWebFormScript', () => {
+  it('should strip Electron token from navigator.userAgent (A1 decision, dev.86)', () => {
+    const s = buildWebFormScript();
+    // 上游 isDesktop = piDesktop?.isDesktop || UA 含 Electron/ —— Urchin 本身是
+    // Electron，必须抹掉 UA 标记，否则浏览器操作/pageCall 被官方按桌面壳禁用
+    expect(s).toContain('navigator.userAgent');
+    expect(s).toContain('Electron');
+    expect(s).toContain('Object.defineProperty(navigator,"userAgent"');
+    expect(s).toContain('configurable:true');
+    // 失败静默：try/catch 包裹，最坏退回旧行为
+    expect(s).toContain('catch(e){}');
+  });
+});
+
+describe('injectable script syntax guards', () => {
+  it('should generate syntactically valid injectable scripts (guard)', () => {
+    // 教训：拼接注入脚本任何一段语法错误都会被 executeJavaScript 静默 catch，
+    // 导致全部注入（面板/主题/左区/布局）失效——编译期守卫逐段解析（仅编译不执行）
+    /* eslint-disable @typescript-eslint/no-implied-eval -- 注入脚本编译期守卫（不执行） */
+    expect(() => new Function(buildWebFormScript())).not.toThrow();
+    expect(() => new Function(buildThemeFollowScript())).not.toThrow();
+    expect(() => new Function(buildProjectsPanelScript())).not.toThrow();
+    /* eslint-enable @typescript-eslint/no-implied-eval */
+  });
+});
 
 describe('buildThemeFollowScript', () => {
   it('should expose __ubApplyTheme for main-process push and apply without reload', () => {
@@ -114,13 +142,14 @@ describe('buildProjectsPanelScript', () => {
     expect(s).not.toContain('__ubThemeSelHidden');
   });
 
-  it('should inject delete buttons with confirm dialog and session-persisted hidden set', () => {
+  it('should retire injected project delete/hidden-set (dev.86: migrated to left panel + remove_project)', () => {
     const s = buildProjectsPanelScript();
-    expect(s).toContain('button.project-item');
-    expect(s).toContain('__ubProjDel');
-    expect(s).toContain('__ubProjDelConfirm');
-    expect(s).toContain('window.confirm');
-    expect(s).toContain('sessionStorage');
+    // dev.86 决策退役：注入式 ✕ / 确认钩子 / sessionStorage 隐藏列表整体移除；
+    // 删除入口迁至左区面板（pi-web-left-panel.test.ts 覆盖官方 remove_project）
+    expect(s).not.toContain('__ubProjDel');
+    expect(s).not.toContain('__ubProjDelConfirm');
+    expect(s).not.toContain('__ubHiddenProjects');
+    expect(s).not.toContain('button.project-item');
   });
 
   it('should suppress only cwd-switch notices (dev.64: official .notice toast via close click)', () => {
@@ -141,27 +170,13 @@ describe('buildProjectsPanelScript', () => {
     expect(s).toContain('.update-dot{display:none!important}');
   });
 
-  it('should remove skills/extensions tabs and sections from settings dialog (dev.69/71)', () => {
+  it('should retire skills/extensions settings-dedupe (dev.86 cleanup)', () => {
     const s = buildProjectsPanelScript();
-    // 管理面统一到左区（同一 settings_state/set_settings 接口），弹窗内移除。
-    // dev.71：0.47.0 弹窗为标签页布局——删 nav.settings-rail 里的
-    // button.settings-tab（title 属性=精确标签）即整节不可达
-    expect(s).toContain('removeSettingsDupSections');
-    expect(s).toContain('"button.settings-tab"');
-    expect(s).toContain('tabs[i].remove()');
-    // 激活 tab 兜底（被删 tab 若为激活项，点第一个剩余 tab 保持内容区有效）
-    expect(s).toContain('button.settings-tab.active');
-    expect(s).toContain('first.click()');
-    // .set-section 内容级移除保留作兜底（旧布局/激活态节）
-    expect(s).toContain('".set-section .set-section-title"');
-    expect(s).toContain('closest(".set-section")');
-    expect(s).toContain('sec.remove()');
-    // title/纯文本精确匹配（防「审查可用技能」「界面插件」子串误删）
-    expect(s).toContain('/^(\\u6280\\u80fd|skills)$/i.test(tl)');
-    expect(s).toContain('/^(\\u63d2\\u4ef6|extensions)$/i.test(tl)');
-    expect(s).toContain('/^(\\u6280\\u80fd|skills)$/i.test(label)');
-    // 挂进 MutationObserver 调度（弹窗重开重建节点时重复移除）
-    expect(s).toContain('enhance(); suppressCwdNotices(); removeSettingsDupSections();');
+    // dev.86 决策清理：0.90.0 上游设置页重组后已无「技能/插件」tab，
+    // dev.69/71 去重逻辑成为惰性代码——整体退役删除
+    expect(s).not.toContain('removeSettingsDupSections');
+    expect(s).not.toContain('button.settings-tab');
+    expect(s).not.toContain('set-section');
   });
 
   it('should keep only visual composer customizations on 0.47.0 native structure (dev.71)', () => {
@@ -180,7 +195,7 @@ describe('buildProjectsPanelScript', () => {
       '.inputbar .composer-tools-left .btn.attach-img svg{display:none!important}',
     );
     expect(s).toContain(
-      '.inputbar .composer-tools-left .btn.attach-img{border:none;background-color:transparent;background-repeat:no-repeat;background-position:center;background-size:18px 18px;width:27px;height:27px',
+      '.inputbar .composer-tools-left .btn.attach-img{background-color:transparent;background-repeat:no-repeat;background-position:center;background-size:18px 18px;width:27px;height:27px',
     );
     expect(s).toContain('url(\\"data:image/svg+xml');
     expect(s).toContain('%23111827');
@@ -201,8 +216,9 @@ describe('buildProjectsPanelScript', () => {
     expect(s).toContain('insertAdjacentElement("afterend",row)');
     expect(s).toContain('button.status-cwd');
     expect(s).toContain('__ubCwdPath');
-    // dev.54 顶栏模型/思考移除：0.47.0 上游已原生移除（保留为无害兜底）
-    expect(s).toContain('span.chip-model');
-    expect(s).toContain('.topbar-desktop');
+    // dev.86：顶栏模型/思考移除为死代码（0.90 顶栏已无此二项，由 composer.actions
+    // 承载），按决策退役删除——脚本中不再出现该逻辑
+    expect(s).not.toContain('span.chip-model');
+    expect(s).not.toContain('.topbar-desktop');
   });
 });

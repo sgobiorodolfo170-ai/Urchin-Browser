@@ -10,7 +10,9 @@
  *   管理全部移入），行内「＋」在对应项目下新建对话，「＋」前 ▾/▸ 折叠该项目的
  *   会话列表（默认展开，会话内记忆）；展开时下挂单一会话列表（dev.66：会话名
  *   统一取第一轮提问前几字，运行中对话排最上，streaming 优先）。
- *   dev.68：按用户要求移除项目行「×」删除按钮（隐藏列表机制保留兼容旧数据）。
+ *   dev.68：项目行「×」删除按钮曾按用户要求移除；**dev.86 决策恢复**——行内 ×
+ *   走官方 `remove_project`（持久 tombstone，与官方最近项目删除同语义），确认语义
+ *   保留 `__ubProjDelConfirm` 自动化钩子；旧 sessionStorage 隐藏列表已退役。
  *   dev.71（0.47.0）：conversations 广播跨项目全局——各项目运行对话按 cwd
  *   归位到各自项目行下；点击跨项目对话直发 switch_conversation（服务端已
  *   同步 set_cwd 全套副作用）。历史会话（sessions）上游仍按项目。
@@ -125,14 +127,6 @@ export function buildLeftPanelScript(): string {
   setInterval(function () {
     if (S.pendNew && Date.now() - S.pendNewAt > 8000) S.pendNew = '';
   }, 2000);
-
-  // ── 会话内隐藏项目（与 dev.45/47 官方行删除同一存储语义）──
-  function hiddenList() {
-    try { return JSON.parse(sessionStorage.getItem('__ubHiddenProjects') || '[]'); } catch (e) { return []; }
-  }
-  function saveHidden(l) {
-    try { sessionStorage.setItem('__ubHiddenProjects', JSON.stringify(l)); } catch (e) {}
-  }
 
   // ── 工具 ──
   function esc(s) {
@@ -313,8 +307,7 @@ export function buildLeftPanelScript(): string {
     z.classList.add('__ubOn');
     z.classList.add('__ubReady');
 
-    var hidden = hiddenList();
-    var projects = orderedProjects(S.projects).filter(function (p) { return hidden.indexOf(p.path) < 0; });
+    var projects = orderedProjects(S.projects);
     var st = S.settings || {};
     var skills = st.skills || [], exts = st.extensions || [];
     var piFiles = (S.piFiles || []).filter(function (f) { return f.type === 'file'; });
@@ -420,6 +413,7 @@ export function buildLeftPanelScript(): string {
         '<span class="__ubLPChev">' + (fold ? '▸' : '▾') + '</span>' +
         '<span class="__ubLPProjName">' + esc(baseName(p.path)) + '</span>' +
         '<span class="__ubLPTime">' + esc(fmtTime(p.lastUsed)) + '</span>' +
+        '<span class="__ubProjDel" data-act="delproj" data-v="' + esc(p.path) + '" title="从最近项目列表移除">×</span>' +
         '<span class="__ubFoldBtn" data-act="fold" data-v="' + esc(p.path) + '" title="' + (fold ? '展开会话' : '折叠会话') + '">' + (fold ? '▸' : '▾') + '</span>' +
         '<span class="__ubNewBtn" data-act="newchat" data-v="' + esc(p.path) + '" title="新建对话">＋</span>' +
         '</button>';
@@ -475,6 +469,13 @@ export function buildLeftPanelScript(): string {
     } else if (act === 'fold') {
       // dev.68：折叠/展开该项目的会话列表（默认展开，会话内记忆）
       toggleFold(v);
+    } else if (act === 'delproj') {
+      // dev.86（决策）：项目删除改用官方 remove_project（服务端持久 tombstone，
+      // 与官方最近项目删除同语义）；确认语义保留 __ubProjDelConfirm 自动化钩子
+      var okDel = (typeof window.__ubProjDelConfirm === 'function')
+        ? window.__ubProjDelConfirm(v)
+        : window.confirm('确认从最近项目列表移除？\\n' + v);
+      if (okDel) send({ type: 'remove_project', path: v });
     } else if (act === 'conv') {
       // dev.71：0.47.0 起运行对话跨项目全局，switch_conversation 跨项目时
       // 服务端已同步 set_cwd 全套副作用（文件树/会话历史/项目顺序/命令目录）
@@ -557,6 +558,11 @@ export function buildLeftPanelScript(): string {
     '.panel-left:has(>.__ubLP.__ubOn)>.panel-projects,' +
     '.panel-left:has(>.__ubLP.__ubOn)>.panel-convs,' +
     '.panel-left:has(>.__ubLP.__ubOn)>.panel-sessions{display:none!important}' +
+    // dev.85：0.90 新增官方折叠按钮（panel-collapse-btn）与共享分割线（lp-sash）——
+    // 与 dev.67 自绘折叠/原生把手持久化重复；定制优先，接管期隐藏官方重复件
+    //（是否退役我方实现改用官方，列入重叠项报告待用户决策）
+    '.panel-left:has(>.__ubLP.__ubOn)>.panel-collapse-btn,' +
+    '.panel-left:has(>.__ubLP.__ubOn)>.lp-sash{display:none!important}' +
     '.__ubLPCfg{flex-shrink:0;max-height:45%;overflow-y:auto;padding:6px 6px 8px;border-bottom:2px solid var(--border)}' +
     '.__ubLPCfg .panel-section-title{display:flex;align-items:center;gap:6px}' +
     '.__ubLPCfgProj{font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-dim);font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
@@ -586,6 +592,10 @@ export function buildLeftPanelScript(): string {
     '.__ubLPProj.active{background:var(--accent-soft);color:var(--text);border:1px solid rgba(139,92,246,.3);padding:6px 9px}' +
     '.__ubLPProjName{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
     '.__ubLPTime{font-size:10.5px;color:var(--text-faint);flex-shrink:0}' +
+    // dev.86：项目删除入口（官方 remove_project，持久 tombstone；悬停行时显形）
+    '.__ubProjDel{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:4px;color:#e5484d;font-size:12px;line-height:1;opacity:0;transition:opacity .12s;cursor:pointer;flex-shrink:0}' +
+    '.__ubLPProj:hover .__ubProjDel{opacity:1}' +
+    '.__ubProjDel:hover{background:rgba(229,72,77,.12)}' +
     '.__ubNewBtn{width:20px;height:20px;line-height:18px;text-align:center;border-radius:5px;color:var(--text-dim);flex-shrink:0;font-size:13px}' +
     '.__ubNewBtn:hover{background:var(--accent);color:#fff}' +
     // dev.68：「＋」前的会话折叠/展开按钮（默认展开 ▾）

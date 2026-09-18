@@ -26,17 +26,18 @@
  * 3. 新对话按钮移植（dev.48）：隐藏顶栏原 button.chip.newchat，在左区
  *    「历史对话」标题行（.panel-sessions > .panel-section-title）尾部注入
  *    同功能小按钮（右对齐、尺寸贴合标题行高），点击转发触发原按钮逻辑。
- * 4. 最近项目删除按钮（dev.45/47）：行尾 ✕ + 删除确认（window.confirm，
- *    __ubProjDelConfirm 钩子供自动化）+ sessionStorage 会话内隐藏。
+ * 4. 最近项目删除按钮（dev.45/47）：**dev.86 决策退役**——注入式 ✕ + 会话内
+ *    隐藏列表整体移除，删除入口迁至我方左区面板（left-panel.ts），走官方
+ *    `remove_project`（持久 tombstone），并保留 `__ubProjDelConfirm` 自动化钩子语义。
  * 5. 抑制中区路径提示（dev.45，dev.64 修正选择器）：左区切换项目时服务端发
  *    notice「已切换到/已在工作目录」，0.29.x 渲染为 fixed 居中 toast（.notice，
  *    .notices 容器）——dev.45 瞄准的 .fp-notice 在 0.29.1 实为「预览截断」提示
  *    未命中；现对匹配文本的 .notice 转发点击 .notice-close 走官方 dismiss_notice
  *    通道（React 状态一致，重渲染不复活），.fp-notice 移除保留兜底；错误级提示
  *    （切换工作目录失败）不匹配文本，不受影响。
- * 5.5 设置弹窗去重（dev.69）：技能/插件管理已统一在左区面板（同一
- *    settings_state / set_settings 接口），弹窗内对应 .set-section 整节移除
- *    （标题纯文本精确匹配——「审查可用技能」含子串不误删；预设/审查节保留）。
+ * 5.5 设置弹窗去重（dev.69）：**dev.86 决策清理已退役**——0.90.0 上游设置页
+ *    重组后已无「技能/插件」tab（改名/并入界面插件等），去重逻辑成为惰性
+ *    代码；技能/插件状态仍走 settings_state / set_settings 同源接口。
  * 6. 更新组件隐藏（dev.47）：.dd-update 仅留版本行 + update-dot 红点隐藏。
  * 7. 左区重构（dev.65，详见 left-panel.ts）：上区改「项目配置」（技能/插件启停 +
  *    .pi/ 配置文件编辑），下区改「项目」管理（项目行切换 + 行内「＋」新建对话 +
@@ -98,11 +99,30 @@ const log = createLogger('pi-web-enhance');
 /** 注入脚本幂等标志 */
 const INSTALLED_FLAG = '__ubPageEnhanceInstalled';
 
-/** 本模块 sessionStorage 键：会话内已隐藏的最近项目路径 */
-const HIDDEN_KEY = '__ubHiddenProjects';
-
 /** 主题轮询间隔（ms）：兜底轮询——主进程直推（pushPiTheme）为即时通道 */
 const THEME_POLL_MS = 2000;
+
+/**
+ * 构建「Web 形态」脚本（dev.86，A1 决策）。
+ *
+ * 背景：上游桌面判定 `isDesktop = window.piDesktop?.isDesktop===true || UA 含 'Electron/'`。
+ * Urchin 本身是 Electron，pi 页 UA 必然命中 →「浏览器操作」（page-picker 桥）与
+ * `host.pageCall` 被官方逻辑按「桌面壳不支持」禁用，更新面板也走桌面分支。
+ *
+ * 处置：把 pi 页的 navigator.userAgent 覆盖为去掉 Electron 标记的 UA，让上游按
+ * Web 形态运行（与本项目部署形态一致：pi-web-ui 是 Urchin 内的 Web 服务，而非
+ * 官方 Electron 壳）。幂等（重复注入只覆盖一次）；失败静默（最坏退回旧行为）。
+ */
+export function buildWebFormScript(): string {
+  return (
+    '(function(){' +
+    "try{var ua=navigator.userAgent||'';" +
+    'var clean=ua.replace(/\\s*Electron\\/[^\\s]+/,"");' +
+    'if(clean!==ua){Object.defineProperty(navigator,"userAgent",{get:function(){return clean;},configurable:true});}' +
+    '}catch(e){}' +
+    '})();'
+  );
+}
 
 /**
  * 构建主题跟随浏览器脚本（纯字符串，可单测）。
@@ -208,12 +228,6 @@ export function buildProjectsPanelScript(): string {
   // SyntaxError（实测浏览器报 Uncaught SyntaxError: Unexpected identifier 'data'，
   // 面板+主题脚本全部失效，.input-tools 回落到官方 display:none ——即「工具条删了」）。
   const styleCss =
-    '.project-item{position:relative!important}' +
-    '.__ubProjDel{position:absolute;right:6px;top:50%;transform:translateY(-50%);' +
-    'width:16px;height:16px;line-height:16px;text-align:center;border-radius:4px;' +
-    'cursor:pointer;color:#e5484d;font-size:12px;opacity:0;transition:opacity .12s;' +
-    'background:rgba(229,72,77,.08)}' +
-    '.project-item:hover .__ubProjDel{opacity:1}' +
     'button.chip.newchat{display:none!important}' +
     '.panel-sessions>.panel-section-title{display:flex!important;align-items:center}' +
     '.__ubNewChat{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;' +
@@ -232,7 +246,11 @@ export function buildProjectsPanelScript(): string {
     'border-color:var(--text);color:var(--bg);width:28px;height:28px;border-radius:10px;box-shadow:none}' +
     '.inputbar .btn.send:hover:not(:disabled),.inputbar .btn.stop:hover:not(:disabled)' +
     '{background:var(--text);border-color:var(--text);opacity:.88;transform:none;box-shadow:none}' +
-    '.inputbar .composer-tools-left .btn.attach-img{border:none;' +
+    // dev.86 输入框规则审计（决策「可移除已覆盖规则」）：官方 0.90 CSS 已覆盖
+    // `.inputbox .btn.attach-img{border:none}`——本条移除；其余规则（反色发送/
+    // 「+」绘制/圆环/信息栏隐藏/cwd 行）仍为独有定制，保留；官方 composer-resize
+    // 拖高未被本文件触碰（E2E 断言在位）。
+    '.inputbar .composer-tools-left .btn.attach-img{' +
     'background-color:transparent;background-repeat:no-repeat;background-position:center;' +
     'background-size:18px 18px;width:27px;height:27px;padding:0;flex-shrink:0;opacity:1!important;' +
     "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M12 5v14M5 12h14' stroke='%23111827' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E\")}" +
@@ -255,15 +273,6 @@ export function buildProjectsPanelScript(): string {
 
   return (
     '(function(){' +
-    'function hiddenList(){' +
-    'try { return JSON.parse(sessionStorage.getItem("' +
-    HIDDEN_KEY +
-    '") || "[]"); }' +
-    'catch (e) { return []; }' +
-    '}' +
-    'function saveHidden(list){ sessionStorage.setItem("' +
-    HIDDEN_KEY +
-    '", JSON.stringify(list)); }' +
     // 注入一次样式：JSON.stringify 转义，避免 CSS 内双引号破坏 st.textContent 字面量
     'if (!document.getElementById("__ubProjStyle")) {' +
     'var st = document.createElement("style"); st.id = "__ubProjStyle";' +
@@ -291,7 +300,7 @@ export function buildProjectsPanelScript(): string {
     // ── dev.49：删除主题切换按钮（主题完全跟随浏览器，不提供手选）──
     // 顶栏触发器：chip-sub 文本「主题/theme」所在的 .dropdown 整体移除
     //（图标 + 文字 + 菜单一并消失）；React 重渲染重建时由 MutationObserver
-    // 调度的 enhance() 重复删除（与 dev.45 删除按钮同一生命周期）。
+    // 调度的 enhance() 重复删除。
     'var chips = document.querySelectorAll("span.chip-sub");' +
     'for (var ci = 0; ci < chips.length; ci++) {' +
     'var txt = (chips[ci].textContent || "").trim();' +
@@ -320,48 +329,9 @@ export function buildProjectsPanelScript(): string {
     '}' +
     '}' +
     '}' +
-    // ── dev.54：删除顶栏（网页标题栏）的模型选择框 + 思考选择框──
-    // 顶栏 Wt 组件渲染两只相邻 .dropdown（模型=含 span.chip-model，思考=紧随其后）。
-    // 模型/思考在工具条（.input-tools-left）内仍有，顶栏属重复入口，整体移除；
-    // React 重渲染重建由 MutationObserver 调度的 enhance() 重复删除。
-    'var topDesk = document.querySelector(".topbar-desktop");' +
-    'if (topDesk) {' +
-    'var tds = Array.prototype.slice.call(topDesk.querySelectorAll(".dropdown"));' +
-    'for (var ti = 0; ti < tds.length; ti++) {' +
-    'if (tds[ti].querySelector("span.chip-model")) {' +
-    'tds[ti].remove();' +
-    'var next = tds[ti + 1];' +
-    'if (next && next.classList && next.classList.contains("dropdown")) next.remove();' +
-    'break;' +
-    '}' +
-    '}' +
-    '}' +
-    // ── dev.45/47：最近项目删除按钮（确认 + 会话内隐藏）──
-    'var hidden = hiddenList();' +
-    'var items = document.querySelectorAll("button.project-item");' +
-    'for (var i = 0; i < items.length; i++) {' +
-    'var btn = items[i];' +
-    'var path = btn.getAttribute("title") || "";' +
-    'if (hidden.indexOf(path) >= 0) { btn.style.display = "none"; continue; }' +
-    'btn.style.display = "";' +
-    'if (!btn.querySelector(".__ubProjDel")) {' +
-    'var del = document.createElement("span");' +
-    'del.className = "__ubProjDel"; del.textContent = "\\u00d7"; del.title = "\\u4ece\\u5217\\u8868\\u79fb\\u9664\\u8be5\\u9879\\u76ee";' +
-    'del.addEventListener("click", function(ev){' +
-    'ev.preventDefault(); ev.stopPropagation();' +
-    'var row = ev.target.closest("button.project-item");' +
-    'var p = row && (row.getAttribute("title") || "");' +
-    'var ok = (typeof window.__ubProjDelConfirm === "function")' +
-    '  ? window.__ubProjDelConfirm(p)' +
-    '  : window.confirm("\\u786e\\u8ba4\\u4ece\\u6700\\u8fd1\\u9879\\u76ee\\u5217\\u8868\\u79fb\\u9664\\uff1f\\n" + p);' +
-    'if (!ok) return;' +
-    'if (p) { var l = hiddenList(); if (l.indexOf(p) < 0) { l.push(p); saveHidden(l); } }' +
-    'if (row) row.style.display = "none";' +
-    '});' +
-    'btn.appendChild(del);' +
-    '}' +
-    '}' +
-    '}' +
+    '}' + // 闭合 enhance()
+    // ── dev.45/47 最近项目删除注入：dev.86 决策退役（改用官方 remove_project，
+    // 删除入口迁到我方左区面板 left-panel.ts；会话内隐藏列表同步废弃）──
     // 移除「已切换到/已在工作目录」提示（其他 notice 不动）。
     // dev.64：0.29.x 官方 toast 为 .notice（.notices 容器 fixed 居中即「中区弹窗」），
     // 转发点击 .notice-close 走官方 dismiss_notice 通道（React 状态一致，重渲染不复活）；
@@ -374,36 +344,6 @@ export function buildProjectsPanelScript(): string {
     'if (/\\u5df2\\u5207\\u6362\\u5230\\u5de5\\u4f5c\\u76ee\\u5f55|\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55/.test(t)) {' +
     'var close = n.querySelector(".notice-close");' +
     'if (close) close.click(); else n.remove();' +
-    '}' +
-    '}' +
-    '}' +
-    // dev.69：设置弹窗去重——技能/插件管理已统一在左区面板（同一 settings_state /
-    // set_settings 接口）。dev.71 适配 0.47.0 标签页布局：技能/插件成了
-    // nav.settings-rail 里的 button.settings-tab（title 属性=精确标签），删除
-    // tab 项即整节不可达（内容区只渲染激活 tab；默认激活「提示词」不受影响）。
-    // 「审查可用技能」「界面插件」含子串，靠 title 精确匹配防误删；旧版
-    // .set-section 内容级移除保留作兜底。React 重开弹窗重建由 observer 重复删。
-    'function removeSettingsDupSections(){' +
-    'var tabs = document.querySelectorAll("button.settings-tab");' +
-    'for (var i = 0; i < tabs.length; i++) {' +
-    'var tl = (tabs[i].getAttribute("title") || "").trim();' +
-    'if (/^(\\u6280\\u80fd|skills)$/i.test(tl) || /^(\\u63d2\\u4ef6|extensions)$/i.test(tl)) tabs[i].remove();' +
-    '}' +
-    'if (!document.querySelector("button.settings-tab.active")) {' +
-    'var first = document.querySelector("button.settings-tab");' +
-    'if (first) first.click();' +
-    '}' +
-    'var titles = document.querySelectorAll(".set-section .set-section-title");' +
-    'for (var j = 0; j < titles.length; j++) {' +
-    'var t = titles[j];' +
-    'var label = "";' +
-    'for (var k = 0; k < t.childNodes.length; k++) {' +
-    'if (t.childNodes[k].nodeType === 3) label += t.childNodes[k].textContent;' +
-    '}' +
-    'label = label.trim();' +
-    'if (/^(\\u6280\\u80fd|skills)$/i.test(label) || /^(\\u63d2\\u4ef6|extensions)$/i.test(label)) {' +
-    'var sec = t.closest(".set-section");' +
-    'if (sec) sec.remove();' +
     '}' +
     '}' +
     '}' +
@@ -462,10 +402,10 @@ export function buildProjectsPanelScript(): string {
     'var timer = null;' +
     'function schedule(){' +
     'if (timer) return;' +
-    'timer = setTimeout(function(){ timer = null; enhance(); suppressCwdNotices(); removeSettingsDupSections(); }, 80);' +
+    'timer = setTimeout(function(){ timer = null; enhance(); suppressCwdNotices(); }, 80);' +
     '}' +
     'new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });' +
-    'enhance(); suppressCwdNotices(); removeSettingsDupSections(); ensureCtxRing(); updateCtxRing(); ensureCwdRow(); updateCwdRow();' +
+    'enhance(); suppressCwdNotices(); ensureCtxRing(); updateCtxRing(); ensureCwdRow(); updateCwdRow();' +
     '})();'
   );
 }
@@ -486,10 +426,13 @@ export function installPiWebPageEnhance(tabManager: {
   query(_: unknown): readonly { id: number }[];
 }): () => void {
   const disposers: (() => void)[] = [];
+  // dev.86（A1 决策）：Web 形态脚本最先执行——UA 抹掉 Electron 标记，避免 pi 页
+  // 按官方 Electron 壳分支运行（更新面板桌面分支、浏览器操作/pageCall 误禁）。
   // dev.65：左区重构脚本追加在末尾（自带幂等标志与样式，独立于面板增强）；
   // dev.67：布局控制（layout）先于左区面板（leftPanel）注入——后者消费前者
   // 暴露的 window.__ubPiUI（项目排序 po 与持久化通道）
   const script =
+    buildWebFormScript() +
     buildThemeFollowScript() +
     buildLayoutScript() +
     buildProjectsPanelScript() +

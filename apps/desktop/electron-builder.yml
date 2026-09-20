@@ -27,6 +27,44 @@ extraResources:
     to: icon.ico
   - from: build/icon.png
     to: icon.png
+  # GenOffice 嵌入产物（scripts/genoffice-build.mjs 前置生成，见阶段 1）：
+  # 主进程经绝对路径 require embed；renderer 由 genoffice-app:// 协议按文件
+  # 路径读取——两者都必须在 asar 之外，故放 extraResources。
+  # 注意：产物缺失时 electron-builder 会直接报错——这是有意的门禁
+  # （package:win 已内置 genoffice:build 前置步骤）。
+  - from: ../../vendor/genoffice/apps/urchin-embed/out/main/index.js
+    to: genoffice/embed/index.js
+  - from: ../../vendor/genoffice/apps/markdown/out/renderer
+    to: genoffice/apps/markdown/renderer
+  - from: ../../vendor/genoffice/apps/markdown/out/preload/index.js
+    to: genoffice/apps/markdown/preload/index.js
+  - from: ../../vendor/genoffice/apps/pdf/out/renderer
+    to: genoffice/apps/pdf/renderer
+  - from: ../../vendor/genoffice/apps/pdf/out/preload/index.js
+    to: genoffice/apps/pdf/preload/index.js
+  - from: ../../vendor/genoffice/apps/html/out/renderer
+    to: genoffice/apps/html/renderer
+  - from: ../../vendor/genoffice/apps/html/out/preload/index.js
+    to: genoffice/apps/html/preload/index.js
+  - from: ../../vendor/genoffice/apps/docs/out/renderer
+    to: genoffice/apps/docs/renderer
+  - from: ../../vendor/genoffice/apps/docs/out/preload/index.js
+    to: genoffice/apps/docs/preload/index.js
+  # PDF 文本编辑运行时 wasm：pdf-main 的 wasm-path 在打包态按
+  # process.resourcesPath/wasm/<file> 解析（开发态走 vendor node_modules）
+  - from: ../../vendor/genoffice/node_modules/@embedpdf/pdfium/dist/pdfium.wasm
+    to: wasm/pdfium.wasm
+  - from: ../../vendor/genoffice/apps/pdf/node_modules/harfbuzzjs/hb-subset.wasm
+    to: wasm/hb-subset.wasm
+  # 许可合规（Apache-2.0 NOTICE 传播 + 第三方声明）：随包分发 GenOffice 的
+  # LICENSE / NOTICE / THIRD-PARTY-NOTICES（后者由 vendor `npm run notices`
+  # 生成后复制到 vendor 根，见 VENDOR.md）
+  - from: ../../vendor/genoffice/LICENSE
+    to: genoffice/LICENSE
+  - from: ../../vendor/genoffice/NOTICE
+    to: genoffice/NOTICE
+  - from: ../../vendor/genoffice/THIRD-PARTY-NOTICES.txt
+    to: genoffice/THIRD-PARTY-NOTICES.txt
 
 # Windows 配置
 win:
@@ -48,8 +86,13 @@ nsis:
   # data/（DD1），随安装目录删除。
   deleteAppDataOnUninstall: true
 
-# 原生模块重新构建
-npmRebuild: true
+# 原生模块重新构建（2026-09 Electron 43 升级调整）：
+# - better-sqlite3 v13 起为 N-API + 包内预编译产物（prebuilds/win32-x64.node），
+#   跨 Node/Electron 版本通用，无需 rebuild（Electron 43 实测可直接加载）。
+# - node-pty 等原生模块由 pi-web 的「系统 Node」子进程使用，必须保持 Node ABI，
+#   绝不能被 electron-builder 重编为 Electron ABI。
+# 因此关闭自动 rebuild，原生产物按 pnpm 安装后的原始状态打包。
+npmRebuild: false
 
 # node_modules 整体移出 asar：pi-web-ui 由外部「系统 Node」子进程直启（pi-web 启动器），
 # 系统 Node 无法读取 asar 内文件——pi-web-ui 及其运行时依赖（ws、node-pty 等）必须是

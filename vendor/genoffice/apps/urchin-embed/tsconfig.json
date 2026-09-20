@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": [
+    "src",
+    "electron.vite.config.ts",
+    // upstream declaration shims required by the imported graph (same list as
+    // apps/shell/tsconfig.json)
+    "../../packages/pdf2docx/src/bidi-js.d.ts",
+    "../../packages/html2docx/src/raw.d.ts"
+  ]
+}

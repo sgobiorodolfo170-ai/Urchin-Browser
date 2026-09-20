@@ -471,6 +471,36 @@ describe('App (Browser Shell)', () => {
     );
   });
 
+  // ── GenOffice 文档入口：创建 urchin://genoffice-home 标签页（阶段 4.5） ──
+
+  it('should create GenOffice home tab via left sidebar entry', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') return Promise.resolve({ tabs: [makeTab()] });
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      if (channel === 'window.getCurrent') return Promise.resolve({ windowId: 1 });
+      if (channel === 'tab.create') {
+        return Promise.resolve({
+          tab: makeTab({ id: 2, url: 'urchin://genoffice-home', title: 'GenOffice 文档' }),
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    fireEvent.click(screen.getByLabelText('GenOffice 文档'));
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
+        windowId: 1,
+        url: 'urchin://genoffice-home',
+        active: true,
+      }),
+    );
+  });
+
   // ── 书签 toggle：创建 + 删除 ──
 
   it('should create bookmark via star toggle', async () => {

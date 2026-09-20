@@ -43,6 +43,7 @@ import { Omnibox } from './omnibox/omnibox';
 import { PiWebLauncherView } from './pi-web/launcher-view';
 import { SettingsPage } from './settings/SettingsPage';
 import { NewTabPage } from './home/NewTabPage';
+import { GenOfficeHome } from './home/GenOfficeHome';
 import { FileViewer } from './files/FileViewer';
 import { ConfirmDialog } from './components/ui/confirm-dialog';
 import { getEditGuardSession, closeNeedsGuard, switchNeedsGuard } from './lib/edit-guard';
@@ -67,6 +68,10 @@ interface TabSnapshot {
   readonly canGoForward: boolean;
   readonly crashed: boolean;
   readonly indexInWindow: number;
+  /** 视图类型（阶段 2 GenOffice 融合）：genoffice = 编辑器视图，隐藏地址栏 */
+  readonly viewKind?: 'browser' | 'genoffice';
+  /** 编辑器未保存修改标记（侧栏脏点） */
+  readonly dirty?: boolean;
 }
 
 interface TabEventPayload {
@@ -471,9 +476,11 @@ export function App() {
   /**
    * 打开本地路径（文件夹/文件统一入口）：
    * - 目录（isDir）→ urchin://file-viewer/?dir= 目录浏览页（选择文件夹就打开文件夹）
-   * - 文件：HTML → file:// 直开（内嵌 iframe 相对资源解析有问题不进查看器）；
-   *   其余全部（音视频/PDF/图片/Markdown/JSON/文本/其他）→ urchin://file-viewer/?path=
-   *   查看器（媒体/PDF/图片内嵌渲染 + 同类型连续切换）
+   * - GenOffice 接管类型（阶段 4：md/pdf/html/docx）→ urchin://genoffice 伪地址，
+   *   主进程创建对应编辑器视图；产物缺失时由主进程回落（html → file:// 直开，
+   *   其余 → 文件查看器）
+   * - 其余全部（音视频/图片/JSON/文本/其他）→ urchin://file-viewer/?path=
+   *   查看器（媒体/图片内嵌渲染 + 同类型连续切换）
    * 供左侧栏按钮 / Ctrl+O / 文件拖放 / 文件关联启动共用。
    */
   const handleOpenFilePath = useCallback((path: string) => {
@@ -483,10 +490,19 @@ export function App() {
           kind: string;
           isDir?: boolean;
         };
+        // kind → GenOffice 编辑器 app（与主进程 genoffice/paths.ts 的
+        // GENOFFICE_KINDS 对应；docx 类文档统一由 docs 编辑器承载）
+        const genofficeAppByKind: Readonly<Record<string, string>> = {
+          markdown: 'markdown',
+          pdf: 'pdf',
+          html: 'html',
+          docx: 'docs',
+        };
+        const genofficeApp = genofficeAppByKind[statRes.kind];
         const url = statRes.isDir
           ? `urchin://file-viewer/?dir=${encodeURIComponent(path)}`
-          : statRes.kind === 'html'
-            ? `file:///${encodeURI(path.replace(/\\/g, '/'))}`
+          : genofficeApp
+            ? `urchin://genoffice/?kind=${encodeURIComponent(genofficeApp)}&path=${encodeURIComponent(path)}`
             : `urchin://file-viewer/?path=${encodeURIComponent(path)}`;
         await window.urchin.invoke('tab.create', {
           windowId: await getCurrentWindowId(),
@@ -994,6 +1010,50 @@ export function App() {
     }
   }, [tabs, activeTabId]);
 
+  // 打开 GenOffice 文档主页（阶段 4.5，用户指令：左侧栏入口改为嵌入的
+  // GenOffice 前端入口）：已有主页标签则激活，否则新建
+  const handleOpenGenOfficeHome = useCallback(async () => {
+    const existing = tabs.find((t) => t.url?.startsWith('urchin://genoffice-home'));
+    if (existing) {
+      try {
+        await window.urchin.invoke('tab.setActive', { tabId: existing.id });
+      } catch (e) {
+        console.error('Failed to activate GenOffice home tab:', e);
+      }
+      return;
+    }
+    try {
+      await window.urchin.invoke('tab.create', {
+        windowId: await getCurrentWindowId(),
+        url: 'urchin://genoffice-home',
+        active: true,
+      });
+    } catch (e) {
+      console.error('Failed to open GenOffice home tab:', e);
+    }
+  }, [tabs]);
+
+  // 打开设置页「AI（GenOffice）」：已有设置标签则导航到带 tab 参数的地址
+  //（?tab= 由 App 解析后经 initialTab 传入 SettingsPage）
+  const handleOpenGenOfficeAiSettings = useCallback(async () => {
+    const url = 'urchin://settings?tab=genoffice-ai';
+    const existing = tabs.find((t) => t.url?.startsWith('urchin://settings'));
+    try {
+      if (existing) {
+        await window.urchin.invoke('tab.loadUrl', { tabId: existing.id, url });
+        await window.urchin.invoke('tab.setActive', { tabId: existing.id });
+      } else {
+        await window.urchin.invoke('tab.create', {
+          windowId: await getCurrentWindowId(),
+          url,
+          active: true,
+        });
+      }
+    } catch (e) {
+      console.error('Failed to open GenOffice AI settings:', e);
+    }
+  }, [tabs]);
+
   // 打开 pi 模块（dev.39 一键直达）：pi 已运行 → 直接开/复用 pi 网页标签；
   // 未运行 → 打开启动器标签页（挂载即自动启动并跳转，无需再点「启动」按钮）。
   // 阶段2 解耦：AI 模块作为独立标签页（urchin://ai），不再融合到地址栏
@@ -1470,14 +1530,31 @@ export function App() {
   // 所以用 startsWith 判断而非严格相等，避免匹配失败导致组件不渲染。
   const isSettingsTab = !!activeTab?.url?.startsWith('urchin://settings');
   const isAiTab = !!activeTab?.url?.startsWith('urchin://ai');
+  const isGenOfficeHomeTab = !!activeTab?.url?.startsWith('urchin://genoffice-home');
   const isNewTab = !!activeTab?.url?.startsWith('urchin://newtab');
   const isFileViewerTab = !!activeTab?.url?.startsWith('urchin://file-viewer');
-  // 渲染优先级：设置页 > AI 页 > 主页 > 文件查看器 > 普通网页（BrowserView）
-  // settings / ai / newtab / file-viewer 都由 React 组件渲染，BrowserView 让出空间（ZERO_BOUNDS）
+  // GenOffice 编辑器标签（阶段 2）：视图由主进程 WebContentsView 覆盖渲染，
+  // React 中区留空、底部地址栏隐藏（编辑器自带工具条与保存流程）
+  const isGenOfficeTab = activeTab?.viewKind === 'genoffice';
+  // 渲染优先级：设置页 > AI 页 > GenOffice 主页 > 主页 > 文件查看器 > 普通网页
+  // settings / ai / genoffice-home / newtab / file-viewer 都由 React 组件渲染，
+  // BrowserView 让出空间（ZERO_BOUNDS）
 
-  // 内部页面（settings / ai / newtab / file-viewer）下，导航按钮无意义，禁用
-  const isInternalPage = isSettingsTab || isAiTab || isNewTab || isFileViewerTab;
+  // 内部页面（settings / ai / genoffice-home / newtab / file-viewer / genoffice）
+  // 下，导航按钮无意义，禁用
+  const isInternalPage =
+    isSettingsTab || isAiTab || isGenOfficeHomeTab || isNewTab || isFileViewerTab || isGenOfficeTab;
 
+  // 设置页深链参数（?tab=genoffice-ai）：供 GenOffice 主页「打开 AI 设置」直达
+  const settingsInitialTab = (() => {
+    if (!isSettingsTab) return undefined;
+    try {
+      const value = new URL(activeTab?.url ?? '').searchParams.get('tab');
+      return value ?? undefined;
+    } catch {
+      return undefined;
+    }
+  })();
   // 按住侧边栏空白处拖动窗口（左/右两侧栏共用）
   const windowDrag = useWindowDrag();
 
@@ -1550,17 +1627,18 @@ export function App() {
           )}
         </div>
 
-        {/* 底部：打开文件 + AI 入口 + 设置 + 主题切换
-         *（仅文件入口；打开后自动捕获所在目录，同目录文件可自由切换） */}
+        {/* 底部：GenOffice 文档入口 + AI 入口 + 设置 + 主题切换
+         *（GenOffice 入口打开模块主页：打开文件 / 格式说明 / 原生 AI 设置） */}
         <div className="flex flex-col items-center gap-1 border-t border-border p-2">
-          {/* 打开文件按钮：openFile 对话框 → 查看器（媒体/PDF/图片内嵌 + 同目录连续切换） */}
+          {/* GenOffice 文档入口（阶段 4.5，用户指令：由「打开文件」按钮改为
+           *  嵌入的 GenOffice 前端入口；打开文件动作收敛到主页/Ctrl+O/拖放） */}
           <button
             className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-            onClick={() => void handleOpenFilePicker()}
-            aria-label="打开文件"
-            title="打开文件（Ctrl+O）"
+            onClick={() => void handleOpenGenOfficeHome()}
+            aria-label="GenOffice 文档"
+            title="GenOffice 文档（Word / PDF / Markdown / HTML）"
           >
-            <FolderOpen className="h-4 w-4" />
+            <FileText className="h-4 w-4" />
           </button>
           <button
             className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
@@ -1606,13 +1684,23 @@ export function App() {
         <div className="flex-1 overflow-hidden bg-surface">
           {
             isSettingsTab ? (
-              /* 设置页：React 组件渲染 */
-              <SettingsPage />
+              /* 设置页：React 组件渲染；key 随 ?tab= 深链变化重挂载以定位选项卡 */
+              <SettingsPage
+                key={settingsInitialTab ?? 'settings'}
+                initialTab={settingsInitialTab}
+              />
             ) : isAiTab ? (
               /* AI 页：pi 网页版启动器（阶段 1，docs/pi-web-评估.md）——pi 对话迁移至
                * 独立系统 Node 子进程的 pi-web-ui 网页,本页仅作入口（启动/停止/打开）。
                * 旧对话视图 AiChatView 保留于 @urchin/ai-extension,回退时恢复渲染即可。 */
               <PiWebLauncherView autoStart onOpenUrl={(url) => void handleOpenPiWebUrl(url)} />
+            ) : isGenOfficeHomeTab ? (
+              /* GenOffice 文档主页（阶段 4.5）：模块入口——打开文件 / 格式说明 /
+               * GenOffice 原生 AI 设置直达（打开动作复用 handleOpenFilePicker） */
+              <GenOfficeHome
+                onOpenFile={() => void handleOpenFilePicker()}
+                onOpenAiSettings={() => void handleOpenGenOfficeAiSettings()}
+              />
             ) : isNewTab || tabs.length === 0 ? (
               /* 主页：React 组件渲染（内嵌，无法自由更换）。
                * 关闭最后一个标签后 activeTab 为空，此时同样回落到主页 */
@@ -1676,8 +1764,10 @@ export function App() {
         />
 
         {/* 下侧边栏：地址栏 + 导航按钮（被左右侧栏夹住）
-         *  AI 标签页隐藏地址栏：AI 模块作为独立全屏对话应用，不需要 URL 导航 */}
-        {!isAiTab && (
+         *  AI 标签页隐藏地址栏：AI 模块作为独立全屏对话应用，不需要 URL 导航
+         *  GenOffice 编辑器/主页标签同样隐藏：编辑器自带工具条与保存流程，
+         *  主页为内部页面，伪地址均无导航意义 */}
+        {!isAiTab && !isGenOfficeTab && !isGenOfficeHomeTab && (
           <div
             className="flex shrink-0 items-center gap-1.5 border-t border-border bg-surface px-2"
             style={{ height: BOTTOM_HEIGHT }}
@@ -1870,6 +1960,14 @@ export function App() {
                      *  items-center 垂直居中，object-contain 保持比例不变形 */}
                     <TabFavicon tab={tab} className="h-9 w-9" />
                     <span className="flex-1 truncate">{tab.title || tab.url || '新标签页'}</span>
+                    {/* GenOffice 编辑器未保存修改标记（阶段 2） */}
+                    {tab.dirty && (
+                      <span
+                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+                        title="有未保存的修改"
+                        aria-label="有未保存的修改"
+                      />
+                    )}
                     <button
                       className="shrink-0 rounded p-0.5 opacity-0 hover:bg-error/10 group-hover:opacity-100"
                       onClick={(e) => {
@@ -1926,6 +2024,13 @@ export function App() {
                 title={tab.title || tab.url || '新标签页'}
               >
                 <TabFavicon tab={tab} className="h-9 w-9" />
+                {/* GenOffice 编辑器未保存修改标记（折叠态角标） */}
+                {tab.dirty && (
+                  <span
+                    className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary"
+                    aria-label="有未保存的修改"
+                  />
+                )}
               </button>
             ))}
           </div>

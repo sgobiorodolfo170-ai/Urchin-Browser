@@ -11,6 +11,7 @@
  * 在 app.whenReady() 之后调用 registerUrchinProtocol。
  */
 import { protocol } from 'electron';
+import type { CustomScheme } from 'electron';
 import { createReadStream, readFileSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { basename } from 'node:path';
@@ -30,8 +31,12 @@ export const URCHIN_SCHEME = 'urchin';
  * 注册 urchin: 为特权协议（必须在 app ready 之前调用）。
  *
  * 特权：标准、支持 fetch、Bypass CSP、secure、允许 service workers。
+ *
+ * 阶段 2：GenOffice 编辑器渲染页需要 genoffice-app: 等自定义 scheme 特权，
+ * 而 Electron 的 registerSchemesAsPrivileged 每个进程只允许调用一次——
+ * 由调用方把 GenOffice 的特权列表经 extraSchemes 并入本单次调用。
  */
-export function registerUrchinSchemePrivileged(): void {
+export function registerUrchinSchemePrivileged(extraSchemes: readonly CustomScheme[] = []): void {
   protocol.registerSchemesAsPrivileged([
     {
       scheme: URCHIN_SCHEME,
@@ -43,8 +48,11 @@ export function registerUrchinSchemePrivileged(): void {
         corsEnabled: true,
       },
     },
+    ...extraSchemes,
   ]);
-  log.info('urchin scheme registered as privileged');
+  log.info('urchin scheme registered as privileged', {
+    extraSchemes: extraSchemes.map((s) => s.scheme),
+  });
 }
 
 /**
@@ -359,6 +367,15 @@ export function registerUrchinProtocol(opts?: {
           status: 200,
           headers: { 'Content-Type': 'text/html; charset=utf-8' },
         });
+      }
+
+      if (host === 'genoffice-home') {
+        // GenOffice 文档主页由主窗口 React 组件渲染（GenOfficeHome），
+        // BrowserView 仅加载空白页面（与 settings/ai/file-viewer 同机制）。
+        return new Response(
+          '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>GenOffice 文档</title></head><body></body></html>',
+          { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+        );
       }
 
       if (host === 'file-viewer') {

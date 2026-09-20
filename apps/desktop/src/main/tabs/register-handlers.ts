@@ -15,26 +15,66 @@ import type { IpcMain } from 'electron';
 import { registerHandler } from '@urchin/ipc-contract';
 import { createLogger } from '@urchin/logger';
 import type { TabManager } from './tab-manager';
+import type { BrowserViewLike } from './types';
 
 const log = createLogger('tab-ipc');
+
+/** tab handler 可注入依赖（阶段 2 GenOffice 集成；缺省 = 浏览器原生行为）。 */
+export interface TabHandlerDeps {
+  readonly genoffice?: {
+    resolveTabCreate(url: string): {
+      url: string;
+      view?: unknown;
+      viewKind: 'browser' | 'genoffice';
+      genofficeKind?: string;
+      /** 标签标题（文件名兜底；可选）。 */
+      title?: string;
+    };
+    /** 关闭前守卫（GenOffice 原生保存/放弃/取消）；false = 取消关闭。 */
+    guardTabClose(tabId: number): Promise<boolean>;
+  };
+}
 
 /**
  * 注册 tab 域 IPC handler。
  *
  * @param ipcMain Electron ipcMain 实例
  * @param tabManager TabManager 实例
+ * @param deps 可注入依赖（GenOffice 集成；单测可省略）
  */
-export function registerTabHandlers(ipcMain: IpcMain, tabManager: TabManager): void {
+export function registerTabHandlers(
+  ipcMain: IpcMain,
+  tabManager: TabManager,
+  deps: TabHandlerDeps = {},
+): void {
   // tab.create：创建新标签
+  // 阶段 2：URL 命中 GenOffice 伪地址时改用预构建编辑器 WebContentsView；
+  // 产物缺失/创建失败由集成层回落为 urchin://file-viewer（保底）。
   registerHandler(ipcMain, 'tab.create', (req) => {
     log.info('tab.create', { windowId: req.windowId, url: req.url });
 
+    const resolved = deps.genoffice?.resolveTabCreate(req.url) ?? {
+      url: req.url,
+      viewKind: 'browser' as const,
+    };
+
+    // 仅 genoffice 标签携带 view/viewKind，保持普通网页 create 调用形状不变
+    //（既有单测断言精确参数；也避免脏状态字段外溢）
     const tab = tabManager.create({
       windowId: req.windowId,
-      url: req.url,
+      url: resolved.url,
       active: req.active,
       index: req.index,
+      ...(resolved.view
+        ? { view: resolved.view as BrowserViewLike, viewKind: resolved.viewKind }
+        : {}),
+      ...(resolved.viewKind === 'genoffice' ? { genofficeKind: resolved.genofficeKind } : {}),
     });
+
+    // GenOffice 编辑器页面 document.title 为空：用文件名兜底（伪地址不作标题）
+    if (resolved.title) {
+      tab.title = resolved.title;
+    }
 
     const snapshot = tabManager.getSnapshot(tab.id);
     if (!snapshot) {
@@ -45,12 +85,19 @@ export function registerTabHandlers(ipcMain: IpcMain, tabManager: TabManager): v
   });
 
   // tab.close：关闭指定标签
-  registerHandler(ipcMain, 'tab.close', (req) => {
+  // 阶段 2：genoffice 标签先过编辑器自己的关闭守卫（原生三键对话框）；
+  // 用户取消时 closed=false，标签保留（渲染层无需回滚——主进程未发事件）。
+  registerHandler(ipcMain, 'tab.close', async (req) => {
     log.info('tab.close', { tabId: req.tabId });
+
+    const allowed = (await deps.genoffice?.guardTabClose(req.tabId)) ?? true;
+    if (!allowed) {
+      return { ok: true as const, tabId: req.tabId, closed: false };
+    }
 
     tabManager.remove(req.tabId);
 
-    return { ok: true as const, tabId: req.tabId };
+    return { ok: true as const, tabId: req.tabId, closed: true };
   });
 
   // tab.list：查询标签列表

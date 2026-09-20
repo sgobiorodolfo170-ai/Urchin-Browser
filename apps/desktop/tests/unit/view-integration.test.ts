@@ -28,6 +28,10 @@ interface FakeBrowserWindow {
   once: ReturnType<typeof vi.fn>;
   setBrowserView: ReturnType<typeof vi.fn>;
   getContentBounds: ReturnType<typeof vi.fn>;
+  contentView: {
+    addChildView: ReturnType<typeof vi.fn>;
+    removeChildView: ReturnType<typeof vi.fn>;
+  };
   webContents: { send: ReturnType<typeof vi.fn> };
 }
 
@@ -49,6 +53,7 @@ interface FakeTab {
   loading?: boolean;
   active: boolean;
   htmlFullscreen?: boolean;
+  viewKind?: string;
   view: FakeView;
 }
 
@@ -80,6 +85,10 @@ function makeBrowserWindow(): FakeBrowserWindow {
     once: vi.fn(),
     setBrowserView: vi.fn(),
     getContentBounds: vi.fn().mockReturnValue({ x: 0, y: 0, width: 800, height: 600 }),
+    contentView: {
+      addChildView: vi.fn(),
+      removeChildView: vi.fn(),
+    },
     webContents: { send: vi.fn() },
   };
 }
@@ -525,5 +534,55 @@ describe('HTML5 fullscreen (内嵌视频全屏覆盖 UI 栏)', () => {
     expect(tab.view.setBounds).toHaveBeenCalledWith(
       expect.objectContaining({ x: 44, width: 800 - 88, height: 600 - 48 }),
     );
+  });
+
+  describe('GenOffice 编辑器视图挂载（阶段 2）', () => {
+    it('should mount editor view via contentView and release the browser view', () => {
+      const tab = makeTab({ id: 41, windowId: 1, viewKind: 'genoffice' });
+      tabManager.register(tab);
+      install();
+
+      fireTab('created', tab);
+
+      expect(window.browserWindow.setBrowserView).toHaveBeenCalledWith(null);
+      expect(window.browserWindow.contentView.addChildView).toHaveBeenCalledWith(tab.view);
+      expect(tab.view.setBounds).toHaveBeenCalledWith(
+        expect.objectContaining({ x: 44, width: 800 - 88, height: 600 - 48 }),
+      );
+    });
+
+    it('should unmount editor view and restore browser view on activation switch', () => {
+      const editorTab = makeTab({
+        id: 42,
+        windowId: 1,
+        url: 'urchin://genoffice/?kind=markdown&path=x',
+        viewKind: 'genoffice',
+      });
+      const webTab = makeTab({ id: 43, windowId: 1, active: false });
+      tabManager.register(editorTab);
+      tabManager.register(webTab);
+      install();
+
+      fireTab('created', editorTab);
+      expect(window.browserWindow.contentView.addChildView).toHaveBeenCalledWith(editorTab.view);
+
+      webTab.active = true;
+      editorTab.active = false;
+      fireTab('activated', webTab);
+
+      expect(window.browserWindow.contentView.removeChildView).toHaveBeenCalledWith(editorTab.view);
+      expect(window.browserWindow.setBrowserView).toHaveBeenCalledWith(webTab.view);
+    });
+
+    it('should remove mounted editor view when the active editor tab closes', () => {
+      const editorTab = makeTab({ id: 44, windowId: 1, viewKind: 'genoffice' });
+      tabManager.register(editorTab);
+      install();
+
+      fireTab('created', editorTab);
+      fireTab('removed', editorTab);
+
+      expect(window.browserWindow.contentView.removeChildView).toHaveBeenCalledWith(editorTab.view);
+    });
   });
 });

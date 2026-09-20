@@ -34,6 +34,8 @@ function createMockTabManager(): TabManager & {
     canGoForward: false,
     crashed: false,
     indexInWindow: 0,
+    viewKind: 'browser',
+    dirty: false,
   };
 
   const tab: Tab = {

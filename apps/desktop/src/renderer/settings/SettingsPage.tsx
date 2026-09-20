@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
+import { GenOfficeAiSettings } from './GenOfficeAiSettings';
 import {
   clearErrorLogs,
   getErrorLogs,
@@ -81,7 +82,8 @@ interface SettingsEntry {
 }
 
 /** 选项卡定义 */
-type TabKey = 'general' | 'ai' | 'privacy' | 'update' | 'files' | 'about' | 'debug';
+type TabKey =
+  'general' | 'ai' | 'genoffice-ai' | 'privacy' | 'update' | 'files' | 'about' | 'debug';
 
 interface TabDef {
   readonly key: TabKey;
@@ -91,6 +93,7 @@ interface TabDef {
 const TABS: readonly TabDef[] = [
   { key: 'general', label: '通用' },
   { key: 'ai', label: 'AI 助手' },
+  { key: 'genoffice-ai', label: 'AI（GenOffice）' },
   { key: 'privacy', label: '隐私与安全' },
   { key: 'update', label: '更新' },
   { key: 'files', label: '默认应用' },
@@ -275,11 +278,22 @@ function parseProfiles(v: unknown): ProviderProfile[] {
 
 // ───────────────── 主组件 ─────────────────
 
-export function SettingsPage() {
+export interface SettingsPageProps {
+  /**
+   * 初始选项卡（深链 `urchin://settings?tab=<key>` 传入，如 GenOffice 主页
+   * 「打开 AI 设置」直达 genoffice-ai）；非法值回退 general。
+   * 调用方以 key 绑定该值，参数变化时重挂载以生效。
+   */
+  readonly initialTab?: string;
+}
+
+export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
   const [entries, setEntries] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabKey>('general');
+  const [activeTab, setActiveTab] = useState<TabKey>(() =>
+    TABS.some((t) => t.key === initialTab) ? (initialTab as TabKey) : 'general',
+  );
   const [toast, setToast] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // 「提供商名」输入框草稿（命名配置保存后清空）
@@ -510,6 +524,7 @@ export function SettingsPage() {
               profileApi={profileApi}
             />
           )}
+          {activeTab === 'genoffice-ai' && <GenOfficeAiSettings />}
           {activeTab === 'privacy' && (
             <SettingsSection
               title="隐私与安全"

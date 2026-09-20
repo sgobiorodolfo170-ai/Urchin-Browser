@@ -57,6 +57,8 @@ function createMockTabManager(exists = true): TabManager & {
     canGoForward: false,
     crashed: false,
     indexInWindow: 0,
+    viewKind: 'browser',
+    dirty: false,
   };
   const webContents = createMockWebContents();
   const tab: Tab = {

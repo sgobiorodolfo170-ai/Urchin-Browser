@@ -91,6 +91,14 @@ export interface BrowserViewLike {
 export type BrowserViewFactory = () => BrowserViewLike;
 
 /**
+ * 标签承载的视图类型（阶段 2 GenOffice 融合）：
+ * - browser：普通网页 BrowserView（win.setBrowserView 挂载）
+ * - genoffice：GenOffice 编辑器 WebContentsView（win.contentView.addChildView 挂载，
+ *   URL 为 urchin://genoffice 伪地址，不加载网页）
+ */
+export type TabViewKind = 'browser' | 'genoffice';
+
+/**
  * Tab 内部状态（主进程持有，含不可序列化的 webContents/view）。
  */
 export interface Tab {
@@ -127,9 +135,15 @@ export interface Tab {
    * 撑满整个窗口，覆盖浏览器 UI 栏（左/右侧边栏、地址栏）。
    */
   htmlFullscreen: boolean;
+  /** 视图类型（阶段 2）：决定 view-integration 的挂载方式 */
+  readonly viewKind: TabViewKind;
+  /** GenOffice 编辑器类型（仅 viewKind === 'genoffice'） */
+  readonly genofficeKind?: string;
+  /** 编辑器未保存修改标记（仅 genoffice；进入快照供侧栏脏点渲染） */
+  dirty: boolean;
   /** 底层 webContents（仅主进程持有） */
   readonly webContents: WebContentsLike;
-  /** 底层 BrowserView（仅主进程持有） */
+  /** 底层 BrowserView / GenOffice WebContentsView（仅主进程持有） */
   readonly view: BrowserViewLike;
 }
 
@@ -149,6 +163,10 @@ export interface TabSnapshot {
   readonly canGoForward: boolean;
   readonly crashed: boolean;
   readonly indexInWindow: number;
+  /** 视图类型（阶段 2）：渲染层据此隐藏地址栏 / 渲染脏点（契约 schema 同步） */
+  readonly viewKind: TabViewKind;
+  /** 编辑器未保存修改标记 */
+  readonly dirty: boolean;
 }
 
 /**
@@ -163,6 +181,16 @@ export interface CreateTabOptions {
   active?: boolean;
   /** 在窗口中的位置索引（可选，追加到末尾） */
   index?: number;
+  /**
+   * 预构建视图（阶段 2）：GenOffice 编辑器标签由调用方（tab.create handler）
+   * 创建 WebContentsView 后传入，TabManager 不再经 factory 创建 BrowserView。
+   * 缺省时按原路径由 BrowserViewFactory 创建。
+   */
+  view?: BrowserViewLike;
+  /** 视图类型（默认 browser；传 view 时必须为 genoffice） */
+  viewKind?: TabViewKind;
+  /** GenOffice 编辑器类型（viewKind === 'genoffice' 时携带） */
+  genofficeKind?: string;
 }
 
 /**

@@ -57,6 +57,15 @@ export interface BrowserWindowLike {
   isMinimized?(): boolean;
   /** 挂载 BrowserView 到窗口（传 null 移除） */
   setBrowserView(view: unknown): void;
+  /**
+   * 窗口根视图容器（Electron BrowserWindow.contentView）。
+   * 阶段 2 GenOffice 编辑器为 WebContentsView，必须经 contentView.addChildView
+   * 挂载；removeChildView 卸载。可选：旧测试替身无此属性时相关分支降级跳过。
+   */
+  contentView?: {
+    addChildView(view: unknown): void;
+    removeChildView(view: unknown): void;
+  };
   /** 注册事件监听 */
   on(event: string, handler: (...args: unknown[]) => void): void;
   once(event: string, handler: (...args: unknown[]) => void): void;

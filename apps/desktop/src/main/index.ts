@@ -36,6 +36,7 @@ import {
   getLayoutState,
   setLayoutState,
   type TabViewIntegrationHandle,
+  type BrowserViewLike,
 } from './tabs';
 import { HistoryManager, registerHistoryHandlers, type HistoryPersistence } from './history';
 import { BookmarkManager, registerBookmarkHandlers, type BookmarkPersistence } from './bookmarks';
@@ -66,6 +67,8 @@ import { ProviderRegistry } from './orchestrator/provider-registry';
 import { electronProcessFactory } from './orchestrator/electron-factory';
 import { StorageLayer, createSqliteDatabase, ElectronSafeStorage } from './storage';
 import { registerUrchinSchemePrivileged, registerUrchinProtocol } from './protocol';
+import { createGenOfficeIntegration, type GenOfficeIntegration } from './genoffice/integration';
+import { getGenOfficeSchemePrivileges } from './genoffice/loader';
 import { currentThemeBackground } from './theme';
 import { BookmarkPanel } from './panel/bookmark-panel';
 import {
@@ -151,8 +154,11 @@ migrateLegacySummaries(startupUserDataPath, currentDataDir);
 // 注意：切换后旧 cookies 不会迁移（旧登录态失效，需重新登录一次）。
 app.setPath('sessionData', join(currentDataDir, 'cookies'));
 
-// 注册 urchin: scheme 为特权协议（必须在 app ready 之前）
-registerUrchinSchemePrivileged();
+// 注册 urchin: scheme 为特权协议（必须在 app ready 之前）。
+// 阶段 2：GenOffice 编辑器渲染页（genoffice-app:）等特权 scheme 由嵌入包导出，
+// 经此并入同一次 registerSchemesAsPrivileged 调用（Electron 每进程仅允许一次）。
+// 产物缺失时 getGenOfficeSchemePrivileges 返回空数组，浏览器本体不受影响。
+registerUrchinSchemePrivileged(getGenOfficeSchemePrivileges());
 
 // GPU 硬件加速（2026-08-17 恢复）：
 // 曾全局禁用（disableHardwareAcceleration）以规避 LiveKernelEvent 0x1CC
@@ -226,14 +232,38 @@ const tabManager = new TabManager(createBrowserView);
 
 /**
  * 打开本地文件（Windows 文件关联 / 命令行启动入口）。
- * 与渲染层 handleOpenFilePath 同一路由策略：
- * - 音视频/PDF/图片/HTML → file:// 直开标签页（Chromium 原生渲染）
- * - Markdown/JSON/文本 → urchin://file-viewer 查看器（主窗口 React 渲染）
+ *
+ * 阶段 4：GenOffice 接管类型（md/pdf/html/docx）先经集成层解析为编辑器
+ * WebContentsView（产物缺失自动回落：html → file:// 直开，其余 → 内置查看器）；
+ * 其余类型维持原路由（音视频/图片 → file:// 原生渲染，文本类 → 查看器）。
  */
 function openLocalFile(windowId: number, path: string): void {
   try {
     const kind = classifyFileKind(basename(path));
-    const nativeKinds = ['audio', 'video', 'pdf', 'image', 'html'];
+    const genofficeAppByKind: Readonly<Record<string, string>> = {
+      markdown: 'markdown',
+      pdf: 'pdf',
+      html: 'html',
+      docx: 'docs',
+    };
+    const genofficeApp = genofficeAppByKind[kind];
+    if (genofficeApp && genofficeIntegration) {
+      const resolved = genofficeIntegration.resolveTabCreate(
+        `urchin://genoffice/?kind=${encodeURIComponent(genofficeApp)}&path=${encodeURIComponent(path)}`,
+      );
+      tabManager.create({
+        windowId,
+        url: resolved.url,
+        active: true,
+        ...(resolved.view
+          ? { view: resolved.view as BrowserViewLike, viewKind: resolved.viewKind }
+          : {}),
+        ...(resolved.viewKind === 'genoffice' ? { genofficeKind: resolved.genofficeKind } : {}),
+      });
+      log.info('open local file from association (genoffice)', { kind, path });
+      return;
+    }
+    const nativeKinds = ['audio', 'video', 'image'];
     const url = nativeKinds.includes(kind)
       ? // 路径可能含中文/空格，须 encodeURI 才能被 Chromium 解析为 file:// URL
         `file:///${encodeURI(path.replace(/\\/g, '/'))}`
@@ -297,6 +327,46 @@ let disposePiEnhance: (() => void) | null = null;
 let disposeTranslateManager: (() => void) | null = null;
 /** 网页翻译管理器引用（dev.81：右键菜单翻译动作与划词结果回传使用）。 */
 let translateManagerRef: TranslateManager | null = null;
+/** GenOffice 编辑器集成（阶段 2）：tab.create 分流 / tab.close 与窗口关闭守卫。 */
+let genofficeIntegration: GenOfficeIntegration | null = null;
+/** 已挂 GenOffice 整窗关闭守卫的窗口（防止重复挂接）。 */
+const genofficeCloseGuardedWindows = new Set<number>();
+
+/**
+ * GenOffice 整窗关闭守卫（阶段 2）。
+ *
+ * 标签级关闭走 tab.close handler；窗口 X / 应用退出不经过该路径，
+ * 这里沿 Electron close 事件拦截：存在脏编辑器标签时逐标签弹
+ * Save / Don't Save / Cancel，全部通过才放行关闭。
+ */
+function installGenOfficeWindowCloseGuard(): void {
+  windowManager.on('window-created', (windowId: number) => {
+    if (genofficeCloseGuardedWindows.has(windowId)) return;
+    const win = windowManager.getWindow(windowId)?.browserWindow;
+    if (!win) return;
+    genofficeCloseGuardedWindows.add(windowId);
+    let allowClose = false;
+    win.on('close', (...args: unknown[]) => {
+      if (allowClose) return;
+      const dirty = tabManager
+        .query({ windowId })
+        .some((t) => t.viewKind === 'genoffice' && t.dirty);
+      if (!dirty || !genofficeIntegration) {
+        allowClose = true;
+        return;
+      }
+      const event = args[0] as { preventDefault?: () => void } | undefined;
+      event?.preventDefault?.();
+      void (async () => {
+        const ok = await genofficeIntegration?.confirmWindowClose(windowId);
+        if (ok) {
+          allowClose = true;
+          win.close();
+        }
+      })();
+    });
+  });
+}
 
 /** 向主窗口渲染层发事件（划词结果卡等；窗口动态解析，无窗口时静默丢弃） */
 function sendToMainWindow(channel: string, payload: unknown): void {
@@ -368,8 +438,22 @@ function registerIpcHandlers(): void {
   // M1 window 域 handler
   registerWindowHandlers(ipcMain, windowManager);
 
-  // M2 tab 域 handler
-  registerTabHandlers(ipcMain, tabManager);
+  // GenOffice 编辑器集成（阶段 2，md 打样）：注册宿主通道、初始化嵌入包、
+  // 挂 dirty 旁路与关闭守卫。产物缺失时 available=false，标签全部回落
+  // Urchin 内置查看器（用户策略：GenOffice 为主、Urchin 保底）。
+  genofficeIntegration = createGenOfficeIntegration({
+    ipcMain,
+    tabManager,
+    windowManager,
+    getTheme: () => nativeTheme.themeSource,
+  });
+  genofficeIntegration.install();
+  installGenOfficeWindowCloseGuard();
+
+  // M2 tab 域 handler（注入 GenOffice 集成：tab.create 分流 + tab.close 守卫）
+  registerTabHandlers(ipcMain, tabManager, {
+    genoffice: genofficeIntegration ?? undefined,
+  });
 
   // M6 history 域 handler
   registerHistoryHandlers(ipcMain, historyManager);
@@ -634,6 +718,15 @@ function registerIpcHandlers(): void {
       }
     }
     log.info('theme set', { theme: req.theme });
+    // 阶段 2：GenOffice 编辑器主题跟随——编辑器渲染层监听 app:theme-changed
+    //（宿主 app:get-theme 的推送侧；主窗口与所有标签 webContents 全覆盖）
+    for (const snapshot of tabManager.query({})) {
+      const tab = tabManager.getTab(snapshot.id);
+      tab?.webContents.send?.('app:theme-changed', req.theme);
+    }
+    for (const managed of windowManager.getAllWindows()) {
+      managed.browserWindow.webContents.send('app:theme-changed', req.theme);
+    }
     return { ok: true as const };
   });
 
@@ -1366,11 +1459,19 @@ void app.whenReady().then(() => {
 
   // dev.44：pi 页右下角「📁 项目路径」→ 原生目录选择器注入（脚本按 DOM 守卫，
   // 仅 pi-web-ui 页面的 status-cwd 生效；其他页面零影响）
-  disposeCwdPicker = installCwdPickerControl(tabManager);
+  //
+  // 调试开关（临时排查用）：URCHIN_DISABLE_PIWEB_PICKER=1 /
+  // URCHIN_DISABLE_PIWEB_ENHANCE=1 分别跳过两处注入，用于隔离
+  // 「注入脚本导致 pi 页 renderer 卡死」类问题。
+  if (process.env.URCHIN_DISABLE_PIWEB_PICKER !== '1') {
+    disposeCwdPicker = installCwdPickerControl(tabManager);
+  }
 
-  // dev.45：pi 页体验增强注入——主题默认亮色 + 最近项目删除按钮 + 路径提示
-  // 抑制（同样按 DOM 守卫仅 pi 页生效；详见 pi-web/page-enhance.ts 头注释）
-  disposePiEnhance = installPiWebPageEnhance(tabManager);
+  if (process.env.URCHIN_DISABLE_PIWEB_ENHANCE !== '1') {
+    // dev.45：pi 页体验增强注入——主题默认亮色 + 最近项目删除按钮 + 路径提示
+    // 抑制（同样按 DOM 守卫仅 pi 页生效；详见 pi-web/page-enhance.ts 头注释）
+    disposePiEnhance = installPiWebPageEnhance(tabManager);
+  }
 
   // dev.45：pi 网页 favicon 统一为 π 品牌图标——拦截 pi 服务（当前随机端口）的
   // favicon 请求重定向到 urchin://pi-icon。效果覆盖标签栏/历史/主页等所有经

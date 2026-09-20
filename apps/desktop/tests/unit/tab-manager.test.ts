@@ -582,3 +582,74 @@ describe('TabManager getTabByWebContents（右键菜单归属反查）', () => {
     expect(mgr.getTabByWebContents(wc)).toBeUndefined();
   });
 });
+
+describe('TabManager GenOffice 编辑器标签（阶段 2）', () => {
+  it('should use the prebuilt view and skip loadURL for genoffice tabs', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    const prebuilt = createMockBrowserView();
+
+    const tab = mgr.create({
+      windowId: 1,
+      url: 'urchin://genoffice/?kind=markdown&path=C%3A%5Ca.md',
+      view: prebuilt,
+      viewKind: 'genoffice',
+      genofficeKind: 'markdown',
+    });
+
+    // 不经过工厂创建 BrowserView
+    expect(factory._views).toHaveLength(0);
+    expect(tab.view).toBe(prebuilt);
+    expect(tab.viewKind).toBe('genoffice');
+    expect(tab.genofficeKind).toBe('markdown');
+    // 伪地址不可导航
+    expect(prebuilt._webContents._loadURLCalls).toHaveLength(0);
+  });
+
+  it('should expose viewKind and dirty in snapshots', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    const prebuilt = createMockBrowserView();
+
+    const tab = mgr.create({
+      windowId: 1,
+      url: 'urchin://genoffice/?kind=markdown&path=x',
+      view: prebuilt,
+      viewKind: 'genoffice',
+      genofficeKind: 'markdown',
+    });
+
+    expect(mgr.getSnapshot(tab.id)).toMatchObject({ viewKind: 'genoffice', dirty: false });
+  });
+
+  it('should update dirty state and emit updated only for genoffice tabs', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    const updated = vi.fn();
+    mgr.on('updated', updated);
+
+    const prebuilt = createMockBrowserView();
+    const genTab = mgr.create({
+      windowId: 1,
+      url: 'urchin://genoffice/?kind=markdown&path=x',
+      view: prebuilt,
+      viewKind: 'genoffice',
+      genofficeKind: 'markdown',
+    });
+
+    mgr.setDirty(genTab.id, true);
+    expect(mgr.getSnapshot(genTab.id)?.dirty).toBe(true);
+    expect(updated).toHaveBeenCalledTimes(1);
+
+    // 重复设置同一值不重复广播
+    mgr.setDirty(genTab.id, true);
+    expect(updated).toHaveBeenCalledTimes(1);
+
+    // 普通网页标签忽略脏状态
+    const webTab = mgr.create({ windowId: 1, url: 'https://example.com' });
+    updated.mockClear();
+    mgr.setDirty(webTab.id, true);
+    expect(mgr.getSnapshot(webTab.id)?.dirty).toBe(false);
+    expect(updated).not.toHaveBeenCalled();
+  });
+});

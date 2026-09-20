@@ -45,6 +45,8 @@ export const VIEWABLE_KINDS: ReadonlySet<string> = new Set([
   'markdown',
   'json',
   'text',
+  // 阶段 4：Word 文档由 GenOffice docs 编辑器承载（产物缺失时查看器提示）
+  'docx',
 ]);
 
 /** Windows 非法文件名字符（含控制字符），另存默认名净化用（同 summary-manager 惯例）。 */

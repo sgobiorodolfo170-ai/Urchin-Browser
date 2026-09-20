@@ -21,7 +21,7 @@
  * - 其他 URL → 非零 bounds（BrowserView 显示外部网页）
  */
 import type { TabManager } from './tab-manager';
-import type { TabSnapshot } from './types';
+import type { BrowserViewLike, TabSnapshot } from './types';
 import type { WindowManager } from '../windows/window-manager';
 import { createLogger } from '@urchin/logger';
 
@@ -36,12 +36,14 @@ const DEFAULT_BOTTOM_HEIGHT = 48;
 
 /** 由渲染进程 React 组件渲染的内部 URL 前缀（不显示 BrowserView）。
  *  阶段2 解耦：settings 和 ai 都作为 React 渲染的内部页面；newtab 主页同为 React 渲染；
- *  file-viewer 本地文件查看器同为 React 渲染（文件路径经 ?path= 参数传入）。 */
+ *  file-viewer 本地文件查看器同为 React 渲染（文件路径经 ?path= 参数传入）；
+ *  genoffice-home 为 GenOffice 文档模块主页（阶段 4.5，React 渲染）。 */
 const URCHIN_RENDERER_HOSTS = [
   'urchin://settings',
   'urchin://ai',
   'urchin://newtab',
   'urchin://file-viewer',
+  'urchin://genoffice-home',
 ];
 
 /** 判断 URL 是否应由渲染进程 React 组件渲染（而非 BrowserView）。
@@ -152,6 +154,54 @@ export function installTabViewIntegration(
    *  反复重新布局，严重阻塞网页加载。仅在 URL 真正变化时才需要重新评估可见性。 */
   const lastBoundsUrlPerTab = new Map<number, string>();
 
+  /**
+   * 每窗口当前挂载的 GenOffice 编辑器视图（阶段 2）：同一窗口同一时刻至多挂载
+   * 一个（活跃 genoffice 标签的 WebContentsView）。网页 BrowserView 与编辑器视图
+   * 互斥挂载——切换时先卸载另一类，避免两套视图叠放争夺焦点/层级。
+   */
+  const mountedEditorViewPerWindow = new Map<number, BrowserViewLike>();
+
+  /**
+   * 将指定标签的视图挂载到窗口。
+   *
+   * - browser：setBrowserView（原路径）；若此前有编辑器视图先 removeChildView
+   * - genoffice：setBrowserView(null) 让出网页层 → contentView.addChildView
+   *   （重复调用 addChildView 会把视图重排到最上层，正好满足「切回时置顶」）
+   *
+   * 设计理由：BrowserView 与 WebContentsView 的挂载 API 不同且不可互换；
+   * 统一收口此函数，其他生命周期分支只负责调用。
+   * 注意：按事件快照定位 tab 传入（而非在函数内 query active）——TabManager
+   * remove 的事件顺序下 active 标记可能尚未落定，事件驱动更稳。
+   */
+  function mountTabView(windowId: number, tab: { viewKind: string; view: BrowserViewLike }): void {
+    const managed = windowManager.getWindow(windowId);
+    if (!managed) return;
+    const win = managed.browserWindow;
+    const mountedEditor = mountedEditorViewPerWindow.get(windowId);
+
+    if (tab.viewKind === 'genoffice') {
+      // 让出网页层（内部页/编辑器都由非 BrowserView 渲染）
+      win.setBrowserView(null);
+      if (!win.contentView) {
+        log.warn('window has no contentView, cannot mount editor view', { windowId });
+        return;
+      }
+      if (mountedEditor && mountedEditor !== tab.view) {
+        win.contentView.removeChildView(mountedEditor);
+      }
+      win.contentView.addChildView(tab.view);
+      mountedEditorViewPerWindow.set(windowId, tab.view);
+      return;
+    }
+
+    // 网页标签：卸载编辑器视图（若有）后走 setBrowserView
+    if (mountedEditor && win.contentView) {
+      win.contentView.removeChildView(mountedEditor);
+    }
+    mountedEditorViewPerWindow.delete(windowId);
+    win.setBrowserView(tab.view);
+  }
+
   /** 为指定窗口的活跃 tab 设置 BrowserView bounds。
    *  优先级（从高到低）：
    *  1. isRendererManagedUrl（urchin://settings / urchin://ai）→ ZERO_BOUNDS（让 React 渲染内部页面）
@@ -228,7 +278,7 @@ export function installTabViewIntegration(
     managed.browserWindow.webContents.send(TAB_EVENT_CHANNEL, payload);
   }
 
-  // tab 创建：挂载 BrowserView 到窗口（如果 tab 是活跃的）
+  // tab 创建：挂载视图到窗口（如果 tab 是活跃的）
   const onCreated = (snapshot: TabSnapshot): void => {
     if (snapshot.active) {
       const managed = windowManager.getWindow(snapshot.windowId);
@@ -238,9 +288,9 @@ export function installTabViewIntegration(
       }
       const tab = tabManager.getTab(snapshot.id);
       if (!tab) return;
-      managed.browserWindow.setBrowserView(tab.view);
-      // setBrowserView 后必须 force=true 设置 bounds：新挂载的 BrowserView
-      // 默认 bounds 为 {0,0,0,0}，即使 URL 去重命中也必须强制设置正确 bounds
+      mountTabView(snapshot.windowId, tab);
+      // 挂载后必须 force=true 设置 bounds：新挂载的视图默认 bounds 为
+      // {0,0,0,0}，即使 URL 去重命中也必须强制设置正确 bounds
       updateActiveViewBounds(snapshot.windowId, true);
     }
     pushEvent(snapshot.windowId, { type: 'created', snapshot });
@@ -288,28 +338,37 @@ export function installTabViewIntegration(
     }
   };
 
-  // tab 激活：切换窗口的 BrowserView
+  // tab 激活：切换窗口的视图（网页 BrowserView ↔ GenOffice 编辑器视图）
   const onActivated = (snapshot: TabSnapshot): void => {
     const managed = windowManager.getWindow(snapshot.windowId);
     if (!managed) return;
     const tab = tabManager.getTab(snapshot.id);
     if (!tab) return;
-    managed.browserWindow.setBrowserView(tab.view);
-    // setBrowserView 后必须 force=true 设置 bounds：新挂载的 BrowserView
-    // 默认 bounds 为 {0,0,0,0}，即使 URL 去重命中也必须强制设置正确 bounds。
+    mountTabView(snapshot.windowId, tab);
+    // 挂载后必须 force=true 设置 bounds：新挂载的视图默认 bounds 为
+    // {0,0,0,0}，即使 URL 去重命中也必须强制设置正确 bounds。
     // 这是网站打开受阻的核心原因：之前 force=false 导致切 tab 后 bounds 不更新。
     updateActiveViewBounds(snapshot.windowId, true);
     pushEvent(snapshot.windowId, { type: 'activated', snapshot });
   };
 
-  // tab 移除：从窗口卸载 BrowserView，必要时激活下一个 tab
+  // tab 移除：从窗口卸载视图，必要时激活下一个 tab
   const onRemoved = (snapshot: TabSnapshot): void => {
     // 清理 URL 跟踪 Map，避免内存泄漏
     lastBoundsUrlPerTab.delete(snapshot.id);
     const managed = windowManager.getWindow(snapshot.windowId);
     if (managed && snapshot.active) {
-      // 被移除的是活跃 tab，先卸载 view
-      managed.browserWindow.setBrowserView(null);
+      if (snapshot.viewKind === 'genoffice') {
+        // 编辑器视图：从 contentView 卸载（webContents 由 TabManager 销毁）
+        const mountedEditor = mountedEditorViewPerWindow.get(snapshot.windowId);
+        if (mountedEditor && managed.browserWindow.contentView) {
+          managed.browserWindow.contentView.removeChildView(mountedEditor);
+        }
+        mountedEditorViewPerWindow.delete(snapshot.windowId);
+      } else {
+        // 被移除的是活跃网页 tab，先卸载 view
+        managed.browserWindow.setBrowserView(null);
+      }
       // TabManager.remove 内部已自动激活下一个 tab，onActivated 会重新挂载
     }
     pushEvent(snapshot.windowId, { type: 'removed', snapshot });
@@ -362,9 +421,9 @@ export function installTabViewIntegration(
       if (!activeTab) return;
       const tab = tabManager.getTab(activeTab.id);
       if (!tab) return;
-      managed.browserWindow.setBrowserView(tab.view);
+      mountTabView(windowId, tab);
       updateActiveViewBounds(windowId, true);
-      log.info('window ready-to-show, re-attached active BrowserView', {
+      log.info('window ready-to-show, re-attached active view', {
         windowId,
         tabId: activeTab.id,
       });

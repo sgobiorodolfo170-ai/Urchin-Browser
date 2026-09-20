@@ -160,9 +160,40 @@ const isTrustedOrigin =
   protocol === 'file:' ||
   (protocol === 'http:' && hostname === 'localhost');
 
+/**
+ * GenOffice AI 桥（阶段 3）。
+ *
+ * 背景：GenOffice 原生 AI 的通道（ai:*）由 vendor 嵌入包在主进程注册，但
+ * Urchin 的 typedInvoke 是「契约闭集」（未知通道直接拒绝）——AI 设置界面
+ * 需要一组白名单透传。这里用显式 allowlist 收敛暴露面：
+ * - 仅 AI 设置/测试/目录通道，不含任何文件或通用能力
+ * - 仅受信来源（主窗口）可拿到 window.urchinGenoffice
+ */
+const GENOFFICE_AI_CHANNELS: ReadonlySet<string> = new Set([
+  'genoffice:ai-catalogs',
+  'ai:get-settings',
+  'ai:set-settings',
+  'ai:chat',
+  'ai:search-test',
+  'ai:media-test',
+  'ai:codex-models',
+  'ai:gsk-status',
+]);
+
+const genofficeApi = {
+  invoke(channel: string, payload: unknown): Promise<unknown> {
+    if (!GENOFFICE_AI_CHANNELS.has(channel)) {
+      return Promise.reject(new Error(`GenOffice 通道未授权: ${channel}`));
+    }
+    return ipcRenderer.invoke(channel, payload);
+  },
+};
+
 if (isTrustedOrigin) {
   contextBridge.exposeInMainWorld('urchin', api);
+  contextBridge.exposeInMainWorld('urchinGenoffice', genofficeApi);
 }
 
 // 类型导出（供渲染层 import type 使用）
 export type UrchinApi = typeof api;
+export type UrchinGenOfficeApi = typeof genofficeApi;

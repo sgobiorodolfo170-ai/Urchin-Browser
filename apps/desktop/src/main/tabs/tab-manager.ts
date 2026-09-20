@@ -35,8 +35,13 @@ import { buildAdBlockCss } from './ad-block-css';
 // 替代 about:blank 空白页，避免出现无内容空标签。
 const DEFAULT_URL = 'urchin://newtab';
 
-/** 默认标题 */
-const DEFAULT_TITLE = '';
+/** 默认标题
+ *
+ * 主页占位（urchin://newtab）由主窗口 React 覆盖层渲染，BrowserView 不加载该 URL
+ *（见 create() 的 `if (url !== DEFAULT_URL)`），因此不会有 page-title-updated——
+ * 留空会让标签侧栏回退显示原始 URL「urchin://newtab」（用户可见缺陷）。
+ * 这里直接给新标签一个用户可读标题；一旦导航到真实页面，page-title-updated 会覆盖。 */
+const DEFAULT_TITLE = '新标签页';
 
 /** 链接打开行为 */
 export type LinkOpenBehavior = 'new-tab' | 'current';
@@ -166,7 +171,10 @@ export class TabManager {
    */
   create(opts: CreateTabOptions): Tab {
     const id = this.nextId++;
-    const view = this.factory();
+    // 阶段 2：GenOffice 编辑器标签携带预构建 WebContentsView（调用方创建），
+    // 其余走 BrowserView 工厂（保持原路径与单测注入语义）。
+    const viewKind = opts.viewKind ?? 'browser';
+    const view = opts.view ?? this.factory();
     const webContents = view.webContents;
 
     const url = opts.url ?? DEFAULT_URL;
@@ -191,6 +199,9 @@ export class TabManager {
       crashed: false,
       indexInWindow,
       htmlFullscreen: false,
+      viewKind,
+      genofficeKind: opts.genofficeKind,
+      dirty: false,
       webContents,
       view,
     };
@@ -210,8 +221,8 @@ export class TabManager {
       this.activeTabPerWindow.set(opts.windowId, id);
     }
 
-    // 加载 URL
-    if (url !== DEFAULT_URL) {
+    // 加载 URL：genoffice 标签的视图已在工厂内加载编辑器页面，伪地址不可导航
+    if (url !== DEFAULT_URL && viewKind === 'browser') {
       webContents.loadURL(url).catch((err: unknown) => {
         console.error(`[tab ${id}] initial loadURL failed:`, err);
       });
@@ -220,6 +231,19 @@ export class TabManager {
     this.emit('created', this.toSnapshot(tab));
 
     return tab;
+  }
+
+  /**
+   * 更新编辑器脏状态（阶段 2 GenOffice）：由编辑器 dirty 通道旁路监听调用，
+   * 更新后广播 updated，透出到渲染层侧栏脏点。
+   */
+  setDirty(tabId: number, dirty: boolean): void {
+    const tab = this.tabs.get(tabId);
+    if (!tab) return;
+    if (tab.viewKind !== 'genoffice') return;
+    if (tab.dirty === dirty) return;
+    tab.dirty = dirty;
+    this.emit('updated', this.toSnapshot(tab));
   }
 
   /**
@@ -421,10 +445,17 @@ export class TabManager {
 
     // 拦截 window.open / target=_blank 链接点击
     // 根据设置决定在当前标签页打开还是新标签页打开（默认当前标签页）
+    // 阶段 2：GenOffice 编辑器内链接一律交浏览器新标签承载，绝不让编辑器
+    // webContents 自身导航（编辑器页面一旦被外部站点替换即状态丢失）
     if (typeof wc.setWindowOpenHandler === 'function') {
       wc.setWindowOpenHandler(({ url }: WindowOpenHandlerDetails): WindowOpenHandlerResponse => {
         // 忽略空 URL 和 about:blank
         if (!url || url === 'about:blank') {
+          return { action: 'deny' };
+        }
+
+        if (tab.viewKind === 'genoffice') {
+          this.create({ windowId: tab.windowId, url, active: true });
           return { action: 'deny' };
         }
 
@@ -510,7 +541,9 @@ export class TabManager {
 
     wc.on('did-navigate', (...args: unknown[]) => {
       const url = args[1];
-      if (typeof url === 'string') {
+      // 阶段 2：genoffice 标签的 URL 是稳定伪地址（编辑器页面在 genoffice-app://
+      // 下加载，其导航事件不得覆盖伪地址——否则标签身份/路由判定失效）
+      if (typeof url === 'string' && tab.viewKind === 'browser') {
         tab.url = url;
       }
       const nav = readNavigationState(wc);
@@ -602,6 +635,8 @@ export class TabManager {
       canGoForward: tab.canGoForward,
       crashed: tab.crashed,
       indexInWindow: tab.indexInWindow,
+      viewKind: tab.viewKind,
+      dirty: tab.dirty,
     };
   }
 

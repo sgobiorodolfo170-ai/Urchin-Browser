@@ -41,8 +41,8 @@ export const ASSOCIATION_GROUPS: readonly AssociationGroup[] = [
   {
     id: 'documents',
     label: '文档',
-    description: 'PDF / Markdown / 文本 / JSON 等文档文件',
-    kinds: ['pdf', 'markdown', 'json', 'text', 'html'],
+    description: 'PDF / Word / Markdown / 文本 / JSON 等文档文件',
+    kinds: ['pdf', 'docx', 'markdown', 'json', 'text', 'html'],
   },
   {
     id: 'images',

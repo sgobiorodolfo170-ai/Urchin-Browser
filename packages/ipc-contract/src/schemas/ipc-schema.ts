@@ -45,6 +45,11 @@ export const tabSnapshotSchema = z.object({
   canGoForward: z.boolean().default(false),
   crashed: z.boolean().default(false),
   indexInWindow: z.number().int().nonnegative().default(0),
+  /** 视图类型（阶段 2 GenOffice 融合）：browser = 网页 BrowserView；
+   *  genoffice = GenOffice 编辑器 WebContentsView（地址栏隐藏、脏标记生效）。 */
+  viewKind: z.enum(['browser', 'genoffice']).default('browser'),
+  /** 编辑器未保存修改标记（仅 genoffice 标签有意义）。 */
+  dirty: z.boolean().default(false),
 });
 export type TabSnapshot = z.infer<typeof tabSnapshotSchema>;
 
@@ -69,6 +74,8 @@ export type TabCloseReq = z.infer<typeof tabCloseReqSchema>;
 export const tabCloseResSchema = z.object({
   ok: z.literal(true),
   tabId: tabIdSchema,
+  /** 阶段 2：关闭守卫取消时为 false（标签保留）；缺省 true 保持旧契约兼容。 */
+  closed: z.boolean().default(true),
 });
 export type TabCloseRes = z.infer<typeof tabCloseResSchema>;
 
@@ -570,6 +577,8 @@ export const fileKindSchema = z.enum([
   'json',
   'text',
   'binary',
+  /** 阶段 4：Word 文档（GenOffice docs 编辑器接管） */
+  'docx',
 ]);
 export type FileKind = z.infer<typeof fileKindSchema>;
 

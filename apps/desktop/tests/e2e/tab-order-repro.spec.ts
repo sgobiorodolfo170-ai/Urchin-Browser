@@ -62,7 +62,8 @@ test('新建标签后旧标签保持原状态且置顶新标签', async () => {
   // 3. 等待标签数 = 2
   await expect(window.locator('[aria-label="关闭标签"]')).toHaveCount(2, { timeout: 10_000 });
 
-  // 3.5 新标签标题应最终同步为"新标签页"（而非 URL）
+  // 3.5 新标签标题应最终同步为"新标签页"（而非 URL）——home 占位不加载
+  // BrowserView，标题由 tab-manager 的默认标题提供（dev.88 修复）
   await expect(window.getByText('新标签页')).toBeVisible({ timeout: 10_000 });
 
   // 4. 断言：两个标签的显示文本（标签标题 span：flex-1 truncate）

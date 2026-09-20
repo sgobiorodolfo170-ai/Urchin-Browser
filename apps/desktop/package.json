@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "dev:electron": "wait-on ./dist/main/index.js && electron .",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && pnpm run build:renderer && pnpm run build:main && pnpm run build:preload",
     "build:main": "vite build --mode main",
     "build:preload": "vite build --mode preload",
     "build:renderer": "vite build --mode renderer",
@@ -17,14 +17,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "package:win": "pnpm run build:main && pnpm run build:preload && pnpm run build:renderer && node ../../scripts/clean-release.mjs && electron-builder --win --x64"
+    "package:win": "pnpm run build:main && pnpm run build:preload && pnpm run build:renderer && node ../../scripts/genoffice-build.mjs && node ../../scripts/clean-release.mjs && electron-builder --win --x64"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.3",
     "@tiptap/extension-link": "^2",
     "@tiptap/react": "^2",
     "@tiptap/starter-kit": "^2",
-    "better-sqlite3": "^11.3.0",
+    "better-sqlite3": "^13.0.3",
     "clsx": "^2.1.1",
     "lucide-react": "^1.27.0",
     "marked": "18.0.5",
@@ -36,7 +36,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@playwright/test": "^1.47.0",
+    "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^6.5.0",
     "@testing-library/react": "^16.0.0",
     "@types/react": "^18.3.11",
@@ -52,8 +52,8 @@
     "@vitejs/plugin-react": "^4.3.2",
     "@vitest/coverage-v8": "2.1.9",
     "autoprefixer": "^10.5.4",
-    "electron": "^32.1.0",
-    "electron-builder": "^25.0.0",
+    "electron": "^43.7.3",
+    "electron-builder": "^26.15.3",
     "jsdom": "^30.0.1",
     "postcss": "^8.5.24",
     "tailwindcss": "3",

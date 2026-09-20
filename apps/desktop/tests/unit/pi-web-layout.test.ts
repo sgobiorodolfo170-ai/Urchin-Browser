@@ -65,6 +65,11 @@ describe('buildLayoutScript', () => {
     expect(s).toContain('.__ubNoRight .resize-handle.resize-right{display:none!important}');
     // 宽度守护避开原生拖拽期（body.panel-resizing），其余时机防 React 弹回默认
     expect(s).toContain("classList.contains('panel-resizing')");
+    // 拖拽锁存（观察器改 80ms 合并调度后新增）：读宽完成前 applyAll 不得用旧宽度
+    // 覆盖 React 提交的新宽度，否则拖拽结果被弹回（E2E delta=0 回归）
+    expect(s).toContain('UI.__dragging = true');
+    expect(s).toContain('resizing || UI.__dragging');
+    expect(s).toContain("window.addEventListener('pointercancel', done)");
   });
 
   it('should fix stacking: notices above drawers, tooltips above notices', () => {
@@ -77,5 +82,15 @@ describe('buildLayoutScript', () => {
     const s = buildLayoutScript();
     expect(s).toContain('@media(max-width:768px)');
     expect(s).toContain('.panel-left,.panel-right{width:auto!important}');
+  });
+
+  it('should coalesce MutationObserver re-insert via setTimeout (Electron 43 starvation fix)', () => {
+    const s = buildLayoutScript();
+    // 观察器回调必须经 setTimeout 合并：同步 ensureDom 会在「补插 → 再触发」
+    // 下形成微任务饥饿循环，Electron 43 实测 pi 页 renderer 主线程卡死
+    expect(s).toContain('new MutationObserver(scheduleEnsure)');
+    expect(s).toContain('ensureTimer !== null');
+    expect(s).toContain('setTimeout(function () {');
+    expect(s).not.toContain('new MutationObserver(function () { ensureDom(); })');
   });
 });

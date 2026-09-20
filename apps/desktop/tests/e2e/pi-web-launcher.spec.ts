@@ -29,7 +29,7 @@ import {
 } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -43,6 +43,66 @@ async function launchApp(): Promise<{
 }> {
   const appPath = resolve(__dirname, '..', '..');
   const userDataDir = mkdtempSync(join(tmpdir(), 'urchin-e2e-piweb-'));
+
+  // dev.88：插件左栏槽 fixture——向临时 profile 写入最小插件（leftpanel.sessions
+  // 条目），验证官方槽在被我方接管（官方面板隐藏）后仍经镜像在我方面板可用。
+  // 插件目录：<dataDir>/plugins/<id>/（dataDir = userData/pi/web-ui）。
+  const pluginDir = join(userDataDir, 'pi', 'web-ui', 'plugins', 'e2e-lp');
+  mkdirSync(pluginDir, { recursive: true });
+  writeFileSync(
+    join(pluginDir, 'manifest.json'),
+    `${JSON.stringify(
+      { id: 'e2e-lp', name: 'E2E LP Slot', version: '1.0.0', apiVersion: 2, permissions: ['ui'] },
+      null,
+      2,
+    )}\n`,
+  );
+  writeFileSync(
+    join(pluginDir, 'index.mjs'),
+    [
+      'export default {',
+      '  async activate(host) {',
+      "    host.ui.register({ slot: 'leftpanel.sessions', id: 'hello', label: 'E2E槽按钮', kind: 'action', action: 'e2e-lp:hello' });",
+      '  },',
+      '};',
+      '',
+    ].join('\n'),
+  );
+
+  // dev.88：历史会话 fixture——leftpanel.sessions 槽条目按官方设计渲染在**每个
+  // 会话/记录行**末尾，全新 profile 无会话行则槽容器不出现。预置一条最小 v3 会话
+  //（格式见 vendor/pi/packages/coding-agent/docs/session-format.md），目录命名
+  // `--<cwd 中 \\ / : 替换为 ->--`。
+  const sessionCwd = join(userDataDir, 'pi', 'web-ui');
+  const sessionDir = join(
+    userDataDir,
+    'pi',
+    'agent',
+    'sessions',
+    `--${sessionCwd.replace(/[\\/:]/g, '-')}--`,
+  );
+  mkdirSync(sessionDir, { recursive: true });
+  const sessionId = '0199e2e0-0000-7000-8000-000000000001';
+  writeFileSync(
+    join(sessionDir, '2026-09-18T00-00-00-000Z_0199e2e0-0000-7000-8000-000000000001.jsonl'),
+    [
+      JSON.stringify({
+        type: 'session',
+        version: 3,
+        id: sessionId,
+        timestamp: '2026-09-18T00:00:00.000Z',
+        cwd: sessionCwd,
+      }),
+      JSON.stringify({
+        type: 'message',
+        id: 'e2e00001',
+        parentId: null,
+        timestamp: '2026-09-18T00:00:01.000Z',
+        message: { role: 'user', content: 'E2E 会话 fixture' },
+      }),
+      '',
+    ].join('\n'),
+  );
 
   const electronApp = await electron.launch({
     cwd: appPath,
@@ -245,7 +305,7 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       foldOk?: boolean;
       delRes?: { ok: boolean; reason?: string; title?: string };
       noticeSuppressed?: boolean;
-      updateCssReady?: boolean;
+      topbarClean?: { noOpenProject: boolean; noGithub: boolean; noVersion: boolean };
       lpReady?: boolean;
       lpOfficialHidden?: boolean;
       lpCfgRows?: number;
@@ -258,6 +318,12 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
         hasTools: boolean;
         hasUiLayout: boolean;
         hasSubagentTpl: boolean;
+        hasSkillsTab: boolean;
+        hasExtsTab: boolean;
+        hasAbout: boolean;
+        aboutRowCount: number;
+        aboutHasVersion: boolean;
+        aboutNoUpdate: boolean;
       };
       featureProbe?: {
         notification: string;
@@ -266,11 +332,13 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
         attachImg: boolean;
         swRegs: number;
         ua: string;
+        setupModalVisible: boolean;
       };
       globalSearch?: { opened: boolean; hasPlaceholder: boolean };
       officialLeak?: string[];
+      slotRes?: { official: boolean; mirrored: boolean; forwarded: boolean };
       cfgSkillsExpanded?: boolean;
-      cfgFilesListed?: boolean;
+      cfgExtsExpanded?: boolean;
       themeSelectorHidden?: boolean;
       pinnedTabIcon?: string | null;
       error?: string;
@@ -327,6 +395,14 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           if (lp.ready === true) break;
           await wait(500);
         }
+
+        // dev.88：插件左栏槽（leftpanel.sessions）断言在后段执行（经多次 cwd 切换与
+        // 服务端 3s 会话缓存过期后历史行才渲染）——此处先占位。
+        let slotRes: { official: boolean; mirrored: boolean; forwarded: boolean } = {
+          official: false,
+          mirrored: false,
+          forwarded: false,
+        };
 
         // dev.85：接管完整性——.panel-left 直接子节点中除我方 __ub* 外不得可见
         //（0.90 重构新增 panel-drawer/panel-rail 等结构时，防官方面板泄漏并与
@@ -431,19 +507,19 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
             .then(() => new Promise((r) => setTimeout(() => r({
               skillsClicked: true,
               skillsExpanded: !!document.querySelector('.__ubLPItemList, .__ubLPHint'),
-              filesClicked: clickCfg('files'),
+              extsClicked: clickCfg('exts'),
             }), 400)))
             .then(() => new Promise((r) => setTimeout(() => r({
               skillsClicked: true,
               skillsExpanded: !!document.querySelector('.__ubLPItemList, .__ubLPHint'),
-              filesClicked: true,
-              filesListed: !!document.querySelector('.__ubLPFile, .__ubLPHint'),
-            }), 1200)));
+              extsClicked: true,
+              extsExpanded: !!document.querySelector('.__ubLPItemList, .__ubLPHint'),
+            }), 400)));
         })()`)) as {
           skillsClicked: boolean;
           skillsExpanded: boolean;
-          filesClicked: boolean;
-          filesListed: boolean;
+          extsClicked: boolean;
+          extsExpanded: boolean;
         };
 
         // dev.68：会话折叠/展开——「＋」前的 ▾ 按钮（默认展开；折叠后该行会话
@@ -479,12 +555,17 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           restored: boolean;
         };
 
-        // dev.47：更新组件隐藏 CSS 已注入（dd-update 仅留版本行 + update-dot 隐藏）
-        const updateCssReady = (await wc.executeJavaScript(`(() => {
-          const st = document.getElementById('__ubProjStyle');
-          const css = st ? st.textContent || '' : '';
-          return css.includes('.dd-update>*:not(:first-child)') && css.includes('.update-dot');
-        })()`)) as boolean;
+        // dev.89（用户指令）：顶栏清理——打开项目 / GitHub / 版本更新入口全部移除；
+        // 版本号移入设置导航最底部「关于」（只读弹窗，无自动更新入口）
+        const topbarClean = (await wc.executeJavaScript(`(() => {
+          const versionChip = Array.from(document.querySelectorAll('.chip-sub'))
+            .some((s) => /^v?\\d+\\.\\d+\\.\\d+/.test((s.textContent || '').trim()));
+          return {
+            noOpenProject: !document.querySelector('button.chip.open-project'),
+            noGithub: !document.querySelector('a.chip.github'),
+            noVersion: !versionChip && !document.querySelector('.update-dot'),
+          };
+        })()`)) as { noOpenProject: boolean; noGithub: boolean; noVersion: boolean };
 
         // dev.85：功能面运行时核验——0.90 新增设置页（定时任务/工具/界面布局/子代理模板）
         // 全部保留（dev.86 已按决策清理已惰性的设置去重代码；上游设置页无「技能/插件」tab）；
@@ -499,6 +580,15 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
         await wait(900);
         const featureSurface = (await wc.executeJavaScript(`(() => {
           const labels = Array.from(document.querySelectorAll('button.settings-tab .settings-tab-label')).map((t) => (t.textContent || '').trim());
+          // dev.89：设置导航最底部「关于」——点击弹只读关于窗（含版本号）
+          const aboutTab = document.querySelector('.__ubAboutTab');
+          if (aboutTab) aboutTab.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          const about = document.getElementById('__ubAbout');
+          const aboutText = about ? (about.textContent || '') : '';
+          const aboutRowCount = about ? about.querySelectorAll('.__ubAboutRow').length : 0;
+          const aboutHasVersion = /v\\d+\\.\\d+\\.\\d+/.test(aboutText) || aboutText.indexOf('—') >= 0;
+          const aboutNoUpdate = aboutText.indexOf('自动更新') >= 0 && !about.querySelector('.dd-update');
+          if (about) about.remove();
           const close = document.querySelector('.modal-close');
           if (close) close.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
           return {
@@ -506,12 +596,24 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
             hasTools: labels.some((l) => /^工具$/.test(l)),
             hasUiLayout: labels.some((l) => /界面布局/.test(l)),
             hasSubagentTpl: labels.some((l) => /子代理模板/.test(l)),
+            hasSkillsTab: labels.some((l) => /^技能$/.test(l)),
+            hasExtsTab: labels.some((l) => /^插件$/.test(l)),
+            hasAbout: !!aboutTab,
+            aboutRowCount,
+            aboutHasVersion,
+            aboutNoUpdate,
           };
         })()`)) as {
           hasScheduler: boolean;
           hasTools: boolean;
           hasUiLayout: boolean;
           hasSubagentTpl: boolean;
+          hasSkillsTab: boolean;
+          hasExtsTab: boolean;
+          hasAbout: boolean;
+          aboutRowCount: number;
+          aboutHasVersion: boolean;
+          aboutNoUpdate: boolean;
         };
         const featureProbe = (await wc.executeJavaScript(`(async () => {
           const out = {
@@ -520,6 +622,13 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
             quickChips: document.querySelectorAll('.quick-chip').length,
             attachImg: !!document.querySelector('.btn.attach-img'),
             ua: navigator.userAgent,
+            // dev.87：官方 setup 弹窗（未配置模型时出现）须被注入 CSS 取消
+            setupModalVisible: (() => {
+              const m = document.querySelector('.modal.setup-modal');
+              if (!m) return false;
+              const cs = getComputedStyle(m);
+              return cs.display !== 'none' && m.getBoundingClientRect().height > 0;
+            })(),
           };
           try {
             const regs = navigator.serviceWorker ? await navigator.serviceWorker.getRegistrations() : [];
@@ -533,6 +642,7 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           attachImg: boolean;
           swRegs: number;
           ua: string;
+          setupModalVisible: boolean;
         };
         // Ctrl+K 全局搜索（0.90 新增；验证 Urchin 内未被浏览器快捷键吞掉）
         wc.focus();
@@ -546,6 +656,30 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           if (close) close.click();
           return { opened: !!modal, hasPlaceholder: !!(input && input.getAttribute('placeholder')) };
         })()`)) as { opened: boolean; hasPlaceholder: boolean };
+
+        // dev.88：插件左栏槽（leftpanel.sessions）断言（在 delRes 改变 cwd 之前：
+        // 此时 cwd=dataDir、fixture 历史行已渲染）——官方槽条目在被隐藏的
+        // .panel-sessions 行内保留 DOM，我方面板镜像渲染并转发点击到官方节点
+        let slotPresence = { official: false, mirrored: false };
+        for (let i = 0; i < 24; i++) {
+          slotPresence = (await wc.executeJavaScript(`(() => ({
+            official: !!document.querySelector('.lp-slot-sessions button.lp-slot-btn'),
+            mirrored: Array.from(document.querySelectorAll('.__ubLPSlotBtn')).some((b) => (b.textContent || '').indexOf('E2E槽按钮') >= 0),
+          }))()`)) as { official: boolean; mirrored: boolean };
+          if (slotPresence.official && slotPresence.mirrored) break;
+          await wait(500);
+        }
+        const slotForwarded = (await wc.executeJavaScript(`(async () => {
+          const official = document.querySelector('.lp-slot-sessions button.lp-slot-btn');
+          const mine = Array.from(document.querySelectorAll('.__ubLPSlotBtn')).find((b) => (b.textContent || '').indexOf('E2E槽按钮') >= 0);
+          if (!official || !mine) return false;
+          window.__e2eSlotClicks = 0;
+          official.addEventListener('click', function () { window.__e2eSlotClicks++; }, true);
+          mine.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          await new Promise((r) => setTimeout(r, 300));
+          return window.__e2eSlotClicks > 0;
+        })()`)) as boolean;
+        slotRes = { ...slotPresence, forwarded: slotForwarded };
 
         // dev.86：项目删除迁移官方 remove_project——先造出第二个项目行（非活动），
         // 挂确认钩子后点行内 ×，断言：行消失（服务端持久 tombstone 广播刷新面板）
@@ -578,7 +712,7 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           foldOk: foldRes.ok && foldRes.expandedByDefault && foldRes.foldedAway && foldRes.restored,
           delRes,
           noticeSuppressed,
-          updateCssReady,
+          topbarClean,
           lpReady: lp.ready === true,
           lpOfficialHidden: lp.officialHidden === true,
           lpCfgRows: lp.cfgRows ?? 0,
@@ -590,8 +724,9 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           featureProbe,
           globalSearch,
           officialLeak,
+          slotRes,
           cfgSkillsExpanded: cfgRes.skillsClicked && cfgRes.skillsExpanded,
-          cfgFilesListed: cfgRes.filesClicked && cfgRes.filesListed,
+          cfgExtsExpanded: cfgRes.extsClicked && cfgRes.extsExpanded,
           themeSelectorHidden: !themeSel.present || themeSel.removed || themeSel.hidden,
         };
       },
@@ -605,6 +740,14 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       hasTools: true,
       hasUiLayout: true,
       hasSubagentTpl: true,
+      // dev.89：设置页「技能」「插件」页保留（左区与设置对齐的前提）；
+      // 导航最底部「关于」只读弹窗（版本号 + 无自动更新入口）
+      hasSkillsTab: true,
+      hasExtsTab: true,
+      hasAbout: true,
+      aboutRowCount: 2,
+      aboutHasVersion: true,
+      aboutNoUpdate: true,
     });
     expect(enhance.featureProbe).toMatchObject({
       notification: 'granted',
@@ -615,21 +758,25 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     expect(enhance.featureProbe?.swRegs ?? 0).toBeGreaterThanOrEqual(1);
     expect(enhance.globalSearch).toMatchObject({ opened: true, hasPlaceholder: true });
     expect(enhance.officialLeak ?? []).toEqual([]);
+    // dev.88：插件左栏槽接入——官方隐藏槽条目存在 + 我方面板镜像 + 点击转发生效
+    expect(enhance.slotRes).toMatchObject({ official: true, mirrored: true, forwarded: true });
     // dev.86（A1 决策）：UA 中的 Electron 标记已抹除——pi 页按 Web 形态运行
     //（否则官方 isDesktop 判定会禁用浏览器操作/pageCall、更新面板走桌面分支）
     expect(enhance.featureProbe?.ua ?? '').not.toContain('Electron/');
+    // dev.87：官方「未检测到 pi agent 配置」弹窗被注入 CSS 取消（不阻塞交互）
+    expect(enhance.featureProbe?.setupModalVisible).toBe(false);
 
     expect(enhance).toMatchObject({
       theme: 'white',
       noticeSuppressed: true,
-      updateCssReady: true,
+      topbarClean: { noOpenProject: true, noGithub: true, noVersion: true },
       themeSelectorHidden: true,
       // dev.65：左区重构——自有面板就绪接管 + 上下两区结构
       lpReady: true,
       lpOfficialHidden: true,
       lpSwitchWorked: true,
       cfgSkillsExpanded: true,
-      cfgFilesListed: true,
+      cfgExtsExpanded: true,
     });
     // 至少存在一个最近项目条目（5.6 刚切换过 → 必有）
     expect(enhance.projectItems ?? 0).toBeGreaterThanOrEqual(1);
@@ -637,8 +784,9 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     expect(enhance.foldOk).toBe(true);
     // dev.86：项目删除走官方 remove_project（持久 tombstone）——非活动行点 × 后消失
     expect(enhance.delRes?.ok).toBe(true);
-    // dev.65/68：配置五小节（技能/插件/命令/预设/配置文件）+ 项目行「＋」与行数一致
-    expect(enhance.lpCfgRows).toBe(5);
+    // dev.89：配置两小节（技能/插件，与设置页对齐；命令/预设/配置文件已移除）
+    // + 项目行「＋」与行数一致
+    expect(enhance.lpCfgRows).toBe(2);
     expect(enhance.lpProjRows ?? 0).toBeGreaterThanOrEqual(1);
     expect(enhance.lpNewBtns).toBe(enhance.lpProjRows);
     // dev.71：活动项目行展开且有会话区（组或空提示；全局对话后按行作用域观测）

@@ -214,7 +214,7 @@ export class PiDriver {
   async waitReady(): Promise<ReadyState> {
     for (let i = 0; i < 40; i++) {
       const x = await this.piEval<ReadyState>(`(() => {
-        const ta = document.querySelector('.inputbar .inputbox-row textarea');
+        const ta = document.querySelector('.inputbar .inputbox textarea');
         return { enabled: !!ta && !ta.disabled, enhance: !!window.__ubPageEnhanceInstalled, picker: !!window.__ubCwdPickerInstalled };
       })()`);
       if (x?.enabled && x.enhance && x.picker) return x;
@@ -302,7 +302,7 @@ export class PiDriver {
   async typeAndSend(text: string): Promise<void> {
     await this.waitIdle();
     await this.piEval(`(() => {
-      const ta = document.querySelector('.inputbar .inputbox-row textarea');
+      const ta = document.querySelector('.inputbar .inputbox textarea');
       const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
       setter.call(ta, ${JSON.stringify(text)});
       ta.dispatchEvent(new Event('input', { bubbles: true }));

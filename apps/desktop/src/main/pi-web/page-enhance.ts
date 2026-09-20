@@ -38,9 +38,18 @@
  * 5.5 设置弹窗去重（dev.69）：**dev.86 决策清理已退役**——0.90.0 上游设置页
  *    重组后已无「技能/插件」tab（改名/并入界面插件等），去重逻辑成为惰性
  *    代码；技能/插件状态仍走 settings_state / set_settings 同源接口。
- * 6. 更新组件隐藏（dev.47）：.dd-update 仅留版本行 + update-dot 红点隐藏。
- * 7. 左区重构（dev.65，详见 left-panel.ts）：上区改「项目配置」（技能/插件启停 +
- *    .pi/ 配置文件编辑），下区改「项目」管理（项目行切换 + 行内「＋」新建对话 +
+ * 6. 版本/更新入口移除 + 关于页（dev.89，用户指令）：
+ *    - 顶栏「打开项目」按钮删除（与输入框下方 cwd 行功能重复）；
+ *    - 顶栏 GitHub 连接删除（顶栏 + 「更多」菜单两处）；
+ *    - 版本/更新入口整只移除（旧 dev.47 仅留版本行的 CSS 退役），版本号移入
+ *      设置导航最底部新增的「关于」项——点击弹出只读关于弹窗（前端版本 +
+ *      内置 pi SDK 版本），不提供应用内自动更新。
+ * 6.5 「未检测到 pi agent 配置」弹窗取消（dev.87，用户指令）：官方 PiSetupModal
+ *    纯 CSS 隐藏（.modal-backdrop:has(>.modal.setup-modal)），不阻塞交互、
+ *    不与 React 状态对抗，兼除「自动安装 pi agent」入口（containment 面）。
+ * 7. 左区重构（dev.65，详见 left-panel.ts）：上区改「项目配置」（仅技能/插件启停，
+ *    与官方设置「技能」「插件」页同源对齐；dev.89 移除命令/预设/配置文件三组），
+ *    下区改「项目」管理（项目行切换 + 行内「＋」新建对话 +
  *    当前项目下挂运行对话与历史会话）。自有面板经同 clientId 第二条 WebSocket 收发
  *    官方协议；未就绪前官方面板保持可见（:has() 降级）。
  * 8. 中区布局控制（dev.67，详见 layout.ts + ui-state.ts）：中区左右上角折叠
@@ -234,8 +243,17 @@ export function buildProjectsPanelScript(): string {
     'width:18px;height:18px;border:none;border-radius:4px;background:transparent;' +
     'cursor:pointer;color:inherit;font-size:15px;line-height:1;opacity:.65}' +
     '.__ubNewChat:hover{opacity:1;background:rgba(128,128,128,.12)}' +
-    '.dd-update>*:not(:first-child){display:none!important}' +
-    '.update-dot{display:none!important}' +
+    // dev.89：版本/更新入口整只移除（版本号移入「设置-关于」，不提供自动更新），
+    // 旧的 dev.47「仅留版本行」CSS 一并退役。
+    // 关于弹窗（自绘，风格对齐官方 .modal）
+    '.__ubAboutBackdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:130;display:flex;align-items:center;justify-content:center}' +
+    '.__ubAboutModal{width:min(420px,90vw);background:var(--bg-elev);border:1px solid var(--border);border-radius:12px;padding:18px 20px;color:var(--text);box-shadow:0 18px 60px rgba(0,0,0,.4)}' +
+    '.__ubAboutTitle{font-size:15px;font-weight:700;margin:0 0 12px}' +
+    '.__ubAboutRow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--border-soft);font-size:12.5px;color:var(--text-dim)}' +
+    '.__ubAboutRow b{color:var(--text);font-weight:600}' +
+    '.__ubAboutNote{margin:12px 0 0;font-size:11.5px;line-height:1.6;color:var(--text-faint)}' +
+    '.__ubAboutClose{margin-top:14px;width:100%;padding:7px 0;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:12.5px;cursor:pointer}' +
+    '.__ubAboutClose:hover{background:var(--accent-soft)}' +
     // 输入框区（dev.71 适配 0.47.0）：上游原生实现了 ChatGPT 式单框设计
     //（.inputbox 直含 textarea + .composer-tools，模型/思考下拉在工具条左、
     // 发送在右，下拉原生向上弹）——dev.51-58 的结构性 hack 全部退役，仅保留
@@ -269,7 +287,13 @@ export function buildProjectsPanelScript(): string {
     '.statusbar{display:none!important}' +
     '.__ubCwdRow{display:flex;align-items:center;gap:6px;max-width:860px;margin:6px auto 0;' +
     'font-size:12.5px;color:var(--text-dim);cursor:pointer;padding:2px 12px;user-select:none}' +
-    '.__ubCwdRow:hover{color:var(--accent)}';
+    '.__ubCwdRow:hover{color:var(--accent)}' +
+    // dev.87（用户指令）：取消「未检测到 pi agent 配置」弹窗（官方 PiSetupModal，
+    // setupTitle）。0.90 起 piConfigured=模型运行时是否有可用模型（不再看 auth.json，
+    // dev.43 占位对旧引导有效、对本弹窗无效）；该弹窗还含「自动安装 pi agent」
+    // （npm i -g，containment 忌惮面）。纯 CSS 隐藏（不阻塞、不与 React 状态对抗；
+    // React 重渲染/重开也持续生效）。
+    '.modal-backdrop:has(>.modal.setup-modal){display:none!important}';
 
   return (
     '(function(){' +
@@ -329,6 +353,36 @@ export function buildProjectsPanelScript(): string {
     '}' +
     '}' +
     '}' +
+    // ── dev.89（用户指令）：顶栏清理 + 设置底部「关于」──
+    // 1) 打开项目：与输入框下方 cwd 行（原生目录选择）功能重复 → 删除顶栏按钮
+    'var opBtn = document.querySelector("button.chip.open-project");' +
+    'if (opBtn) opBtn.remove();' +
+    // 2) GitHub 连接：删除（顶栏与「更多」菜单两处，均为 a.chip.github）
+    'var gh = document.querySelectorAll("a.chip.github");' +
+    'for (var gi = 0; gi < gh.length; gi++) gh[gi].remove();' +
+    // 3) 版本/更新入口：记录版本号后整只移除（版本号移入「设置-关于」；
+    //    同时移除更新下拉/红点——不提供应用内自动更新）
+    'var vsubs = document.querySelectorAll(".chip-sub");' +
+    'for (var vi = 0; vi < vsubs.length; vi++) {' +
+    'var vt = (vsubs[vi].textContent || "").trim();' +
+    'if (/^v?\\d+\\.\\d+\\.\\d+/.test(vt)) {' +
+    'window.__ubPiVersionChip = vt.replace(/^v/i, "");' +
+    'var vhost = vsubs[vi].closest(".dropdown") || vsubs[vi].closest("button") || vsubs[vi];' +
+    'vhost.remove();' +
+    '}' +
+    '}' +
+    // 4) 设置导航底部「关于」项（点击打开只读关于弹窗；React 重建由 observer 重加）
+    'var rail = document.querySelector(".settings-rail");' +
+    'if (rail && !rail.querySelector(".__ubAboutTab")) {' +
+    'var ab = document.createElement("button");' +
+    'ab.type = "button"; ab.className = "settings-tab __ubAboutTab";' +
+    'ab.setAttribute("data-tab", "__ub-about"); ab.title = "关于";' +
+    'var abi = document.createElement("span"); abi.className = "settings-tab-icon"; abi.textContent = "\\u24d8";' +
+    'var abl = document.createElement("span"); abl.className = "settings-tab-label"; abl.textContent = "关于";' +
+    'ab.appendChild(abi); ab.appendChild(abl);' +
+    'ab.addEventListener("click", function(ev){ ev.preventDefault(); ev.stopPropagation(); openAbout(); });' +
+    'rail.appendChild(ab);' +
+    '}' +
     '}' + // 闭合 enhance()
     // ── dev.45/47 最近项目删除注入：dev.86 决策退役（改用官方 remove_project，
     // 删除入口迁到我方左区面板 left-panel.ts；会话内隐藏列表同步废弃）──
@@ -346,6 +400,34 @@ export function buildProjectsPanelScript(): string {
     'if (close) close.click(); else n.remove();' +
     '}' +
     '}' +
+    '}' +
+    // dev.89：关于弹窗（只读展示版本；版本号来源：左区 WS ready / 移除前顶栏版本 chip）
+    'function openAbout(){' +
+    'var old = document.getElementById("__ubAbout"); if (old) old.remove();' +
+    'var v = window.__ubPiVersions || {};' +
+    'var front = v.app || window.__ubPiVersionChip || "\\u2014";' +
+    'var core = v.server || "\\u2014";' +
+    'var wrap = document.createElement("div"); wrap.id = "__ubAbout"; wrap.className = "__ubAboutBackdrop";' +
+    'var box = document.createElement("div"); box.className = "__ubAboutModal";' +
+    'var h = document.createElement("h3"); h.className = "__ubAboutTitle"; h.textContent = "关于";' +
+    'box.appendChild(h);' +
+    'function row(label, value){' +
+    'var r = document.createElement("div"); r.className = "__ubAboutRow";' +
+    'var l = document.createElement("span"); l.textContent = label;' +
+    'var b = document.createElement("b"); b.textContent = value;' +
+    'r.appendChild(l); r.appendChild(b); return r;' +
+    '}' +
+    'box.appendChild(row("pi-web-ui \\u524d\\u7aef", "v" + front));' +
+    'box.appendChild(row("pi SDK \\uff08\\u5185\\u7f6e\\u6838\\u5fc3\\uff09", "v" + core));' +
+    'var note = document.createElement("p"); note.className = "__ubAboutNote";' +
+    'note.textContent = "\\u7248\\u672c\\u968f Urchin Browser \\u4e3b\\u9879\\u76ee\\u53d1\\u5e03\\u4e0e\\u66f4\\u65b0\\uff0c\\u4e0d\\u63d0\\u4f9b\\u5e94\\u7528\\u5185\\u81ea\\u52a8\\u66f4\\u65b0\\u3002";' +
+    'box.appendChild(note);' +
+    'var btn = document.createElement("button"); btn.type = "button"; btn.className = "__ubAboutClose"; btn.textContent = "\\u5173\\u95ed";' +
+    'btn.addEventListener("click", function(){ wrap.remove(); });' +
+    'box.appendChild(btn);' +
+    'wrap.appendChild(box);' +
+    'wrap.addEventListener("click", function(ev){ if (ev.target === wrap) wrap.remove(); });' +
+    'document.body.appendChild(wrap);' +
     '}' +
     // dev.59：上下文用量圆环——在「+」后注入一只圆环，读取信息栏 statusbar 的
     // .status-ctx（圆环自身的隐藏由 CSS 完成，此处仅读其 .ctx-bar-fill 宽度%与

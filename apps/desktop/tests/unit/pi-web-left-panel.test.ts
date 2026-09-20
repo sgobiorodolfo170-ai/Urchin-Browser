@@ -3,12 +3,12 @@
  *
  * 验证脚本内容关键要素（字符串断言，行为由 E2E 端到端覆盖）：
  * 1. 数据通道：同 clientId（pi-web-client-id）第二条 WebSocket（/ws）+ hello 握手；
- *    收 projects/conversations/sessions/settings_state/files/file_content/snapshot；
- *    发 set_cwd/new_chat/switch_conversation/switch_session/set_settings/
- *    list_files/read_file/write_file（与官方 UI 同一 ClientSession）
+ *    收 projects/conversations/sessions/settings_state/ready/snapshot；
+ *    发 set_cwd/new_chat/switch_conversation/switch_session/set_settings/remove_project
+ *    （与官方 UI 同一 ClientSession）
  * 2. 跨项目「＋」时序：set_cwd 后等 snapshot 确认 cwd 再 new_chat（防落在旧 cwd）
- * 3. 上区「项目配置」：技能/插件启停（set_settings disabled*）+ .pi 配置文件编辑
- *    （read_file/write_file + body 级编辑浮层）
+ * 3. 上区「项目配置」：仅技能/插件启停（set_settings disabled*，与设置页同源对齐）；
+ *    dev.89 用户指令：命令/预设/配置文件三组已移除
  * 4. 下区「项目」：项目行（set_cwd 切换）+ 行内「＋」/「×」+ 当前项目下挂单一
  *    会话列表（dev.66 合并：switch_conversation/switch_session；会话名取第一轮
  *    提问前几字；运行中对话排最上）
@@ -27,6 +27,10 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain("getElementById('__ubLeftPanel')");
     expect(s).toContain('MutationObserver');
     expect(s).toContain('visibilitychange');
+    // 观察器回调经 setTimeout 合并（与 layout.ts 同约定）：同步 render 会形成
+    // 微任务饥饿循环，Electron 43 实测 renderer 主线程卡死
+    expect(s).toContain('renderTimer !== null');
+    expect(s).toContain('setTimeout(function ()');
   });
 
   it('should establish a second websocket with the official client id', () => {
@@ -41,17 +45,15 @@ describe('buildLeftPanelScript', () => {
 
   it('should consume official protocol broadcasts', () => {
     const s = buildLeftPanelScript();
-    for (const t of [
-      'projects',
-      'conversations',
-      'sessions',
-      'settings_state',
-      'files',
-      'file_content',
-      'snapshot',
-    ]) {
+    for (const t of ['projects', 'conversations', 'sessions', 'settings_state', 'snapshot']) {
       expect(s).toContain(`m.type === '${t}'`);
     }
+    // dev.89：ready 捕获版本信息（供设置-关于）；slash_commands/files/file_content 已退役
+    expect(s).toContain("m.type === 'ready'");
+    expect(s).toContain('window.__ubPiVersions');
+    expect(s).not.toContain("m.type === 'slash_commands'");
+    expect(s).not.toContain("m.type === 'files'");
+    expect(s).not.toContain("m.type === 'file_content'");
     // snapshot flood 只做 cwd 比对；cwd 变化触发项目/会话重拉
     expect(s).toContain('cwd !== S.cwd');
   });
@@ -69,19 +71,19 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain('8000');
   });
 
-  it('should manage config zone via official settings/files endpoints', () => {
+  it('should manage config zone via official settings endpoint (skills/extensions only)', () => {
     const s = buildLeftPanelScript();
-    // 技能/插件启停走 set_settings（disabled 数组整体回传）
+    // 技能/插件启停走 set_settings（disabled 数组整体回传）——与设置页同源
     expect(s).toContain("type: 'set_settings', disabledSkills:");
     expect(s).toContain("type: 'set_settings', disabledExtensions:");
-    // .pi 配置文件：惰性 list_files（避免重置服务端文件监视目录）+ 读/写
-    expect(s).toContain("type: 'list_files', path: '.pi'");
-    expect(s).toContain("type: 'read_file', path: v");
-    expect(s).toContain("type: 'write_file'");
-    // 编辑浮层挂在 body（render 重建面板不波及），二进制禁编
-    expect(s).toContain('__ubLPEditor');
-    expect(s).toContain('不支持编辑');
-    expect(s).toContain('ta.disabled = !!m.binary');
+    expect(s).toContain("type: 'set_settings', reviewDisabledSkills:");
+    // dev.89（用户指令）：命令/预设/配置文件三组移除——相关协议与编辑器整体退役
+    expect(s).not.toContain("type: 'list_files'");
+    expect(s).not.toContain("type: 'read_file'");
+    expect(s).not.toContain("type: 'write_file'");
+    expect(s).not.toContain('__ubLPEditor');
+    expect(s).not.toContain('apply_preset');
+    expect(s).not.toContain('delete_preset');
   });
 
   it('should render project rows with switch/new-chat and nested conversations', () => {
@@ -158,21 +160,21 @@ describe('buildLeftPanelScript', () => {
     expect(s).not.toContain('__ubHiddenProjects');
   });
 
-  it('should surface commands, presets and review skills in config zone (dev.68)', () => {
+  it('should keep review skills and drop commands/presets/config-files (dev.89)', () => {
     const s = buildLeftPanelScript();
-    // 命令目录：slash_commands 广播 → 只读列表（含来源标签）
-    expect(s).toContain("m.type === 'slash_commands'");
-    expect(s).toContain("cfgRow('cmds', '命令'");
-    expect(s).toContain('__ubLPSrc');
-    // 预设：点击应用 / × 删除（保存入口在官方设置弹窗）
-    expect(s).toContain("cfgRow('presets', '预设'");
-    expect(s).toContain("type: 'apply_preset', name: v");
-    expect(s).toContain("type: 'delete_preset', name: v");
-    expect(s).toContain('data-act="delpreset"');
-    // 审查技能：技能小节内第二组开关（reviewDisabledSkills）
+    // 保留：技能（含审查技能）与插件两组开关
+    expect(s).toContain("cfgRow('skills', '技能'");
+    expect(s).toContain("cfgRow('exts', '插件'");
     expect(s).toContain('data-act="rskill"');
     expect(s).toContain('reviewDisabledSkills');
     expect(s).toContain('审查技能');
+    // 移除：命令 / 预设 / 配置文件（含渲染、动作与样式）
+    expect(s).not.toContain("cfgRow('cmds'");
+    expect(s).not.toContain("cfgRow('presets'");
+    expect(s).not.toContain("cfgRow('files'");
+    expect(s).not.toContain('__ubLPSrc');
+    expect(s).not.toContain('__ubLPDel');
+    expect(s).not.toContain('__ubLPFile');
   });
 
   it('should order projects by persisted order with manual drag support (dev.67)', () => {
@@ -203,6 +205,25 @@ describe('buildLeftPanelScript', () => {
     expect(s).toContain('window.__ubProjDelConfirm');
     expect(s).toContain("if (okDel) send({ type: 'remove_project', path: v })");
     expect(s).toContain('window.confirm');
+  });
+
+  it('should mirror leftpanel.sessions plugin slot items with action forwarding (dev.88)', () => {
+    const s = buildLeftPanelScript();
+    // 采集官方隐藏槽容器并镜像渲染（按钮/下拉/徽标）
+    expect(s).toContain("document.querySelector('.lp-slot-sessions')");
+    expect(s).toContain('lp-slot-btn');
+    expect(s).toContain('lp-slot-select');
+    expect(s).toContain('lp-slot-badge');
+    expect(s).toContain('data-act="slot"');
+    expect(s).toContain('data-act="slotsel"');
+    // 动作转发到官方节点（不移动 React 节点）；下拉走原生 setter + change
+    expect(s).toContain('slotItem.el.click()');
+    expect(s).toContain('setOfficialSelectValue');
+    expect(s).toContain("dispatchEvent(new Event('change', { bubbles: true }))");
+    // 变更轮询：签名变化才重渲染；空会话列表有限重试（服务端 3s 缓存竞态）
+    expect(s).toContain('slotSigOf(collectSlots())');
+    expect(s).toContain('S.sessRetry < 3');
+    expect(s).toContain("send({ type: 'list_sessions' })");
   });
 
   it('should escape html in rendered values (injected innerHTML safety)', () => {

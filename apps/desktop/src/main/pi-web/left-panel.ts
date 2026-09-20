@@ -2,10 +2,10 @@
  * pi 网页版 · 左区重构注入（dev.65，dev.66 会话合并，dev.68 启动防闪 + 配置面扩充）
  *
  * 用户需求（改变左区项目管理设定，仍分上下两区）：
- * - 上区（原「最近项目」）→ 「项目配置」：管理 pi 项目的技能（含审查技能）、插件、
- *   命令（slash_commands 目录：技能/模板/扩展命令）、预设（应用/删除）、.pi/ 配置
- *   文件（MCP 等项目级配置的实际载体即 `<项目>/.pi/` 目录；pi 后端无 MCP 协议面，
- *   以通用配置文件编辑覆盖）。启停走官方 set_settings，预设走 apply/delete_preset。
+ * - 上区（原「最近项目」）→ 「项目配置」：仅保留技能（含审查技能）与插件两组启停开关，
+ *   与官方设置弹窗「技能」「插件」页对齐（同一 settings_state / set_settings 源）。
+ *   dev.89（用户指令）：命令（slash_commands）、预设（应用/删除）、配置文件 .pi/ 编辑
+ *   三组整体移除——上游设置页已有对应能力，避免重复建设。
  * - 下区（原「历史对话」）→ 「项目」管理区：每个项目一行（点击切换 = 原最近项目的
  *   管理全部移入），行内「＋」在对应项目下新建对话，「＋」前 ▾/▸ 折叠该项目的
  *   会话列表（默认展开，会话内记忆）；展开时下挂单一会话列表（dev.66：会话名
@@ -20,11 +20,11 @@
  * 数据通道（关键设计）：注入脚本以 sessionStorage 的官方 clientId（pi-web-client-id）
  * 建立第二条 WebSocket——服务端 attach(clientId) 复用同一 ClientSession 并把新 socket
  * 加入广播集（emit 广播到所有 sink），因此：
- * - 收：projects / conversations / sessions / settings_state / slash_commands / files /
- *   file_content / snapshot（cwd）全部广播；
+ * - 收：projects / conversations / sessions / settings_state / ready（版本信息，
+ *   供设置-关于读取）/ snapshot（cwd）全部广播；
  * - 发：set_cwd / new_chat / switch_conversation / switch_session / set_settings /
- *   apply_preset / delete_preset / list_files / read_file / write_file 与官方 UI
- *   同源（同一 ClientSession），状态变化经官方 UI 自己的 socket 回流，React 自动刷新。
+ *   remove_project 与官方 UI 同源（同一 ClientSession），状态变化经官方 UI
+ *   自己的 socket 回流，React 自动刷新。
  *
  * 启动防闪（dev.68）：zone 创建即加 __ubOn 接管（骨架「左区加载中…」），配合
  * page-enhance 的 dom-ready 提前注入——官方旧 UI 从第一帧起就被隐藏；6s 未就绪
@@ -37,11 +37,6 @@
  * - 「＋」跨项目新建 = set_cwd 后等 snapshot 确认 cwd 已切换再发 new_chat
  *  （两条消息直发会交错：服务端 dispatch 不 await setCwd，new_chat 会落在旧
  *   cwd；switch_conversation 无此问题——服务端自己处理跨项目同步）。
- * - 「＋」跨项目新建 = set_cwd 后等 snapshot 确认 cwd 已切换再发 new_chat
- *  （两条消息直发会交错：服务端 dispatch 不 await setCwd，new_chat 会落在旧 cwd）。
- * - list_files('.pi') 会重置服务端文件监视目录（单目录 watch），故惰性加载：
- *   用户展开「配置文件」小节才请求，避免干扰官方文件面板的实时刷新。
- * - write_file 仅允许改已存在文件（服务端限制），配置文件行仅列现存文件。
  */
 
 /**
@@ -59,9 +54,9 @@ export function buildLeftPanelScript(): string {
   // ── 状态（全部来自官方协议广播）──
   var S = {
     projects: [], conversations: [], activeId: null, sessions: [],
-    cwd: '', settings: null, piFiles: null, piListed: false,
-    openCfg: '', pendNew: '', pendNewAt: 0, editor: null,
-    commands: null,
+    cwd: '', settings: null,
+    openCfg: '', pendNew: '', pendNewAt: 0,
+    slotSig: '', sessRetry: 0,
   };
   var sock = null, retryTimer = null;
 
@@ -85,7 +80,6 @@ export function buildLeftPanelScript(): string {
       // attachSink 自动推 conversations/settings；projects/sessions 按需拉取
       send({ type: 'list_projects' });
       send({ type: 'list_sessions' });
-      if (S.piListed) send({ type: 'list_files', path: '.pi' });
     };
     sock.onmessage = function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
@@ -99,23 +93,27 @@ export function buildLeftPanelScript(): string {
   }
 
   function handle(m) {
+    if (m.type === 'ready') {
+      // dev.89：捕获版本信息供「设置-关于」读取（前端版本 + 内置 pi SDK 版本）
+      window.__ubPiVersions = { app: m.appVersion, server: m.serverVersion };
+      return;
+    }
     if (m.type === 'projects') { S.projects = m.projects || []; render(); }
     else if (m.type === 'conversations') { S.conversations = m.conversations || []; S.activeId = m.activeId; render(); }
-    else if (m.type === 'sessions') { S.sessions = m.sessions || []; render(); }
+    else if (m.type === 'sessions') {
+      S.sessions = m.sessions || [];
+      // dev.88：非空才重置重试计数（空回复可能是服务端 3s 会话缓存竞态，继续有限重试）
+      if (S.sessions.length) S.sessRetry = 0;
+      render();
+    }
     else if (m.type === 'settings_state') { S.settings = m.settings || null; render(); }
-    else if (m.type === 'slash_commands') { S.commands = m.commands || []; render(); }
-    else if (m.type === 'files') {
-      if ((m.path || '') === '.pi') { S.piFiles = m.entries || []; render(); }
-    } else if (m.type === 'file_content') {
-      if ((m.path || '').indexOf('.pi/') === 0 && S.editor && S.editor.path === m.path) updateEditor(m);
-    } else if (m.type === 'snapshot') {
+    else if (m.type === 'snapshot') {
       // 流式期间快照 flood（~60ms/次）只做廉价 cwd 比对，无变化不重渲染
       var cwd = m.state && m.state.cwd;
       if (cwd && cwd !== S.cwd) {
         S.cwd = cwd;
         send({ type: 'list_projects' });
         send({ type: 'list_sessions' });
-        if (S.piListed) send({ type: 'list_files', path: '.pi' });
         // 跨项目「＋」：cwd 已切换到目标 → 补发 new_chat（避免落在旧 cwd）
         if (S.pendNew && S.pendNew === cwd) { S.pendNew = ''; send({ type: 'new_chat' }); }
         render();
@@ -123,10 +121,76 @@ export function buildLeftPanelScript(): string {
     }
   }
 
-  // 跨项目新建兜底：8s 内 snapshot 未确认即放弃（服务端会另行弹错误 notice）
+  // 跨项目新建兜底：8s 内 snapshot 未确认即放弃（服务端会另行弹错误 notice）；
+  // dev.88：同时做插件左栏槽变更轮询（签名变化才重渲染）+ 空会话列表有限重试
+  // （服务端 sessionInfosCache TTL 3s——首请求可能拿到竞态空缓存且无人再问）
   setInterval(function () {
     if (S.pendNew && Date.now() - S.pendNewAt > 8000) S.pendNew = '';
+    var sig = slotSigOf(collectSlots());
+    if (sig !== S.slotSig) { S.slotSig = sig; render(); }
+    if (S.cwd && S.sessions.length === 0 && S.sessRetry < 3) { S.sessRetry++; send({ type: 'list_sessions' }); }
   }, 2000);
+
+  // ── 插件左栏槽（leftpanel.sessions）镜像（dev.88，重叠项后续项）──
+  // 官方槽位条目渲染在被接管的 .panel-sessions 内（display:none 但保留 DOM）：
+  // 我方面板镜像渲染（按钮/下拉/徽标），交互转发到官方节点（不移动 React 节点）。
+  function collectSlots() {
+    var box = document.querySelector('.lp-slot-sessions');
+    if (!box) return [];
+    var out = [];
+    for (var i = 0; i < box.children.length; i++) {
+      var el = box.children[i];
+      var cls = String(el.className || '');
+      if (cls.indexOf('lp-slot-divider') >= 0) continue;
+      var label = el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '';
+      if (cls.indexOf('lp-slot-select') >= 0) {
+        var opts = [];
+        for (var j = 0; j < el.options.length; j++) {
+          opts.push({ value: el.options[j].value, label: el.options[j].textContent || '' });
+        }
+        out.push({ kind: 'select', key: label + '#' + i, label: label, title: el.getAttribute('title') || '', value: el.value, options: opts, el: el });
+      } else if (cls.indexOf('lp-slot-badge') >= 0) {
+        out.push({ kind: 'badge', key: 'badge#' + i, label: label, title: el.getAttribute('title') || '' });
+      } else if (cls.indexOf('lp-slot-btn') >= 0) {
+        out.push({ kind: 'action', key: label + '#' + i, label: label, title: el.getAttribute('title') || '', el: el });
+      }
+    }
+    return out;
+  }
+  function slotSigOf(items) {
+    return JSON.stringify(items.map(function (it) { return [it.kind, it.key, it.label, it.value || '']; }));
+  }
+  function slotsHtml(items) {
+    if (!items.length) return '';
+    var h = '<div class="__ubLPSlots">';
+    items.forEach(function (it) {
+      var title = esc(it.title || it.label);
+      if (it.kind === 'select') {
+        h += '<select class="__ubLPSlotSel" data-act="slotsel" data-v="' + esc(it.key) + '" title="' + title + '">';
+        it.options.forEach(function (o) {
+          h += '<option value="' + esc(o.value) + '"' + (o.value === it.value ? ' selected' : '') + '>' + esc(o.label) + '</option>';
+        });
+        h += '</select>';
+      } else if (it.kind === 'badge') {
+        h += '<span class="__ubLPSlotBadge" title="' + title + '">' + esc(it.label) + '</span>';
+      } else {
+        h += '<button type="button" class="__ubLPSlotBtn" data-act="slot" data-v="' + esc(it.key) + '" title="' + title + '">' + esc(it.label) + '</button>';
+      }
+    });
+    return h + '</div>';
+  }
+  function findSlot(key) {
+    var items = collectSlots();
+    for (var i = 0; i < items.length; i++) { if (items[i].key === key) return items[i]; }
+    return null;
+  }
+  function setOfficialSelectValue(el, v) {
+    try {
+      var setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+      setter.call(el, v);
+    } catch (e) { try { el.value = v; } catch (e2) {} }
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
 
   // ── 工具 ──
   function esc(s) {
@@ -198,6 +262,14 @@ export function buildLeftPanelScript(): string {
       aside.insertBefore(z, aside.firstChild);
       skeleton(z);
       z.addEventListener('click', onAction);
+      // dev.88：插件左栏槽下拉镜像——转发到官方 select（原生 setter + change，
+      // React onChange 与官方 w?.(item, value) 同语义）
+      z.addEventListener('change', function (e) {
+        var el = e.target && e.target.closest ? e.target.closest('[data-act="slotsel"]') : null;
+        if (!el) return;
+        var it = findSlot(el.getAttribute('data-v') || '');
+        if (it && it.kind === 'select' && it.el) setOfficialSelectValue(it.el, el.value);
+      });
       // dev.67：项目行拖拽排序（面板根一次性委托，innerHTML 重建免重绑）
       z.addEventListener('dragstart', onDragStart);
       z.addEventListener('dragover', onDragOver);
@@ -310,7 +382,6 @@ export function buildLeftPanelScript(): string {
     var projects = orderedProjects(S.projects);
     var st = S.settings || {};
     var skills = st.skills || [], exts = st.extensions || [];
-    var piFiles = (S.piFiles || []).filter(function (f) { return f.type === 'file'; });
 
     var h = '';
     // ── 上区：项目配置 ──
@@ -355,55 +426,16 @@ export function buildLeftPanelScript(): string {
         h += '</div>';
       } else h += emptyHint('当前项目无插件');
     }
-    // dev.68：命令目录（slash_commands 广播：技能/模板/扩展命令，只读展示）
-    h += cfgRow('cmds', '命令', S.commands === null ? '…' : S.commands.length + ' 个');
-    if (S.openCfg === 'cmds') {
-      if (S.commands && S.commands.length) {
-        h += '<div class="__ubLPItemList">';
-        S.commands.slice(0, 60).forEach(function (c) {
-          h += '<div class="__ubLPItem" title="' + esc(c.description || c.name) + '">' +
-            '<span class="__ubLPItemName">/' + esc(c.name) + '</span>' +
-            '<span class="__ubLPSrc">' + esc(c.source || '') + '</span></div>';
-        });
-        h += '</div>';
-      } else if (S.commands) {
-        h += emptyHint('无可用命令（技能 / 模板 / 扩展命令会出现在这里）');
-      } else {
-        h += emptyHint('加载中…');
-      }
-    }
-    // dev.68：预设（settings.presets：点击应用，× 删除；保存入口在官方设置弹窗）
-    var presets = st.presets || [];
-    h += cfgRow('presets', '预设', S.settings ? presets.length + ' 个' : '…');
-    if (S.openCfg === 'presets') {
-      if (presets.length) {
-        h += '<div class="__ubLPItemList">';
-        presets.forEach(function (p) {
-          h += '<div class="__ubLPItem" title="点击应用该预设">' +
-            '<button type="button" class="__ubLPFile" data-act="preset" data-v="' + esc(p.name) + '">' + esc(p.name) + '</button>' +
-            '<span class="__ubLPDel" data-act="delpreset" data-v="' + esc(p.name) + '" title="删除该预设">×</span></div>';
-        });
-        h += '</div>';
-      } else h += emptyHint('暂无预设（可在官方设置弹窗保存当前配置为预设）');
-    }
-    h += cfgRow('files', '配置文件 .pi/', S.piListed ? (S.piFiles ? piFiles.length + ' 个' : '…') : '展开查看');
-    if (S.openCfg === 'files') {
-      if (S.piFiles && piFiles.length) {
-        h += '<div class="__ubLPItemList">';
-        piFiles.forEach(function (f) {
-          h += '<button type="button" class="__ubLPFile" data-act="file" data-v="' + esc(f.path) + '" title="' + esc(f.path) + '">' + esc(f.name) + '</button>';
-        });
-        h += '</div>';
-      } else if (S.piFiles) {
-        h += emptyHint('无 .pi 配置目录（项目级技能 / 命令 / mcp 等配置可放这里）');
-      } else {
-        h += emptyHint('加载中…');
-      }
-    }
+    // dev.89（用户指令）：命令 / 预设 / 配置文件 .pi/ 三组整体移除——
+    // 上游设置页已有对应能力（预设管理等），避免重复建设；本区仅保留技能与插件。
     h += '</div>';
 
     // ── 下区：项目管理 ──
-    h += '<div class="__ubLPProjs"><div class="panel-section-title">项目</div><div class="__ubLPScroll">';
+    var slots = collectSlots();
+    S.slotSig = slotSigOf(slots);
+    h += '<div class="__ubLPProjs"><div class="panel-section-title">项目</div>';
+    h += slotsHtml(slots);
+    h += '<div class="__ubLPScroll">';
     if (!projects.length) h += emptyHint('暂无项目');
     projects.forEach(function (p) {
       var act = p.path === S.cwd;
@@ -476,6 +508,10 @@ export function buildLeftPanelScript(): string {
         ? window.__ubProjDelConfirm(v)
         : window.confirm('确认从最近项目列表移除？\\n' + v);
       if (okDel) send({ type: 'remove_project', path: v });
+    } else if (act === 'slot') {
+      // dev.88：插件左栏槽按钮——转发点击到官方节点（React 动作原样触发）
+      var slotItem = findSlot(v);
+      if (slotItem && slotItem.el && typeof slotItem.el.click === 'function') slotItem.el.click();
     } else if (act === 'conv') {
       // dev.71：0.47.0 起运行对话跨项目全局，switch_conversation 跨项目时
       // 服务端已同步 set_cwd 全套副作用（文件树/会话历史/项目顺序/命令目录）
@@ -488,65 +524,10 @@ export function buildLeftPanelScript(): string {
       send({ type: 'set_settings', reviewDisabledSkills: toggleArr((S.settings && S.settings.reviewDisabledSkills) || [], v) });
     } else if (act === 'ext') {
       send({ type: 'set_settings', disabledExtensions: toggleArr((S.settings && S.settings.disabledExtensions) || [], v) });
-    } else if (act === 'preset') {
-      send({ type: 'apply_preset', name: v });
-    } else if (act === 'delpreset') {
-      if (window.confirm('确认删除预设「' + v + '」？')) send({ type: 'delete_preset', name: v });
     } else if (act === 'cfg') {
       S.openCfg = S.openCfg === v ? '' : v;
-      // 惰性加载 .pi 目录：list_files 会重置服务端单目录文件监视
-      if (S.openCfg === 'files' && !S.piListed) { S.piListed = true; send({ type: 'list_files', path: '.pi' }); }
       render();
-    } else if (act === 'file') {
-      openEditor(v);
-      send({ type: 'read_file', path: v });
     }
-  }
-
-  // ── .pi 配置文件编辑器（body 级浮层，render 重建不波及）──
-  function edBox() {
-    var d = document.getElementById('__ubLPEditor');
-    if (!d) {
-      d = document.createElement('div');
-      d.id = '__ubLPEditor';
-      d.innerHTML =
-        '<div class="__ubLPEdBox">' +
-        '<div class="__ubLPEdHead"><span class="__ubLPEdPath"></span><span class="__ubLPEdStatus"></span>' +
-        '<button type="button" class="__ubLPEdBtn" data-eact="cancel">关闭</button>' +
-        '<button type="button" class="__ubLPEdBtn primary" data-eact="save">保存</button></div>' +
-        '<textarea class="__ubLPEdText" spellcheck="false"></textarea>' +
-        '</div>';
-      document.body.appendChild(d);
-      d.addEventListener('click', function (ev) {
-        var b = ev.target && ev.target.closest ? ev.target.closest('[data-eact]') : null;
-        if (!b) return;
-        if (b.getAttribute('data-eact') === 'cancel') closeEditor();
-        else if (S.editor) send({ type: 'write_file', path: S.editor.path, text: d.querySelector('.__ubLPEdText').value });
-      });
-      d.addEventListener('mousedown', function (ev) { if (ev.target === d) closeEditor(); });
-    }
-    return d;
-  }
-  function openEditor(path) {
-    S.editor = { path: path, binary: false };
-    var d = edBox();
-    d.querySelector('.__ubLPEdPath').textContent = path;
-    d.querySelector('.__ubLPEdStatus').textContent = '加载中…';
-    d.querySelector('.__ubLPEdText').value = '';
-  }
-  function updateEditor(m) {
-    S.editor.binary = !!m.binary;
-    var d = edBox();
-    var ta = d.querySelector('.__ubLPEdText');
-    // 用户正在编辑时不覆盖内容（保存后服务端会回推 file_content）
-    if (document.activeElement !== ta) ta.value = m.binary ? '' : (m.text || '');
-    ta.disabled = !!m.binary;
-    d.querySelector('.__ubLPEdStatus').textContent = m.binary ? '二进制文件，不支持编辑' : (m.truncated ? '内容过大已截断（不建议保存）' : '已加载');
-  }
-  function closeEditor() {
-    S.editor = null;
-    var d = document.getElementById('__ubLPEditor');
-    if (d) d.remove();
   }
 
   // ── 样式（一次性注入）──
@@ -577,10 +558,14 @@ export function buildLeftPanelScript(): string {
     '.__ubLPSwitch i{position:absolute;left:2px;top:2px;width:11px;height:11px;border-radius:50%;background:var(--text-dim);transition:transform .15s,background .15s}' +
     '.__ubLPSwitch.on{background:var(--accent)}' +
     '.__ubLPSwitch.on i{transform:translateX(11px);background:#fff}' +
-    '.__ubLPFile{display:flex;width:100%;padding:5px 8px;border:none;border-radius:0 8px 8px 0;background:transparent;color:var(--text-dim);font-size:12px;text-align:left;cursor:pointer}' +
-    '.__ubLPFile:hover{background:var(--accent-soft);color:var(--text)}' +
     '.__ubLPHint{padding:4px 10px 8px;color:var(--text-faint);font-size:11.5px}' +
     '.__ubLPProjs{flex:1;min-height:0;display:flex;flex-direction:column;padding:0 6px}' +
+    // dev.88：插件左栏槽镜像（leftpanel.sessions 条目 → 我方面板）
+    '.__ubLPSlots{display:flex;flex-wrap:wrap;gap:4px;padding:2px 10px 6px}' +
+    '.__ubLPSlotBtn{border:none;background:var(--accent-soft);color:var(--text-dim);font-size:11.5px;padding:3px 8px;border-radius:6px;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+    '.__ubLPSlotBtn:hover{color:var(--accent)}' +
+    '.__ubLPSlotSel{background:var(--bg-elev2);color:var(--text-dim);border:1px solid var(--border);border-radius:6px;font-size:11.5px;padding:2px 4px;max-width:140px}' +
+    '.__ubLPSlotBadge{font-size:11px;color:var(--text-faint);background:var(--bg-elev2);border-radius:6px;padding:2px 6px}' +
     '.__ubLPScroll{flex:1;overflow-y:auto;min-height:0;padding-bottom:56px}' +
     '.__ubLPProjWrap{margin-bottom:2px}' +
     // dev.67：拖拽排序落点指示（目标行上/下缘 accent 线）
@@ -601,11 +586,8 @@ export function buildLeftPanelScript(): string {
     // dev.68：「＋」前的会话折叠/展开按钮（默认展开 ▾）
     '.__ubFoldBtn{width:18px;height:20px;line-height:18px;text-align:center;color:var(--text-faint);flex-shrink:0;font-size:11px}' +
     '.__ubFoldBtn:hover{color:var(--accent)}' +
-    // dev.68：命令来源标签 / 审查技能子标题 / 预设删除小钮
-    '.__ubLPSrc{font-size:10px;color:var(--text-faint);flex-shrink:0;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0 4px}' +
+    // dev.68：审查技能子标题（命令来源/预设删除样式随 dev.89 移除一并退役）
     '.__ubLPRGroup{padding:6px 10px 2px;font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--text-faint)}' +
-    '.__ubLPDel{width:16px;height:16px;line-height:14px;text-align:center;border-radius:4px;color:#e5484d;font-size:12px;flex-shrink:0;opacity:.55}' +
-    '.__ubLPDel:hover{opacity:1;background:rgba(229,72,77,.08)}' +
     '.__ubLPConvGroup{margin:0 0 6px 14px;border-left:2px solid var(--border);padding-left:4px}' +
     // 运行中对话（列表最上）：正文色 + 标题前小圆点，与历史会话（次级色）区分
     '.__ubLPRunning{color:var(--text)}' +
@@ -617,15 +599,7 @@ export function buildLeftPanelScript(): string {
     '.__ubLPConvTitle{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
     '.__ubLPSub{font-size:10.5px;color:var(--text-faint);flex-shrink:0}' +
     '.__ubLPStream{color:var(--accent);font-size:9px;animation:__ubLPblink 1.2s infinite;flex-shrink:0}' +
-    '@keyframes __ubLPblink{50%{opacity:.25}}' +
-    '#__ubLPEditor{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:120;display:flex;align-items:center;justify-content:center}' +
-    '.__ubLPEdBox{width:min(720px,90vw);height:min(520px,80vh);background:var(--bg-elev);border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 18px 60px rgba(0,0,0,.4)}' +
-    '.__ubLPEdHead{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);font-size:12.5px;color:var(--text)}' +
-    '.__ubLPEdPath{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}' +
-    '.__ubLPEdStatus{font-size:11px;color:var(--text-faint);flex-shrink:0}' +
-    '.__ubLPEdBtn{padding:4px 12px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:12px;cursor:pointer;flex-shrink:0}' +
-    '.__ubLPEdBtn.primary{background:var(--accent);border-color:var(--accent);color:#fff}' +
-    '.__ubLPEdText{flex:1;border:none;outline:none;resize:none;background:var(--bg);color:var(--text);font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.55;padding:12px}';
+    '@keyframes __ubLPblink{50%{opacity:.25}}';
   if (!document.getElementById('__ubLPStyle')) {
     var stEl = document.createElement('style');
     stEl.id = '__ubLPStyle';
@@ -634,9 +608,17 @@ export function buildLeftPanelScript(): string {
   }
 
   // ── 生命周期 ──
-  // React 重挂载 aside（视图切换等）会移除面板节点 → 观察器补插（S 状态保留）
+  // React 重挂载 aside（视图切换等）会移除面板节点 → 观察器补插（S 状态保留）。
+  // 与 layout.ts 同约定：观察器回调经 setTimeout 合并——同步 render 会因
+  // 「补插节点 → 再次触发观察器」形成微任务饥饿（Electron 43 实测 renderer
+  // 主线程卡死），合并后每拍最多一次，循环收敛。
+  var renderTimer = null;
   new MutationObserver(function () {
-    if (!document.getElementById('__ubLeftPanel')) render();
+    if (renderTimer !== null) return;
+    renderTimer = setTimeout(function () {
+      renderTimer = null;
+      if (!document.getElementById('__ubLeftPanel')) render();
+    }, 80);
   }).observe(document.documentElement, { childList: true, subtree: true });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) connect(); });
   connect();

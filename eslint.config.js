@@ -18,6 +18,10 @@ export default tseslint.config(
       'out/**',
       'release/**',
       '**/release/**',
+      // electron-builder 产物目录（release-v24 等带版本后缀；含 GenOffice 打包
+      // 产物 resources/genoffice/**，非源码，见 .gitignore）
+      'release-*/**',
+      '**/release-*/**',
       'coverage/**',
       '**/coverage/**',
       'node_modules/**',

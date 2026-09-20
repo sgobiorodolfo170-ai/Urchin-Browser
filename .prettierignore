@@ -10,3 +10,6 @@ pnpm-lock.yaml
 CHANGELOG.md
 docs/
 LICENSE
+release-*/
+vendor/
+

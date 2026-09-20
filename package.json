@@ -14,12 +14,8 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "electron",
-      "better-sqlite3",
       "esbuild"
-    ],
-    "patchedDependencies": {
-      "@electron/rebuild@3.6.1": "patches/@electron__rebuild@3.6.1.patch"
-    }
+    ]
   },
   "scripts": {
     "dev": "pnpm --filter @urchin/desktop dev",
@@ -32,6 +28,7 @@
     "test": "pnpm -r --filter \"@urchin/*\" test",
     "test:coverage": "pnpm -r --filter \"@urchin/*\" test -- --coverage",
     "e2e": "pnpm --filter @urchin/desktop e2e",
+    "genoffice:build": "node scripts/genoffice-build.mjs",
     "package:win": "pnpm --filter @urchin/desktop package:win",
     "prepare": "husky || true"
   },

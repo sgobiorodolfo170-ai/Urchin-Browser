@@ -175,19 +175,29 @@ export function buildLayoutScript(): string {
       if (!h.__ubPersistHooked) {
         h.__ubPersistHooked = true;
         h.addEventListener('pointerdown', function () {
+          // 拖拽锁存：body.panel-resizing 在 pointerup 即刻移除，而观察器补插
+          // （scheduleEnsure，80ms 合并）可能在其后触发 applyAll，用旧宽度覆盖
+          // React 刚提交的新宽度（面板弹回，E2E 实测 delta=0）。锁存到读宽完成。
+          UI.__dragging = true;
           var done = function () {
             window.removeEventListener('pointerup', done);
+            window.removeEventListener('pointercancel', done);
             setTimeout(function () {
               var pane2 = chatViewPane();
-              if (!pane2) return;
+              if (!pane2) {
+                UI.__dragging = false;
+                return;
+              }
               var left = pane2.querySelector('aside.panel-left');
               var right = pane2.querySelector('aside.panel-right');
               if (left) UI.state.lw = Math.round(left.getBoundingClientRect().width);
               if (right) UI.state.rw = Math.round(right.getBoundingClientRect().width);
+              UI.__dragging = false;
               UI.save();
             }, 120);
           };
           window.addEventListener('pointerup', done);
+          window.addEventListener('pointercancel', done);
         });
       }
     }
@@ -213,14 +223,27 @@ export function buildLayoutScript(): string {
     // 原生 React 重渲染会用它自己的 state（重载后为默认值）重写变量，我方
     // 不守护会弹回默认。
     var resizing = document.body.classList.contains('panel-resizing');
-    if (resizing) return;
+    if (resizing || UI.__dragging) return;
     var layout = pane.closest('.layout');
     if (!layout) return;
     if (!UI.state.lc) layout.style.setProperty('--left-w', Math.round(UI.state.lw) + 'px');
     if (!UI.state.rc) layout.style.setProperty('--right-w', Math.round(UI.state.rw) + 'px');
   }
 
-  new MutationObserver(function () { ensureDom(); }).observe(document.documentElement, {
+  // React 重渲染移除按钮/把手后补插。⚠️ 必须经 setTimeout 合并调度（同
+  // page-enhance.ts 的 schedule 约定）：若观察器回调同步执行 ensureDom，
+  // 「补插节点 → 再次触发观察器」会形成微任务饥饿循环，renderer 主线程永不
+  // 让出——Electron 43（新版 Chromium）实测表现为整个 pi 页卡死，
+  // executeJavaScript 永久 pending。合并后每拍最多补插一次，循环自然收敛。
+  var ensureTimer = null;
+  function scheduleEnsure() {
+    if (ensureTimer !== null) return;
+    ensureTimer = setTimeout(function () {
+      ensureTimer = null;
+      ensureDom();
+    }, 80);
+  }
+  new MutationObserver(scheduleEnsure).observe(document.documentElement, {
     childList: true,
     subtree: true,
   });

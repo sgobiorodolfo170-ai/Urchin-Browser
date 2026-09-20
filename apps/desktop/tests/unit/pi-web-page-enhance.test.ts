@@ -14,7 +14,8 @@
  *    remove_project；本文件断言注入不再残留
  * 5. 抑制「已切换到/已在工作目录」路径提示（dev.64：0.29.x 官方 .notice toast
  *    转发点击 .notice-close 走官方 dismiss 通道；.fp-notice 旧选择器保留兜底）
- * 6. 更新组件隐藏（.dd-update 仅版本行 + update-dot 红点）
+ * 6. 顶栏清理 + 关于（dev.89）：删除「打开项目」/GitHub/版本更新入口，
+ *    版本号移入设置导航底部「关于」只读弹窗（不提供自动更新）
  * 7. 对话输入框重构（dev.51/52）：一体大框（主箱+chips 条无缝）、「+」合并至
  *    chips 条最左且换图标、发送/停止主题反色方块、工具条弹窗向上
  */
@@ -164,10 +165,31 @@ describe('buildProjectsPanelScript', () => {
     expect(s).toContain('\\u5df2\\u5728\\u5de5\\u4f5c\\u76ee\\u5f55');
   });
 
-  it('should hide in-page update UI keeping only the version row (dev.47)', () => {
+  it('should remove topbar duplicates and add read-only About (dev.89)', () => {
     const s = buildProjectsPanelScript();
-    expect(s).toContain('.dd-update>*:not(:first-child){display:none!important}');
-    expect(s).toContain('.update-dot{display:none!important}');
+    // 顶栏清理：打开项目（与输入框下方 cwd 行重复）/ GitHub / 版本更新入口
+    expect(s).toContain('button.chip.open-project');
+    expect(s).toContain('a.chip.github');
+    expect(s).toContain('/^v?\\d+\\.\\d+\\.\\d+/');
+    expect(s).toContain('window.__ubPiVersionChip');
+    // 设置导航底部「关于」+ 只读弹窗（版本号 + 无自动更新）
+    expect(s).toContain('.settings-rail');
+    expect(s).toContain('__ubAboutTab');
+    expect(s).toContain('openAbout');
+    expect(s).toContain('__ubAboutRow');
+    expect(s).toContain('__ubAboutNote');
+    // 注入脚本中中文以 \uXXXX 转义写入（与既有注入一致），运行时即「自动更新」
+    expect(s).toContain('\\u81ea\\u52a8\\u66f4\\u65b0');
+    // 旧 dev.47「仅留版本行」CSS 退役
+    expect(s).not.toContain('.dd-update>*:not(:first-child)');
+    expect(s).not.toContain('.update-dot{display:none!important}');
+  });
+
+  it('should cancel pi agent setup modal via injected CSS (dev.87)', () => {
+    const s = buildProjectsPanelScript();
+    // 官方 PiSetupModal（setupTitle「未检测到 pi agent 配置」）纯 CSS 隐藏；
+    // 0.90 起 piConfigured=模型运行时可用模型数，auth.json 占位对其无效
+    expect(s).toContain('.modal-backdrop:has(>.modal.setup-modal){display:none!important}');
   });
 
   it('should retire skills/extensions settings-dedupe (dev.86 cleanup)', () => {

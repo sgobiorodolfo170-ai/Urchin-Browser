@@ -17,6 +17,24 @@ import { join, resolve } from 'node:path';
 export const GENOFFICE_KINDS = ['markdown', 'pdf', 'html', 'docs'] as const;
 export type GenOfficeKind = (typeof GENOFFICE_KINDS)[number];
 
+/** GenOffice Home 伪地址（侧栏文档入口目标；主进程决定用 shell Home 视图还是 React 保底页）。 */
+export const GENOFFICE_HOME_URL = 'urchin://genoffice-home';
+
+/**
+ * GenOffice shell Home 渲染产物根（apps/shell/out/renderer）。
+ *
+ * 与编辑器 kinds 分开解析：Home 视图由宿主用**自己的 preload**（window.aiOffice
+ * 适配层）承载，故只校验 renderer 产物存在。
+ */
+export function resolveShellRendererRoot(): string | null {
+  const root = resolveArtifactsRoot();
+  if (!root) return null;
+  const renderer = app.isPackaged
+    ? join(root, 'apps', 'shell', 'renderer')
+    : join(root, 'apps', 'shell', 'out', 'renderer');
+  return existsSync(join(renderer, 'index.html')) ? renderer : null;
+}
+
 export interface GenOfficeArtifacts {
   /** 宿主运行时唯一入口（urchin-embed 主进程包）。 */
   readonly embedPath: string;

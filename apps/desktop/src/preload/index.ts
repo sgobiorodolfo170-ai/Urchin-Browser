@@ -189,9 +189,173 @@ const genofficeApi = {
   },
 };
 
+/**
+ * GenOffice shell Home 适配层（阶段 4.6，用户指令：入口直接使用上游 Home 前端）。
+ *
+ * 上游 Home 期望 `window.aiOffice`（apps/shell/src/preload）；宿主不加载其
+ * preload，而是由本层把 Home 使用到的方法映射为宿主通道：
+ * - 业务方法 → 单一 `genoffice:home` invoke（`{ method, args }`，主进程白名单分发）
+ * - AI 设置 → 既有 `ai:*` 通道（与编辑器 AI 面板同源）
+ * - 事件 → `genoffice:home:event`（folderChanged）与 `app:theme-changed`
+ *
+ * 仅对 `genoffice-app://shell/` 页面暴露；账号/云项目/MCP/更新/集成等上游壳
+ * 能力以中性桩返回（主进程侧实现），保证 Home 完整渲染。
+ */
+function createGenOfficeHomeBridge(): Record<string, unknown> {
+  const home = (method: string, ...args: unknown[]): Promise<unknown> =>
+    ipcRenderer.invoke('genoffice:home', { method, args });
+  const subscribe = (type: string, handler: (payload: unknown) => void): (() => void) => {
+    const listener = (_event: unknown, payload: unknown): void => {
+      const evt = (payload ?? {}) as { type?: unknown };
+      if (evt.type === type) handler(payload);
+    };
+    ipcRenderer.on('genoffice:home:event', listener);
+    return () => ipcRenderer.removeListener('genoffice:home:event', listener);
+  };
+  return {
+    // ── 最近 / 星标 / 打开 ──
+    recents: (query?: unknown) => home('recents', query),
+    starred: (query?: unknown) => home('starred', query),
+    statPaths: (paths: unknown) => home('statPaths', paths),
+    toggleStar: (path: unknown) => home('toggleStar', path),
+    removeRecent: (paths: unknown) => home('removeRecent', paths),
+    openPath: (path: unknown) => home('openPath', path),
+    browse: () => home('browse'),
+    revealPath: (path: unknown) => home('revealPath', path),
+    // ── 新建 ──
+    newDoc: (opts?: unknown) => home('newDoc', opts),
+    newSheet: (opts?: unknown) => home('newSheet', opts),
+    newSlide: (opts?: unknown) => home('newSlide', opts),
+    newMarkdown: (opts?: unknown) => home('newMarkdown', opts),
+    newHtml: (opts?: unknown) => home('newHtml', opts),
+    newPdf: (opts?: unknown) => home('newPdf', opts),
+    // ── 文件 / 文件夹管理 ──
+    renameFile: (path: unknown, newName: unknown) => home('renameFile', path, newName),
+    duplicateFile: (path: unknown) => home('duplicateFile', path),
+    deleteFiles: (paths: unknown) => home('deleteFiles', paths),
+    folderRoot: () => home('folderRoot'),
+    listFolder: (dir: unknown) => home('listFolder', dir),
+    createFolder: (parent: unknown, name: unknown) => home('createFolder', parent, name),
+    renameFolder: (dir: unknown, newName: unknown) => home('renameFolder', dir, newName),
+    movePaths: (paths: unknown, targetDir: unknown, onConflict: unknown) =>
+      home('movePaths', paths, targetDir, onConflict),
+    deleteFolder: (dir: unknown) => home('deleteFolder', dir),
+    openTrash: () => home('openTrash'),
+    onFolderChanged: (handler: (dirs: string[]) => void) =>
+      subscribe('folderChanged', (payload) => {
+        const dirs = (payload as { dirs?: unknown }).dirs;
+        if (Array.isArray(dirs)) handler(dirs.filter((d): d is string => typeof d === 'string'));
+      }),
+    // ── 设置 / 主题 / 语言 ──
+    getLanguage: () => home('getLanguage'),
+    setLanguage: (lang: unknown) => home('setLanguage', lang),
+    getTheme: () => home('getTheme'),
+    setTheme: (theme: unknown) => home('setTheme', theme),
+    onThemeChanged: (handler: (theme: string) => void) => {
+      const listener = (_event: unknown, theme: unknown): void => {
+        if (theme === 'light' || theme === 'dark' || theme === 'system') handler(theme);
+      };
+      ipcRenderer.on('app:theme-changed', listener);
+      return () => ipcRenderer.removeListener('app:theme-changed', listener);
+    },
+    getAutoSaveDefault: () => home('getAutoSaveDefault'),
+    setAutoSaveDefault: (on: unknown) => home('setAutoSaveDefault', on),
+    getAiPanelPrefs: () => home('getAiPanelPrefs'),
+    setAiPanelPrefs: (patch: unknown) => home('setAiPanelPrefs', patch),
+    getDefaultSaveDir: () => home('getDefaultSaveDir'),
+    pickDefaultSaveDir: () => home('pickDefaultSaveDir'),
+    getAppVersion: () => home('getAppVersion'),
+    onboardingSeen: () => home('onboardingSeen'),
+    setOnboardingSeen: () => home('setOnboardingSeen'),
+    getUpdateChannel: () => home('getUpdateChannel'),
+    setUpdateChannel: (channel: unknown) => home('setUpdateChannel', channel),
+    // ── 账号 / 云项目 / MCP / 更新 / 统计（宿主中性桩） ──
+    accountStatus: () => home('accountStatus'),
+    accountLogin: () => home('accountLogin'),
+    onAccountLogin: () => () => undefined,
+    openLoginUrl: () => home('openLoginUrl'),
+    accountLogout: () => home('accountLogout'),
+    getMcpStatus: () => home('getMcpStatus'),
+    setMcpSettings: (patch: unknown) => home('setMcpSettings', patch),
+    getMcpLogs: () => home('getMcpLogs'),
+    clearMcpLogs: () => home('clearMcpLogs'),
+    openMcpLogFile: () => home('openMcpLogFile'),
+    getAnalyticsEnabled: () => home('getAnalyticsEnabled'),
+    setAnalyticsEnabled: (enabled: unknown) => home('setAnalyticsEnabled', enabled),
+    githubStars: () => home('githubStars'),
+    starPromptShouldShow: () => home('starPromptShouldShow'),
+    starPromptAction: (action: unknown) => home('starPromptAction', action),
+    cloudProjectsCached: () => home('cloudProjectsCached'),
+    cloudProjectsSync: () => home('cloudProjectsSync'),
+    openCloudProject: (projectUrl: unknown) => home('openCloudProject', projectUrl),
+    openGenTeam: () => home('openGenTeam'),
+    openCreditUsage: () => home('openCreditUsage'),
+    openGitHubRepo: () => home('openGitHubRepo'),
+    // ── GenOffice 原生 AI（与编辑器 AI 面板同源通道） ──
+    getAiSettings: () => ipcRenderer.invoke('ai:get-settings'),
+    setAiSettings: (settings: unknown) => ipcRenderer.invoke('ai:set-settings', settings),
+    getAiProviders: () =>
+      ipcRenderer
+        .invoke('genoffice:ai-catalogs')
+        .then((c: unknown) => (c as { providers?: unknown }).providers ?? []),
+    getAiMediaProviders: () =>
+      ipcRenderer
+        .invoke('genoffice:ai-catalogs')
+        .then((c: unknown) => (c as { mediaProviders?: unknown }).mediaProviders ?? []),
+    getAiSearchProviders: () =>
+      ipcRenderer
+        .invoke('genoffice:ai-catalogs')
+        .then((c: unknown) => (c as { searchProviders?: unknown }).searchProviders ?? []),
+    getCodexModels: (cliPath: unknown) => ipcRenderer.invoke('ai:codex-models', cliPath),
+    testAiSettings: (settings: unknown) =>
+      ipcRenderer
+        .invoke('ai:chat', {
+          settings,
+          system: 'You are a connectivity test. Reply with the single word OK.',
+          user: 'ping',
+        })
+        .then((r: unknown) => {
+          const res = (r ?? {}) as { ok?: unknown; error?: unknown };
+          return res.ok === true
+            ? { ok: true }
+            : { ok: false, error: typeof res.error === 'string' ? res.error : '' };
+        }),
+    testAiSearchSettings: (input: unknown) => ipcRenderer.invoke('ai:search-test', input),
+    testAiMediaSettings: (input: unknown) => ipcRenderer.invoke('ai:media-test', input),
+    // ── 集成（安装 skill 等，宿主暂不支持：中性桩） ──
+    integrations: {
+      status: () => home('integrations.status'),
+      installSkill: (target: unknown) => home('integrations.installSkill', target),
+      uninstallSkill: (agentId: unknown) => home('integrations.uninstallSkill', agentId),
+      pickSkillDir: (title: unknown) => home('integrations.pickSkillDir', title),
+      saveSkillZip: (title: unknown) => home('integrations.saveSkillZip', title),
+      copyText: (text: unknown) => home('integrations.copyText', text),
+    },
+  };
+}
+
 if (isTrustedOrigin) {
   contextBridge.exposeInMainWorld('urchin', api);
   contextBridge.exposeInMainWorld('urchinGenoffice', genofficeApi);
+}
+
+// GenOffice shell Home 页面（genoffice-app://shell/）额外暴露 window.aiOffice
+if (protocol === 'genoffice-app:' && hostname === 'shell') {
+  contextBridge.exposeInMainWorld('aiOffice', createGenOfficeHomeBridge());
+  // 上游 shell 的窗口内标签条（AppFrame/TabBar）在 Urchin 中由浏览器标签体系
+  // 取代：提供最小 TabsApi 桩（Home 视图内不再有独立标签），标签条由宿主 CSS 隐藏。
+  contextBridge.exposeInMainWorld('aiOfficeTabs', {
+    list: () => Promise.resolve([]),
+    activate: () => Promise.resolve(),
+    close: () => Promise.resolve(),
+    showMenu: () => Promise.resolve(),
+    showNewMenu: () => Promise.resolve(),
+    showAppMenu: () => Promise.resolve(),
+    reorder: () => Promise.resolve(),
+    onChanged: () => () => undefined,
+    notifyChromePressed: () => undefined,
+    onChromePressed: () => () => undefined,
+  });
 }
 
 // 类型导出（供渲染层 import type 使用）

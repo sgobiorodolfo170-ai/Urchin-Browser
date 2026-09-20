@@ -21,10 +21,17 @@ export interface GenOfficeEmbedApi {
     readonly rendererRoots: Partial<Record<string, string>>;
     readonly preloads: Partial<Record<string, string>>;
     readonly openGeneratedPath?: (path: string) => boolean;
+    readonly extraRendererRoots?: Record<string, string>;
   }): void;
   /** 阶段 3：注册 GenOffice 原生 AI（ai:*）与项目会话（project:*）通道。 */
   initGenOfficeAi?(): void;
   createGenOfficeView(kind: string, filePath: string | null): unknown;
+  /** 阶段 4.6：新建空白文档视图（Home「新建」动作）。 */
+  createGenOfficeBlankView?(kind: string): unknown;
+  /** 阶段 4.6：写空白 PDF（Home「新建 PDF」动作）。 */
+  writeBlankPdfFile?(filePath: string): Promise<void>;
+  /** 阶段 4.6：切换 GenOffice UI 语言（Home 语言设置）。 */
+  setGenOfficeLanguage?(lang: string): void;
   /** 阶段 4：docs 脏状态经 close-check 握手查询，故为异步。 */
   genOfficeIsDirty(kind: string, contents: unknown): Promise<boolean>;
   requestGenOfficeClose(kind: string, contents: unknown, parent?: unknown): Promise<boolean>;

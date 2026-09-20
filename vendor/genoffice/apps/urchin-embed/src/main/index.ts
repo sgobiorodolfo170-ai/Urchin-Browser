@@ -27,6 +27,7 @@
 import type { BrowserWindow, CustomScheme, WebContents, WebContentsView } from 'electron'
 import { ipcMain } from 'electron'
 import { resolve } from 'node:path'
+import { writeFile } from 'node:fs/promises'
 import {
   AI_MEDIA_PROVIDERS,
   AI_PROVIDERS,
@@ -38,6 +39,8 @@ import {
   RENDERER_SCHEME_PRIVILEGE,
   installRendererProtocol,
 } from '@genoffice/electron-utils'
+import { setUiLang, isLang } from '@genoffice/i18n'
+import { PDFDocument } from 'pdf-lib'
 import {
   configureMarkdownRuntime,
   createMarkdownView,
@@ -61,6 +64,7 @@ import {
   configureDocsRuntime,
   createDocsView,
   docsQueryDirty,
+  markDocsNewBlank,
   registerAiIpc,
   registerDocsIpc,
   registerProjectIpc,
@@ -110,6 +114,12 @@ export interface GenOfficeEmbedOptions {
    * when the host opened the file, false to let GenOffice fall back to revealing
    * it in the OS file manager. */
   readonly openGeneratedPath?: (path: string) => boolean
+  /**
+   * Extra renderer roots served over `genoffice-app://<host>/index.html`
+   * beyond the editor kinds — the Urchin host uses this for the GenOffice
+   * shell Home renderer (`shell`), which it mounts with its own preload.
+   */
+  readonly extraRendererRoots?: Record<string, string>
 }
 
 /** True once the GenOffice AI + project IPC pair has been registered. */
@@ -182,6 +192,9 @@ export function initGenOfficeEmbed(opts: GenOfficeEmbedOptions): void {
     // 404s every asset. GenOffice's own shell passes path.join() results and
     // never hits this; a foreign host can.
     if (typeof root === 'string' && root.length > 0) roots[kind] = resolve(root)
+  }
+  for (const [host, root] of Object.entries(opts.extraRendererRoots ?? {})) {
+    if (typeof root === 'string' && root.length > 0) roots[host] = resolve(root)
   }
   if (Object.keys(roots).length > 0) installRendererProtocol(roots)
 
@@ -258,6 +271,45 @@ export function createGenOfficeView(kind: GenOfficeKind, filePath: string | null
       throw new Error(`GenOffice kind not wired yet: ${String(exhaustive)}`)
     }
   }
+}
+
+/**
+ * Create a view for a NEW (unsaved) document of `kind` — used by the host's
+ * GenOffice Home "new file" actions. Docs is opened at its start screen via
+ * `markDocsNewBlank`; Markdown/HTML/PDF open in their in-memory blank modes
+ * (PDF included: the app shows its empty state until a save-as picks a path).
+ */
+export function createGenOfficeBlankView(kind: GenOfficeKind): WebContentsView {
+  switch (kind) {
+    case 'docs': {
+      const view = createDocsView(undefined)
+      markDocsNewBlank(view.webContents.id)
+      return view
+    }
+    case 'markdown':
+      return createMarkdownView(null)
+    case 'html':
+      return createHtmlView(null)
+    case 'pdf':
+      return createPdfView(null)
+    default: {
+      const exhaustive: never = kind
+      throw new Error(`GenOffice kind not wired yet: ${String(exhaustive)}`)
+    }
+  }
+}
+
+/** Write a blank single-page PDF (Home "new PDF" action; pdf-lib is already in
+ * the bundle through the PDF editor main). */
+export async function writeBlankPdfFile(filePath: string): Promise<void> {
+  const doc = await PDFDocument.create()
+  doc.addPage([595.28, 841.89])
+  await writeFile(filePath, await doc.save())
+}
+
+/** Switch the GenOffice UI language (main-process dictionaries + native dialogs). */
+export function setGenOfficeLanguage(lang: string): void {
+  if (isLang(lang)) setUiLang(lang)
 }
 
 /**

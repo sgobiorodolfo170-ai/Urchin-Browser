@@ -50,6 +50,9 @@ extraResources:
     to: genoffice/apps/docs/renderer
   - from: ../../vendor/genoffice/apps/docs/out/preload/index.js
     to: genoffice/apps/docs/preload/index.js
+  # 上游 shell Home 前端（阶段 4.6）：宿主自有 preload 承载 window.aiOffice
+  - from: ../../vendor/genoffice/apps/shell/out/renderer
+    to: genoffice/apps/shell/renderer
   # PDF 文本编辑运行时 wasm：pdf-main 的 wasm-path 在打包态按
   # process.resourcesPath/wasm/<file> 解析（开发态走 vendor node_modules）
   - from: ../../vendor/genoffice/node_modules/@embedpdf/pdfium/dist/pdfium.wasm

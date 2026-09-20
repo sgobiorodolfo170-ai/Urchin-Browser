@@ -256,25 +256,46 @@ test.describe('GenOffice Markdown 编辑器（阶段 2 融合）', () => {
     await electronApp.close();
   });
 
-  test('左侧栏 GenOffice 入口打开模块主页，并可直达 AI 设置（阶段 4.5）', async () => {
+  test('左侧栏 GenOffice 入口打开上游 shell Home 前端（阶段 4.6）', async () => {
     test.setTimeout(120_000);
     const { electronApp, window } = await launchApp();
 
-    // 侧栏入口：打开 GenOffice 文档主页（不再直接弹文件选择器）
+    // 侧栏入口：打开 GenOffice 文档入口（上游 shell Home 视图）
     await window.getByLabel('GenOffice 文档').click();
-    await expect(window.getByRole('heading', { name: 'GenOffice 文档' })).toBeVisible({
-      timeout: 15_000,
-    });
-    await expect(window.getByRole('button', { name: /打开文件/ })).toBeVisible();
-    for (const name of ['Word 文档', 'PDF', 'Markdown', 'HTML']) {
-      await expect(window.getByText(name).first()).toBeVisible();
-    }
 
-    // 主页 →「打开 AI 设置」直达设置页 AI（GenOffice）选项卡（目录加载成功）
-    await window.getByRole('button', { name: '打开 AI 设置' }).click();
-    await expect(window.getByText('模型服务（GenOffice 原生 AI）')).toBeVisible({
-      timeout: 15_000,
+    // shell Home 视图加载：genoffice-app://shell/ + .home 根节点渲染
+    const home = await electronApp.evaluate(async ({ webContents }) => {
+      for (let i = 0; i < 60; i++) {
+        const wc = webContents
+          .getAllWebContents()
+          .find((w) => w.getURL().startsWith('genoffice-app://shell/'));
+        if (wc) {
+          try {
+            const info = (await wc.executeJavaScript(
+              `({ home: !!document.querySelector('.home'), text: (document.body.innerText || '').slice(0, 200) })`,
+            )) as { home: boolean; text: string };
+            if (info.home) return info;
+          } catch {
+            /* 页面尚未就绪：重试 */
+          }
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      return { home: false, text: '' };
     });
+    expect(home.home).toBe(true);
+
+    // window.aiOffice 适配层真实可用：语言与最近列表经宿主通道往返
+    const bridge = await electronApp.evaluate(async ({ webContents }) => {
+      const wc = webContents
+        .getAllWebContents()
+        .find((w) => w.getURL().startsWith('genoffice-app://shell/'));
+      return (await wc?.executeJavaScript(
+        `Promise.all([window.aiOffice.getLanguage(), window.aiOffice.recents({ limit: 5 })]).then(([lang, page]) => ({ lang, entries: Array.isArray(page?.entries) ? page.entries.length : -1 }))`,
+      )) as { lang?: string; entries?: number } | undefined;
+    });
+    expect(bridge?.lang).toBeTruthy();
+    expect(bridge?.entries).toBeGreaterThanOrEqual(0);
 
     await electronApp.close();
   });

@@ -20,9 +20,9 @@ import { basename } from 'node:path';
 import { createLogger } from '@urchin/logger';
 import type { TabManager } from '../tabs/tab-manager';
 import type { WindowManager } from '../windows/window-manager';
-import { registerGenOfficeHostChannels } from './host-channels';
+import { registerGenOfficeHostChannels, type GenOfficeAiPanelPrefsStore } from './host-channels';
 import { loadGenOfficeEmbed, type GenOfficeEmbedApi } from './loader';
-import { resolveGenOfficeArtifacts } from './paths';
+import { GENOFFICE_HOME_URL, resolveGenOfficeArtifacts, resolveShellRendererRoot } from './paths';
 import { buildFileUrl, buildFileViewerUrl, parseGenOfficeUrl } from './url';
 
 const log = createLogger('genoffice');
@@ -33,6 +33,13 @@ export interface GenOfficeIntegrationDeps {
   readonly windowManager: WindowManager;
   /** 宿主当前主题 getter（app:get-theme 用）。 */
   readonly getTheme: () => string;
+  /** 共享的 AI 面板偏好存储（Home 设置与编辑器侧切按钮共用）。 */
+  readonly aiPanelPrefs?: GenOfficeAiPanelPrefsStore;
+  /**
+   * 创建 GenOffice shell Home 视图（宿主以自有 preload 承载 window.aiOffice）。
+   * 返回 null = shell 产物缺失，调用方回落 React 保底主页。
+   */
+  readonly createHomeView?: () => unknown;
 }
 
 /** tab.create 的分流结果（view 存在时由 TabManager 直接使用）。 */
@@ -111,7 +118,10 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
 
   function install(): void {
     // 应用级通道无条件注册：即使产物缺失也不影响浏览器本体
-    registerGenOfficeHostChannels(deps.ipcMain, { getTheme: deps.getTheme });
+    registerGenOfficeHostChannels(deps.ipcMain, {
+      getTheme: deps.getTheme,
+      ...(deps.aiPanelPrefs ? { aiPanelPrefs: deps.aiPanelPrefs } : {}),
+    });
 
     const artifacts = resolveGenOfficeArtifacts();
     const loaded = loadGenOfficeEmbed();
@@ -120,10 +130,14 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
       return;
     }
 
+    // shell Home 渲染产物（阶段 4.6）：有则随 genoffice-app:// 协议一并服务
+    const shellRoot = resolveShellRendererRoot();
+
     try {
       loaded.initGenOfficeEmbed({
         rendererRoots: artifacts.rendererRoots,
         preloads: artifacts.preloads,
+        ...(shellRoot ? { extraRendererRoots: { shell: shellRoot } } : {}),
       });
     } catch (e) {
       log.error('genoffice embed init failed', { error: String(e) });
@@ -162,6 +176,23 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
   }
 
   function resolveTabCreate(url: string): GenOfficeTabCreate {
+    // GenOffice Home 入口（阶段 4.6，用户指令）：直接使用上游 shell Home 前端。
+    // 宿主以自有 preload 创建 WebContentsView（window.aiOffice 适配层）；
+    // shell 产物缺失时回落为浏览器标签 → 渲染进程的 React 保底主页。
+    if (url === GENOFFICE_HOME_URL || url.startsWith(`${GENOFFICE_HOME_URL}/`)) {
+      const view = deps.createHomeView?.();
+      if (view) {
+        return {
+          url: GENOFFICE_HOME_URL,
+          view,
+          viewKind: 'genoffice',
+          genofficeKind: 'shell',
+          title: 'GenOffice',
+        };
+      }
+      return { url: GENOFFICE_HOME_URL, viewKind: 'browser' };
+    }
+
     const target = parseGenOfficeUrl(url);
     if (!target) return { url, viewKind: 'browser' };
     if (!embed || !available) {
@@ -188,7 +219,11 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
   async function guardTabClose(tabId: number): Promise<boolean> {
     const tab = deps.tabManager.getTab(tabId);
     if (!tab) return true;
-    if (tab.viewKind !== 'genoffice' || !tab.genofficeKind || !embed) return true;
+    // shell Home 无脏状态/保存流程，无需守卫
+    if (tab.viewKind !== 'genoffice' || !tab.genofficeKind || tab.genofficeKind === 'shell') {
+      return true;
+    }
+    if (!embed) return true;
     const win = deps.windowManager.getWindow(tab.windowId)?.browserWindow as unknown as
       BrowserWindow | undefined;
     return embed.requestGenOfficeClose(tab.genofficeKind, tab.webContents, win);

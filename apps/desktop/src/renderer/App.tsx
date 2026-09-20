@@ -1694,9 +1694,10 @@ export function App() {
                * 独立系统 Node 子进程的 pi-web-ui 网页,本页仅作入口（启动/停止/打开）。
                * 旧对话视图 AiChatView 保留于 @urchin/ai-extension,回退时恢复渲染即可。 */
               <PiWebLauncherView autoStart onOpenUrl={(url) => void handleOpenPiWebUrl(url)} />
-            ) : isGenOfficeHomeTab ? (
-              /* GenOffice 文档主页（阶段 4.5）：模块入口——打开文件 / 格式说明 /
-               * GenOffice 原生 AI 设置直达（打开动作复用 handleOpenFilePicker） */
+            ) : isGenOfficeHomeTab && !isGenOfficeTab ? (
+              /* GenOffice 文档主页保底（阶段 4.6）：正常情况下主进程以
+               *  GenOffice shell Home 视图承载（viewKind=genoffice，React 留空）；
+               *  仅当 shell 产物缺失时回落本 React 页面（浏览器标签） */
               <GenOfficeHome
                 onOpenFile={() => void handleOpenFilePicker()}
                 onOpenAiSettings={() => void handleOpenGenOfficeAiSettings()}

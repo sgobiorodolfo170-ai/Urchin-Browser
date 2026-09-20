@@ -14,7 +14,17 @@
 // Polyfill 必须在所有其他模块之前加载：undici 顶层 require node:worker_threads
 // 并解构 markAsUncloneable（Node 22.3+ 才有），Electron 32/Node 20 缺失会导致启动崩溃。
 import './polyfills/worker-threads-polyfill';
-import { app, ipcMain, dialog, BrowserWindow, nativeTheme, screen, session, net } from 'electron';
+import {
+  app,
+  ipcMain,
+  dialog,
+  BrowserWindow,
+  WebContentsView,
+  nativeTheme,
+  screen,
+  session,
+  net,
+} from 'electron';
 import { join, basename } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createLogger } from '@urchin/logger';
@@ -68,7 +78,11 @@ import { electronProcessFactory } from './orchestrator/electron-factory';
 import { StorageLayer, createSqliteDatabase, ElectronSafeStorage } from './storage';
 import { registerUrchinSchemePrivileged, registerUrchinProtocol } from './protocol';
 import { createGenOfficeIntegration, type GenOfficeIntegration } from './genoffice/integration';
-import { getGenOfficeSchemePrivileges } from './genoffice/loader';
+import { getGenOfficeSchemePrivileges, loadGenOfficeEmbed } from './genoffice/loader';
+import { createAiPanelPrefsStore } from './genoffice/host-channels';
+import { registerGenOfficeHomeHandlers } from './genoffice/home-handlers';
+import { GenOfficeHomeStore } from './genoffice/home-store';
+import { resolveShellRendererRoot } from './genoffice/paths';
 import { currentThemeBackground } from './theme';
 import { BookmarkPanel } from './panel/bookmark-panel';
 import {
@@ -231,13 +245,15 @@ const windowManager = new WindowManager(createBrowserWindow);
 const tabManager = new TabManager(createBrowserView);
 
 /**
- * 打开本地文件（Windows 文件关联 / 命令行启动入口）。
+ * 打开本地文件（Windows 文件关联 / 命令行启动 / GenOffice Home 打开动作）。
  *
  * 阶段 4：GenOffice 接管类型（md/pdf/html/docx）先经集成层解析为编辑器
  * WebContentsView（产物缺失自动回落：html → file:// 直开，其余 → 内置查看器）；
  * 其余类型维持原路由（音视频/图片 → file:// 原生渲染，文本类 → 查看器）。
+ *
+ * @returns true = 已受理（含回落路径）；false = 路由异常（已记日志）
  */
-function openLocalFile(windowId: number, path: string): void {
+function routeLocalFile(windowId: number, path: string): boolean {
   try {
     const kind = classifyFileKind(basename(path));
     const genofficeAppByKind: Readonly<Record<string, string>> = {
@@ -261,7 +277,7 @@ function openLocalFile(windowId: number, path: string): void {
         ...(resolved.viewKind === 'genoffice' ? { genofficeKind: resolved.genofficeKind } : {}),
       });
       log.info('open local file from association (genoffice)', { kind, path });
-      return;
+      return true;
     }
     const nativeKinds = ['audio', 'video', 'image'];
     const url = nativeKinds.includes(kind)
@@ -270,9 +286,49 @@ function openLocalFile(windowId: number, path: string): void {
       : `urchin://file-viewer/?path=${encodeURIComponent(path)}`;
     tabManager.create({ windowId, url, active: true });
     log.info('open local file from association', { kind, path });
+    return true;
   } catch (err) {
     log.warn('failed to open local file', { path, error: String(err) });
+    return false;
   }
+}
+
+/** 打开本地文件（忽略受理结果；文件关联/命令行入口用）。 */
+function openLocalFile(windowId: number, path: string): void {
+  routeLocalFile(windowId, path);
+}
+
+/** 默认窗口 id（GenOffice Home 动作无 sender 上下文，取首个受管窗口）。 */
+function defaultWindowId(): number {
+  return windowManager.getAllWindows()[0]?.id ?? 1;
+}
+
+/**
+ * 创建 GenOffice shell Home 视图（阶段 4.6，用户指令）。
+ *
+ * 直接加载上游 apps/shell 的 Home 渲染产物（genoffice-app://shell/index.html），
+ * 但使用 **Urchin 自己的 preload**：preload 在 genoffice-app://shell 页面下
+ * 暴露 window.aiOffice 适配层（genoffice:home 通道 → 本进程 home-handlers）。
+ * shell 产物缺失返回 null → 集成层回落 React 保底主页。
+ */
+function createGenOfficeShellHomeView(): unknown {
+  if (!resolveShellRendererRoot()) return null;
+  const view = new WebContentsView({
+    webPreferences: {
+      preload: join(__dirname, '..', 'preload', 'index.js'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  view.setBackgroundColor(currentThemeBackground());
+  // 上游 Home 自带窗口内标签条（.tab-bar）：Urchin 中标签由浏览器侧栏承担，
+  // 注入 CSS 隐藏，避免「标签里的标签」；Home 内容自动占满。
+  view.webContents.on('dom-ready', () => {
+    void view.webContents.insertCSS('.tab-bar{display:none !important}').catch(() => undefined);
+  });
+  void view.webContents.loadURL('genoffice-app://shell/index.html');
+  return view;
 }
 
 /**
@@ -431,6 +487,53 @@ function broadcastProviderEvent(event: ProviderEvent): void {
 }
 
 /**
+ * 应用主题到原生层与所有视图（ui.theme.set 与 GenOffice Home 共用）。
+ *
+ * 设置 nativeTheme.themeSource 使窗口标题栏/边框跟随主题；支持
+ * prefers-color-scheme 的网页跟随；同步 pi 页直推、窗口/视图背景色，
+ * 并向所有 webContents 广播 app:theme-changed（GenOffice 编辑器/Home 消费）。
+ */
+function applyTheme(theme: 'light' | 'dark' | 'system'): void {
+  nativeTheme.themeSource = theme;
+  const piUrl = piWebLauncher?.status().url;
+  pushPiTheme(
+    tabManager,
+    (url) => (piUrl ? url.startsWith(piUrl) : false),
+    nativeTheme.shouldUseDarkColors,
+  );
+  const bg = currentThemeBackground();
+  for (const managed of windowManager.getAllWindows()) {
+    const win = managed.browserWindow as unknown as {
+      setBackgroundColor?: (color: string) => void;
+    };
+    try {
+      win.setBackgroundColor?.(bg);
+    } catch {
+      /* 测试 mock 无此方法/窗口销毁中：忽略 */
+    }
+  }
+  for (const snapshot of tabManager.query({})) {
+    const tab = tabManager.getTab(snapshot.id);
+    const view = tab?.view as unknown as {
+      setBackgroundColor?: (color: string) => void;
+    };
+    try {
+      view.setBackgroundColor?.(bg);
+    } catch {
+      /* 忽略 */
+    }
+  }
+  log.info('theme set', { theme });
+  for (const snapshot of tabManager.query({})) {
+    const tab = tabManager.getTab(snapshot.id);
+    tab?.webContents.send?.('app:theme-changed', theme);
+  }
+  for (const managed of windowManager.getAllWindows()) {
+    managed.browserWindow.webContents.send('app:theme-changed', theme);
+  }
+}
+
+/**
  * 注册 IPC handlers。
  * W1-D3：tab 域完整实现 + window 域完整实现。
  */
@@ -438,17 +541,54 @@ function registerIpcHandlers(): void {
   // M1 window 域 handler
   registerWindowHandlers(ipcMain, windowManager);
 
-  // GenOffice 编辑器集成（阶段 2，md 打样）：注册宿主通道、初始化嵌入包、
+  // GenOffice 编辑器集成（阶段 2-4）：注册宿主通道、初始化嵌入包、
   // 挂 dirty 旁路与关闭守卫。产物缺失时 available=false，标签全部回落
   // Urchin 内置查看器（用户策略：GenOffice 为主、Urchin 保底）。
+  const genofficeAiPanelPrefs = createAiPanelPrefsStore();
   genofficeIntegration = createGenOfficeIntegration({
     ipcMain,
     tabManager,
     windowManager,
     getTheme: () => nativeTheme.themeSource,
+    aiPanelPrefs: genofficeAiPanelPrefs,
+    createHomeView: () => createGenOfficeShellHomeView(),
   });
   genofficeIntegration.install();
   installGenOfficeWindowCloseGuard();
+
+  // GenOffice Home 宿主适配（阶段 4.6，用户指令：入口直接使用上游 Home 前端）。
+  // 上游 shell Home 的 home:* 通道由本进程实现可用子集（打开/最近/文件夹/
+  // 新建/主题/语言/AI 设置），账号与云能力以中性桩返回。
+  const genofficeEmbed = loadGenOfficeEmbed();
+  registerGenOfficeHomeHandlers({
+    ipcMain,
+    store: new GenOfficeHomeStore(join(currentDataDir, 'genoffice-home.json')),
+    documentsRoot: join(currentDataDir, 'documents'),
+    getTheme: () => nativeTheme.themeSource,
+    setTheme: (theme) => {
+      if (theme === 'light' || theme === 'dark' || theme === 'system') applyTheme(theme);
+    },
+    getVersion: () => app.getVersion(),
+    aiPanelPrefs: genofficeAiPanelPrefs,
+    openLocalPath: (path) => routeLocalFile(defaultWindowId(), path),
+    openBlankDocument: (kind) => {
+      const view = genofficeEmbed?.createGenOfficeBlankView?.(kind);
+      if (!view) return false;
+      tabManager.create({
+        windowId: defaultWindowId(),
+        url: `urchin://genoffice/?kind=${encodeURIComponent(kind)}`,
+        active: true,
+        view: view as BrowserViewLike,
+        viewKind: 'genoffice',
+        genofficeKind: kind,
+      });
+      return true;
+    },
+    writeBlankPdf: async (filePath) => {
+      await genofficeEmbed?.writeBlankPdfFile?.(filePath);
+    },
+    setLanguage: (lang) => genofficeEmbed?.setGenOfficeLanguage?.(lang),
+  });
 
   // M2 tab 域 handler（注入 GenOffice 集成：tab.create 分流 + tab.close 守卫）
   registerTabHandlers(ipcMain, tabManager, {
@@ -688,45 +828,7 @@ function registerIpcHandlers(): void {
   // dev.50：同步刷新窗口与已存在 BrowserView 的背景色——消除深色模式下
   // 网页区四周几何缝隙透出的硬编码白色（渲染层容器已同步改用主题令牌）。
   registerHandler(ipcMain, 'ui.theme.set', (req) => {
-    nativeTheme.themeSource = req.theme;
-    const piUrl = piWebLauncher?.status().url;
-    pushPiTheme(
-      tabManager,
-      (url) => (piUrl ? url.startsWith(piUrl) : false),
-      nativeTheme.shouldUseDarkColors,
-    );
-    const bg = currentThemeBackground();
-    for (const managed of windowManager.getAllWindows()) {
-      const win = managed.browserWindow as unknown as {
-        setBackgroundColor?: (color: string) => void;
-      };
-      try {
-        win.setBackgroundColor?.(bg);
-      } catch {
-        /* 测试 mock 无此方法/窗口销毁中：忽略 */
-      }
-    }
-    for (const snapshot of tabManager.query({})) {
-      const tab = tabManager.getTab(snapshot.id);
-      const view = tab?.view as unknown as {
-        setBackgroundColor?: (color: string) => void;
-      };
-      try {
-        view.setBackgroundColor?.(bg);
-      } catch {
-        /* 忽略 */
-      }
-    }
-    log.info('theme set', { theme: req.theme });
-    // 阶段 2：GenOffice 编辑器主题跟随——编辑器渲染层监听 app:theme-changed
-    //（宿主 app:get-theme 的推送侧；主窗口与所有标签 webContents 全覆盖）
-    for (const snapshot of tabManager.query({})) {
-      const tab = tabManager.getTab(snapshot.id);
-      tab?.webContents.send?.('app:theme-changed', req.theme);
-    }
-    for (const managed of windowManager.getAllWindows()) {
-      managed.browserWindow.webContents.send('app:theme-changed', req.theme);
-    }
+    applyTheme(req.theme);
     return { ok: true as const };
   });
 

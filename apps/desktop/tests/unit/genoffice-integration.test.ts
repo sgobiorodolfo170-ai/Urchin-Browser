@@ -20,6 +20,9 @@ vi.mock('../../src/main/genoffice/loader', () => ({
 }));
 vi.mock('../../src/main/genoffice/paths', () => ({
   resolveGenOfficeArtifacts: vi.fn(),
+  // 阶段 4.6：shell Home 常量/解析（集成层 import 需要）
+  GENOFFICE_HOME_URL: 'urchin://genoffice-home',
+  resolveShellRendererRoot: vi.fn().mockReturnValue(null),
 }));
 
 import { loadGenOfficeEmbed } from '../../src/main/genoffice/loader';
@@ -95,6 +98,7 @@ function makeDeps(tabs: FakeTab[]) {
       getWindow: vi.fn(() => ({ browserWindow: { id: 'win' } })),
     } as never,
     getTheme: () => 'light',
+    createHomeView: vi.fn().mockReturnValue(null),
   };
   const emitTab = (event: string, snapshot: unknown): void => {
     (tabListeners.get(event) ?? []).forEach((fn) => fn(snapshot));
@@ -185,6 +189,53 @@ describe('createGenOfficeIntegration', () => {
     expect(integration.aiAvailable).toBe(false);
     expect(integration.available).toBe(true);
     errSpy.mockRestore();
+  });
+
+  it('should create the shell Home view for genoffice-home urls, with React fallback', () => {
+    mockedArtifacts.mockReturnValue(makeArtifacts());
+    mockedLoad.mockReturnValue(makeEmbedApi());
+    const homeView = { kind: 'home-view' };
+    const { deps } = makeDeps([]);
+    deps.createHomeView.mockReturnValue(homeView);
+
+    const integration = createGenOfficeIntegration(deps);
+    integration.install();
+
+    const resolved = integration.resolveTabCreate('urchin://genoffice-home');
+    expect(resolved).toMatchObject({
+      url: 'urchin://genoffice-home',
+      viewKind: 'genoffice',
+      genofficeKind: 'shell',
+      view: homeView,
+    });
+
+    // shell 产物缺失（createHomeView 返回 null）→ 浏览器标签渲染 React 保底页
+    deps.createHomeView.mockReturnValue(null);
+    expect(integration.resolveTabCreate('urchin://genoffice-home')).toEqual({
+      url: 'urchin://genoffice-home',
+      viewKind: 'browser',
+    });
+  });
+
+  it('should skip the close guard for shell Home tabs', async () => {
+    const api = makeEmbedApi();
+    mockedArtifacts.mockReturnValue(makeArtifacts());
+    mockedLoad.mockReturnValue(api);
+    const shellTab: FakeTab = {
+      id: 11,
+      windowId: 1,
+      url: 'urchin://genoffice-home',
+      dirty: false,
+      viewKind: 'genoffice',
+      genofficeKind: 'shell',
+      webContents: { id: 11 },
+    };
+    const { deps } = makeDeps([shellTab]);
+    const integration = createGenOfficeIntegration(deps);
+    integration.install();
+
+    await expect(integration.guardTabClose(11)).resolves.toBe(true);
+    expect(api.requestGenOfficeClose).not.toHaveBeenCalled();
   });
 
   it('should fall back to file:// for html and to the viewer for other kinds', () => {

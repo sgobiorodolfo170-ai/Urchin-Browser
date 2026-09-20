@@ -26,8 +26,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const vendorRoot = join(repoRoot, 'vendor', 'genoffice');
 
-/** 支持的编辑器 app（npm workspace 名后缀）。 */
-const SUPPORTED = ['markdown', 'pdf', 'html', 'docs'];
+/** 支持的编辑器 app（npm workspace 名后缀）。shell = 上游 Home 前端（阶段 4.6）。 */
+const SUPPORTED = ['markdown', 'pdf', 'html', 'docs', 'shell'];
 const requested = process.argv.slice(2);
 const apps = requested.length > 0 ? requested : [...SUPPORTED];
 for (const app of apps) {
@@ -73,7 +73,8 @@ const artifacts = [
   join(vendorRoot, 'apps', 'urchin-embed', 'out', 'main', 'index.js'),
   ...apps.flatMap((app) => [
     join(vendorRoot, 'apps', app, 'out', 'renderer', 'index.html'),
-    join(vendorRoot, 'apps', app, 'out', 'preload', 'index.js'),
+    // shell Home 由宿主自有 preload 承载，不需要上游 preload 产物
+    ...(app === 'shell' ? [] : [join(vendorRoot, 'apps', app, 'out', 'preload', 'index.js')]),
   ]),
   // PDF 文本编辑运行时 wasm（打包时经 electron-builder extraResources 复制到
   // resources/wasm/；开发态由 pdf-main 的 require.resolve 直接命中）

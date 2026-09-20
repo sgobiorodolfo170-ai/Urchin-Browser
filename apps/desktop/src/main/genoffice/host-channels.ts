@@ -30,10 +30,45 @@ export const DEFAULT_AI_PANEL_PREFS: GenOfficeAiPanelPrefs = {
   customFontSize: 14,
   spellcheck: true,
 };
-
 export interface GenOfficeHostChannelDeps {
   /** 宿主当前主题（'light' | 'dark' | 'system'）。 */
   readonly getTheme: () => string;
+  /** 共享的 AI 面板偏好存储（缺省内部新建；GenOffice Home 与编辑器共用同一份）。 */
+  readonly aiPanelPrefs?: GenOfficeAiPanelPrefsStore;
+}
+
+/** AI 面板偏好存储（内存；Home 设置与编辑器侧切按钮共用）。 */
+export interface GenOfficeAiPanelPrefsStore {
+  get(): GenOfficeAiPanelPrefs;
+  set(patch: unknown): GenOfficeAiPanelPrefs;
+}
+
+/** 创建 AI 面板偏好存储（带补丁合并与数值夹取，未知字段回落旧值）。 */
+export function createAiPanelPrefsStore(): GenOfficeAiPanelPrefsStore {
+  let prefs: GenOfficeAiPanelPrefs = { ...DEFAULT_AI_PANEL_PREFS };
+  return {
+    get: () => prefs,
+    set(patch: unknown) {
+      const raw =
+        patch !== null && typeof patch === 'object' ? (patch as Record<string, unknown>) : {};
+      prefs = {
+        side: raw.side === 'left' || raw.side === 'right' ? raw.side : prefs.side,
+        fontSize:
+          raw.fontSize === 'default' ||
+          raw.fontSize === 'large' ||
+          raw.fontSize === 'xlarge' ||
+          raw.fontSize === 'custom'
+            ? raw.fontSize
+            : prefs.fontSize,
+        customFontSize:
+          typeof raw.customFontSize === 'number' && Number.isFinite(raw.customFontSize)
+            ? Math.min(32, Math.max(10, Math.round(raw.customFontSize)))
+            : prefs.customFontSize,
+        spellcheck: typeof raw.spellcheck === 'boolean' ? raw.spellcheck : prefs.spellcheck,
+      };
+      return prefs;
+    },
+  };
 }
 
 /**
@@ -43,29 +78,9 @@ export function registerGenOfficeHostChannels(
   ipcMain: IpcMain,
   deps: GenOfficeHostChannelDeps,
 ): void {
+  const prefs = deps.aiPanelPrefs ?? createAiPanelPrefsStore();
   ipcMain.handle('app:get-theme', () => deps.getTheme());
   ipcMain.handle('app:get-auto-save-default', () => ({ on: false, updatedAt: 0 }));
-
-  let aiPanelPrefs: GenOfficeAiPanelPrefs = { ...DEFAULT_AI_PANEL_PREFS };
-  ipcMain.handle('app:get-ai-panel-prefs', () => aiPanelPrefs);
-  ipcMain.handle('app:set-ai-panel-prefs', (_event, patch: unknown) => {
-    const raw =
-      patch !== null && typeof patch === 'object' ? (patch as Record<string, unknown>) : {};
-    aiPanelPrefs = {
-      side: raw.side === 'left' || raw.side === 'right' ? raw.side : aiPanelPrefs.side,
-      fontSize:
-        raw.fontSize === 'default' ||
-        raw.fontSize === 'large' ||
-        raw.fontSize === 'xlarge' ||
-        raw.fontSize === 'custom'
-          ? raw.fontSize
-          : aiPanelPrefs.fontSize,
-      customFontSize:
-        typeof raw.customFontSize === 'number' && Number.isFinite(raw.customFontSize)
-          ? Math.min(32, Math.max(10, Math.round(raw.customFontSize)))
-          : aiPanelPrefs.customFontSize,
-      spellcheck: typeof raw.spellcheck === 'boolean' ? raw.spellcheck : aiPanelPrefs.spellcheck,
-    };
-    return aiPanelPrefs;
-  });
+  ipcMain.handle('app:get-ai-panel-prefs', () => prefs.get());
+  ipcMain.handle('app:set-ai-panel-prefs', (_event, patch: unknown) => prefs.set(patch));
 }

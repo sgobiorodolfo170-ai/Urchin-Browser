@@ -29,10 +29,12 @@ v0.1.0-dev.90。
    - `src/main/index.ts`：`GENOFFICE_SCHEME_PRIVILEGES`（特权 scheme 数据，
      由宿主并入自己的 `registerSchemesAsPrivileged` 单次调用，含 html 的
      html-preview/html-asset）、`initGenOfficeEmbed()`（四编辑器运行时装配 +
-     docs 的 `registerDocsIpc` 一次性注册）、`initGenOfficeAi()`（ai:*/project:*
-     与 `genoffice:ai-catalogs`）、`createGenOfficeView()`、
-     `genOfficeIsDirty()`（docs 走 close-check 查询故为异步）、
-     `requestGenOfficeClose()`。
+     docs 的 `registerDocsIpc` 一次性注册；`extraRendererRoots` 供宿主挂载
+     shell Home 渲染产物）、`initGenOfficeAi()`（ai:*/project:* 与
+     `genoffice:ai-catalogs`）、`createGenOfficeView()`、
+     `createGenOfficeBlankView()`（Home「新建」）、`writeBlankPdfFile()`、
+     `setGenOfficeLanguage()`、`genOfficeIsDirty()`（docs 走 close-check
+     查询故为异步）、`requestGenOfficeClose()`。
    - 构建：`npm run build -w @genoffice/urchin-embed` → `out/main/index.js`
      （CommonJS、自包含，仅 electron/node 内置外部依赖）。
    - `tsconfig.json` 含上游声明 shim（`packages/pdf2docx/src/bidi-js.d.ts`、
@@ -40,6 +42,10 @@ v0.1.0-dev.90。
    - 已知 Windows 坑：传入的 renderer root 必须经 `path.resolve` 归一化，
      否则 `resolveRendererFile` 的前缀校验（`root + path.sep`）失败、全部
      资源 404（上游 shell 传 `path.join` 结果，故上游不涉及）。
+   - 上游 shell Home 前端（`apps/shell` 渲染产物）由宿主以**自有 preload**
+     承载：`window.aiOffice` 适配层（genoffice:home 通道）与 `window.aiOfficeTabs`
+     最小桩在 Urchin preload 内实现；Home 自带 `.tab-bar` 由宿主注入 CSS 隐藏
+     （浏览器侧栏即标签条）。
 2. **`package-lock.json`**：新增 `apps/urchin-embed` workspace 条目后经
    `npm install` 更新（`npm ci` 要求锁文件与 workspace 同步）。
    上游升级流程中，替换整树后需重新执行 `npm install` 再提交锁文件。

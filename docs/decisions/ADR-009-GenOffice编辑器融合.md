@@ -9,6 +9,7 @@
 2. **GF2**：Electron 从 32.3.3 **升级到 43.x** 以对齐 GenOffice 声明的 `^43.3.0`（BrowserView 保留；GenOffice 视图用 WebContentsView 混挂）。
 3. **GF3**：文档编辑器内置 AI **完整使用 GenOffice 原生 AI 栈**（`ai:*` / `project:*`，密钥存 `<userData>/ai-settings.json`），与 Urchin 的 pi 模块**完全隔离、互不读写**；首期仅 BYOK（自备密钥），不接 Genspark 登录。
 4. **GF4**：**保底策略**——Urchin 内置查看器/编辑器在融合期内保留：GenOffice 产物缺失或视图创建失败时自动回落（html → `file://` 直开，其余 → `urchin://file-viewer`）；待融合路径稳定运行后，再由用户决策退役保底实现。
+5. **GF5**：左侧栏文档入口**直接使用上游 shell Home 前端**（`apps/shell` 渲染产物），宿主以自有 preload 提供 `window.aiOffice` 适配层（可用子集 + 中性桩），不引入上游 shell 主进程（菜单/更新/MCP/账号等壳能力不在 Urchin 范围）。
 
 ## 背景
 

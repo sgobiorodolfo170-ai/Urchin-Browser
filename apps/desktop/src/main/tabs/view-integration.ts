@@ -244,8 +244,13 @@ export function installTabViewIntegration(
       return;
     }
 
-    // React 渲染的内部页面（settings / ai）：隐藏 BrowserView，让 React 组件可见
-    if (isRendererManagedUrl(activeTab.url)) {
+    // React 渲染的内部页面（settings / ai / newtab / file-viewer / genoffice-home
+    // 保底页）：隐藏 BrowserView，让 React 组件可见。
+    // ⚠️ genoffice 视图（viewKind='genoffice'）例外：genoffice-home 的**正常路径**
+    // 是上游 shell Home 的 WebContentsView（宿主视图），置零会让它挂载但不可见
+    // （2026-09-21 用户实测「入口打开后一片空白」根因）；仅 React 保底页
+    // （浏览器标签，viewKind='browser'）才走置零分支。
+    if (tab.viewKind !== 'genoffice' && isRendererManagedUrl(activeTab.url)) {
       tab.view.setBounds(ZERO_BOUNDS);
       return;
     }

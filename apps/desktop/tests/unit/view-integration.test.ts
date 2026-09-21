@@ -574,6 +574,31 @@ describe('HTML5 fullscreen (内嵌视频全屏覆盖 UI 栏)', () => {
       expect(window.browserWindow.setBrowserView).toHaveBeenCalledWith(webTab.view);
     });
 
+    it('should give genoffice views real bounds even for renderer-managed urls (shell Home)', () => {
+      // 回归（2026-09-21 用户实测白屏）：urchin://genoffice-home 同时是 React 保底
+      // 页地址，此前被 isRendererManagedUrl 置零 → shell Home 视图挂载但不可见。
+      const tab = makeTab({
+        id: 45,
+        windowId: 1,
+        url: 'urchin://genoffice-home',
+        viewKind: 'genoffice',
+      });
+      tabManager.register(tab);
+      install();
+
+      fireTab('created', tab);
+
+      expect(tab.view.setBounds).toHaveBeenCalledWith(
+        expect.objectContaining({ x: 44, width: 800 - 88, height: 600 - 48 }),
+      );
+      expect(tab.view.setBounds).not.toHaveBeenCalledWith({
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+      });
+    });
+
     it('should remove mounted editor view when the active editor tab closes', () => {
       const editorTab = makeTab({ id: 44, windowId: 1, viewKind: 'genoffice' });
       tabManager.register(editorTab);

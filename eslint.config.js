@@ -44,6 +44,7 @@ export default tseslint.config(
       'apps/desktop/cdp-test-actions.cjs',
       // 纯 JS 构建/开发脚本（不属于 TS 工程，不参与类型感知 lint）
       'scripts/**',
+      'apps/desktop/scripts/**',
       'apps/desktop/ico/**',
     ],
   },

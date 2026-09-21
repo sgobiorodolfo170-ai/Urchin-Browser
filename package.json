@@ -19,8 +19,10 @@
   },
   "scripts": {
     "dev": "pnpm --filter @urchin/desktop dev",
+    "start": "pnpm --filter @urchin/desktop start",
     "build": "pnpm --filter @urchin/desktop build",
     "typecheck": "pnpm -r --filter \"@urchin/*\" typecheck",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

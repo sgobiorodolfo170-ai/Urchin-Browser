@@ -39,6 +39,20 @@ adapted_for: Urchin-Browser
 
 ---
 
+## 工作流约定：每次修改后自动运行验证（2026-09-20 用户指令）
+
+> 用户指令原文：「每次修改完后都需要自动运行我测试下」。本条为**执行约定**（填充细化），不修改任何架构性条款。
+
+**AI Agent 强制流程**：
+
+1. **每次代码修改完成后，必须自动执行** `pnpm verify`（= `typecheck` + `lint` + 单元测试），并在回复中附上结果摘要（通过/失败与关键数字）；失败必须先修复再继续。
+2. **涉及 UI / 交互 / 主进程行为变更**时，在 `pnpm verify` 通过后**追加** `pnpm e2e`（或对应 spec 单跑）验证真实 Electron 行为。
+3. **需要人工验收的改动**（界面、交互、视觉），在验证通过后**构建并启动应用**：`pnpm run build` 后执行 **`pnpm start`**（生产模式启动已构建产物，脱离本会话后台运行；直接 `electron .` 未带 `NODE_ENV=production` 会走 dev 分支连 vite dev server 导致白屏）。启动后在回复中说明如何操作。
+4. 涉及打包/资源/依赖变更时，额外跑 `pnpm package:win`（本机需 `ELECTRON_MIRROR` 与 `ELECTRON_BUILDER_BINARIES_MIRROR` 指向 npmmirror）。
+5. 本条与 §一「独立验证」、§九「质量护栏」、§十「Loop Engineering 停止条件」一致：验收信号必须来自确定性检查，不接受 AI 自评。
+
+---
+
 ## 项目声明（2026-08-17 确立，Urchin Browser 正式声明）
 
 > 本声明由用户指令确立：**本项目以生产级标准开发与验收，相关规范与约定要能够满足长期迭代需求。**

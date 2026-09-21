@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "dev:electron": "wait-on ./dist/main/index.js && electron .",
+    "start": "node scripts/launch.mjs",
     "build": "tsc -b && pnpm run build:renderer && pnpm run build:main && pnpm run build:preload",
     "build:main": "vite build --mode main",
     "build:preload": "vite build --mode preload",

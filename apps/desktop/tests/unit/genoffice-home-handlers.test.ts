@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 
 const mocks = vi.hoisted(() => ({
   showOpenDialog: vi.fn(),
+  showMessageBox: vi.fn(),
   trashItem: vi.fn(),
   showItemInFolder: vi.fn(),
   openExternal: vi.fn(),
@@ -25,7 +26,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('electron', () => ({
   app: { getVersion: () => '0.1.0-test' },
   clipboard: { writeText: mocks.writeText },
-  dialog: { showOpenDialog: mocks.showOpenDialog },
+  dialog: { showOpenDialog: mocks.showOpenDialog, showMessageBox: mocks.showMessageBox },
   shell: {
     trashItem: mocks.trashItem,
     showItemInFolder: mocks.showItemInFolder,
@@ -222,6 +223,31 @@ describe('registerGenOfficeHomeHandlers', () => {
     await expect(harness.call('newSheet')).resolves.toBeNull();
     await expect(harness.call('newSlide')).resolves.toBeNull();
     expect(harness.deps.openBlankDocument).toHaveBeenCalledTimes(3);
+    // 未接入类型给用户明确提示（而非静默无反应）
+    expect(mocks.showMessageBox).toHaveBeenCalledTimes(2);
+  });
+
+  it('should reject path-traversal names in rename/create', async () => {
+    const file = join(root, 'safe.md');
+    writeFileSync(file, 'x');
+    const renamed = (await harness.call('renameFile', file, '..\\evil.md')) as { ok: boolean };
+    expect(renamed.ok).toBe(false);
+
+    const folder = (await harness.call('createFolder', root, 'a/b')) as { ok: boolean };
+    expect(folder.ok).toBe(false);
+
+    const renamedFolder = (await harness.call('renameFolder', join(root, 'documents'), '..')) as {
+      ok: boolean;
+    };
+    expect(renamedFolder.ok).toBe(false);
+  });
+
+  it('should broadcast app:language-changed on setLanguage', async () => {
+    const send = vi.fn();
+    mocks.getAllWebContents.mockReturnValue([{ send }]);
+    await harness.call('setLanguage', 'en');
+    expect(send).toHaveBeenCalledWith('app:language-changed', 'en');
+    mocks.getAllWebContents.mockReturnValue([]);
   });
 
   it('should forward theme, language and AI panel prefs', async () => {
@@ -249,6 +275,9 @@ describe('registerGenOfficeHomeHandlers', () => {
     expect(integrations.agents).toEqual([]);
     await harness.call('integrations.copyText', 'hello');
     expect(mocks.writeText).toHaveBeenCalledWith('hello');
+    // 遥测：不上报但回显开关状态（避免 UI 开关卡住）
+    expect(await harness.call('setAnalyticsEnabled', true)).toBe(true);
+    expect(await harness.call('getAnalyticsEnabled')).toBe(false);
   });
 
   it('should return null for unknown methods', async () => {

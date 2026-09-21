@@ -33,6 +33,16 @@ function strArg(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
 
+/**
+ * 文件/文件夹名合法性校验（防路径穿越）：拒绝空、`.`/`..`、含路径分隔符的名字。
+ * Home 的改名/新建输入框只接受纯名字；宿主侧再兜一道，避免「改名」变「移动」。
+ */
+function isPlainName(name: string): boolean {
+  const trimmed = name.trim();
+  if (trimmed.length === 0 || trimmed === '.' || trimmed === '..') return false;
+  return !/[/\\]/.test(trimmed);
+}
+
 /** 最近/星标条目（与上游 RecentEntry 形状一致）。 */
 interface HomeEntry {
   path: string;
@@ -205,7 +215,16 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
       }
       case 'newSheet':
       case 'newSlide': {
+        // Sheets/Slides 尚未接入（二期评估 Rust sidecar 与体积代价）：静默 no-op
+        // 会让用户以为按钮坏了——给一次明确的原生提示。
         log.warn('new file kind not supported in Urchin yet', { method });
+        void dialog.showMessageBox({
+          type: 'info',
+          message: method === 'newSheet' ? 'Excel 表格尚未接入' : '演示文稿尚未接入',
+          detail:
+            '当前版本的「打开文件」模块支持 Word / PDF / Markdown / HTML；表格与演示文稿将在二期接入。',
+          buttons: ['知道了'],
+        });
         return null;
       }
       case 'revealPath': {
@@ -214,9 +233,11 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
         return null;
       }
       case 'renameFile': {
-        const filePath = strArg(args[0], '');
-        const newName = strArg(args[1], '').trim();
-        if (!filePath || !newName) return { ok: false, error: 'invalid arguments' };
+        const filePath = strArg(args[0]);
+        const newName = strArg(args[1]).trim();
+        if (!filePath || !isPlainName(newName)) {
+          return { ok: false, error: 'invalid arguments' };
+        }
         const target = join(dirname(filePath), newName);
         try {
           await rename(filePath, target);
@@ -291,9 +312,9 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
         }
       }
       case 'createFolder': {
-        const parent = strArg(args[0], '');
-        const name = strArg(args[1], '').trim();
-        if (!parent || !name) return { ok: false, error: 'invalid arguments' };
+        const parent = strArg(args[0]);
+        const name = strArg(args[1]).trim();
+        if (!parent || !isPlainName(name)) return { ok: false, error: 'invalid arguments' };
         const target = join(parent, name);
         try {
           await mkdir(target, { recursive: false });
@@ -303,9 +324,9 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
         }
       }
       case 'renameFolder': {
-        const dir = strArg(args[0], '');
-        const newName = strArg(args[1], '').trim();
-        if (!dir || !newName) return { ok: false, error: 'invalid arguments' };
+        const dir = strArg(args[0]);
+        const newName = strArg(args[1]).trim();
+        if (!dir || !isPlainName(newName)) return { ok: false, error: 'invalid arguments' };
         const target = join(dirname(dir), newName);
         try {
           await rename(dir, target);
@@ -376,10 +397,19 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
         return store.get().language ?? 'zh';
       }
       case 'setLanguage': {
-        const lang = strArg(args[0], '');
+        const lang = strArg(args[0]);
         if (!lang) return null;
         await store.setLanguage(lang);
         deps.setLanguage(lang);
+        // 广播语言变更（与上游 shell 一致）：编辑器/Home 的 LocaleProvider 据此
+        // 实时切换，否则要重载页面才生效。
+        for (const wc of webContents.getAllWebContents()) {
+          try {
+            wc.send('app:language-changed', lang);
+          } catch {
+            /* 已销毁：忽略 */
+          }
+        }
         return null;
       }
       case 'getTheme':
@@ -446,7 +476,9 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
       case 'getAnalyticsEnabled':
         return false;
       case 'setAnalyticsEnabled':
-        return false;
+        // Urchin 不上报任何遥测：回显入参让开关状态自洽（否则 UI 表现为「开关卡住」），
+        // 不产生任何实际采集/上报。
+        return args[0] === true;
       case 'githubStars':
         return null;
       case 'starPromptShouldShow':
@@ -468,11 +500,16 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
         void shell.openExternal('https://github.com/genspark-ai/genoffice');
         return null;
       case 'integrations.status':
+        // 形状对齐上游 IntegrationsStatus：cli.status='missing' 让面板显示
+        // 「CLI 不在 PATH」而不是空白/崩溃（Urchin 不随包分发 genoffice CLI）。
         return {
           cli: {
             ok: false,
             installed: false,
             linked: false,
+            status: 'missing',
+            location: null,
+            manual: null,
             version: '',
             launcherDir: '',
             ephemeral: false,

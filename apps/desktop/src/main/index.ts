@@ -172,7 +172,10 @@ app.setPath('sessionData', join(currentDataDir, 'cookies'));
 // 阶段 2：GenOffice 编辑器渲染页（genoffice-app:）等特权 scheme 由嵌入包导出，
 // 经此并入同一次 registerSchemesAsPrivileged 调用（Electron 每进程仅允许一次）。
 // 产物缺失时 getGenOfficeSchemePrivileges 返回空数组，浏览器本体不受影响。
-registerUrchinSchemePrivileged(getGenOfficeSchemePrivileges());
+// 调试/降级开关 URCHIN_DISABLE_GENOFFICE=1：整体跳过 GenOffice 集成（含嵌入包
+// 加载），用于隔离「嵌入层影响启动内存/行为」类问题。
+const GENOFFICE_DISABLED = process.env.URCHIN_DISABLE_GENOFFICE === '1';
+registerUrchinSchemePrivileged(GENOFFICE_DISABLED ? [] : getGenOfficeSchemePrivileges());
 
 // GPU 硬件加速（2026-08-17 恢复）：
 // 曾全局禁用（disableHardwareAcceleration）以规避 LiveKernelEvent 0x1CC
@@ -544,51 +547,56 @@ function registerIpcHandlers(): void {
   // GenOffice 编辑器集成（阶段 2-4）：注册宿主通道、初始化嵌入包、
   // 挂 dirty 旁路与关闭守卫。产物缺失时 available=false，标签全部回落
   // Urchin 内置查看器（用户策略：GenOffice 为主、Urchin 保底）。
+  // URCHIN_DISABLE_GENOFFICE=1 时整体跳过（含嵌入包加载）。
   const genofficeAiPanelPrefs = createAiPanelPrefsStore();
-  genofficeIntegration = createGenOfficeIntegration({
-    ipcMain,
-    tabManager,
-    windowManager,
-    getTheme: () => nativeTheme.themeSource,
-    aiPanelPrefs: genofficeAiPanelPrefs,
-    createHomeView: () => createGenOfficeShellHomeView(),
-  });
-  genofficeIntegration.install();
-  installGenOfficeWindowCloseGuard();
+  const genofficeEmbed = GENOFFICE_DISABLED ? null : loadGenOfficeEmbed();
+  if (!GENOFFICE_DISABLED) {
+    genofficeIntegration = createGenOfficeIntegration({
+      ipcMain,
+      tabManager,
+      windowManager,
+      getTheme: () => nativeTheme.themeSource,
+      aiPanelPrefs: genofficeAiPanelPrefs,
+      createHomeView: () => createGenOfficeShellHomeView(),
+    });
+    genofficeIntegration.install();
+    installGenOfficeWindowCloseGuard();
+  }
 
   // GenOffice Home 宿主适配（阶段 4.6，用户指令：入口直接使用上游 Home 前端）。
   // 上游 shell Home 的 home:* 通道由本进程实现可用子集（打开/最近/文件夹/
   // 新建/主题/语言/AI 设置），账号与云能力以中性桩返回。
-  const genofficeEmbed = loadGenOfficeEmbed();
-  registerGenOfficeHomeHandlers({
-    ipcMain,
-    store: new GenOfficeHomeStore(join(currentDataDir, 'genoffice-home.json')),
-    documentsRoot: join(currentDataDir, 'documents'),
-    getTheme: () => nativeTheme.themeSource,
-    setTheme: (theme) => {
-      if (theme === 'light' || theme === 'dark' || theme === 'system') applyTheme(theme);
-    },
-    getVersion: () => app.getVersion(),
-    aiPanelPrefs: genofficeAiPanelPrefs,
-    openLocalPath: (path) => routeLocalFile(defaultWindowId(), path),
-    openBlankDocument: (kind) => {
-      const view = genofficeEmbed?.createGenOfficeBlankView?.(kind);
-      if (!view) return false;
-      tabManager.create({
-        windowId: defaultWindowId(),
-        url: `urchin://genoffice/?kind=${encodeURIComponent(kind)}`,
-        active: true,
-        view: view as BrowserViewLike,
-        viewKind: 'genoffice',
-        genofficeKind: kind,
-      });
-      return true;
-    },
-    writeBlankPdf: async (filePath) => {
-      await genofficeEmbed?.writeBlankPdfFile?.(filePath);
-    },
-    setLanguage: (lang) => genofficeEmbed?.setGenOfficeLanguage?.(lang),
-  });
+  if (!GENOFFICE_DISABLED) {
+    registerGenOfficeHomeHandlers({
+      ipcMain,
+      store: new GenOfficeHomeStore(join(currentDataDir, 'genoffice-home.json')),
+      documentsRoot: join(currentDataDir, 'documents'),
+      getTheme: () => nativeTheme.themeSource,
+      setTheme: (theme) => {
+        if (theme === 'light' || theme === 'dark' || theme === 'system') applyTheme(theme);
+      },
+      getVersion: () => app.getVersion(),
+      aiPanelPrefs: genofficeAiPanelPrefs,
+      openLocalPath: (path) => routeLocalFile(defaultWindowId(), path),
+      openBlankDocument: (kind) => {
+        const view = genofficeEmbed?.createGenOfficeBlankView?.(kind);
+        if (!view) return false;
+        tabManager.create({
+          windowId: defaultWindowId(),
+          url: `urchin://genoffice/?kind=${encodeURIComponent(kind)}`,
+          active: true,
+          view: view as BrowserViewLike,
+          viewKind: 'genoffice',
+          genofficeKind: kind,
+        });
+        return true;
+      },
+      writeBlankPdf: async (filePath) => {
+        await genofficeEmbed?.writeBlankPdfFile?.(filePath);
+      },
+      setLanguage: (lang) => genofficeEmbed?.setGenOfficeLanguage?.(lang),
+    });
+  }
 
   // M2 tab 域 handler（注入 GenOffice 集成：tab.create 分流 + tab.close 守卫）
   registerTabHandlers(ipcMain, tabManager, {

@@ -258,7 +258,7 @@ test.describe('GenOffice Markdown 编辑器（阶段 2 融合）', () => {
 
   test('左侧栏 GenOffice 入口打开上游 shell Home 前端（阶段 4.6）', async () => {
     test.setTimeout(120_000);
-    const { electronApp, window } = await launchApp();
+    const { electronApp, window, userDataDir } = await launchApp();
 
     // 侧栏入口：打开 GenOffice 文档入口（上游 shell Home 视图）
     await window.getByLabel('GenOffice 文档').click();
@@ -317,6 +317,136 @@ test.describe('GenOffice Markdown 编辑器（阶段 2 融合）', () => {
     expect(bridge?.lang).toBeTruthy();
     expect(bridge?.entries).toBeGreaterThanOrEqual(0);
 
+    // 上游 Home 的账号/设置入口可正常打开设置弹窗（宿主中性桩不崩溃）
+    const settingsModal = await electronApp.evaluate(async ({ webContents }) => {
+      const wc = webContents
+        .getAllWebContents()
+        .find((w) => w.getURL().startsWith('genoffice-app://shell/'));
+      const opened = (await wc?.executeJavaScript(`(() => {
+        const entry = document.querySelector('.account-entry');
+        const btn = entry?.querySelector('button');
+        if (!btn) return false;
+        btn.click();
+        return true;
+      })()`)) as boolean | undefined;
+      if (!opened) return { opened: false, dialog: false };
+      await new Promise((r) => setTimeout(r, 2000));
+      const dialog = (await wc?.executeJavaScript(
+        `!!document.querySelector('.set-dialog')`,
+      )) as boolean;
+      await wc?.executeJavaScript(`document.querySelector('.set-close')?.click()`);
+      return { opened, dialog };
+    });
+    expect(settingsModal?.opened).toBe(true);
+    expect(settingsModal?.dialog).toBe(true);
+
+    // Home「新建 Markdown」动作：无路径的 genoffice 标签（空白文档）
+    await electronApp.evaluate(async ({ webContents }) => {
+      const wc = webContents
+        .getAllWebContents()
+        .find((w) => w.getURL().startsWith('genoffice-app://shell/'));
+      await wc?.executeJavaScript(`window.aiOffice.newMarkdown()`);
+    });
+    await expect
+      .poll(
+        async () =>
+          (await listTabs(window)).some((t) => t.url === 'urchin://genoffice/?kind=markdown'),
+        { timeout: 20_000 },
+      )
+      .toBe(true);
+
+    // Home「打开本地文件」真实链路：window.aiOffice.openPath → genoffice 编辑器标签
+    const docDir = join(userDataDir, 'docs');
+    mkdirSync(docDir, { recursive: true });
+    const homeMd = join(docDir, 'from-home.md');
+    writeFileSync(homeMd, '# From Home\n\n- via aiOffice.openPath\n');
+    await electronApp.evaluate(async ({ webContents }, filePath) => {
+      const wc = webContents
+        .getAllWebContents()
+        .find((w) => w.getURL().startsWith('genoffice-app://shell/'));
+      await wc?.executeJavaScript(`window.aiOffice.openPath(${JSON.stringify(filePath)})`);
+    }, homeMd);
+    await expect
+      .poll(
+        async () =>
+          (await listTabs(window)).some(
+            (t) => t.viewKind === 'genoffice' && t.url.includes('kind=markdown'),
+          ),
+        { timeout: 20_000 },
+      )
+      .toBe(true);
+
+    // 最近列表已记录（Home 的「最近」数据源）
+    const recent = await electronApp.evaluate(async ({ webContents }, filePath) => {
+      const wc = webContents
+        .getAllWebContents()
+        .find((w) => w.getURL().startsWith('genoffice-app://shell/'));
+      return (await wc?.executeJavaScript(
+        `window.aiOffice.recents({ limit: 10 }).then((p) => (p?.entries ?? []).some((e) => e.path === ${JSON.stringify(filePath)}))`,
+      )) as boolean | undefined;
+    }, homeMd);
+    expect(recent).toBe(true);
+
+    // Home「新建 Word」动作：空白 docs 视图（genoffice 标签）
+    await electronApp.evaluate(async ({ webContents }) => {
+      const wc = webContents
+        .getAllWebContents()
+        .find((w) => w.getURL().startsWith('genoffice-app://shell/'));
+      await wc?.executeJavaScript(`window.aiOffice.newDoc()`);
+    });
+    await expect
+      .poll(
+        async () => (await listTabs(window)).some((t) => t.url === 'urchin://genoffice/?kind=docs'),
+        { timeout: 20_000 },
+      )
+      .toBe(true);
+
     await electronApp.close();
+  });
+
+  test('降级开关 URCHIN_DISABLE_GENOFFICE=1：伪地址改写为内置查看器', async () => {
+    test.setTimeout(60_000);
+    const appPath = resolve(__dirname, '..', '..');
+    const userDataDir = mkdtempSync(join(tmpdir(), 'urchin-e2e-genoffice-off-'));
+    const electronApp = await electron.launch({
+      cwd: appPath,
+      args: ['.'],
+      env: {
+        ...process.env,
+        NODE_ENV: 'production',
+        PLAYWRIGHT: '1',
+        URCHIN_TEST_USER_DATA: userDataDir,
+        URCHIN_DISABLE_GENOFFICE: '1',
+        NODE_OPTIONS: '',
+      },
+      timeout: 30_000,
+    });
+    try {
+      const window = await electronApp.firstWindow();
+      await window.waitForLoadState('domcontentloaded');
+
+      const docDir = join(userDataDir, 'docs');
+      mkdirSync(docDir, { recursive: true });
+      const md = join(docDir, 'off.md');
+      writeFileSync(md, '# off\n');
+
+      await invoke(window, 'tab.create', {
+        windowId: 1,
+        url: `urchin://genoffice/?kind=markdown&path=${encodeURIComponent(md)}`,
+      });
+      await expect
+        .poll(
+          async () =>
+            (await listTabs(window)).some(
+              (t) => t.url === `urchin://file-viewer/?path=${encodeURIComponent(md)}`,
+            ),
+          { timeout: 15_000 },
+        )
+        .toBe(true);
+      const tabs = await listTabs(window);
+      expect(tabs.some((t) => t.viewKind === 'genoffice')).toBe(false);
+    } finally {
+      await electronApp.close();
+    }
   });
 });

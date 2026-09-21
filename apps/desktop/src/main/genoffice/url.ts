@@ -47,3 +47,14 @@ export function buildFileViewerUrl(filePath: string): string {
 export function buildFileUrl(filePath: string): string {
   return `file:///${encodeURI(filePath.replace(/\\/g, '/'))}`;
 }
+
+/**
+ * 降级改写（URCHIN_DISABLE_GENOFFICE=1 或集成缺省时由 tab.create 调用）：
+ * 带路径的 GenOffice 伪地址 → 内置查看器地址；其余地址原样返回。
+ * 纯函数，便于单测；避免降级模式下「打开文件」落到无法渲染的伪地址。
+ */
+export function fallbackGenOfficeUrl(url: string): string {
+  const target = parseGenOfficeUrl(url);
+  if (!target) return url;
+  return target.kind === 'html' ? buildFileUrl(target.path) : buildFileViewerUrl(target.path);
+}

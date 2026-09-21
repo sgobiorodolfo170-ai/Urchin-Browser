@@ -6,8 +6,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  buildFileUrl,
   buildFileViewerUrl,
   buildGenOfficeUrl,
+  fallbackGenOfficeUrl,
   parseGenOfficeUrl,
   GENOFFICE_URL_PREFIX,
 } from '../../src/main/genoffice/url';
@@ -36,6 +38,21 @@ describe('genoffice url helpers', () => {
   it('should build the built-in viewer fallback url', () => {
     expect(buildFileViewerUrl('C:\\a b\\c.md')).toBe(
       'urchin://file-viewer/?path=C%3A%5Ca%20b%5Cc.md',
+    );
+  });
+
+  it('should rewrite genoffice urls to built-in fallbacks (集成停用降级)', () => {
+    const md = buildGenOfficeUrl('markdown', 'C:\\docs\\a.md');
+    expect(fallbackGenOfficeUrl(md)).toBe('urchin://file-viewer/?path=C%3A%5Cdocs%5Ca.md');
+
+    const html = buildGenOfficeUrl('html', 'C:\\docs\\b.html');
+    expect(fallbackGenOfficeUrl(html)).toBe(buildFileUrl('C:\\docs\\b.html'));
+
+    // 非 GenOffice 地址（含 Home 入口/普通网页）原样返回
+    expect(fallbackGenOfficeUrl('urchin://genoffice-home')).toBe('urchin://genoffice-home');
+    expect(fallbackGenOfficeUrl('https://example.com')).toBe('https://example.com');
+    expect(fallbackGenOfficeUrl('urchin://genoffice/?kind=docs')).toBe(
+      'urchin://genoffice/?kind=docs',
     );
   });
 });

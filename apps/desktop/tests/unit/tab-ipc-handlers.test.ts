@@ -115,6 +115,23 @@ describe('registerTabHandlers', () => {
     expect(result.tab).toEqual(mgr._snapshot);
   });
 
+  it('should rewrite genoffice urls to viewer fallback when integration is absent', async () => {
+    const ipcMain = createMockIpcMain();
+    const mgr = createMockTabManager();
+    registerTabHandlers(ipcMain as never, mgr);
+
+    await ipcMain.invoke('tab.create', {
+      windowId: 1,
+      url: 'urchin://genoffice/?kind=markdown&path=C%3A%5Cdocs%5Ca.md',
+    });
+    expect(mgr.create).toHaveBeenCalledWith({
+      windowId: 1,
+      url: 'urchin://file-viewer/?path=C%3A%5Cdocs%5Ca.md',
+      active: true,
+      index: undefined,
+    });
+  });
+
   it('should register tab.close handler', async () => {
     const ipcMain = createMockIpcMain();
     const mgr = createMockTabManager();

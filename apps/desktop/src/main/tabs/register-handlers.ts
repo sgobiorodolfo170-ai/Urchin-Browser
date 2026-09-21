@@ -14,6 +14,7 @@
 import type { IpcMain } from 'electron';
 import { registerHandler } from '@urchin/ipc-contract';
 import { createLogger } from '@urchin/logger';
+import { fallbackGenOfficeUrl } from '../genoffice/url';
 import type { TabManager } from './tab-manager';
 import type { BrowserViewLike } from './types';
 
@@ -50,11 +51,13 @@ export function registerTabHandlers(
   // tab.create：创建新标签
   // 阶段 2：URL 命中 GenOffice 伪地址时改用预构建编辑器 WebContentsView；
   // 产物缺失/创建失败由集成层回落为 urchin://file-viewer（保底）。
+  // 集成整体停用（URCHIN_DISABLE_GENOFFICE=1）时 deps.genoffice 缺省，
+  // 此处把带路径的伪地址改写为内置查看器，保证降级模式下「打开文件」仍可用。
   registerHandler(ipcMain, 'tab.create', (req) => {
     log.info('tab.create', { windowId: req.windowId, url: req.url });
 
     const resolved = deps.genoffice?.resolveTabCreate(req.url) ?? {
-      url: req.url,
+      url: deps.genoffice ? req.url : fallbackGenOfficeUrl(req.url),
       viewKind: 'browser' as const,
     };
 

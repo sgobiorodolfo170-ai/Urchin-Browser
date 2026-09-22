@@ -450,13 +450,6 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
         return 'stable';
       case 'setUpdateChannel':
         return null;
-      case 'accountStatus':
-        return { loggedIn: false };
-      case 'accountLogin':
-        return false;
-      case 'openLoginUrl':
-      case 'accountLogout':
-        return null;
       case 'getMcpStatus':
       case 'setMcpSettings':
         return {
@@ -484,17 +477,6 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
       case 'starPromptShouldShow':
         return { show: false, docOpens: 0 };
       case 'starPromptAction':
-        return null;
-      case 'cloudProjectsCached':
-      case 'cloudProjectsSync':
-        return null;
-      case 'openCloudProject':
-        return null;
-      case 'openGenTeam':
-        void shell.openExternal('https://genoffice.ai/join');
-        return null;
-      case 'openCreditUsage':
-        void shell.openExternal('https://genoffice.ai/');
         return null;
       case 'openGitHubRepo':
         void shell.openExternal('https://github.com/genspark-ai/genoffice');

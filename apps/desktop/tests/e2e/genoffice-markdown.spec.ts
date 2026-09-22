@@ -317,7 +317,7 @@ test.describe('GenOffice Markdown 编辑器（阶段 2 融合）', () => {
     expect(bridge?.lang).toBeTruthy();
     expect(bridge?.entries).toBeGreaterThanOrEqual(0);
 
-    // 上游 Home 的账号/设置入口可正常打开设置弹窗（宿主中性桩不崩溃）
+    // 上游 Home 的设置入口可正常打开设置弹窗（无账号面板，宿主桩不崩溃）
     const settingsModal = await electronApp.evaluate(async ({ webContents }) => {
       const wc = webContents
         .getAllWebContents()

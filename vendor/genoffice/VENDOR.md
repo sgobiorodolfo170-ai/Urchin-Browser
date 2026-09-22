@@ -55,6 +55,38 @@ v0.1.0-dev.90。
    TS 5.9 下报 TS2769（`(string|undefined)[]` 不可赋给 `Iterable<string>`）；
    修复后 `apps/urchin-embed` 与上游 shell 的 typecheck 均恢复绿色。
    逻辑不变，可直接回馈上游。
+4. **移除 GenOffice 原生账号/登录体系**（Urchin 不接入原项目账号；用户指令）：
+
+   涉及文件：
+   - `apps/shell/src/renderer/src/Home.tsx`：删除 `AccountEntry` 组件（登录状态/
+     等待/登出/authUrl/技能更新红点）、`CloudProjectsView` 组件 + `cloudMode`
+     状态 + 侧栏「云项目」导航项；新增 `SettingsEntry`（纯设置按钮，开设置弹窗，
+     仅保留技能更新红点探测）；greeting 去账号昵称。
+   - `apps/shell/src/renderer/src/SettingsModal.tsx`：删除 account 面板（未登录/
+     邮箱/积分/登录/登出按钮）与相关 props（status/loggingOut/loginWaiting/
+     loginUrl/urlCopied/onOpenLoginUrl/onCopyLoginUrl/onLogin/onLogout）；
+     默认区段改为 `general`；同时移除 `aiModel`/`aiMedia` 区段（其
+     `getAiProviders()` 假定同步返回数组，与 Urchin preload 的 Promise 形状
+     冲突会崩；AI 设置由 Urchin 自身设置页 `GenOfficeAiSettings.tsx` 承载，
+     不再重复）。
+   - `apps/shell/src/shared/home-api.ts`：删除 `AccountStatus`/
+     `AccountLoginEvent`/`CloudProjectsSnapshot`/`CloudProjectEntry`/
+     `CloudProjectKind` 类型，以及 HomeApi 接口中的 account/cloud/credit
+     方法签名与通道映射表条目。
+   - `apps/docs/src/renderer/ai/AiPanel.tsx`：中和出错时的内嵌「登录」按钮
+     （`loginRequired` setter + render），避免 BYOK 用户看到无效登录入口；
+     `gskLoggedInRef` 图片生成门禁保留（恒 false，Genspark 图片生成本就不可用）。
+   - `apps/markdown` 仅 `gskLoggedInRef` 门禁（同上保留），无 `loginRequired`。
+
+   宿主侧对应删除（`apps/desktop`，非 vendor）：home-handlers 的
+   `accountStatus`/`accountLogin`/`openLoginUrl`/`accountLogout`/
+   `cloudProjectsCached`/`cloudProjectsSync`/`openCloudProject`/`openGenTeam`/
+   `openCreditUsage` 九个 handler，以及 preload `window.aiOffice` 桥同名方法。
+
+   功能影响：BYOK AI、文件打开/最近/文件夹/新建、主题/语言/MCP/分析开关均
+   不受影响；Genspark 云 AI/云项目/云端积分/Genspark 图片生成本就不可用，
+   移除后更明确。`ai:gsk-status` 通道由 vendor docs-main 提供（恒
+   `{loggedIn:false}`），宿主未实现登录流，行为不变。
 
 ## 安装与构建（Urchin 侧）
 

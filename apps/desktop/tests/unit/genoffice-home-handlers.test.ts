@@ -263,10 +263,7 @@ describe('registerGenOfficeHomeHandlers', () => {
     expect(prefs.side).toBe('right');
   });
 
-  it('should return neutral stubs for account/cloud/mcp/integrations', async () => {
-    expect(await harness.call('accountStatus')).toEqual({ loggedIn: false });
-    expect(await harness.call('accountLogin')).toBe(false);
-    expect(await harness.call('cloudProjectsSync')).toBeNull();
+  it('should return neutral stubs for mcp/integrations', async () => {
     expect(await harness.call('starPromptShouldShow')).toEqual({ show: false, docOpens: 0 });
     const mcp = (await harness.call('getMcpStatus')) as { running: boolean; enabled: boolean };
     expect(mcp.running).toBe(false);

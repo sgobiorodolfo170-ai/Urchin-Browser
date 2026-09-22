@@ -269,12 +269,7 @@ function createGenOfficeHomeBridge(): Record<string, unknown> {
     setOnboardingSeen: () => home('setOnboardingSeen'),
     getUpdateChannel: () => home('getUpdateChannel'),
     setUpdateChannel: (channel: unknown) => home('setUpdateChannel', channel),
-    // ── 账号 / 云项目 / MCP / 更新 / 统计（宿主中性桩） ──
-    accountStatus: () => home('accountStatus'),
-    accountLogin: () => home('accountLogin'),
-    onAccountLogin: () => () => undefined,
-    openLoginUrl: () => home('openLoginUrl'),
-    accountLogout: () => home('accountLogout'),
+    // ── MCP / 更新 / 统计（宿主中性桩） ──
     getMcpStatus: () => home('getMcpStatus'),
     setMcpSettings: (patch: unknown) => home('setMcpSettings', patch),
     getMcpLogs: () => home('getMcpLogs'),
@@ -285,11 +280,6 @@ function createGenOfficeHomeBridge(): Record<string, unknown> {
     githubStars: () => home('githubStars'),
     starPromptShouldShow: () => home('starPromptShouldShow'),
     starPromptAction: (action: unknown) => home('starPromptAction', action),
-    cloudProjectsCached: () => home('cloudProjectsCached'),
-    cloudProjectsSync: () => home('cloudProjectsSync'),
-    openCloudProject: (projectUrl: unknown) => home('openCloudProject', projectUrl),
-    openGenTeam: () => home('openGenTeam'),
-    openCreditUsage: () => home('openCreditUsage'),
     openGitHubRepo: () => home('openGitHubRepo'),
     // ── GenOffice 原生 AI（与编辑器 AI 面板同源通道） ──
     getAiSettings: () => ipcRenderer.invoke('ai:get-settings'),

@@ -1033,27 +1033,6 @@ export function App() {
     }
   }, [tabs]);
 
-  // 打开设置页「AI（GenOffice）」：已有设置标签则导航到带 tab 参数的地址
-  //（?tab= 由 App 解析后经 initialTab 传入 SettingsPage）
-  const handleOpenGenOfficeAiSettings = useCallback(async () => {
-    const url = 'urchin://settings?tab=genoffice-ai';
-    const existing = tabs.find((t) => t.url?.startsWith('urchin://settings'));
-    try {
-      if (existing) {
-        await window.urchin.invoke('tab.loadUrl', { tabId: existing.id, url });
-        await window.urchin.invoke('tab.setActive', { tabId: existing.id });
-      } else {
-        await window.urchin.invoke('tab.create', {
-          windowId: await getCurrentWindowId(),
-          url,
-          active: true,
-        });
-      }
-    } catch (e) {
-      console.error('Failed to open GenOffice AI settings:', e);
-    }
-  }, [tabs]);
-
   // 打开 pi 模块（dev.39 一键直达）：pi 已运行 → 直接开/复用 pi 网页标签；
   // 未运行 → 打开启动器标签页（挂载即自动启动并跳转，无需再点「启动」按钮）。
   // 阶段2 解耦：AI 模块作为独立标签页（urchin://ai），不再融合到地址栏
@@ -1545,7 +1524,7 @@ export function App() {
   const isInternalPage =
     isSettingsTab || isAiTab || isGenOfficeHomeTab || isNewTab || isFileViewerTab || isGenOfficeTab;
 
-  // 设置页深链参数（?tab=genoffice-ai）：供 GenOffice 主页「打开 AI 设置」直达
+  // 设置页深链参数（?tab=<key>）：调用方以 key 绑定该值驱动 SettingsPage 初始选项卡
   const settingsInitialTab = (() => {
     if (!isSettingsTab) return undefined;
     try {
@@ -1698,10 +1677,7 @@ export function App() {
               /* GenOffice 文档主页保底（阶段 4.6）：正常情况下主进程以
                *  GenOffice shell Home 视图承载（viewKind=genoffice，React 留空）；
                *  仅当 shell 产物缺失时回落本 React 页面（浏览器标签） */
-              <GenOfficeHome
-                onOpenFile={() => void handleOpenFilePicker()}
-                onOpenAiSettings={() => void handleOpenGenOfficeAiSettings()}
-              />
+              <GenOfficeHome onOpenFile={() => void handleOpenFilePicker()} />
             ) : isNewTab || tabs.length === 0 ? (
               /* 主页：React 组件渲染（内嵌，无法自由更换）。
                * 关闭最后一个标签后 activeTab 为空，此时同样回落到主页 */

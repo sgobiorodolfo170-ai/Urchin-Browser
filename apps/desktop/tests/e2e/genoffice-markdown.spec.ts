@@ -210,33 +210,73 @@ test.describe('GenOffice Markdown 编辑器（阶段 2 融合）', () => {
     await electronApp.close();
   });
 
-  test('设置页「AI（GenOffice）」可读写 ai-settings.json（BYOK）', async () => {
-    test.setTimeout(120_000);
+  test('文档首页设置弹窗「AI 模型」可读写 ai-settings.json（BYOK）', async () => {
+    test.setTimeout(150_000);
     const { electronApp, window, userDataDir } = await launchApp();
 
-    // 打开设置页（React 渲染内部页）
-    await invoke(window, 'tab.create', { windowId: 1, url: 'urchin://settings', active: true });
+    // 侧栏入口打开 shell Home 视图
+    await window.getByLabel('GenOffice 文档').click();
 
-    // 切到 GenOffice AI 选项卡并等待目录加载
-    await window.getByText('AI（GenOffice）').first().click();
-    const providerSelect = window.getByLabel('服务商').first();
-    await expect(providerSelect).toBeVisible({ timeout: 15_000 });
-
-    // 默认设置是 genspark（无密钥输入）；切到任一「密钥型」BYOK 服务商
-    //（codex 用 CLI 路径而非 API Key，跳过）
-    const options = await providerSelect
-      .locator('option')
-      .evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value));
-    const byok =
-      ['anthropic', 'openai', 'deepseek', 'gemini'].find((v) => options.includes(v)) ??
-      options.find((v) => v !== 'genspark' && v !== 'codex');
-    expect(byok).toBeTruthy();
-    await providerSelect.selectOption(byok!);
-
-    // 填密钥并保存（首个「保存」= 模型服务卡片）
-    await window.getByLabel('API Key').first().fill('sk-e2e-genoffice');
-    await window.getByRole('button', { name: '保存' }).first().click();
-    await expect(window.getByText('已保存').first()).toBeVisible({ timeout: 10_000 });
+    // 齿轮 → 设置弹窗 → AI 模型面板（默认区段）：选 BYOK 服务商 + 填密钥 + 保存
+    const result = await electronApp.evaluate(async ({ webContents }) => {
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const getWc = () =>
+        webContents
+          .getAllWebContents()
+          .find((w) => w.getURL().startsWith('genoffice-app://shell/'));
+      const js = (code: string) => getWc()?.executeJavaScript(code);
+      const wait = async (code: string, timeout: number): Promise<boolean> => {
+        const deadline = Date.now() + timeout;
+        while (Date.now() < deadline) {
+          const ok = (await js(code)) as boolean | undefined;
+          if (ok) return true;
+          await sleep(300);
+        }
+        return false;
+      };
+      await wait(`!!document.querySelector('.account-entry button')`, 20_000);
+      await js(`document.querySelector('.account-entry button').click()`);
+      if (!(await wait(`!!document.querySelector('.set-dialog')`, 10_000))) {
+        return { open: false, reason: 'no set-dialog' };
+      }
+      // 等 catalog 加载（deepseek 为 BYOK 服务商；默认区段 AI 模型面板）
+      const catOk = await wait(
+        `window.aiOffice.getAiProviders().then((c) => Array.isArray(c) && c.some((p) => p.id === 'deepseek'))`,
+        15_000,
+      );
+      if (!catOk) {
+        const providers = (await js(
+          `window.aiOffice.getAiProviders().then((c) => (c ?? []).map((p) => p.id))`,
+        )) as unknown;
+        return { open: true, reason: `catalog no deepseek: ${JSON.stringify(providers)}` };
+      }
+      // 服务商下拉 → deepseek
+      await js(`document.querySelector('.set-pane .gs-dd-btn')?.click()`);
+      await wait(`!!document.querySelector('.gs-dd-item[data-value="deepseek"]')`, 5_000);
+      await js(`document.querySelector('.gs-dd-item[data-value="deepseek"]')?.click()`);
+      // 填密钥（React 受控输入：native setter + input 事件）
+      if (!(await wait(`!!document.querySelector('#set-ai-key')`, 10_000))) {
+        return { open: true, reason: 'no key input after provider change' };
+      }
+      const keySet = (await js(`(() => {
+        const el = document.querySelector('#set-ai-key');
+        if (!el) return false;
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        setter.call(el, 'sk-e2e-genoffice');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return el.value === 'sk-e2e-genoffice';
+      })()`)) as boolean;
+      if (!keySet) return { open: true, reason: 'key not set' };
+      await sleep(300);
+      await js(`document.querySelector('.set-pane .set-btn.primary')?.click()`);
+      await sleep(800);
+      const saved = (await js(
+        `(() => { const t = document.querySelector('.set-pane .set-ai-status')?.textContent ?? ''; return t; })()`,
+      )) as string;
+      return { open: true, done: true, saved };
+    });
+    expect(result?.reason).toBeUndefined();
+    expect(result?.done).toBe(true);
 
     // 主进程写入 <userData>/ai-settings.json（BYOK 明文 JSON，仅本机）
     const settingsPath = join(userDataDir, 'ai-settings.json');

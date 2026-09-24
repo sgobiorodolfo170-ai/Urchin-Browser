@@ -3,7 +3,7 @@
 本目录是 [GenOffice](https://github.com/genspark-ai/genoffice) 的**源码镜像**，
 用于把它的编辑器（Markdown / PDF / HTML / Docs，后续 Sheets / Slides）接入
 Urchin Browser 的「打开文件」模块。集成方案与阶段划分见 `docs/` 与 CHANGELOG
-v0.1.0-dev.90。
+v0.1.0-dev.91 起（dev.90 为前置的 Electron 43 升级）。
 
 ## 来源与版本
 
@@ -19,7 +19,7 @@ v0.1.0-dev.90。
 - Urchin 主进程**不**把 `@genoffice/*` 打进自己的构建：编辑器以独立页面
   （`genoffice-app://` 协议）与独立 preload 运行，宿主经运行时 `require` 加载
   嵌入包 `@genoffice/urchin-embed`（见下）。
-- 计划与执行记录见根 `CHANGELOG.md`（dev.90 起）与 Urchin 的 `docs/decisions/`。
+- 计划与执行记录见根 `CHANGELOG.md`（dev.91 起）与 Urchin 的 `docs/decisions/`。
 
 ## 本仓对上游的改动（vendor patch 清单）
 
@@ -87,6 +87,17 @@ v0.1.0-dev.90。
    不受影响；Genspark 云 AI/云项目/云端积分/Genspark 图片生成本就不可用，
    移除后更明确。`ai:gsk-status` 通道由 vendor docs-main 提供（恒
    `{loggedIn:false}`），宿主未实现登录流，行为不变。
+5. **shell SettingsModal 的 AI 面板异步 catalog 适配**（用户指令：BYOK 配置
+   移回文档首页设置弹窗）：上游 `AiModelPane`/`AiMediaPane` 假定
+   `getAiProviders()/getAiMediaProviders()/getAiSearchProviders()` **同步**
+   返回数组（`useState(() => window.aiOffice.getAiProviders?.() ?? [])`），
+   而 Urchin 宿主 preload 走 `ipcRenderer.invoke` 返回 **Promise**——catalog
+   实际被存为 Promise，随后 `catalog.find()` 崩溃（`TypeError: catalog.find
+   is not a function`）。适配：改为 `useState([])` + `Promise.all` 一次性加载
+   catalog 与 settings（AiModelPane 先取 catalog 再取 settings，codex 模型
+   刷新才能落到完整 catalog）；并对 `getAiSettings` 补 `.catch` 防未处理拒绝。
+   逻辑/UI 不变，纯加载时序修正。设置弹窗默认区段改为 `aiModel`（与原「账号」
+   首屏等价的信息架构）。
 
 ## 安装与构建（Urchin 侧）
 

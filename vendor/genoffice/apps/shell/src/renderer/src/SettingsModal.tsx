@@ -138,15 +138,50 @@ function CustomFontSizeInput({
   )
 }
 
-type SectionId = 'general' | 'integrations' | 'about'
+type SectionId = 'aiModel' | 'aiMedia' | 'general' | 'integrations' | 'about'
 
 const SECTIONS: readonly { id: SectionId; labelKey: StringKey }[] = [
+  { id: 'aiModel', labelKey: 'setSecAiModel' },
+  { id: 'aiMedia', labelKey: 'setSecAiMedia' },
   { id: 'general', labelKey: 'setSecGeneral' },
   { id: 'integrations', labelKey: 'setSecIntegrations' },
   { id: 'about', labelKey: 'setSecAbout' },
 ]
 
 function SectionIcon({ id }: { id: SectionId }) {
+  if (id === 'aiModel') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path
+          d="M8 1.8 9.5 6l4.2 1.5L9.5 9 8 13.2 6.5 9 2.3 7.5 6.5 6 8 1.8Z"
+          stroke="currentColor"
+          strokeWidth="1.3"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M12.8 11.2v3M11.3 12.7h3"
+          stroke="currentColor"
+          strokeWidth="1.3"
+          strokeLinecap="round"
+        />
+      </svg>
+    )
+  }
+  if (id === 'aiMedia') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+        <path
+          d="M2.5 11.5 6 8l2.5 2.5L10.5 9l3 2.8"
+          stroke="currentColor"
+          strokeWidth="1.3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle cx="10.5" cy="6" r="1.1" fill="currentColor" />
+      </svg>
+    )
+  }
   if (id === 'integrations') {
     return (
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -210,9 +245,7 @@ function Field({
 
 /** AI model pane: provider / model / key / base URL, saved to userData/ai-settings.json */
 function AiModelPane({ t }: { t: TFunc }) {
-  const [catalog, setCatalog] = useState<AiCatalogEntry[]>(
-    () => window.aiOffice.getAiProviders?.() ?? [],
-  )
+  const [catalog, setCatalog] = useState<AiCatalogEntry[]>([])
   const [settings, setSettings] = useState<AiSettings | null>(null)
   const [dirty, setDirty] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -238,22 +271,33 @@ function AiModelPane({ t }: { t: TFunc }) {
 
   useEffect(() => {
     let alive = true
-    void window.aiOffice.getAiSettings?.().then((s) => {
-      if (!alive || !s) return
-      // The switch is disabled with genspark, so never present it stranded
-      // off. Display-only: s.provider may be the activeProvider fallback for
-      // a half-configured BYOK selection, so writing anything back here would
-      // clobber the stored choice — the main process heals a genuine legacy
-      // genspark+off file itself, judged on the raw stored provider.
-      if (s.provider === 'genspark' && s.gskToolsEnabled === false) {
-        s = { ...s, gskToolsEnabled: true }
-      }
-      setSettings(s)
-      const codex = s.providers.codex
-      if (codex) {
-        void refreshCodexModels(codex.cliPath ?? '', codex.model).catch(() => undefined)
-      }
-    })
+    // Urchin 宿主 preload 的 getAiProviders/getAiSettings 均为异步（Promise），
+    // 与上游假定同步数组不同——先取 catalog 再取 settings，codex 模型刷新
+    // 才能落到完整 catalog 上（VENDOR.md 补丁第 5 条）。
+    void window.aiOffice
+      .getAiProviders?.()
+      .then((c) => {
+        if (alive && Array.isArray(c)) setCatalog(c)
+      })
+      .catch(() => undefined)
+      .then(() => window.aiOffice.getAiSettings?.())
+      .then((s) => {
+        if (!alive || !s) return
+        // The switch is disabled with genspark, so never present it stranded
+        // off. Display-only: s.provider may be the activeProvider fallback for
+        // a half-configured BYOK selection, so writing anything back here would
+        // clobber the stored choice — the main process heals a genuine legacy
+        // genspark+off file itself, judged on the raw stored provider.
+        if (s.provider === 'genspark' && s.gskToolsEnabled === false) {
+          s = { ...s, gskToolsEnabled: true }
+        }
+        setSettings(s)
+        const codex = s.providers.codex
+        if (codex) {
+          void refreshCodexModels(codex.cliPath ?? '', codex.model).catch(() => undefined)
+        }
+      })
+      .catch(() => undefined)
     return () => {
       alive = false
     }
@@ -526,12 +570,8 @@ type Capability = 'image' | 'analysis' | 'video' | 'search'
  * Saved into the same ai-settings.json as the chat provider.
  */
 function AiMediaPane({ t }: { t: TFunc }) {
-  const [mediaCatalog] = useState<AiMediaProviderMeta[]>(
-    () => window.aiOffice.getAiMediaProviders?.() ?? [],
-  )
-  const [searchCatalog] = useState<AiSearchProviderMeta[]>(
-    () => window.aiOffice.getAiSearchProviders?.() ?? [],
-  )
+  const [mediaCatalog, setMediaCatalog] = useState<AiMediaProviderMeta[]>([])
+  const [searchCatalog, setSearchCatalog] = useState<AiSearchProviderMeta[]>([])
   const [settings, setSettings] = useState<AiSettings | null>(null)
   const [dirty, setDirty] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -540,9 +580,20 @@ function AiMediaPane({ t }: { t: TFunc }) {
 
   useEffect(() => {
     let alive = true
-    void window.aiOffice.getAiSettings?.().then((s) => {
-      if (alive && s) setSettings(s)
-    })
+    // 同 AiModelPane：宿主 preload 的 catalog/settings 均为异步 Promise，
+    // 统一 Promise.all 后 setState（VENDOR.md 补丁第 5 条）。
+    void Promise.all([
+      window.aiOffice.getAiMediaProviders?.() ?? Promise.resolve([]),
+      window.aiOffice.getAiSearchProviders?.() ?? Promise.resolve([]),
+      window.aiOffice.getAiSettings?.() ?? Promise.resolve(null),
+    ])
+      .then(([mc, sc, s]) => {
+        if (!alive) return
+        if (Array.isArray(mc)) setMediaCatalog(mc)
+        if (Array.isArray(sc)) setSearchCatalog(sc)
+        if (s) setSettings(s)
+      })
+      .catch(() => undefined)
     return () => {
       alive = false
     }
@@ -939,7 +990,7 @@ export function SettingsModal({
   onSkillUpdateDue,
 }: SettingsModalProps) {
   const { lang, setLang, t } = useI18n()
-  const [section, setSection] = useState<SectionId>('general')
+  const [section, setSection] = useState<SectionId>('aiModel')
   const [theme, setTheme] = useState<UiTheme>('system')
   const [saveDir, setSaveDir] = useState('')
   const [analyticsOn, setAnalyticsOn] = useState(true)
@@ -1046,6 +1097,8 @@ export function SettingsModal({
             ))}
           </nav>
           <div className="set-pane">
+            {section === 'aiModel' && <AiModelPane t={t} />}
+            {section === 'aiMedia' && <AiMediaPane t={t} />}
             {section === 'general' && (
               <>
                 <h3 className="set-pane-title">{t('setSecGeneral')}</h3>

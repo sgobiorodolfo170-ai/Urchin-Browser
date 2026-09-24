@@ -5,7 +5,8 @@
  * 前端入口**——不再直接弹文件选择器，而是打开本主页作为文档模块的落点：
  * - 主操作：打开文件（走原有 file.open 选择器 → GenOffice 编辑器路由）
  * - 格式卡片：Word / PDF / Markdown / HTML（点击同样进入打开流程）
- * - AI 设置入口：跳到设置页「AI（GenOffice）」选项卡（与 pi 完全隔离）
+ * - AI 配置：位于文档首页（上游 shell Home）左下角齿轮设置弹窗；本页仅在
+ *   shell 产物缺失时作为保底出现（阶段 4.6）
  *
  * 设计理由：
  * - GenOffice 上游的 shell Home 依赖其专属 preload/IPC（window.aiOffice），
@@ -19,8 +20,6 @@ import { Button } from '../components/ui/button';
 export interface GenOfficeHomeProps {
   /** 打开文件（native 选择器 → 按 kind 路由到 GenOffice 编辑器）。 */
   readonly onOpenFile: () => void;
-  /** 跳转设置页「AI（GenOffice）」选项卡。 */
-  readonly onOpenAiSettings: () => void;
 }
 
 /** 支持的文档格式卡片（信息展示 + 点击进入打开流程）。 */
@@ -51,7 +50,7 @@ const FORMATS = [
   },
 ] as const;
 
-export function GenOfficeHome({ onOpenFile, onOpenAiSettings }: GenOfficeHomeProps) {
+export function GenOfficeHome({ onOpenFile }: GenOfficeHomeProps) {
   return (
     <div className="flex h-full flex-col overflow-y-auto bg-surface text-text">
       <div className="mx-auto w-full max-w-3xl px-8 py-12">
@@ -110,13 +109,11 @@ export function GenOfficeHome({ onOpenFile, onOpenAiSettings }: GenOfficeHomePro
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium text-text">GenOffice 原生 AI</div>
               <p className="mt-1 text-xs text-text-secondary">
-                文档编辑器内置 AI 面板使用 GenOffice 自己的模型与密钥（自备密钥 BYOK），
-                与浏览器「AI 助手」（pi）完全隔离、互不读写配置。
+                文档编辑器内置 AI 面板使用 GenOffice 自己的模型与密钥（BYOK）， 与浏览器「AI
+                助手」（pi）完全隔离、互不读写配置。配置在文档首页 左下角「设置」弹窗的「AI 模型 /
+                AI 媒体」中维护。
               </p>
             </div>
-            <Button variant="secondary" size="sm" onClick={onOpenAiSettings}>
-              打开 AI 设置
-            </Button>
           </div>
         </section>
 

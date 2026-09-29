@@ -1317,7 +1317,7 @@ export const translateTargetLangSchema = z.enum(TRANSLATE_TARGET_LANGS);
  * 引擎选择：auto = 按网络环境自动（直连微软优先 / 走系统代理谷歌优先，双引擎互为兜底，
  * 判定规则见 main/translate/translate-manager.ts §7.5 设计），或手动锁定某一引擎。
  */
-export const translateEngineSettingSchema = z.enum(['auto', 'microsoft', 'google']);
+export const translateEngineSettingSchema = z.enum(['auto', 'microsoft', 'google', 'mymemory']);
 export type TranslateEngineSetting = z.infer<typeof translateEngineSettingSchema>;
 
 /** translate.start：对指定 tab 启动整页翻译（已激活时先恢复原文再重新采集）；返回后经 translate:progress 事件推送进度 */
@@ -1356,7 +1356,7 @@ export const translateGetStatusResSchema = z.object({
   /** 设置中的引擎选择（auto/microsoft/google） */
   engine: translateEngineSettingSchema.optional(),
   /** auto 解析 / 手动锁定后实际生效的引擎（failover 切换后随之更新） */
-  resolvedEngine: z.enum(['microsoft', 'google']).optional(),
+  resolvedEngine: z.enum(['microsoft', 'google', 'mymemory']).optional(),
   targetLang: z.string().optional(),
   segmentCount: z.number().int().nonnegative().optional(),
 });
@@ -1375,6 +1375,283 @@ export const translateSelectionResSchema = z.object({
   detectedLang: z.string().optional(),
 });
 export type TranslateSelectionRes = z.infer<typeof translateSelectionResSchema>;
+
+// ============================================================================
+// Mail 域（M25 邮箱模块 · imapflow + nodemailer + postal-mime）
+// ============================================================================
+
+/** 邮箱账户 ID：UUID v4 */
+export const mailAccountIdSchema = z.string().uuid();
+export type MailAccountId = z.infer<typeof mailAccountIdSchema>;
+
+/** IMAP UID：正整数，服务器分配的唯一标识 */
+export const mailUidSchema = z.number().int().positive();
+export type MailUid = z.infer<typeof mailUidSchema>;
+
+/** 邮箱账户（返回渲染层时不含密码——密码仅存 safeStorage） */
+export const mailAccountSchema = z.object({
+  id: mailAccountIdSchema,
+  name: z.string(),
+  email: z.string().email(),
+  imapHost: z.string(),
+  imapPort: z.number().int().positive().default(993),
+  imapSecure: z.boolean().default(true),
+  smtpHost: z.string().optional(),
+  smtpPort: z.number().int().positive().optional(),
+  smtpSecure: z.boolean().optional(),
+  createdAt: z.number().int(),
+});
+export type MailAccount = z.infer<typeof mailAccountSchema>;
+
+// --- mail.account.list ---
+
+export const mailAccountListReqSchema = z.object({});
+export type MailAccountListReq = z.infer<typeof mailAccountListReqSchema>;
+
+export const mailAccountListResSchema = z.object({
+  accounts: z.array(mailAccountSchema),
+});
+export type MailAccountListRes = z.infer<typeof mailAccountListResSchema>;
+
+// --- mail.account.add ---
+
+export const mailAccountAddReqSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  imapHost: z.string(),
+  imapPort: z.number().int().positive().default(993),
+  imapSecure: z.boolean().default(true),
+  password: z.string().min(1),
+  smtpHost: z.string().optional(),
+  smtpPort: z.number().int().positive().optional(),
+  smtpSecure: z.boolean().optional(),
+});
+export type MailAccountAddReq = z.infer<typeof mailAccountAddReqSchema>;
+
+export const mailAccountAddResSchema = z.object({
+  account: mailAccountSchema,
+});
+export type MailAccountAddRes = z.infer<typeof mailAccountAddResSchema>;
+
+// --- mail.account.delete ---
+
+export const mailAccountDeleteReqSchema = z.object({
+  accountId: mailAccountIdSchema,
+});
+export type MailAccountDeleteReq = z.infer<typeof mailAccountDeleteReqSchema>;
+
+export const mailAccountDeleteResSchema = z.object({
+  ok: z.literal(true),
+});
+export type MailAccountDeleteRes = z.infer<typeof mailAccountDeleteResSchema>;
+
+// --- mail.account.test ---
+
+export const mailAccountTestReqSchema = z.object({
+  imapHost: z.string(),
+  imapPort: z.number().int().positive().default(993),
+  imapSecure: z.boolean().default(true),
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+export type MailAccountTestReq = z.infer<typeof mailAccountTestReqSchema>;
+
+export const mailAccountTestResSchema = z.object({
+  ok: z.literal(true),
+  folders: z.array(z.string()).optional(),
+});
+export type MailAccountTestRes = z.infer<typeof mailAccountTestResSchema>;
+
+// --- 文件夹 ---
+
+export const mailFolderSchema = z.object({
+  path: z.string(),
+  name: z.string(),
+  delimiter: z.string().default('/'),
+  flags: z.array(z.string()).default([]),
+  exists: z.number().int(),
+  unseen: z.number().int(),
+});
+export type MailFolder = z.infer<typeof mailFolderSchema>;
+
+export const mailFolderListReqSchema = z.object({
+  accountId: mailAccountIdSchema,
+});
+export type MailFolderListReq = z.infer<typeof mailFolderListReqSchema>;
+
+export const mailFolderListResSchema = z.object({
+  folders: z.array(mailFolderSchema),
+  /** Phase 1 缓存：true = 从 SQLite 即时返回（后台 IMAP 刷新中） */
+  fromCache: z.boolean().default(false),
+});
+export type MailFolderListRes = z.infer<typeof mailFolderListResSchema>;
+
+// --- 邮件信封与摘要 ---
+
+export const mailMessageEnvelopeSchema = z.object({
+  subject: z.string(),
+  from: z.string(),
+  to: z.array(z.string()),
+  date: z.string(),
+  size: z.number().int(),
+});
+export type MailMessageEnvelope = z.infer<typeof mailMessageEnvelopeSchema>;
+
+export const mailMessageSummarySchema = z.object({
+  uid: mailUidSchema,
+  envelope: mailMessageEnvelopeSchema,
+  flags: z.array(z.string()).default([]),
+  folder: z.string(),
+});
+export type MailMessageSummary = z.infer<typeof mailMessageSummarySchema>;
+
+// --- mail.message.list ---
+
+export const mailMessageListReqSchema = z.object({
+  accountId: mailAccountIdSchema,
+  folder: z.string().default('INBOX'),
+  limit: z.number().int().positive().max(200).default(50),
+  offset: z.number().int().nonnegative().default(0),
+});
+export type MailMessageListReq = z.infer<typeof mailMessageListReqSchema>;
+
+export const mailMessageListResSchema = z.object({
+  messages: z.array(mailMessageSummarySchema),
+  total: z.number().int(),
+  /** Phase 1 缓存：true = 从 SQLite 即时返回（后台 IMAP 增量同步中） */
+  fromCache: z.boolean().default(false),
+});
+export type MailMessageListRes = z.infer<typeof mailMessageListResSchema>;
+
+// --- mail.message.fetch ---
+
+export const mailMessageFetchReqSchema = z.object({
+  accountId: mailAccountIdSchema,
+  folder: z.string(),
+  uid: mailUidSchema,
+});
+export type MailMessageFetchReq = z.infer<typeof mailMessageFetchReqSchema>;
+
+export const mailMessageFetchResSchema = z.object({
+  uid: mailUidSchema,
+  html: z.string().optional(),
+  text: z.string().optional(),
+  /** 邮件正文渲染 URL（urchin://mail-content/<token>）——HTML 经 sanitize + cid 重写
+   *  后存入主进程内容库，经协议路由以独立 CSP 下发（图片/样式不受主窗口 CSP 限制） */
+  contentUrl: z.string().optional(),
+  attachments: z
+    .array(
+      z.object({
+        filename: z.string(),
+        contentType: z.string(),
+        size: z.number().int(),
+      }),
+    )
+    .default([]),
+});
+export type MailMessageFetchRes = z.infer<typeof mailMessageFetchResSchema>;
+
+// --- mail.message.markRead ---
+
+export const mailMessageMarkReadReqSchema = z.object({
+  accountId: mailAccountIdSchema,
+  folder: z.string(),
+  uid: mailUidSchema,
+  seen: z.boolean(),
+});
+export type MailMessageMarkReadReq = z.infer<typeof mailMessageMarkReadReqSchema>;
+
+export const mailMessageMarkReadResSchema = z.object({
+  ok: z.literal(true),
+});
+export type MailMessageMarkReadRes = z.infer<typeof mailMessageMarkReadResSchema>;
+
+// --- mail.message.translate（M25 邮件翻译，复用 M24 引擎层） ---
+
+export const mailMessageTranslateReqSchema = z.object({
+  accountId: mailAccountIdSchema,
+  folder: z.string(),
+  uid: mailUidSchema,
+  /** 目标语言显式指定（缺省走中英自动判定：含 CJK → en，否则 zh-CN） */
+  targetLang: z.enum(['zh-CN', 'en']).optional(),
+});
+export type MailMessageTranslateReq = z.infer<typeof mailMessageTranslateReqSchema>;
+
+export const mailMessageTranslateResSchema = z.object({
+  /** 译文渲染 URL（urchin://mail-content/<token>，原邮件有 HTML 时返回） */
+  contentUrl: z.string().optional(),
+  /** 译文纯文本（原邮件仅纯文本时返回） */
+  text: z.string().optional(),
+  /** 引擎检测的源语言 */
+  detectedLang: z.string().optional(),
+  /** 实际生效引擎（failover 后为备用引擎） */
+  engine: z.enum(['microsoft', 'google', 'mymemory']),
+  /** 实际目标语言 */
+  targetLang: z.string(),
+});
+export type MailMessageTranslateRes = z.infer<typeof mailMessageTranslateResSchema>;
+
+// --- mail.message.send（W2 SMTP 发信） ---
+
+export const mailMessageSendReqSchema = z.object({
+  accountId: mailAccountIdSchema,
+  to: z.array(z.string().min(1)).min(1),
+  cc: z.array(z.string().min(1)).optional(),
+  bcc: z.array(z.string().min(1)).optional(),
+  subject: z.string(),
+  text: z.string(),
+  html: z.string().optional(),
+  /** 回复的原始邮件 UID（可选：回复时自动引用原文） */
+  inReplyToUid: mailUidSchema.optional(),
+  /** 附件列表（base64 编码内容，经 IPC 传输） */
+  attachments: z
+    .array(
+      z.object({
+        filename: z.string(),
+        contentType: z.string().optional(),
+        /** base64 编码的文件内容 */
+        contentBase64: z.string(),
+        size: z.number().int(),
+      }),
+    )
+    .optional(),
+});
+export type MailMessageSendReq = z.infer<typeof mailMessageSendReqSchema>;
+
+export const mailMessageSendResSchema = z.object({
+  ok: z.literal(true),
+  /** 已发送的 messageId（SMTP 返回） */
+  messageId: z.string().optional(),
+});
+export type MailMessageSendRes = z.infer<typeof mailMessageSendResSchema>;
+
+// --- mail.attachment.select（附件文件选择器） ---
+
+export const mailAttachmentSelectReqSchema = z.object({});
+export type MailAttachmentSelectReq = z.infer<typeof mailAttachmentSelectReqSchema>;
+
+export const mailAttachmentSelectResSchema = z.object({
+  attachments: z.array(
+    z.object({
+      filename: z.string(),
+      contentType: z.string(),
+      /** base64 编码的文件内容 */
+      contentBase64: z.string(),
+      size: z.number().int(),
+    }),
+  ),
+});
+export type MailAttachmentSelectRes = z.infer<typeof mailAttachmentSelectResSchema>;
+
+// --- 新邮件事件（单向推送，mail.event.newMessage） ---
+
+export const mailEventNewMessageSchema = z.object({
+  accountId: mailAccountIdSchema,
+  folder: z.string(),
+  uid: mailUidSchema,
+  envelope: mailMessageEnvelopeSchema,
+});
+export type MailEventNewMessage = z.infer<typeof mailEventNewMessageSchema>;
 
 // ============================================================================
 // IPC Schema 总表
@@ -1480,6 +1757,24 @@ export const ipcSchema = {
   'translate.translateSelection': {
     req: translateSelectionReqSchema,
     res: translateSelectionResSchema,
+  },
+  // Mail 域（M25 邮箱模块）
+  'mail.account.list': { req: mailAccountListReqSchema, res: mailAccountListResSchema },
+  'mail.account.add': { req: mailAccountAddReqSchema, res: mailAccountAddResSchema },
+  'mail.account.delete': { req: mailAccountDeleteReqSchema, res: mailAccountDeleteResSchema },
+  'mail.account.test': { req: mailAccountTestReqSchema, res: mailAccountTestResSchema },
+  'mail.folder.list': { req: mailFolderListReqSchema, res: mailFolderListResSchema },
+  'mail.message.list': { req: mailMessageListReqSchema, res: mailMessageListResSchema },
+  'mail.message.fetch': { req: mailMessageFetchReqSchema, res: mailMessageFetchResSchema },
+  'mail.message.markRead': { req: mailMessageMarkReadReqSchema, res: mailMessageMarkReadResSchema },
+  'mail.message.translate': {
+    req: mailMessageTranslateReqSchema,
+    res: mailMessageTranslateResSchema,
+  },
+  'mail.message.send': { req: mailMessageSendReqSchema, res: mailMessageSendResSchema },
+  'mail.attachment.select': {
+    req: mailAttachmentSelectReqSchema,
+    res: mailAttachmentSelectResSchema,
   },
 } as const;
 

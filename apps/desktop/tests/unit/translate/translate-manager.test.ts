@@ -148,6 +148,12 @@ function createEnv(options?: {
       Promise.resolve({ texts: texts.map((t) => `【谷歌】${t}`), detectedLang: 'en' }),
     ),
   };
+  const mymemory = {
+    id: 'mymemory' as const,
+    translateBatch: vi.fn((texts: readonly string[]) =>
+      Promise.resolve({ texts: texts.map((t) => `【MyMemory】${t}`), detectedLang: 'en' }),
+    ),
+  };
   const resolveProxy = vi.fn().mockResolvedValue(options?.proxyInfo ?? 'DIRECT');
   const progressEvents: TranslateProgressPayload[] = [];
 
@@ -155,11 +161,11 @@ function createEnv(options?: {
     tabManager,
     settings: { get: (key: string) => settings.get(key) },
     resolveProxy,
-    engines: { microsoft, google },
+    engines: { microsoft, google, mymemory },
     notifyProgress: (tabId, payload) => progressEvents.push(payload),
   });
 
-  return { manager, wc, tabs, settings, microsoft, google, resolveProxy, progressEvents };
+  return { manager, wc, tabs, settings, microsoft, google, mymemory, resolveProxy, progressEvents };
 }
 
 afterEach(() => {
@@ -171,7 +177,7 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('TranslateManager.start（整页翻译主干）', () => {
-  it('should collect, translate via microsoft (DIRECT) and apply to page', async () => {
+  it('should collect, translate via mymemory (DIRECT) and apply to page', async () => {
     const env = createEnv();
 
     const res = await env.manager.start(1);
@@ -181,11 +187,11 @@ describe('TranslateManager.start（整页翻译主干）', () => {
 
     await env.manager.whenSettled(1);
 
-    expect(env.microsoft.translateBatch).toHaveBeenCalled();
+    expect(env.mymemory.translateBatch).toHaveBeenCalled();
     expect(env.google.translateBatch).not.toHaveBeenCalled();
     expect(env.wc._applied[0]).toEqual([
-      { id: 1, text: '【译】Hello' },
-      { id: 2, text: '【译】World' },
+      { id: 1, text: '【MyMemory】Hello' },
+      { id: 2, text: '【MyMemory】World' },
     ]);
     const phases = env.progressEvents.map((e) => e.phase);
     expect(phases).toContain('collecting');
@@ -200,7 +206,7 @@ describe('TranslateManager.start（整页翻译主干）', () => {
     await env.manager.whenSettled(1);
 
     expect(env.google.translateBatch).toHaveBeenCalled();
-    expect(env.microsoft.translateBatch).not.toHaveBeenCalled();
+    expect(env.mymemory.translateBatch).not.toHaveBeenCalled();
   });
 
   it('should cache the auto engine resolution across starts', async () => {
@@ -214,10 +220,10 @@ describe('TranslateManager.start（整页翻译主干）', () => {
     expect(env.resolveProxy).toHaveBeenCalledTimes(1);
   });
 
-  it('should failover to google when microsoft keeps failing and notify once', async () => {
+  it('should failover to google when mymemory keeps failing and notify once', async () => {
     const env = createEnv();
-    env.microsoft.translateBatch.mockRejectedValue(
-      new EngineError('microsoft', 'rate_limited', '429'),
+    env.mymemory.translateBatch.mockRejectedValue(
+      new EngineError('mymemory', 'rate_limited', '429'),
     );
 
     await env.manager.start(1);
@@ -229,10 +235,11 @@ describe('TranslateManager.start（整页翻译主干）', () => {
     expect(env.manager.getStatus(1)).toMatchObject({ active: true, resolvedEngine: 'google' });
   });
 
-  it('should finish with failed-count message when both engines fail', async () => {
+  it('should finish with failed-count message when all engines fail', async () => {
     const env = createEnv();
-    env.microsoft.translateBatch.mockRejectedValue(new EngineError('microsoft', 'network', 'down'));
+    env.mymemory.translateBatch.mockRejectedValue(new EngineError('mymemory', 'network', 'down'));
     env.google.translateBatch.mockRejectedValue(new EngineError('google', 'network', 'down'));
+    env.microsoft.translateBatch.mockRejectedValue(new EngineError('microsoft', 'network', 'down'));
 
     await env.manager.start(1);
     await env.manager.whenSettled(1);
@@ -249,7 +256,7 @@ describe('TranslateManager.start（整页翻译主干）', () => {
 
     expect(res.status).toBe('skipped');
     expect(res.detectedLang).toBe('en');
-    expect(env.microsoft.translateBatch).not.toHaveBeenCalled();
+    expect(env.mymemory.translateBatch).not.toHaveBeenCalled();
     expect(env.wc._tornDown.value).toBe(true); // 页面运行时已拆除
     expect(env.manager.getStatus(1).active).toBe(false);
   });
@@ -266,7 +273,7 @@ describe('TranslateManager 自动翻译（TD4 开关制）', () => {
 
     env.wc.fire('did-finish-load');
     await vi.waitFor(() => {
-      expect(env.microsoft.translateBatch).toHaveBeenCalled();
+      expect(env.mymemory.translateBatch).toHaveBeenCalled();
     });
     await env.manager.whenSettled(1);
     expect(env.manager.getStatus(1).active).toBe(true);
@@ -278,7 +285,7 @@ describe('TranslateManager 自动翻译（TD4 开关制）', () => {
     env.wc.fire('did-finish-load');
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(env.microsoft.translateBatch).not.toHaveBeenCalled();
+    expect(env.mymemory.translateBatch).not.toHaveBeenCalled();
     expect(env.manager.getStatus(1).active).toBe(false);
   });
 
@@ -291,7 +298,7 @@ describe('TranslateManager 自动翻译（TD4 开关制）', () => {
     env.wc.fire('did-finish-load');
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(env.microsoft.translateBatch).not.toHaveBeenCalled();
+    expect(env.mymemory.translateBatch).not.toHaveBeenCalled();
   });
 
   it('should not auto-translate on non-http(s) pages', async () => {
@@ -303,7 +310,7 @@ describe('TranslateManager 自动翻译（TD4 开关制）', () => {
     env.wc.fire('did-finish-load');
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    expect(env.microsoft.translateBatch).not.toHaveBeenCalled();
+    expect(env.mymemory.translateBatch).not.toHaveBeenCalled();
   });
 });
 
@@ -313,14 +320,14 @@ describe('TranslateManager 导航重译与停止', () => {
 
     await env.manager.start(1);
     await env.manager.whenSettled(1);
-    expect(env.microsoft.translateBatch).toHaveBeenCalledTimes(1);
+    expect(env.mymemory.translateBatch).toHaveBeenCalledTimes(1);
 
     // 导航：页面世界重建，激活态自动重译；同文本命中缓存 → 引擎不再被调用
     env.wc.fire('did-finish-load');
     await vi.waitFor(() => {
       expect(env.wc._applied).toHaveLength(2); // 首轮 + 重译轮各一次 apply
     });
-    expect(env.microsoft.translateBatch).toHaveBeenCalledTimes(1);
+    expect(env.mymemory.translateBatch).toHaveBeenCalledTimes(1);
   });
 
   it('should restore original text and go idle on stop', async () => {
@@ -340,21 +347,21 @@ describe('TranslateManager 导航重译与停止', () => {
 });
 
 describe('TranslateManager.translateSelection（划词翻译）', () => {
-  it('should use auto-resolved engine and return single result', async () => {
+  it('should use auto-resolved engine (mymemory on DIRECT) and return single result', async () => {
     const env = createEnv();
 
     const res = await env.manager.translateSelection(1, 'Hello world');
 
-    expect(res.result).toBe('【译】Hello world');
-    expect(env.microsoft.translateBatch).toHaveBeenCalledWith(['Hello world'], {
+    expect(res.result).toBe('【MyMemory】Hello world');
+    expect(env.mymemory.translateBatch).toHaveBeenCalledWith(['Hello world'], {
       to: 'zh-CN',
       signal: undefined,
     });
   });
 
-  it('should fall back to the other engine when the primary fails', async () => {
+  it('should fall back to google when the primary (mymemory) fails', async () => {
     const env = createEnv();
-    env.microsoft.translateBatch.mockRejectedValue(new EngineError('microsoft', 'network', 'down'));
+    env.mymemory.translateBatch.mockRejectedValue(new EngineError('mymemory', 'network', 'down'));
 
     const res = await env.manager.translateSelection(1, 'Hello');
 
@@ -368,5 +375,49 @@ describe('TranslateManager.translateSelection（划词翻译）', () => {
 
     expect(env.resolveProxy).not.toHaveBeenCalled();
     expect(env.google.translateBatch).toHaveBeenCalled();
+  });
+});
+
+describe('TranslateManager.translateTexts（M25 邮件翻译复用入口）', () => {
+  it('should translate text array via auto-resolved engine (mymemory on DIRECT) and return engine id', async () => {
+    const env = createEnv();
+
+    const res = await env.manager.translateTexts(['Hello', 'World'], 'zh-CN');
+
+    expect(res.texts).toEqual(['【MyMemory】Hello', '【MyMemory】World']);
+    expect(res.engine).toBe('mymemory');
+    expect(res.detectedLang).toBe('en');
+    expect(env.mymemory.translateBatch).toHaveBeenCalledWith(['Hello', 'World'], {
+      to: 'zh-CN',
+      signal: undefined,
+    });
+  });
+
+  it('should fall back to secondary engine and report actual engine used', async () => {
+    const env = createEnv();
+    env.mymemory.translateBatch.mockRejectedValue(new EngineError('mymemory', 'network', 'down'));
+
+    const res = await env.manager.translateTexts(['Hello'], 'zh-CN');
+
+    expect(res.texts).toEqual(['【谷歌】Hello']);
+    expect(res.engine).toBe('google');
+  });
+
+  it('should throw when all engines fail', async () => {
+    const env = createEnv();
+    env.mymemory.translateBatch.mockRejectedValue(new EngineError('mymemory', 'network', 'down'));
+    env.google.translateBatch.mockRejectedValue(new EngineError('google', 'network', 'down'));
+    env.microsoft.translateBatch.mockRejectedValue(new EngineError('microsoft', 'network', 'down'));
+
+    await expect(env.manager.translateTexts(['Hello'], 'zh-CN')).rejects.toThrow();
+  });
+
+  it('should respect manually locked engine', async () => {
+    const env = createEnv({ settings: { 'translate.engine': 'google' } });
+
+    const res = await env.manager.translateTexts(['Hello'], 'zh-CN');
+
+    expect(env.resolveProxy).not.toHaveBeenCalled();
+    expect(res.engine).toBe('google');
   });
 });

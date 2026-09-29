@@ -66,6 +66,61 @@ export const MIGRATIONS_MAIN: readonly Migration[] = [
       );
     `,
   },
+  // M25 邮箱模块：账户/文件夹/邮件缓存。密码不落 SQLite，走 safeStorage。
+  // 表名以 mail_ 前缀隔离，与其他模块无外键关联（ON DELETE CASCADE 仅在 mail_ 表间生效）。
+  {
+    version: 2,
+    up: `
+      CREATE TABLE IF NOT EXISTS mail_accounts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        imap_host TEXT NOT NULL,
+        imap_port INTEGER NOT NULL,
+        imap_secure INTEGER NOT NULL DEFAULT 1,
+        smtp_host TEXT,
+        smtp_port INTEGER,
+        smtp_secure INTEGER,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS mail_folders (
+        account_id TEXT NOT NULL REFERENCES mail_accounts(id) ON DELETE CASCADE,
+        path TEXT NOT NULL,
+        name TEXT NOT NULL,
+        delimiter TEXT NOT NULL DEFAULT '/',
+        flags TEXT NOT NULL DEFAULT '[]',
+        msg_count INTEGER NOT NULL DEFAULT 0,
+        unseen INTEGER NOT NULL DEFAULT 0,
+        last_synced_at INTEGER,
+        PRIMARY KEY (account_id, path)
+      );
+
+      CREATE TABLE IF NOT EXISTS mail_messages (
+        account_id TEXT NOT NULL REFERENCES mail_accounts(id) ON DELETE CASCADE,
+        folder TEXT NOT NULL,
+        uid INTEGER NOT NULL,
+        subject TEXT,
+        from_addr TEXT,
+        to_addrs TEXT,
+        date TEXT,
+        size INTEGER,
+        flags TEXT NOT NULL DEFAULT '[]',
+        fetched_at INTEGER,
+        PRIMARY KEY (account_id, folder, uid)
+      );
+      CREATE INDEX IF NOT EXISTS idx_mail_messages_folder
+        ON mail_messages(account_id, folder, date DESC);
+    `,
+  },
+  // M25 邮箱缓存持久化（Phase 1）：正文缓存列——已读过的邮件正文不重新拉取
+  {
+    version: 3,
+    up: `
+      ALTER TABLE mail_messages ADD COLUMN body_html TEXT;
+      ALTER TABLE mail_messages ADD COLUMN body_text TEXT;
+    `,
+  },
 ];
 
 /** AI 库迁移列表（conversations/messages/providers/secrets_index） */

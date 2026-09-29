@@ -173,12 +173,13 @@ const GENERAL_FIELDS: readonly SettingField[] = [
   {
     key: 'translate.engine',
     label: '翻译引擎',
-    desc: '自动（推荐）：直连网络优先微软翻译、走代理优先谷歌翻译，任一引擎失败自动切换另一家；也可手动锁定单一引擎',
+    desc: '自动（推荐）：直连网络优先 MyMemory 翻译、走代理优先谷歌翻译，引擎失败自动切换至其他可用引擎（三引擎互为兜底）；也可手动锁定单一引擎。注：微软免费端点已于 2026-09 关闭，保留选项但可能不可用',
     type: 'select',
     options: [
       { value: 'auto', label: '自动（推荐）' },
-      { value: 'microsoft', label: '微软翻译' },
-      { value: 'google', label: '谷歌翻译' },
+      { value: 'mymemory', label: 'MyMemory 翻译（国内直连可用）' },
+      { value: 'google', label: '谷歌翻译（需代理）' },
+      { value: 'microsoft', label: '微软翻译（端点已关闭，可能不可用）' },
     ],
   },
   {

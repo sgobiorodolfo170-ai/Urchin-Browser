@@ -107,7 +107,9 @@ export function sanitizeTargetLang(value: unknown): TranslateTargetLang {
 
 /** 校验引擎设置值，非法回退 auto */
 export function sanitizeEngineSetting(value: unknown): TranslateEngineSetting {
-  return value === 'microsoft' || value === 'google' || value === 'auto' ? value : 'auto';
+  return value === 'microsoft' || value === 'google' || value === 'mymemory' || value === 'auto'
+    ? value
+    : 'auto';
 }
 
 /**
@@ -367,16 +369,47 @@ export class TranslateManager {
     const to = sanitizeTargetLang(targetLang ?? this.deps.settings.get('translate.targetLang'));
     const engineSetting = sanitizeEngineSetting(this.deps.settings.get('translate.engine'));
     const primary = engineSetting === 'auto' ? await this.resolveAutoEngine() : engineSetting;
-    const secondary: EngineId = primary === 'microsoft' ? 'google' : 'microsoft';
+    const chain = this.resolveEngineChain(primary);
 
     let lastError: unknown;
-    for (const engineId of [primary, secondary]) {
+    for (const engineId of chain) {
       try {
         const result = await this.callEngine(engineId, [text.slice(0, SELECTION_MAX_CHARS)], to);
         return { result: result.texts[0] ?? '', detectedLang: result.detectedLang };
       } catch (err) {
         lastError = err;
         log.warn('selection translate failed, trying fallback', {
+          engineId,
+          code: err instanceof EngineError ? err.code : 'unknown',
+        });
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
+  /**
+   * 通用文本批翻译（M25 邮件翻译复用入口，2026-09-26 追加）。
+   *
+   * 与 translateSelection 共用引擎设置解析（translate.engine）与
+   * primary→secondary failover；差别：入参为文本数组（分段由调用方完成），
+   * 返回实际生效引擎供 UI 徽标展示。M24 既有行为零改动。
+   */
+  async translateTexts(
+    texts: readonly string[],
+    targetLang: string,
+  ): Promise<{ texts: string[]; detectedLang?: string; engine: EngineId }> {
+    const engineSetting = sanitizeEngineSetting(this.deps.settings.get('translate.engine'));
+    const primary = engineSetting === 'auto' ? await this.resolveAutoEngine() : engineSetting;
+    const chain = this.resolveEngineChain(primary);
+
+    let lastError: unknown;
+    for (const engineId of chain) {
+      try {
+        const result = await this.callEngine(engineId, texts, targetLang);
+        return { texts: result.texts, detectedLang: result.detectedLang, engine: engineId };
+      } catch (err) {
+        lastError = err;
+        log.warn('translateTexts failed, trying fallback', {
           engineId,
           code: err instanceof EngineError ? err.code : 'unknown',
         });
@@ -486,14 +519,27 @@ export class TranslateManager {
     try {
       proxyInfo = await this.deps.resolveProxy('https://translate.googleapis.com/');
     } catch (err) {
-      log.warn('resolveProxy failed, default to microsoft', {
+      log.warn('resolveProxy failed, default to mymemory (direct)', {
         error: err instanceof Error ? err.message : String(err),
       });
     }
-    const prefer: EngineId = /proxy|socks/i.test(proxyInfo) ? 'google' : 'microsoft';
+    // 2026-09-27：微软 Edge 免费端点已关闭（404）；直连环境改用 MyMemory 兜底引擎。
+    // PROXY/SOCKS → 谷歌（代理可达）；DIRECT → MyMemory（国内直连可用）。
+    const prefer: EngineId = /proxy|socks/i.test(proxyInfo) ? 'google' : 'mymemory';
     this.autoEngineCache = prefer;
     log.info('auto engine resolved', { proxyInfo, prefer });
     return prefer;
+  }
+
+  /**
+   * 引擎故障转移链：[primary, ...其余引擎按偏好排序]。
+   * 微软端点虽已失效（404），仍保留在链尾——若区域/时间窗口内恢复可作最终兜底。
+   * 偏好顺序：MyMemory（国内直连）→ Google（代理）→ Microsoft（失效但保留代码）。
+   */
+  private resolveEngineChain(primary: EngineId): EngineId[] {
+    const preference: EngineId[] = ['mymemory', 'google', 'microsoft'];
+    const rest = preference.filter((e) => e !== primary);
+    return [primary, ...rest];
   }
 
   /** 引擎调用 + HTTP 超时兜底（免费接口无 SLA，超时按失败走 failover） */
@@ -537,8 +583,11 @@ export class TranslateManager {
     items: readonly string[],
   ): Promise<{ texts: string[]; detectedLang?: string }> {
     const primary = state.resolvedEngine;
-    const secondary: EngineId = primary === 'microsoft' ? 'google' : 'microsoft';
-    const attempts: EngineId[] = [primary, primary, secondary];
+    const chain = this.resolveEngineChain(primary);
+    // 主引擎重试一次后走链；引擎名→中文展示名（含 mymemory）
+    const engineLabel = (eid: EngineId): string =>
+      eid === 'microsoft' ? '微软' : eid === 'google' ? '谷歌' : 'MyMemory';
+    const attempts: EngineId[] = [primary, primary, ...chain.filter((e) => e !== primary)];
     let lastError: unknown;
     for (const engineId of attempts) {
       if (!this.isCurrent(tabId, state)) throw new Error('translation superseded');
@@ -557,7 +606,7 @@ export class TranslateManager {
               phase: 'translating',
               done: state.done,
               total: state.total,
-              message: `已切换至${engineId === 'microsoft' ? '微软' : '谷歌'}翻译引擎`,
+              message: `已切换至${engineLabel(engineId)}翻译引擎`,
             });
           }
         }

@@ -237,6 +237,8 @@ export function registerUrchinProtocol(opts?: {
   isBrowserDarkTheme?: () => boolean;
   /** pi 页 UI 状态文件路径（dev.67：urchin://pi-ui-state 读写端点落盘位置） */
   piUiStateFile?: string;
+  /** M25 邮箱正文内容查询（urchin://mail-content/<token> → 已 sanitize 的 HTML） */
+  getMailContent?: (token: string) => string | null;
 }): void {
   /**
    * pi 页主题跟随端点（pi-theme host，dev.48）：返回浏览器当前主题
@@ -348,6 +350,38 @@ export function registerUrchinProtocol(opts?: {
           '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>AI 助手</title></head><body></body></html>',
           { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
         );
+      }
+
+      if (host === 'mail') {
+        // M25 邮箱模块页由主窗口 React 组件渲染（MailView），BrowserView 仅加载空白页面。
+        return new Response(
+          '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>邮箱</title></head><body></body></html>',
+          { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+        );
+      }
+
+      if (host === 'mail-content') {
+        // M25 邮件正文渲染文档：独立 CSP 下发——default-src 'none' 阻断脚本/连接，
+        // 仅放行图片/样式/字体/媒体（http/https/data），与主窗口 CSP 解耦（主窗口不放宽）。
+        // 内容由 mail-html.ts sanitize + cid 重写预处理，渲染侧 iframe sandbox 兜底。
+        // token 为 UUID 一次性映射（MailContentStore 内存态，TTL 10min），不可枚举。
+        const token = url.pathname.replace(/^\//, '');
+        const html = token ? opts?.getMailContent?.(token) : null;
+        log.info('mail-content request', { token, hit: html != null });
+        if (html == null) {
+          return new Response('Not Found', {
+            status: 404,
+            headers: { 'Content-Type': 'text/plain' },
+          });
+        }
+        return new Response(html, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Content-Security-Policy':
+              "default-src 'none'; img-src http: https: data:; style-src 'unsafe-inline' http: https:; font-src http: https: data:; media-src http: https: data:",
+          },
+        });
       }
 
       if (host === 'panel') {

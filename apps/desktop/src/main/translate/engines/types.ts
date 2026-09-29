@@ -12,8 +12,9 @@
  *   保证可单测性（与 TabManager 注入 BrowserViewFactory 同一思路）
  */
 
-/** 引擎 ID（v1 内置双引擎） */
-export type EngineId = 'microsoft' | 'google';
+/** 引擎 ID（v1 内置引擎；mymemory 为 2026-09-27 新增的国内直连兜底引擎——
+ *  微软 Edge 免费端点已关闭 404，谷歌国内直连不可达） */
+export type EngineId = 'microsoft' | 'google' | 'mymemory';
 
 /**
  * HTTP 传输抽象。

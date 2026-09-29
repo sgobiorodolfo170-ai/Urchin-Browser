@@ -99,8 +99,10 @@ import { installTabContextMenu, handleContextMenu } from './context-menu';
 import { installZoomControl, applyZoomByDelta } from './zoom';
 import { TranslateManager, TRANSLATE_PROGRESS_CHANNEL } from './translate/translate-manager';
 import { registerTranslateHandlers } from './translate/register-handlers';
+import { registerMailHandlers, MailManager, MailStorage, MailContentStore } from './mail';
 import { createMicrosoftEngine } from './translate/engines/microsoft';
 import { createGoogleEngine } from './translate/engines/google';
+import { createMyMemoryEngine } from './translate/engines/mymemory';
 import type { HttpTransport } from './translate/engines/types';
 import { resolvePortableUserData } from './portable';
 
@@ -458,6 +460,14 @@ let piWebLauncher: PiWebLauncher | null = null;
 let storageLayer: StorageLayer | null = null;
 
 /**
+ * M25 邮箱正文内容库（在 whenReady 中赋值）。
+ * 协议路由 urchin://mail-content/<token> 据此取已 sanitize 的 HTML 下发；
+ * registerUrchinProtocol 的 getMailContent 回调以闭包引用本变量（惰性求值——
+ * 请求到达时本变量已初始化，无启动时序问题）。
+ */
+let mailContentStore: MailContentStore | null = null;
+
+/**
  * 退出清理标志位：避免 before-quit 与 window-all-closed / SIGINT 重复执行清理。
  * 第一次进入清理流程时置为 true，后续直接退出。
  */
@@ -652,6 +662,11 @@ function registerIpcHandlers(): void {
           ? { transport: translateHttpTransport, baseUrl: `${translateTestBase}/google` }
           : { transport: translateHttpTransport },
       ),
+      mymemory: createMyMemoryEngine(
+        translateTestBase
+          ? { transport: translateHttpTransport, baseUrl: `${translateTestBase}/mymemory` }
+          : { transport: translateHttpTransport },
+      ),
     },
   });
   registerTranslateHandlers({ ipcMain, translateManager, tabManager });
@@ -791,6 +806,30 @@ function registerIpcHandlers(): void {
   // 文件关联域 handler（默认应用）：注册/查询 HKCU 文件关联
   // 使用 process.execPath 作为打开命令的可执行文件路径
   registerFileAssociationHandlers({ ipcMain, exePath: process.execPath });
+
+  // M25 邮箱域 handler（imapflow + nodemailer + postal-mime）
+  if (storageLayer) {
+    if (!translateManagerRef) {
+      throw new Error('translateManager must be registered before mail handlers');
+    }
+    mailContentStore = new MailContentStore();
+    const mailStorage = new MailStorage(
+      storageLayer.mainStore.query.bind(storageLayer.mainStore),
+      storageLayer.mainStore.run.bind(storageLayer.mainStore),
+    );
+    const mailManager = new MailManager(mailStorage, storageLayer.secrets, mailContentStore);
+    registerMailHandlers({
+      ipcMain,
+      mailManager,
+      translateManager: translateManagerRef,
+      getMainWindow: () => {
+        const managed = windowManager.getAllWindows()[0];
+        const wc = managed?.browserWindow?.webContents;
+        if (!wc) return null;
+        return wc as unknown as import('electron').WebContents;
+      },
+    });
+  }
 
   // UI 域 handler：布局状态切换（左/右侧栏宽度 + 下侧栏高度 + 内容区可见性）
   registerHandler(ipcMain, 'ui.layout.setState', (req) => {
@@ -1195,6 +1234,9 @@ void app.whenReady().then(() => {
     // dev.67：pi 页 UI 状态（分割线宽度/折叠/项目排序）持久化文件——
     // pi 端口随机致页面 localStorage 不可跨会话，改由主进程落盘
     piUiStateFile: join(startupUserDataPath, PI_DIR_NAME, 'ui-state.json'),
+    // M25：邮箱正文内容查询（urchin://mail-content/<token>）——
+    // 惰性闭包引用模块级 mailContentStore（请求到达时已初始化）
+    getMailContent: (token) => mailContentStore?.get(token) ?? null,
   });
 
   // 初始化需要文件系统 / SQLite 的模块（W6：移入 whenReady 避免模块加载阶段崩溃）

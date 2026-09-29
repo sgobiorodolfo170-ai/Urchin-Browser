@@ -35,12 +35,14 @@ import {
   FileText,
   ChevronRight,
   ChevronDown,
+  Mail as MailIcon,
 } from 'lucide-react';
 import { Button } from './components/ui/button';
 import { Omnibox } from './omnibox/omnibox';
 // 回退提示：旧对话视图 AiChatView(@urchin/ai-extension)在阶段 1 启动器切换时移出渲染树,
 // 恢复时重新 import 并在 isAiTab 分支渲染即可（配套:const host = useMemo(() => createHostFromUrchin(), [])）
 import { PiWebLauncherView } from './pi-web/launcher-view';
+import { MailView } from './mail/MailView';
 import { SettingsPage } from './settings/SettingsPage';
 import { NewTabPage } from './home/NewTabPage';
 import { GenOfficeHome } from './home/GenOfficeHome';
@@ -1111,6 +1113,33 @@ export function App() {
   }, [tabs, activeTabId]);
 
   /**
+   * 打开邮箱标签页（M25）：toggle 模式——已存在则激活，否则创建。
+   * 与 handleOpenAi 同模式：urchin://mail 内部页由 React MailView 渲染。
+   */
+  const handleOpenMail = useCallback(async () => {
+    const existing = tabs.find((t) => t.url?.startsWith('urchin://mail'));
+    if (existing) {
+      if (existing.id !== activeTabId) {
+        try {
+          await window.urchin.invoke('tab.setActive', { tabId: existing.id });
+        } catch (e) {
+          console.error('Failed to activate mail tab:', e);
+        }
+      }
+      return;
+    }
+    try {
+      await window.urchin.invoke('tab.create', {
+        windowId: await getCurrentWindowId(),
+        url: 'urchin://mail',
+        active: true,
+      });
+    } catch (e) {
+      console.error('Failed to open mail tab:', e);
+    }
+  }, [tabs, activeTabId]);
+
+  /**
    * 打开 pi 网页版 URL（阶段 1 启动器视图回调）：新开标签页加载。
    * 启动器标签页（urchin://ai）保持打开,随时可返回停止服务。
    */
@@ -1509,6 +1538,7 @@ export function App() {
   // 所以用 startsWith 判断而非严格相等，避免匹配失败导致组件不渲染。
   const isSettingsTab = !!activeTab?.url?.startsWith('urchin://settings');
   const isAiTab = !!activeTab?.url?.startsWith('urchin://ai');
+  const isMailTab = !!activeTab?.url?.startsWith('urchin://mail');
   const isGenOfficeHomeTab = !!activeTab?.url?.startsWith('urchin://genoffice-home');
   const isNewTab = !!activeTab?.url?.startsWith('urchin://newtab');
   const isFileViewerTab = !!activeTab?.url?.startsWith('urchin://file-viewer');
@@ -1522,7 +1552,13 @@ export function App() {
   // 内部页面（settings / ai / genoffice-home / newtab / file-viewer / genoffice）
   // 下，导航按钮无意义，禁用
   const isInternalPage =
-    isSettingsTab || isAiTab || isGenOfficeHomeTab || isNewTab || isFileViewerTab || isGenOfficeTab;
+    isSettingsTab ||
+    isAiTab ||
+    isMailTab ||
+    isGenOfficeHomeTab ||
+    isNewTab ||
+    isFileViewerTab ||
+    isGenOfficeTab;
 
   // 设置页深链参数（?tab=<key>）：调用方以 key 绑定该值驱动 SettingsPage 初始选项卡
   const settingsInitialTab = (() => {
@@ -1635,6 +1671,14 @@ export function App() {
           </button>
           <button
             className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+            onClick={() => void handleOpenMail()}
+            aria-label="邮箱"
+            title="邮箱"
+          >
+            <MailIcon className="h-4 w-4" />
+          </button>
+          <button
+            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
             onClick={toggleTheme}
             aria-label="切换主题"
             title="切换主题"
@@ -1673,6 +1717,10 @@ export function App() {
                * 独立系统 Node 子进程的 pi-web-ui 网页,本页仅作入口（启动/停止/打开）。
                * 旧对话视图 AiChatView 保留于 @urchin/ai-extension,回退时恢复渲染即可。 */
               <PiWebLauncherView autoStart onOpenUrl={(url) => void handleOpenPiWebUrl(url)} />
+            ) : isMailTab ? (
+              /* M25 邮箱模块：IMAP 收信 + 邮件阅读（ADR-010）。
+               * 引擎在主进程（imapflow），UI 在渲染进程，IPC 走 zod 契约。 */
+              <MailView />
             ) : isGenOfficeHomeTab && !isGenOfficeTab ? (
               /* GenOffice 文档主页保底（阶段 4.6）：正常情况下主进程以
                *  GenOffice shell Home 视图承载（viewKind=genoffice，React 留空）；

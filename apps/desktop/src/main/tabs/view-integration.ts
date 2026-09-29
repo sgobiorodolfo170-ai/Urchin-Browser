@@ -41,6 +41,7 @@ const DEFAULT_BOTTOM_HEIGHT = 48;
 const URCHIN_RENDERER_HOSTS = [
   'urchin://settings',
   'urchin://ai',
+  'urchin://mail',
   'urchin://newtab',
   'urchin://file-viewer',
   'urchin://genoffice-home',

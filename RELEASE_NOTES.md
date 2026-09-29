@@ -1,5 +1,7 @@
 # Urchin Browser v0.1.0 Release Notes
 
+> **本文件为 v0.1.0 首发（2026-07-29）历史快照**，反映发布时点状态。此后 dev.1–dev.101 的持续迭代（GenOffice 编辑器融合、pi-web、M24 网页翻译、本地文件查看/编辑等）见 [CHANGELOG.md](./CHANGELOG.md)；项目现状见 [README.md](./README.md)。
+
 **发布日期**：2026-07-29
 **版本**：v0.1.0（MVP 最小闭环 + per-provider 强隔离架构）
 
@@ -24,7 +26,7 @@ Urchin Browser v0.1.0 是首个可安装的里程碑版本，基于 Electron / �
 
 ### AI 能力
 
-- **AI Orchestrator**（M11）：per-provider 子进程隔离 + 心跳监控（30s）+ 空闲回收（5min）+ crash 自动重建 + 令牌桶限流 + 指数退避重试 + 流式传输
+- **AI Orchestrator**（M11）：per-provider 子进程隔离 + 心跳监控（5s 间隔 / 15s 超时）+ 空闲回收（5min）+ crash 自动重建 + 令牌桶限流 + 指数退避重试 + 流式传输
 - **Provider Plugin API**（M12）：完整契约 v1 + 版本协商 + 能力声明
 - **AI Side Panel**（M13）：流式对话渲染 + 页面上下文注入
 - **Page Context Extractor**（M14）：Readability 正文抽取 + prompt builder

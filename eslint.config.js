@@ -102,7 +102,7 @@ export default tseslint.config(
 
   // 测试文件放宽
   {
-    files: ['**/*.test.ts', '**/*.test.tsx', '**/*.integration.test.ts', '**/*.e2e.ts'],
+    files: ['**/*.test.ts', '**/*.test.tsx', '**/*.integration.test.ts', '**/*.spec.ts'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-explicit-any': 'off',

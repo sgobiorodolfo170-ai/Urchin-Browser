@@ -110,3 +110,7 @@ apps/desktop/launch-v8-debug.ps1
 apps/desktop/launch-v8-logged.ps1
 apps/desktop/verify-asar.ps1
 apps/desktop/v8-launch.log
+
+# AOCI agent host integration (machine-bound; do not commit)
+opencode.json
+opencode.json.backup.*

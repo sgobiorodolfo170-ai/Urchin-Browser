@@ -17,7 +17,7 @@ describe('GenOfficeHome', () => {
     }
     expect(screen.getByRole('button', { name: /打开文件/ })).toBeInTheDocument();
     // AI 配置入口已移至文档首页（shell Home）左下角设置弹窗；本页仅展示说明
-    expect(screen.getByText(/配置在文档首页左下角/)).toBeInTheDocument();
+    expect(screen.getByText(/配置在文档首页\s*左下角/)).toBeInTheDocument();
   });
 
   it('should call onOpenFile from the primary button and from a format card', () => {

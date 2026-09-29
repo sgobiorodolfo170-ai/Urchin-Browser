@@ -1,6 +1,7 @@
 # ADR-009 · 「打开文件」模块融合 GenOffice 编辑器框架
 
 > 状态：Accepted  · 决策日：2026-09-20  · 关联：GF1 / GF2 / GF3 / GF4 / GF5
+> GF4 更新（2026-09-24）：Tiptap 2 文本编辑器已退役（dev.103）；GenOffice 四编辑器稳定运行后，保底 Markdown 编辑器不再保留，file-viewer 的 .md 编辑改用 PlainTextEditor（纯文本），.md 富文本编辑由 GenOffice markdown 独占。
 > 影响范围：本地文件查看/编辑模块、Electron 主版本、AI 模块边界、打包体积与许可合规
 
 ## 决策
@@ -8,7 +9,7 @@
 1. **GF1**：「打开文件」模块的文档编辑器**以 GenOffice 为框架**——vendor 整棵源码（固定 commit）并以 `WebContentsView` 形态嵌入 Urchin 标签体系；重复能力（Markdown 富文本、PDF 查看、HTML 打开）以 GenOffice 实现为准，Urchin 原查看器仅作保底。
 2. **GF2**：Electron 从 32.3.3 **升级到 43.x** 以对齐 GenOffice 声明的 `^43.3.0`（BrowserView 保留；GenOffice 视图用 WebContentsView 混挂）。
 3. **GF3**：文档编辑器内置 AI **完整使用 GenOffice 原生 AI 栈**（`ai:*` / `project:*`，密钥存 `<userData>/ai-settings.json`），与 Urchin 的 pi 模块**完全隔离、互不读写**；首期仅 BYOK（自备密钥），不接 Genspark 登录。
-4. **GF4**：**保底策略**——Urchin 内置查看器/编辑器在融合期内保留：GenOffice 产物缺失或视图创建失败时自动回落（html → `file://` 直开，其余 → `urchin://file-viewer`）；待融合路径稳定运行后，再由用户决策退役保底实现。
+4. **GF4**：~~保底策略~~ **已退役（dev.103, 2026-09-24）**——Urchin 内置 Tiptap 2 Markdown 编辑器（`files/editor/MarkdownEditor.tsx`）及 `@tiptap/*` / `tiptap-markdown` 依赖已移除；file-viewer 的 .md 编辑改用 PlainTextEditor（纯文本），富文本编辑由 GenOffice markdown 独占。内置查看器（图片/音视频/JSON/纯文本只读）保留。
 5. **GF5**：左侧栏文档入口**直接使用上游 shell Home 前端**（`apps/shell` 渲染产物），宿主以自有 preload 提供 `window.aiOffice` 适配层（可用子集 + 中性桩），不引入上游 shell 主进程（菜单/更新/MCP/账号等壳能力不在 Urchin 范围）。
 
 ## 背景

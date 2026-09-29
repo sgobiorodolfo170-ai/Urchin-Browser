@@ -25,7 +25,6 @@ import { Folder, FileText, ArrowLeft, ArrowRight, ArrowUp, Pencil, Check } from 
 import type { FileKind } from '@urchin/ipc-contract';
 import { isTextKind, planTextRender, type ReadPlan, type TextKind } from './read-plan';
 import { useEditSession } from './editor/use-edit-session';
-import { MarkdownEditor } from './editor/MarkdownEditor';
 import { PlainTextEditor } from './editor/PlainTextEditor';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { Button } from '../components/ui/button';
@@ -521,9 +520,10 @@ function FileViewerInner({
 
   return (
     <div className="relative flex h-full flex-col bg-surface text-text">
-      {/* 编辑模式动作按钮（保存/另存为/完成）：Markdown 编辑时注入编辑器工具条右端
-       * （与格式按钮同一行），其余形态用独立头部行；showEditToggle 限定文本家族 */}
-      {showEditToggle && !(session.mode === 'edit' && meta?.kind === 'markdown') ? (
+      {/* 编辑模式动作按钮（保存/另存为/完成）；showEditToggle 限定文本家族。
+       * GF4 退役：Markdown 不再用 Tiptap 2 独立工具条——所有文本编辑统一走
+       * PlainTextEditor，动作按钮在此头部行（与 .txt/.json 等一致）。 */}
+      {showEditToggle ? (
         <div className="flex h-11 shrink-0 items-center px-3">
           {/* 内层与正文列同宽居中：按钮右缘对齐正文列右缘（非网页最右侧） */}
           <div className="mx-auto flex w-full max-w-3xl items-center justify-end gap-1.5 px-6">
@@ -568,31 +568,7 @@ function FileViewerInner({
       {/* 内容区：按 kind 渲染（唯一滚动容器，上下滑动不影响底部工具栏）；
        * 编辑模式下替换为编辑器（会话 value 回写 → 脏判定 + 草稿调度） */}
       <div className="flex-1 overflow-auto">
-        {session.mode === 'edit' && meta?.kind === 'markdown' && (
-          <MarkdownEditor
-            key={session.version}
-            initialContent={session.value}
-            onChange={session.setValue}
-            actions={
-              <>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => void session.saveWithFallback()}
-                >
-                  保存
-                </Button>
-                <Button size="sm" variant="secondary" onClick={handleSaveAs}>
-                  另存为
-                </Button>
-                <Button size="sm" variant="primary" onClick={handleFinishEdit}>
-                  <Check className="mr-1 h-3.5 w-3.5" /> 完成
-                </Button>
-              </>
-            }
-          />
-        )}
-        {session.mode === 'edit' && meta?.kind !== 'markdown' && (
+        {session.mode === 'edit' && (
           <PlainTextEditor
             key={session.version}
             initialContent={session.value}

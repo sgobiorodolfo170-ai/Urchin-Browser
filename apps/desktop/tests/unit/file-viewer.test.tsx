@@ -30,24 +30,7 @@ import {
 import { HEAD_PREVIEW_BYTES, planTextRender } from '../../src/renderer/files/read-plan';
 import { setEditGuardSession } from '../../src/renderer/lib/edit-guard';
 
-// 编辑器组件以桩替换（Tiptap 不进 jsdom；真实编辑器由 e2e 覆盖）。
-// 桩同时渲染 actions 槽（验证 FileViewer 向工具条注入保存/另存为/完成）。
-vi.mock('../../src/renderer/files/editor/MarkdownEditor', () => ({
-  MarkdownEditor: (props: {
-    initialContent: string;
-    onChange: (v: string) => void;
-    actions?: React.ReactNode;
-  }) => (
-    <div>
-      <div data-testid="md-toolbar-actions">{props.actions}</div>
-      <textarea
-        data-testid="md-editor-stub"
-        defaultValue={props.initialContent}
-        onChange={(e) => props.onChange(e.target.value)}
-      />
-    </div>
-  ),
-}));
+// 编辑器组件以桩替换（Tiptap 已退役 GF4；PlainTextEditor 桩覆盖所有文本编辑）。
 vi.mock('../../src/renderer/files/editor/PlainTextEditor', () => ({
   PlainTextEditor: (props: { initialContent: string; onChange: (v: string) => void }) => (
     <textarea
@@ -511,7 +494,7 @@ describe('FileViewer · 编辑模式', () => {
     fireEvent.click(btn);
 
     await waitFor(() => {
-      expect(screen.getByTestId('md-editor-stub')).toBeDefined();
+      expect(screen.getByTestId('plain-editor-stub')).toBeDefined();
       expect(screen.getByRole('button', { name: /完成/ })).toBeDefined();
     });
     // 进入编辑重读原文（maxBytes = markdown 全量阈值）
@@ -569,8 +552,8 @@ describe('FileViewer · 编辑模式', () => {
       />,
     );
     fireEvent.click(await screen.findByRole('button', { name: /编辑/ }));
-    await waitFor(() => expect(screen.getByTestId('md-editor-stub')).toBeDefined());
-    fireEvent.change(screen.getByTestId('md-editor-stub'), { target: { value: '# dirty' } });
+    await waitFor(() => expect(screen.getByTestId('plain-editor-stub')).toBeDefined());
+    fireEvent.change(screen.getByTestId('plain-editor-stub'), { target: { value: '# dirty' } });
 
     // 下一个 → 弹离开守卫
     fireEvent.click(screen.getByLabelText('下一个'));
@@ -590,15 +573,15 @@ describe('FileViewer · 编辑模式', () => {
     mockEditableLoad();
     render(<FileViewer url="urchin://file-viewer/?path=C%3A%5Cdocs%5Ca.md" tabId={1} />);
     fireEvent.click(await screen.findByRole('button', { name: /编辑/ }));
-    await waitFor(() => expect(screen.getByTestId('md-editor-stub')).toBeDefined());
-    fireEvent.change(screen.getByTestId('md-editor-stub'), { target: { value: '# saved' } });
+    await waitFor(() => expect(screen.getByTestId('plain-editor-stub')).toBeDefined());
+    fireEvent.change(screen.getByTestId('plain-editor-stub'), { target: { value: '# saved' } });
 
     fireEvent.click(screen.getByRole('button', { name: /完成/ }));
     await waitFor(() => expect(screen.getByText('未保存的更改')).toBeDefined());
     fireEvent.click(screen.getByRole('button', { name: '保存并继续' }));
 
     await waitFor(() => {
-      expect(screen.queryByTestId('md-editor-stub')).toBeNull();
+      expect(screen.queryByTestId('plain-editor-stub')).toBeNull();
       expect(mockInvoke).toHaveBeenCalledWith('file.write', {
         path: 'C:\\docs\\a.md',
         content: '# saved',

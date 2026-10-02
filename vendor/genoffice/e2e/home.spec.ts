@@ -9,12 +9,15 @@ test.describe('home screen', () => {
       await expect(page.locator('.home-hero')).toBeVisible()
       // six AI quick-create cards plus the "Open file" browse card
       await expect(page.locator('.quick-card')).toHaveCount(7)
-      await expect(page.locator('.quick-card').first()).toContainText('AI Docs')
-      await expect(page.locator('.quick-card').nth(1)).toContainText('AI Sheets')
-      await expect(page.locator('.quick-card').nth(2)).toContainText('AI Slides')
-      await expect(page.locator('.quick-card').nth(3)).toContainText('AI Markdown')
-      await expect(page.locator('.quick-card').nth(4)).toContainText('AI HTML')
-      await expect(page.locator('.quick-card').nth(5)).toContainText('AI PDF')
+      // the "Open file" browse card sits first in the row
+      await expect(page.locator('.quick-card').first()).toContainText('Open Local File')
+      // the six AI format cards follow in stable order
+      await expect(page.locator('.quick-card', { hasText: 'AI Docs' })).toBeVisible()
+      await expect(page.locator('.quick-card', { hasText: 'AI Sheets' })).toBeVisible()
+      await expect(page.locator('.quick-card', { hasText: 'AI Slides' })).toBeVisible()
+      await expect(page.locator('.quick-card', { hasText: 'AI Markdown' })).toBeVisible()
+      await expect(page.locator('.quick-card', { hasText: 'AI HTML' })).toBeVisible()
+      await expect(page.locator('.quick-card', { hasText: 'AI PDF' })).toBeVisible()
       await expect(page.locator('.tab-bar .tab-item.tab-home')).toBeVisible()
       await page.screenshot({ path: screenshotPath('home-overview') })
     } finally {

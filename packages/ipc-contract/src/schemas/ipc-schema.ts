@@ -960,6 +960,59 @@ export const piWebStopResSchema = z.object({
 export type PiWebStopRes = z.infer<typeof piWebStopResSchema>;
 
 // ============================================================================
+// deepseekHarness.* —— DeepSeek Harness 启动器（vendor 子进程运行 dsh web）
+// ============================================================================
+
+/**
+ * deepseekHarness.launch：启动（或复用已运行的）DeepSeek Harness Web 服务并返回入口 URL。
+ *
+ * 架构：dsh web 全部运行在独立的系统 Node 子进程中（vendor/deepseek-harness，
+ * tsx ESM loader 直启 apps/cli/src/bin.ts），仅绑定 127.0.0.1 随机端口；
+ * Electron 主进程零 dsh 依赖。标签关闭后自动停止后端（与 piWeb 不同）。
+ */
+export const deepseekHarnessLaunchReqSchema = z.object({}).default({});
+export type DeepseekHarnessLaunchReq = z.infer<typeof deepseekHarnessLaunchReqSchema>;
+
+export const deepseekHarnessLaunchResSchema = z.object({
+  ok: z.literal(true),
+  /** 入口 URL（http://127.0.0.1:<port>），渲染层新开标签页加载 */
+  url: z.string().url(),
+  /** 本次服务监听端口 */
+  port: z.number().int().min(1).max(65_535),
+});
+export type DeepseekHarnessLaunchRes = z.infer<typeof deepseekHarnessLaunchResSchema>;
+
+/** deepseekHarness.status：查询服务状态（不产生副作用） */
+export const deepseekHarnessStatusReqSchema = z.object({}).default({});
+export type DeepseekHarnessStatusReq = z.infer<typeof deepseekHarnessStatusReqSchema>;
+
+/** dsh 服务运行状态（有限状态机：stopped → starting → running / error） */
+export const deepseekHarnessStateSchema = z.enum(['stopped', 'starting', 'running', 'error']);
+export type DeepseekHarnessState = z.infer<typeof deepseekHarnessStateSchema>;
+
+export const deepseekHarnessStatusResSchema = z.object({
+  state: deepseekHarnessStateSchema,
+  /** running 时返回入口 URL */
+  url: z.string().url().optional(),
+  /** 本次服务监听端口（starting/running 时返回） */
+  port: z.number().int().min(1).max(65_535).optional(),
+  /** 子进程 PID（starting/running 时返回） */
+  pid: z.number().int().optional(),
+  /** error 状态时的最后错误信息 */
+  lastError: z.string().optional(),
+});
+export type DeepseekHarnessStatusRes = z.infer<typeof deepseekHarnessStatusResSchema>;
+
+/** deepseekHarness.stop：停止服务（终止子进程树；已停时幂等成功） */
+export const deepseekHarnessStopReqSchema = z.object({}).default({});
+export type DeepseekHarnessStopReq = z.infer<typeof deepseekHarnessStopReqSchema>;
+
+export const deepseekHarnessStopResSchema = z.object({
+  ok: z.literal(true),
+});
+export type DeepseekHarnessStopRes = z.infer<typeof deepseekHarnessStopResSchema>;
+
+// ============================================================================
 // screenshot.* —— 地址栏截图按钮（整屏框选截图，存用户数据目录）
 // ============================================================================
 
@@ -1732,6 +1785,16 @@ export const ipcSchema = {
   'piWeb.launch': { req: piWebLaunchReqSchema, res: piWebLaunchResSchema },
   'piWeb.status': { req: piWebStatusReqSchema, res: piWebStatusResSchema },
   'piWeb.stop': { req: piWebStopReqSchema, res: piWebStopResSchema },
+  // DeepSeek Harness 启动器：launch / status / stop（标签关闭后自动停止）
+  'deepseekHarness.launch': {
+    req: deepseekHarnessLaunchReqSchema,
+    res: deepseekHarnessLaunchResSchema,
+  },
+  'deepseekHarness.status': {
+    req: deepseekHarnessStatusReqSchema,
+    res: deepseekHarnessStatusResSchema,
+  },
+  'deepseekHarness.stop': { req: deepseekHarnessStopReqSchema, res: deepseekHarnessStopResSchema },
   // 整屏框选截图（地址栏按钮）：与 ai.screenshot（pi 全屏回传）不同，框选裁剪存数据目录
   'screenshot.capture': { req: screenshotCaptureReqSchema, res: screenshotCaptureResSchema },
   'screenshot.getImageData': {

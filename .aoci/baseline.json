@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-26T07:44:45Z",
-  "updated_at": "2026-09-26T10:13:58Z",
+  "updated_at": "2026-09-30T09:17:32Z",
   "files": {
     ".editorconfig": {
       "sha256": "6d6796f174b736bcd7a68999e30d2f19a3719ad92355dcc0cfdfce8a66864553",
@@ -74,9 +74,10 @@
       "normalized_sha256": "eeb0dcccba607ead1737e49ac916a5cc70e7bbf4e5617ee67d994f5ec438939f"
     },
     "aoci.code.txt": {
-      "sha256": "1c8e28c45c952a1c849e2aa5f9d8c048d2ab4c72d5fa2f6d9b67fcba04ee65e0",
-      "size": 71271,
-      "normalized_sha256": "1c8e28c45c952a1c849e2aa5f9d8c048d2ab4c72d5fa2f6d9b67fcba04ee65e0"
+      "role": "index",
+      "sha256": "77e99a8ca30022760c3f5f70cfe0bdb08a143632ae37c045836f07f9f63b9085",
+      "size": 71102,
+      "normalized_sha256": "77e99a8ca30022760c3f5f70cfe0bdb08a143632ae37c045836f07f9f63b9085"
     },
     "aoci.meta.txt": {
       "role": "index",

@@ -56,8 +56,8 @@ test.describe('sheets: arrow collapses a multi-cell selection to the active cell
         electronApp.setPath('documents', dir)
       }, scratch)
 
-      await expect(page.locator('.quick-card').nth(1)).toContainText('AI Sheets')
-      await page.locator('.quick-card').nth(1).click()
+      await expect(page.locator('.quick-card', { hasText: 'AI Sheets' })).toHaveCount(1)
+      await page.locator('.quick-card', { hasText: 'AI Sheets' }).click()
 
       const sheets = await waitForPageWithUrl(app, '://sheets/')
       // the replayed move must not surface as an uncaught command error

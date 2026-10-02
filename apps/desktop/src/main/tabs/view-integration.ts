@@ -257,7 +257,13 @@ export function installTabViewIntegration(
     }
 
     // 外部网页 + 其他内部 URL：非零 bounds
-    const bounds = computeViewBounds(managed.browserWindow.getContentBounds());
+    const contentBounds = managed.browserWindow.getContentBounds();
+    const bounds = computeViewBounds(contentBounds);
+    // GenOffice 标签页地址栏在 React 层隐藏（App.tsx !isGenOfficeTab 条件），
+    // 视图需覆盖全部高度，否则底部留 48px 空白条
+    if (tab.viewKind === 'genoffice') {
+      bounds.height = contentBounds.height;
+    }
     // 防御性检查：确保 bounds 宽高不为零，否则网页不可见
     if (bounds.width <= 0 || bounds.height <= 0) {
       log.warn('computed bounds are zero or negative', {

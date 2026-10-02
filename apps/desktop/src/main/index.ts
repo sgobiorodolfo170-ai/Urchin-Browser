@@ -25,7 +25,7 @@ import {
   session,
   net,
 } from 'electron';
-import { join, basename } from 'node:path';
+import { join, basename, resolve } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { createLogger } from '@urchin/logger';
 
@@ -63,6 +63,12 @@ import {
   pushPiTheme,
   type PiWebLauncher,
 } from './pi-web';
+import {
+  createDshLauncher,
+  registerDshHandlers,
+  bindTabCloseToStop,
+  type DshLauncher,
+} from './deepseek-harness';
 import { registerPageContextHandlers } from './page-context';
 import { SummaryManager, registerSummaryHandlers } from './summary';
 import {
@@ -453,6 +459,14 @@ let aiHandlersDispose: (() => void) | null = null;
  */
 let piWebLauncher: PiWebLauncher | null = null;
 /**
+ * DeepSeek Harness 启动器：系统 Node 子进程运行 vendor/deepseek-harness (dsh web)。
+ * 进程退出时 performCleanup 调用 dispose() 终止子进程树。
+ * 与 piWebLauncher 不同：标签关闭后自动停止后端（bindTabCloseToStop）。
+ */
+let dshLauncher: DshLauncher | null = null;
+/** dsh 标签关闭→停止 unbind 函数（performCleanup 调用） */
+let unbindDshTabClose: (() => void) | null = null;
+/**
  * 全局 StorageLayer 引用（在 whenReady 中赋值）。
  * 退出时需调用 close() 以释放 better-sqlite3 原生句柄，
  * 避免进程退出后残留线程或 WAL 文件未 checkpoint。
@@ -775,11 +789,34 @@ function registerIpcHandlers(): void {
   });
   registerPiWebHandlers(ipcMain, piWebLauncher);
 
+  // DeepSeek Harness 启动器：vendor/deepseek-harness 作为独立子进程运行 dsh web。
+  // CLI 入口：node --import tsx/esm apps/cli/src/bin.ts web --no-open --port <port>
+  // cwd 设为 vendor 目录（tsx 从其 node_modules 解析）；DSH_HOME 指向 userData 下数据目录。
+  // 与 piWeb 的关键差异：标签关闭后自动停止后端（bindTabCloseToStop）。
+  // 路径解析与 genoffice/paths.ts 一致：开发态从 app.getAppPath() 上溯两级至项目根，
+  // 打包态从 process.resourcesPath 取（electron-builder extraResources 部署位置）。
+  const dshVendorDir = app.isPackaged
+    ? join(process.resourcesPath, 'deepseek-harness')
+    : resolve(app.getAppPath(), '..', '..', 'vendor', 'deepseek-harness');
+  if (!existsSync(dshVendorDir)) {
+    log.error('dsh vendor directory not found', { dshVendorDir });
+  }
+  const dshDataDir = join(startupUserDataPath, 'deepseek-harness');
+  dshLauncher = createDshLauncher({
+    vendorDir: dshVendorDir,
+    dataDir: dshDataDir,
+  });
+  registerDshHandlers(ipcMain, dshLauncher);
+  unbindDshTabClose = bindTabCloseToStop(tabManager, dshLauncher);
+
   // dev.48：pi 模块内打开的网页（window.open 新标签）右侧栏图标钉定为 π——
   // 来源 tab URL 命中当前 pi 服务地址时返回钉定图标（端口随机，读实时状态）
   tabManager.setPiIconPinner((sourceUrl) => {
     const piUrl = piWebLauncher?.status().url;
-    return piUrl && sourceUrl.startsWith(piUrl) ? 'urchin://pi-icon/' : undefined;
+    if (piUrl && sourceUrl.startsWith(piUrl)) return 'urchin://pi-icon/';
+    const dshUrl = dshLauncher?.status().url;
+    if (dshUrl && sourceUrl.startsWith(dshUrl)) return 'urchin://dsh-icon/';
+    return undefined;
   });
 
   // M14 page context 域 handler（page.extract）
@@ -1228,6 +1265,8 @@ void app.whenReady().then(() => {
     // dev.45：pi 品牌图标（π）——favicon 重定向目标（urchin://pi-icon）。
     // dev 与打包态同路径：dist/renderer/pi-icon.png（asar 内可直读）。
     piIconPath: join(app.getAppPath(), 'dist', 'renderer', 'pi-icon.png'),
+    // dsh 品牌图标（SVG）——favicon 重定向目标（urchin://dsh-icon）。
+    dshIconPath: join(app.getAppPath(), 'dist', 'renderer', 'dsh-icon.svg'),
     // dev.48：pi 页主题跟随浏览器——主进程读 nativeTheme 实际生效值
     //（含「跟随系统」模式的解析结果），pi 页注入脚本轮询此端点切换主题
     isBrowserDarkTheme: () => nativeTheme.shouldUseDarkColors,
@@ -1632,14 +1671,23 @@ void app.whenReady().then(() => {
     { urls: ['http://127.0.0.1/*'] },
     (details, callback) => {
       try {
-        const piPort = piWebLauncher?.status().port;
         const u = new URL(details.url);
+        const piPort = piWebLauncher?.status().port;
         if (
           piPort &&
           u.port === String(piPort) &&
           (u.pathname === '/favicon.svg' || u.pathname === '/favicon.ico')
         ) {
           callback({ redirectURL: 'urchin://pi-icon/' });
+          return;
+        }
+        const dshPort = dshLauncher?.status().port;
+        if (
+          dshPort &&
+          u.port === String(dshPort) &&
+          (u.pathname === '/favicon.svg' || u.pathname === '/favicon.ico' || u.pathname === '/favicon.png')
+        ) {
+          callback({ redirectURL: 'urchin://dsh-icon/' });
           return;
         }
       } catch {
@@ -1732,6 +1780,18 @@ async function performCleanup(): Promise<void> {
         log.error('Failed to dispose piWeb launcher on quit', { error: String(e) });
       }
       piWebLauncher = null;
+    }
+
+    // 0.6 终止 DeepSeek Harness 子进程树 + 解绑标签关闭监听
+    unbindDshTabClose?.();
+    unbindDshTabClose = null;
+    if (dshLauncher) {
+      try {
+        await dshLauncher.dispose();
+      } catch (e) {
+        log.error('Failed to dispose dsh launcher on quit', { error: String(e) });
+      }
+      dshLauncher = null;
     }
 
     // 1. 清理 AI Provider 子进程（utility process）+ 定时器 + MessagePort

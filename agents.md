@@ -50,6 +50,7 @@ adapted_for: Urchin-Browser
 3. **需要人工验收的改动**（界面、交互、视觉），在验证通过后**构建并启动应用**：`pnpm run build` 后执行 **`pnpm start`**（生产模式启动已构建产物，脱离本会话后台运行；直接 `electron .` 未带 `NODE_ENV=production` 会走 dev 分支连 vite dev server 导致白屏）。启动后在回复中说明如何操作。
 4. 涉及打包/资源/依赖变更时，额外跑 `pnpm package:win`（本机需 `ELECTRON_MIRROR` 与 `ELECTRON_BUILDER_BINARIES_MIRROR` 指向 npmmirror）。
 5. 本条与 §一「独立验证」、§九「质量护栏」、§十「Loop Engineering 停止条件」一致：验收信号必须来自确定性检查，不接受 AI 自评。
+6. **任务完成后必须先运行项目供用户测试**：验证（1-4）全部通过后，**构建并启动应用**（`pnpm run build` 后执行 `pnpm start`，后台运行脱离本会话），让用户实际操作验收后再结束。此为强制收尾步骤，不得省略。涉及 genoffice shell 源码变更时，先跑 `node scripts/genoffice-build.mjs shell` 重建 shell 产物再构建启动。
 
 ---
 

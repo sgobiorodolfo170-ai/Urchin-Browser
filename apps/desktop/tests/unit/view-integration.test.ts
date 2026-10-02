@@ -531,9 +531,9 @@ describe('HTML5 fullscreen (内嵌视频全屏覆盖 UI 栏)', () => {
     tab.htmlFullscreen = false;
     fireTab('updated', tab);
     // 恢复常规布局（含左右侧栏内缩）
-    expect(tab.view.setBounds).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 44, width: 800 - 88, height: 600 - 48 }),
-    );
+      expect(tab.view.setBounds).toHaveBeenCalledWith(
+        expect.objectContaining({ x: 44, width: 800 - 88, height: 600 - 48 }),
+      );
   });
 
   describe('GenOffice 编辑器视图挂载（阶段 2）', () => {
@@ -547,7 +547,8 @@ describe('HTML5 fullscreen (内嵌视频全屏覆盖 UI 栏)', () => {
       expect(window.browserWindow.setBrowserView).toHaveBeenCalledWith(null);
       expect(window.browserWindow.contentView.addChildView).toHaveBeenCalledWith(tab.view);
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        expect.objectContaining({ x: 44, width: 800 - 88, height: 600 - 48 }),
+        // GenOffice 标签地址栏隐藏，视图覆盖全部高度（不减 bottomHeight 48）
+        expect.objectContaining({ x: 44, width: 800 - 88, height: 600 }),
       );
     });
 
@@ -589,7 +590,8 @@ describe('HTML5 fullscreen (内嵌视频全屏覆盖 UI 栏)', () => {
       fireTab('created', tab);
 
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        expect.objectContaining({ x: 44, width: 800 - 88, height: 600 - 48 }),
+        // GenOffice 标签地址栏隐藏，视图覆盖全部高度（不减 bottomHeight 48）
+        expect.objectContaining({ x: 44, width: 800 - 88, height: 600 }),
       );
       expect(tab.view.setBounds).not.toHaveBeenCalledWith({
         x: 0,

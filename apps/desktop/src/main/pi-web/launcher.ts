@@ -293,6 +293,10 @@ export class PiWebLauncher {
         PI_WEB_PORT: String(port),
         PI_WEB_DATA_DIR: this.opts.dataDir,
         PI_WEB_CWD: this.opts.cwd,
+        // pi-web-ui 0.97+ 会检测 node_modules 里的 pi-coding-agent 并尝试用它
+        //（本仓库 vendored pi 源码无 dist/，导致 pi-web-ui 启动即崩）。
+        // PI_WEB_SDK=bundled 强制 pi-web-ui 用自带的预编译 SDK。
+        PI_WEB_SDK: 'bundled',
         // 会话库/agent 配置根：未设则 pi 落全局 ~/.pi（污染用户主目录，DD1 不符）
         ...(this.opts.agentDir ? { PI_CODING_AGENT_DIR: this.opts.agentDir } : {}),
         // npm 沙箱（dev.42）：进程树内任何 -g 安装改落项目目录，杜绝写系统全局

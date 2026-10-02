@@ -26,8 +26,8 @@ test.describe('sheets: Enter runs the context-menu insert-N action', () => {
         electronApp.setPath('documents', dir)
       }, scratch)
 
-      await expect(page.locator('.quick-card').nth(1)).toContainText('AI Sheets')
-      await page.locator('.quick-card').nth(1).click()
+      await expect(page.locator('.quick-card', { hasText: 'AI Sheets' })).toHaveCount(1)
+      await page.locator('.quick-card', { hasText: 'AI Sheets' }).click()
 
       const sheets = await waitForPageWithUrl(app, '://sheets/')
       await sheets.waitForFunction(() => document.body.textContent?.includes('Sheet1'), null, {

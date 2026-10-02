@@ -183,6 +183,8 @@ describe('buildProjectsPanelScript', () => {
     // 旧 dev.47「仅留版本行」CSS 退役
     expect(s).not.toContain('.dd-update>*:not(:first-child)');
     expect(s).not.toContain('.update-dot{display:none!important}');
+    // dev.104（用户指令）：右区右上角官方折叠按钮删除（与中区自绘 #__ubRTCollapse 重复）
+    expect(s).toContain('.panel-right .panel-collapse-btn');
   });
 
   it('should cancel pi agent setup modal via injected CSS (dev.87)', () => {

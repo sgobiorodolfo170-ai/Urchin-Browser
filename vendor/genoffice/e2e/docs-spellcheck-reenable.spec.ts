@@ -29,7 +29,7 @@ test('re-enabling spellcheck respells existing text without user input', async (
   const launched = await launchShell({ onboardingSeen: true, videoDir: 'spellcheck-reenable' })
   const { app, page } = launched
   try {
-    await page.locator('.quick-card').first().click()
+    await page.locator('.quick-card', { hasText: 'AI Docs' }).click()
     const editor = await waitForPageWithUrl(app, '://docs/')
     await editor.locator('.doc-page').waitFor()
     await wait(1500)
@@ -79,7 +79,7 @@ test('toggling spellcheck never scrolls the view to the caret', async () => {
   const launched = await launchShell({ onboardingSeen: true, videoDir: 'spellcheck-noscroll' })
   const { app } = launched
   try {
-    await launched.page.locator('.quick-card').first().click()
+    await launched.page.locator('.quick-card', { hasText: 'AI Docs' }).click()
     const editor = await waitForPageWithUrl(app, '://docs/')
     await editor.locator('.doc-page').waitFor()
     await wait(1500)

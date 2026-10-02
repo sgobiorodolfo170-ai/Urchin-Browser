@@ -27,8 +27,8 @@ test.describe('docs paste options chip', () => {
     const launched = await launchShell({ onboardingSeen: true, videoDir: 'docs-paste-options' })
     const { app, page } = launched
     try {
-      await expect(page.locator('.quick-card').first()).toContainText('AI Docs')
-      await page.locator('.quick-card').first().click()
+      await expect(page.locator('.quick-card', { hasText: 'AI Docs' })).toHaveCount(1)
+      await page.locator('.quick-card', { hasText: 'AI Docs' }).click()
       const editorPage = await waitForPageWithUrl(app, '://docs/')
       await editorPage.waitForFunction(
         () => Boolean((window as unknown as AidocsWindow).__aidocs?.editor),

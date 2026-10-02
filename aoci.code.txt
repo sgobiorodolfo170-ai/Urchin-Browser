@@ -236,7 +236,6 @@ FileViewer.tsx[AU7L]: F:urchin://file-viewer本地文件查看器-按类型渲�
 read-plan.ts[LD6S]: F:按kind与文件大小决定file.read上限与渲染形态(超阈值降级纯文本截断预览)纯函数 | R:code:apps/desktop/src/renderer/files/FileViewer.tsx | A:- | S:-
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/renderer/files/editor/===
-MarkdownEditor.tsx[LE7M]: F:Tiptap+tiptap-markdown富文本编辑器-html:false防XSS | R:code:apps/desktop/src/renderer/files/FileViewer.tsx | A:- | S:html:false防XSS
 PlainTextEditor.tsx[LE5S]: F:等宽textarea居中限宽高度随内容生长的纯文本/json编辑器 | R:code:apps/desktop/src/renderer/files/FileViewer.tsx | A:- | S:-
 auto-saver.ts[LE5S]: F:尾沿防抖自动保存编排器纯计时无IO flush由调用方注入 | R:code:apps/desktop/src/renderer/files/editor/use-edit-session.ts | A:- | S:-
 draft-key.ts[LE5S]: F:由绝对路径生成符合schema白名单的草稿键(basename+FNV-1a哈希)路径不出本机防目录遍历 | R:code:apps/desktop/src/renderer/files/editor/use-edit-session.ts | A:- | S:-

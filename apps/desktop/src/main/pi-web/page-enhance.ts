@@ -44,6 +44,8 @@
  *    - 版本/更新入口整只移除（旧 dev.47 仅留版本行的 CSS 退役），版本号移入
  *      设置导航最底部新增的「关于」项——点击弹出只读关于弹窗（前端版本 +
  *      内置 pi SDK 版本），不提供应用内自动更新。
+ *    - dev.104（用户指令）：右区右上角官方折叠按钮删除（与中区右上角自绘
+ *      #__ubRTCollapse 功能重复；右区折叠统一由中区按钮负责）。
  * 6.5 「未检测到 pi agent 配置」弹窗取消（dev.87，用户指令）：官方 PiSetupModal
  *    纯 CSS 隐藏（.modal-backdrop:has(>.modal.setup-modal)），不阻塞交互、
  *    不与 React 状态对抗，兼除「自动安装 pi agent」入口（containment 面）。
@@ -383,6 +385,10 @@ export function buildProjectsPanelScript(): string {
     'ab.addEventListener("click", function(ev){ ev.preventDefault(); ev.stopPropagation(); openAbout(); });' +
     'rail.appendChild(ab);' +
     '}' +
+    // ── dev.104（用户指令）：右区右上角官方折叠按钮删除——与中区右上角
+    // 自绘折叠按钮（#__ubRTCollapse）功能重复；React 重建由 observer 重删
+    'var rc = document.querySelectorAll(".panel-right .panel-collapse-btn");' +
+    'for (var ri = 0; ri < rc.length; ri++) rc[ri].remove();' +
     '}' + // 闭合 enhance()
     // ── dev.45/47 最近项目删除注入：dev.86 决策退役（改用官方 remove_project，
     // 删除入口迁到我方左区面板 left-panel.ts；会话内隐藏列表同步废弃）──

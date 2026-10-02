@@ -6,9 +6,9 @@ test.describe('new file from home', () => {
     const launched = await launchShell({ onboardingSeen: true, videoDir: 'new-doc-tab' })
     const { app, page } = launched
     try {
-      await expect(page.locator('.quick-card').first()).toContainText('AI Docs')
+      await expect(page.locator('.quick-card', { hasText: 'AI Docs' })).toHaveCount(1)
 
-      await page.locator('.quick-card').first().click()
+      await page.locator('.quick-card', { hasText: 'AI Docs' }).click()
 
       const editorTab = page.locator('.tab-bar .tab-item:not(.tab-home)')
       await expect(editorTab).toHaveCount(1)

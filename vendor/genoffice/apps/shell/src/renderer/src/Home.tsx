@@ -107,6 +107,17 @@ function FolderIcon({ size = 16, open = false }: { size?: number; open?: boolean
   )
 }
 
+/** Windows 系统默认风格文件夹图标（金黄色），仅用于「打开本地文件」卡片辨识图标。 */
+function WindowsFolderIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <path d="M2 8C2 6.9 2.9 6 4 6h7.5c.6 0 1.1.2 1.5.6L15 8.5h12c1.1 0 2 .9 2 2v1.5H2V8z" fill="#D4A017" />
+      <path d="M2 11h27v13c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V11z" fill="#FFD83B" />
+      <path d="M2 11h27v1.5H2V11z" fill="#E8B923" fillOpacity="0.5" />
+    </svg>
+  )
+}
+
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg
@@ -1421,6 +1432,21 @@ export function Home() {
   function renderQuickCards() {
     return (
       <div className="quick-cards">
+        <button
+          className="quick-card"
+          onClick={() => void window.aiOffice.browse()}
+          data-tip={OPEN_LOCAL_EXTENSIONS}
+        >
+          <span className="quick-folder">
+            <WindowsFolderIcon size={18} />
+          </span>
+          <span className="quick-text">
+            <span className="quick-title-row">
+              <span className="quick-title">{t('openLocal')}</span>
+            </span>
+            <span className="quick-sub">{OPEN_LOCAL_EXTENSIONS}</span>
+          </span>
+        </button>
         {NEW_ITEMS.map((item) => (
           <button key={item.ext} className="quick-card" onClick={() => void item.action()}>
             <FileBadge ext={item.ext} size={30} />
@@ -1433,21 +1459,6 @@ export function Home() {
             </span>
           </button>
         ))}
-        <button
-          className="quick-card"
-          onClick={() => void window.aiOffice.browse()}
-          data-tip={OPEN_LOCAL_EXTENSIONS}
-        >
-          <span className="quick-folder">
-            <FolderIcon size={18} />
-          </span>
-          <span className="quick-text">
-            <span className="quick-title-row">
-              <span className="quick-title">{t('openLocal')}</span>
-            </span>
-            <span className="quick-sub">{OPEN_LOCAL_EXTENSIONS}</span>
-          </span>
-        </button>
       </div>
     )
   }

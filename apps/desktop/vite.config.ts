@@ -100,6 +100,9 @@ export default defineConfig(({ mode }) => {
   if (mode === 'main') {
     return {
       plugins: [cjsMarker('dist/main')],
+      // dev.105：pi 1.0.0 源码 tsconfig target=ES2024，esbuild 0.21 不识别 →
+      // 显式降级到 ES2022（Node 22+/Electron 32+ 均支持，无功能影响）
+      esbuild: { target: 'es2022' },
       build: {
         outDir: 'dist/main',
         emptyOutDir: true,

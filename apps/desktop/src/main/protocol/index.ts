@@ -233,6 +233,8 @@ export function registerUrchinProtocol(opts?: {
   onPickDirectory?: () => Promise<string | null>;
   /** pi 品牌图标 PNG 绝对路径（dev.45，dist/renderer/pi-icon.png；缺省 404） */
   piIconPath?: string;
+  /** dsh 品牌图标 SVG 绝对路径（dist/renderer/dsh-icon.svg；缺省 404） */
+  dshIconPath?: string;
   /** 浏览器当前主题是否暗色（dev.48：pi 页主题跟随浏览器，主进程读 nativeTheme） */
   isBrowserDarkTheme?: () => boolean;
   /** pi 页 UI 状态文件路径（dev.67：urchin://pi-ui-state 读写端点落盘位置） */
@@ -279,6 +281,24 @@ export function registerUrchinProtocol(opts?: {
     });
   };
 
+  let dshIconCache: Buffer | null | undefined;
+  const serveDshIcon = (iconPath: string | undefined): Response => {
+    if (dshIconCache === undefined) {
+      try {
+        dshIconCache = iconPath ? readFileSync(iconPath) : null;
+      } catch {
+        dshIconCache = null;
+      }
+    }
+    if (!dshIconCache) {
+      return new Response('Not Found', { status: 404, headers: { 'Content-Type': 'text/plain' } });
+    }
+    return new Response(new Uint8Array(dshIconCache), {
+      status: 200,
+      headers: { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'max-age=86400' },
+    });
+  };
+
   const handleZoom = (request: Request, target: 'tab' | 'main'): Response => {
     const url = new URL(request.url);
     const direction = url.searchParams.get('d');
@@ -313,6 +333,12 @@ export function registerUrchinProtocol(opts?: {
         // 标签/历史/主页的 favicon 请求（127.0.0.1:<pi端口>/favicon.svg）被
         // webRequest 重定向到此，统一显示与左侧栏入口一致的 π 图标。
         return servePiIcon(opts?.piIconPath);
+      }
+
+      if (host === 'dsh-icon') {
+        // dsh 模块品牌图标 SVG：favicon 重定向目标——dsh 网页标签的
+        // favicon 请求被 webRequest 重定向到此，统一显示与左侧栏入口一致的图标。
+        return serveDshIcon(opts?.dshIconPath);
       }
 
       if (host === 'pi-theme') {

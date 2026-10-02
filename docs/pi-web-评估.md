@@ -211,6 +211,13 @@
 >   无应用内自动更新);GitHub 连接删除(顶栏+更多菜单);左区上区删除 命令/预设/配置文件
 >   三组(相关协议与 .pi 编辑器退役);左区「技能/插件」与设置页同源对齐(设置页对应 tab
 >   已因 dev.86 去重清理恢复可见)。
+> - **dev.104(用户指令)**：右区右上角官方折叠按钮删除(与中区自绘 `#__ubRTCollapse` 重复),
+>   右区折叠统一走中区按钮(注入观察器对 React 重建重删)。
+> - **dev.105(双上游升级)**：pi-web-ui 0.90.0 → 0.97.0(67 锚点全存活;React 18→19/Express 4→5;
+>   内嵌 SDK `>=0.85.1` 兼容 pi 1.0.0);vendor/pi 0.85.1 → 1.0.0(API 稳定里程碑;
+>   +meta +typesafe +radius 三 provider;data/ 43 文件)。关键适配:launcher
+>   `PI_WEB_SDK=bundled`(防 workspace pi-coding-agent 无 dist/ 致 pi-web-ui 崩);
+>   pnpm overrides 固化 pi-server/client/protocol/durable 为 workspace:*。
 
 ## 七、pi-web-ui 升级管控流程(2026-08-23 用户八次决策确立,长期有效)
 

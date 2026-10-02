@@ -107,6 +107,8 @@ describe('PiWebLauncher', () => {
     const env = h.children[0]!.spawnEnv;
     // dev.84：0.90.0 官方仅认 PI_WEB_PORT（v0.60.0 移除 PORT 兼容）
     expect(env.PI_WEB_PORT).toBe('45001');
+    // pi-web-ui 0.97+ 会检测 workspace 里的 pi-coding-agent（无 dist/）→ 强制 bundled
+    expect(env.PI_WEB_SDK).toBe('bundled');
     expect(env.PI_WEB_DATA_DIR).toBe('/fake/userData/pi/web-ui');
     expect(env.PI_WEB_CWD).toBe('/fake/userData/pi/web-ui');
     expect(env.PI_CODING_AGENT_DIR).toBe('/fake/userData/pi/agent');

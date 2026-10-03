@@ -446,6 +446,9 @@ export function App() {
   // 按钮位于地址栏 omnibox.tsx，点击直接调用 summary.run IPC（纯本地操作，不依赖 LLM）
   const [summaryRunning, setSummaryRunning] = useState(false);
   const [summaryToast, setSummaryToast] = useState<string | null>(null);
+  // DeepSeek Harness 启动中标记：独立于 summaryToast（后者 3 秒自动消失），
+  // 用于显示启动过程中的持久提示，启动完成（成功/失败）后再消失。
+  const [dshStarting, setDshStarting] = useState(false);
   // 编辑器轻提示（保存失败等）：稳定引用（useEditSession 依赖稳定性需要）。
   // showEditorToast / editorGuardAsk / handleCloseTab / handleSelectTab 声明于
   // 上方「编辑守卫」区（tab 事件订阅 effect 之前，供事件路径守卫引用）。
@@ -1202,7 +1205,7 @@ export function App() {
       return;
     }
     // 未运行 → launch → 打开标签
-    setSummaryToast('正在启动 DeepSeek Harness…');
+    setDshStarting(true);
     try {
       const res = (await window.urchin.invoke('deepseekHarness.launch', {})) as {
         url: string;
@@ -1217,6 +1220,8 @@ export function App() {
       const message = e instanceof Error ? e.message : String(e);
       setSummaryToast(`DeepSeek Harness 启动失败：${message}`);
       console.error('Failed to launch dsh:', e);
+    } finally {
+      setDshStarting(false);
     }
   }, [tabs, activeTabId]);
 
@@ -1723,82 +1728,82 @@ export function App() {
           )}
         </div>
 
-         {/* 底部：DeepSeek Harness / pi / GenOffice 文档 / 邮箱 / 主页 / 主题切换 / 设置入口
-          *（GenOffice 入口打开模块主页：打开文件 / 格式说明 / 原生 AI 设置） */}
-          <div className="flex flex-col items-center gap-1 border-t border-border p-2">
-           {/* DeepSeek Harness 入口（用户指令：pi 按钮上方新增） */}
-           <button
-             className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-             onClick={() => void handleOpenDeepSeekHarness()}
-             aria-label="DeepSeek Harness"
-             title="DeepSeek Harness"
-           >
-             <img
-               src="./dsh-icon.svg"
-               alt=""
-               draggable={false}
-               className="h-5 w-5 rounded object-contain"
-             />
-           </button>
-           {/* pi 入口（与 GenOffice 文档入口互换位置，用户指令） */}
-           <button
-             className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-             onClick={() => void handleOpenAi()}
-             aria-label="AI 助手"
-             title="AI 助手"
-           >
-             {/* pi 模块入口图标（用户指定素材，public/pi-icon.png，白底深蓝 π 方形图标） */}
-             <img
-               src="./pi-icon.png"
-               alt=""
-               draggable={false}
-               className="h-5 w-5 rounded object-contain"
-             />
-           </button>
-           {/* GenOffice 文档入口（阶段 4.5，用户指令：由「打开文件」按钮改为
-            *  嵌入的 GenOffice 前端入口；打开文件动作收敛到主页/Ctrl+O/拖放） */}
-           <button
-             className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-             onClick={() => void handleOpenGenOfficeHome()}
-             aria-label="GenOffice 文档"
-             title="GenOffice 文档（Word / PDF / Markdown / HTML）"
-           >
-             <FileText className="h-4 w-4" />
-           </button>
-           <button
-             className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-             onClick={() => void handleOpenMail()}
-             aria-label="邮箱"
-             title="邮箱"
-           >
-             <MailIcon className="h-4 w-4" />
-           </button>
-           {/* 主页按钮（从地址栏移入，位于邮箱与主题之间，倒数第三） */}
-           <button
-             className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-             onClick={() => void handleGoHome()}
-             aria-label="主页"
-             title="主页"
-           >
-             <Home className="h-4 w-4" />
-           </button>
-           <button
-             className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-             onClick={toggleTheme}
-             aria-label="切换主题"
-             title="切换主题"
-           >
-             {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-           </button>
-           <button
-             className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-             onClick={() => void handleOpenSettings()}
-             aria-label="设置"
-             title="设置"
-           >
-             <SettingsIcon className="h-4 w-4" />
-           </button>
-         </div>
+        {/* 底部：DeepSeek Harness / pi / GenOffice 文档 / 邮箱 / 主页 / 主题切换 / 设置入口
+         *（GenOffice 入口打开模块主页：打开文件 / 格式说明 / 原生 AI 设置） */}
+        <div className="flex flex-col items-center gap-1 border-t border-border p-2">
+          {/* DeepSeek Harness 入口（用户指令：pi 按钮上方新增） */}
+          <button
+            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+            onClick={() => void handleOpenDeepSeekHarness()}
+            aria-label="DeepSeek Harness"
+            title="DeepSeek Harness"
+          >
+            <img
+              src="./dsh-icon.svg"
+              alt=""
+              draggable={false}
+              className="h-5 w-5 rounded object-contain"
+            />
+          </button>
+          {/* pi 入口（与 GenOffice 文档入口互换位置，用户指令） */}
+          <button
+            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+            onClick={() => void handleOpenAi()}
+            aria-label="AI 助手"
+            title="AI 助手"
+          >
+            {/* pi 模块入口图标（用户指定素材，public/pi-icon.png，白底深蓝 π 方形图标） */}
+            <img
+              src="./pi-icon.png"
+              alt=""
+              draggable={false}
+              className="h-5 w-5 rounded object-contain"
+            />
+          </button>
+          {/* GenOffice 文档入口（阶段 4.5，用户指令：由「打开文件」按钮改为
+           *  嵌入的 GenOffice 前端入口；打开文件动作收敛到主页/Ctrl+O/拖放） */}
+          <button
+            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+            onClick={() => void handleOpenGenOfficeHome()}
+            aria-label="GenOffice 文档"
+            title="GenOffice 文档（Word / PDF / Markdown / HTML）"
+          >
+            <FileText className="h-4 w-4" />
+          </button>
+          <button
+            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+            onClick={() => void handleOpenMail()}
+            aria-label="邮箱"
+            title="邮箱"
+          >
+            <MailIcon className="h-4 w-4" />
+          </button>
+          {/* 主页按钮（从地址栏移入，位于邮箱与主题之间，倒数第三） */}
+          <button
+            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+            onClick={() => void handleGoHome()}
+            aria-label="主页"
+            title="主页"
+          >
+            <Home className="h-4 w-4" />
+          </button>
+          <button
+            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+            onClick={toggleTheme}
+            aria-label="切换主题"
+            title="切换主题"
+          >
+            {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+          </button>
+          <button
+            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+            onClick={() => void handleOpenSettings()}
+            aria-label="设置"
+            title="设置"
+          >
+            <SettingsIcon className="h-4 w-4" />
+          </button>
+        </div>
       </aside>
 
       {/* === 中间列：ContentArea + 下侧地址栏 === */}
@@ -1965,6 +1970,14 @@ export function App() {
               <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border flex items-center gap-1.5">
                 {summaryRunning && <RotateCw className="h-3 w-3 animate-spin" />}
                 <span>{summaryToast}</span>
+              </div>
+            )}
+
+            {/* DeepSeek Harness 启动中的持久提示（启动完成前不自动消失） */}
+            {dshStarting && (
+              <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border flex items-center gap-1.5">
+                <RotateCw className="h-3 w-3 animate-spin" />
+                <span>正在启动 DeepSeek Harness…</span>
               </div>
             )}
 

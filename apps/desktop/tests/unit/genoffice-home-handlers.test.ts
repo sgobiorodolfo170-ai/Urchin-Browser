@@ -217,14 +217,13 @@ describe('registerGenOfficeHomeHandlers', () => {
     await harness.call('newDoc');
     await harness.call('newMarkdown');
     await harness.call('newHtml');
+    await harness.call('newSlide');
+    await harness.call('newSheet');
     const blankCalls = harness.deps.openBlankDocument.mock.calls as unknown as [string][];
-    expect(blankCalls.map((c) => c[0])).toEqual(['docs', 'markdown', 'html']);
+    expect(blankCalls.map((c) => c[0])).toEqual(['docs', 'markdown', 'html', 'slides', 'sheets']);
 
-    await expect(harness.call('newSheet')).resolves.toBeNull();
-    await expect(harness.call('newSlide')).resolves.toBeNull();
-    expect(harness.deps.openBlankDocument).toHaveBeenCalledTimes(3);
-    // 未接入类型给用户明确提示（而非静默无反应）
-    expect(mocks.showMessageBox).toHaveBeenCalledTimes(2);
+    // 全部六类 blank document 均已接入（Word/Markdown/HTML/Slides/Sheets）
+    expect(harness.deps.openBlankDocument).toHaveBeenCalledTimes(5);
   });
 
   it('should reject path-traversal names in rename/create', async () => {

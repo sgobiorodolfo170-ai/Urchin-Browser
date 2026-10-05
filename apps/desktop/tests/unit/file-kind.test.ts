@@ -46,6 +46,16 @@ describe('classifyFileKind', () => {
     expect(classifyFileKind('doc.pdf')).toBe('pdf');
   });
 
+  it('should classify Word/PowerPoint/Excel as docx/pptx/xlsx (GenOffice 接管类型)', () => {
+    expect(classifyFileKind('report.docx')).toBe('docx');
+    expect(classifyFileKind('deck.pptx')).toBe('pptx');
+    expect(classifyFileKind('sheet.xlsx')).toBe('xlsx');
+    // 大小写折叠
+    expect(classifyFileKind('Report.DOCX')).toBe('docx');
+    expect(classifyFileKind('Deck.PPTX')).toBe('pptx');
+    expect(classifyFileKind('Sheet.XLSX')).toBe('xlsx');
+  });
+
   it('should classify image formats', () => {
     for (const name of ['a.png', 'b.jpg', 'c.jpeg', 'd.gif', 'e.webp', 'f.svg']) {
       expect(classifyFileKind(name), name).toBe('image');

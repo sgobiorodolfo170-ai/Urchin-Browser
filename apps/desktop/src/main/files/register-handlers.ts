@@ -47,6 +47,10 @@ export const VIEWABLE_KINDS: ReadonlySet<string> = new Set([
   'text',
   // 阶段 4：Word 文档由 GenOffice docs 编辑器承载（产物缺失时查看器提示）
   'docx',
+  // 阶段 5：PowerPoint 演示文档由 GenOffice slides 编辑器承载（产物缺失时查看器提示）
+  'pptx',
+  // 阶段 5：Excel 表格由 GenOffice sheets 编辑器承载（产物缺失时查看器提示）
+  'xlsx',
 ]);
 
 /** Windows 非法文件名字符（含控制字符），另存默认名净化用（同 summary-manager 惯例）。 */

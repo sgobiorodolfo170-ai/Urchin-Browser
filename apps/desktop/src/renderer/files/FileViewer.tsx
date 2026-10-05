@@ -49,6 +49,8 @@ const KIND_LABELS: Readonly<Record<FileKind, string>> = {
   text: '文本',
   binary: '二进制',
   docx: 'Word 文档',
+  pptx: 'PowerPoint',
+  xlsx: 'Excel 表格',
 };
 
 /** 可网页化预览的文件类型（序列成员）。html 走 file:// 直开、binary 不支持预览，均不入选。 */

@@ -1,7 +1,8 @@
 # ADR-009 · 「打开文件」模块融合 GenOffice 编辑器框架
 
-> 状态：Accepted  · 决策日：2026-09-20  · 关联：GF1 / GF2 / GF3 / GF4 / GF5
+> 状态：Accepted  · 决策日：2026-09-20  · 关联：GF1 / GF2 / GF3 / GF4 / GF5 / GF6
 > GF4 更新（2026-09-24）：Tiptap 2 文本编辑器已退役（dev.103）；GenOffice 四编辑器稳定运行后，保底 Markdown 编辑器不再保留，file-viewer 的 .md 编辑改用 PlainTextEditor（纯文本），.md 富文本编辑由 GenOffice markdown 独占。
+> GF6 更新（2026-10-03）：Slides（.pptx）+ Sheets（.xlsx）编辑器接入（dev.107-108）；阶段 5 完成六编辑器全量（markdown/pdf/html/docs/slides/sheets）。Sheets 需 Rust xlsx-sidecar 二进制（cargo build，8.4MB）+ `includeAiHandlers=false` 关键修复（AI 通道由 docs 的 registerAiIpc 统一注册，sheets 不重复注册）。
 > 影响范围：本地文件查看/编辑模块、Electron 主版本、AI 模块边界、打包体积与许可合规
 
 ## 决策
@@ -11,6 +12,7 @@
 3. **GF3**：文档编辑器内置 AI **完整使用 GenOffice 原生 AI 栈**（`ai:*` / `project:*`，密钥存 `<userData>/ai-settings.json`），与 Urchin 的 pi 模块**完全隔离、互不读写**；首期仅 BYOK（自备密钥），不接 Genspark 登录。
 4. **GF4**：~~保底策略~~ **已退役（dev.103, 2026-09-24）**——Urchin 内置 Tiptap 2 Markdown 编辑器（`files/editor/MarkdownEditor.tsx`）及 `@tiptap/*` / `tiptap-markdown` 依赖已移除；file-viewer 的 .md 编辑改用 PlainTextEditor（纯文本），富文本编辑由 GenOffice markdown 独占。内置查看器（图片/音视频/JSON/纯文本只读）保留。
 5. **GF5**：左侧栏文档入口**直接使用上游 shell Home 前端**（`apps/shell` 渲染产物），宿主以自有 preload 提供 `window.aiOffice` 适配层（可用子集 + 中性桩），不引入上游 shell 主进程（菜单/更新/MCP/账号等壳能力不在 Urchin 范围）。
+6. **GF6**（2026-10-03，dev.107-108）：**Slides（.pptx）+ Sheets（.xlsx）编辑器接入**——阶段 5 扩展，六编辑器全量（markdown/pdf/html/docs/slides/sheets）。`registerProjectIpc` 沿用上游做法：docs/sheets/slides 各自导出但只调 docs 版本一次（三者共用 `<userData>/project-store` 等价；sheets/slides 版本仅供各自 standalone）；若未来 sheets/slides session→path 反查需要其内部 map 而 docs 版本不足，优先改该 app 通道名（如 `sheets:project:resolveChat`）隔离，不动其他 app。Sheets 的 `createSheetsView` 默认 `includeAiHandlers: true` 会与 docs 的 `registerAiIpc` 冲突（二次注册 `ai:get-settings`），embed 对 sheets 传 `includeAiHandlers: false`（AI 通道由 docs 统一注册，sheets/slides 共用）。Sheets 需 Rust xlsx-sidecar 二进制（cargo build，8.4MB，打包态 resources/native/）。
 
 ## 背景
 

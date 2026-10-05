@@ -516,6 +516,8 @@ export function App() {
           pdf: 'pdf',
           html: 'html',
           docx: 'docs',
+          pptx: 'slides',
+          xlsx: 'sheets',
         };
         const genofficeApp = genofficeAppByKind[statRes.kind];
         const url = statRes.isDir

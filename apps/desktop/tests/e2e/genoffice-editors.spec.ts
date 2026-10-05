@@ -1,10 +1,13 @@
 /**
- * E2E：GenOffice 编辑器融合 · PDF / HTML / Docs(docx)（阶段 4）
+ * E2E：GenOffice 编辑器融合 · PDF / HTML / Docs(docx) / Slides(pptx) / Sheets(xlsx)
+ * （阶段 4 + 5）
  *
  * 覆盖路径（每格式：打开伪地址 → 对应编辑器加载并渲染文件 → 干净关闭）：
  * 1. HTML：CodeMirror 源码视图加载 + 预览 iframe（html-preview 协议）
  * 2. PDF：pdf.js 渲染出页面画布（pdfium/wasm 资源不在本用例路径上，渲染走 pdfjs）
  * 3. Docs：docx 解析进 Tiptap 文档（fixture 文本可见）
+ * 4. Slides：pptx 解析进 Konva 画布（thumbnail 列表渲染出来）
+ * 5. Sheets：xlsx 解析进 Univer 网格（univer-container 内渲染）
  *
  * 前置：`pnpm genoffice:build`（vendor 产物）；缺失时整组 skip。
  */
@@ -35,6 +38,14 @@ const DOCX_FIXTURE = resolve(
   'pagination-corpus',
   'docx',
   '01-simple-english.docx',
+);
+const PPTX_FIXTURE = resolve(
+  VENDOR,
+  'packages',
+  'pptx-engine',
+  'tests',
+  'fixtures',
+  '01_standard_business.pptx',
 );
 
 interface TabSnapshotLike {
@@ -134,7 +145,7 @@ async function closeTab(window: Page, tabId: number): Promise<void> {
   expect(closed.closed).toBe(true);
 }
 
-test.describe('GenOffice 编辑器（阶段 4：PDF / HTML / Docs）', () => {
+test.describe('GenOffice 编辑器（阶段 4：PDF / HTML / Docs；阶段 5：Slides / Sheets）', () => {
   test.skip(!existsSync(GENOFFICE_EMBED), 'vendor GenOffice 产物缺失：先执行 pnpm genoffice:build');
 
   test('HTML：CodeMirror 源码视图加载并渲染文件内容', async () => {
@@ -212,6 +223,101 @@ test.describe('GenOffice 编辑器（阶段 4：PDF / HTML / Docs）', () => {
       docxPath,
       'docs',
       `document.querySelector('.ProseMirror') && (document.querySelector('.ProseMirror')?.innerText || '').includes('Simple English Document')`,
+    );
+
+    await closeTab(window, tabId);
+    await electronApp.close();
+  });
+
+  test('Slides：pptx 解析进 Konva 画布并渲染 thumbnail 列表', async () => {
+    test.setTimeout(150_000);
+    const { electronApp, window, userDataDir } = await launchApp();
+
+    expect(existsSync(PPTX_FIXTURE)).toBe(true);
+    const docDir = join(userDataDir, 'docs');
+    mkdirSync(docDir, { recursive: true });
+    const pptxPath = join(docDir, 'fixture.pptx');
+    copyFileSync(PPTX_FIXTURE, pptxPath);
+
+    // slides renderer：pptx 解析后渲染 slide thumbnail 列表（.thumb），
+    // 并在 stage-wrap 内用 Konva 绘制 canvas。以 thumbnail 出现为就绪标志。
+    const { tabId } = await openAndWait(
+      electronApp,
+      window,
+      'slides',
+      pptxPath,
+      'slides',
+      `document.querySelectorAll('.thumb').length > 0`,
+    );
+
+    await closeTab(window, tabId);
+    await electronApp.close();
+  });
+
+  test('Sheets：xlsx 解析进 Univer 网格并渲染单元格', async () => {
+    test.setTimeout(150_000);
+    const { electronApp, window, userDataDir } = await launchApp();
+
+    // 用 vendor 的 jszip 生成一个最小 .xlsx（不依赖 sidecar）
+    // .xlsx = zip 含 [Content_Types].xml / _rels/.rels / xl/workbook.xml /
+    // xl/_rels/workbook.xml.rels / xl/worksheets/sheet1.xml
+    const JSZip = require(join(VENDOR, 'node_modules', 'jszip')) as new () => {
+      file(name: string, content: string): unknown;
+      generateAsync(opts: { type: 'nodebuffer' }): Promise<Buffer>;
+    };
+    const zip = new JSZip();
+    zip.file(
+      '[Content_Types].xml',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+        '<Default Extension="xml" ContentType="application/xml"/>' +
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+        '</Types>',
+    );
+    zip.file(
+      '_rels/.rels',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+        '</Relationships>',
+    );
+    zip.file(
+      'xl/workbook.xml',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+        '<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>' +
+        '</workbook>',
+    );
+    zip.file(
+      'xl/_rels/workbook.xml.rels',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+        '</Relationships>',
+    );
+    zip.file(
+      'xl/worksheets/sheet1.xml',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+        '<sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Urchin XLSX Fixture</t></is></c></row></sheetData>' +
+        '</worksheet>',
+    );
+    const docDir = join(userDataDir, 'docs');
+    mkdirSync(docDir, { recursive: true });
+    const xlsxPath = join(docDir, 'fixture.xlsx');
+    writeFileSync(xlsxPath, await zip.generateAsync({ type: 'nodebuffer' }));
+
+    // sheets renderer：xlsx 经 Rust sidecar 解析后 Univer 渲染网格。
+    // 就绪标志：#univer-container 内出现 canvas（Univer 用 canvas 绘制单元格网格）。
+    const { tabId } = await openAndWait(
+      electronApp,
+      window,
+      'sheets',
+      xlsxPath,
+      'sheets',
+      `document.getElementById('univer-container')?.querySelectorAll('canvas').length > 0`,
     );
 
     await closeTab(window, tabId);

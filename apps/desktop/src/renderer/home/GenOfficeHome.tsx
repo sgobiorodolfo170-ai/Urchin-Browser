@@ -14,7 +14,16 @@
  *   视觉与主题完全跟随浏览器（settings/newtab 同族内部页机制）。
  * - 打开动作仍复用 handleOpenFilePicker（Ctrl+O 行为不变），保证单一入口逻辑。
  */
-import { FileCode, FileText, FileType, FolderOpen, Globe, Sparkles } from 'lucide-react';
+import {
+  FileCode,
+  FileSpreadsheet,
+  FileText,
+  FileType,
+  FolderOpen,
+  Globe,
+  Presentation,
+  Sparkles,
+} from 'lucide-react';
 import { Button } from '../components/ui/button';
 
 export interface GenOfficeHomeProps {
@@ -29,6 +38,18 @@ const FORMATS = [
     name: 'Word 文档',
     ext: '.docx',
     desc: '打开与编辑，保存回真实格式',
+  },
+  {
+    icon: FileSpreadsheet,
+    name: 'Excel 表格',
+    ext: '.xlsx',
+    desc: '公式与图表，Rust 引擎读写',
+  },
+  {
+    icon: Presentation,
+    name: 'PowerPoint 演示文稿',
+    ext: '.pptx',
+    desc: '幻灯片画布渲染 + 元素补丁保存',
   },
   {
     icon: FileType,
@@ -62,8 +83,8 @@ export function GenOfficeHome({ onOpenFile }: GenOfficeHomeProps) {
           <div className="min-w-0">
             <h1 className="text-xl font-medium">GenOffice 文档</h1>
             <p className="mt-1 text-sm text-text-secondary">
-              本地文档编辑器（由 GenOffice 提供）：Word / PDF / Markdown / HTML。
-              文件仅在本机打开与保存，不上传任何服务器。
+              本地文档编辑器（由 GenOffice 提供）：Word / Excel / PowerPoint / PDF / Markdown /
+              HTML。文件仅在本机打开与保存，不上传任何服务器。
             </p>
           </div>
         </header>

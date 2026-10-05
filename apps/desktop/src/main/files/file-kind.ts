@@ -44,6 +44,10 @@ const EXT_KIND: Readonly<Record<string, FileKind>> = {
   pdf: 'pdf',
   // Word 文档（阶段 4：GenOffice docs 编辑器接管；无产物时查看器提示外部打开）
   docx: 'docx',
+  // PowerPoint 演示文档（阶段 5：GenOffice slides 编辑器接管；无产物时查看器提示外部打开）
+  pptx: 'pptx',
+  // Excel 表格（阶段 5：GenOffice sheets 编辑器接管；无产物时查看器提示外部打开）
+  xlsx: 'xlsx',
   // 图片
   png: 'image',
   jpg: 'image',
@@ -124,6 +128,8 @@ const EXT_MIME: Readonly<Record<string, string>> = {
   mov: 'video/quicktime',
   pdf: 'application/pdf',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',

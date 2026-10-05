@@ -70,8 +70,8 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
   let available = false;
   let aiAvailable = false;
 
-  /** docs 脏状态轮询定时器（按 tabId）。 */
-  const docsPollTimers = new Map<number, ReturnType<typeof setInterval>>();
+  /** 不发 dirty-changed 推送的 kind（脏状态经轮询补齐）按 tabId 的定时器。 */
+  const polledDirtyTimers = new Map<number, ReturnType<typeof setInterval>>();
 
   /**
    * 产物缺失时的保底地址：HTML 走 file:// 直开（原行为），其余走内置查看器。
@@ -81,38 +81,50 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
   }
 
   /**
-   * docs 编辑器不发 dirty-changed 推送（脏状态经 close-check 握手查询），
-   * 侧栏脏点改由 2s 轮询 `docsQueryDirty` 补齐；md/pdf/html 仍走即时通道。
+   * docs / slides / sheets 编辑器不发 dirty-changed 推送：
+   * - docs 脏状态经 close-check 握手异步查询（`docsQueryDirty`）；
+   * - slides 脏状态由主进程 sessions map 同步判定（`slidesIsDirty`），但不主动推送；
+   * - sheets 脏状态由 pendingEditCount > 0 判定，同样不主动推送。
+   * 侧栏脏点统一由 2s 轮询 `genOfficeIsDirty(kind, wc)` 补齐；
+   * md/pdf/html 仍走 `${kind}:dirty-changed` 即时通道。
    */
-  function startDocsDirtyPolling(): void {
+  function startPolledDirtyKinds(): void {
     deps.tabManager.on('created', (snapshot) => {
       const tab = deps.tabManager.getTab(snapshot.id);
       if (!tab) return;
-      if (tab.viewKind !== 'genoffice' || tab.genofficeKind !== 'docs') return;
-      if (docsPollTimers.has(snapshot.id)) return;
+      if (tab.viewKind !== 'genoffice') return;
+      // 仅 docs/slides/sheets 走轮询；其余 kind 走 dirty-changed 推送（见 install 旁路）
+      if (
+        tab.genofficeKind !== 'docs' &&
+        tab.genofficeKind !== 'slides' &&
+        tab.genofficeKind !== 'sheets'
+      )
+        return;
+      if (polledDirtyTimers.has(snapshot.id)) return;
+      const pollKind = tab.genofficeKind;
       const timer = setInterval(() => {
         const current = deps.tabManager.getTab(snapshot.id);
         if (!current || !embed) {
-          stopDocsPolling(snapshot.id);
+          stopPolledDirty(snapshot.id);
           return;
         }
         void embed
-          .genOfficeIsDirty('docs', current.webContents)
+          .genOfficeIsDirty(pollKind, current.webContents)
           .then((dirty) => deps.tabManager.setDirty(snapshot.id, dirty))
           .catch(() => undefined);
       }, 2000);
       // 不阻塞应用退出
       (timer as { unref?: () => void }).unref?.();
-      docsPollTimers.set(snapshot.id, timer);
+      polledDirtyTimers.set(snapshot.id, timer);
     });
-    deps.tabManager.on('removed', (snapshot) => stopDocsPolling(snapshot.id));
+    deps.tabManager.on('removed', (snapshot) => stopPolledDirty(snapshot.id));
   }
 
-  function stopDocsPolling(tabId: number): void {
-    const timer = docsPollTimers.get(tabId);
+  function stopPolledDirty(tabId: number): void {
+    const timer = polledDirtyTimers.get(tabId);
     if (timer) {
       clearInterval(timer);
-      docsPollTimers.delete(tabId);
+      polledDirtyTimers.delete(tabId);
     }
   }
 
@@ -137,6 +149,7 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
       loaded.initGenOfficeEmbed({
         rendererRoots: artifacts.rendererRoots,
         preloads: artifacts.preloads,
+        ...(artifacts.sheetsSidecarPath ? { sheetsSidecarPath: artifacts.sheetsSidecarPath } : {}),
         ...(shellRoot ? { extraRendererRoots: { shell: shellRoot } } : {}),
       });
     } catch (e) {
@@ -169,7 +182,7 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
 
     embed = loaded;
     available = true;
-    startDocsDirtyPolling();
+    startPolledDirtyKinds();
     log.info('genoffice editor integration ready', {
       kinds: Object.keys(artifacts.rendererRoots),
     });

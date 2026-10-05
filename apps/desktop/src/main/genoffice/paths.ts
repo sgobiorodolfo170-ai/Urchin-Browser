@@ -13,8 +13,8 @@ import { app } from 'electron';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-/** 当前支持的编辑器类型（阶段 4 全量：md / pdf / html / docs(docx)）。 */
-export const GENOFFICE_KINDS = ['markdown', 'pdf', 'html', 'docs'] as const;
+/** 当前支持的编辑器类型（阶段 4：md / pdf / html / docs(docx)；阶段 5：slides(pptx) / sheets(xlsx)）。 */
+export const GENOFFICE_KINDS = ['markdown', 'pdf', 'html', 'docs', 'slides', 'sheets'] as const;
 export type GenOfficeKind = (typeof GENOFFICE_KINDS)[number];
 
 /** GenOffice Home 伪地址（侧栏文档入口目标；主进程决定用 shell Home 视图还是 React 保底页）。 */
@@ -42,6 +42,8 @@ export interface GenOfficeArtifacts {
   readonly rendererRoots: Partial<Record<GenOfficeKind, string>>;
   /** kind → 编辑器 preload 绝对路径。 */
   readonly preloads: Partial<Record<GenOfficeKind, string>>;
+  /** sheets Rust xlsx-sidecar 二进制绝对路径（缺失则 sheets-sidecar 由 sheets-main 自行解析）。 */
+  readonly sheetsSidecarPath?: string;
 }
 
 /** 解析产物根目录（不存在返回 null）。 */
@@ -50,6 +52,27 @@ export function resolveArtifactsRoot(): string | null {
     ? join(process.resourcesPath, 'genoffice')
     : resolve(app.getAppPath(), '..', '..', 'vendor', 'genoffice');
   return existsSync(root) ? root : null;
+}
+
+/**
+ * 解析 sheets Rust xlsx-sidecar 二进制路径。
+ *
+ * - 开发态：`<vendor>/apps/sheets/native/xlsx-engine/target/release/xlsx-sidecar(.exe)`
+ *   — 由 `pnpm genoffice:build`（含 cargo build）产出。
+ * - 打包态：`process.resourcesPath/native/xlsx-sidecar(.exe)`
+ *   — 由 electron-builder extraResources 复制（不进 asar）。
+ *
+ * 路径不存在返回 undefined（sheets 仍可加载，但读写 .xlsx 会失败——与 GenOffice
+ * standalone 缺 sidecar 同款降级）。
+ */
+export function resolveSheetsSidecarPath(): string | undefined {
+  const exe = process.platform === 'win32' ? 'xlsx-sidecar.exe' : 'xlsx-sidecar';
+  const root = resolveArtifactsRoot();
+  if (!root) return undefined;
+  const devPath = join(root, 'apps', 'sheets', 'native', 'xlsx-engine', 'target', 'release', exe);
+  const packagedPath = join(process.resourcesPath, 'native', exe);
+  const candidate = app.isPackaged ? packagedPath : devPath;
+  return existsSync(candidate) ? candidate : undefined;
 }
 
 /**
@@ -80,5 +103,5 @@ export function resolveGenOfficeArtifacts(): GenOfficeArtifacts | null {
     }
   }
 
-  return { embedPath, rendererRoots, preloads };
+  return { embedPath, rendererRoots, preloads, sheetsSidecarPath: resolveSheetsSidecarPath() };
 }

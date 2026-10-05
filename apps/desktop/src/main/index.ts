@@ -272,6 +272,8 @@ function routeLocalFile(windowId: number, path: string): boolean {
       pdf: 'pdf',
       html: 'html',
       docx: 'docs',
+      pptx: 'slides',
+      xlsx: 'sheets',
     };
     const genofficeApp = genofficeAppByKind[kind];
     if (genofficeApp && genofficeIntegration) {
@@ -1685,7 +1687,9 @@ void app.whenReady().then(() => {
         if (
           dshPort &&
           u.port === String(dshPort) &&
-          (u.pathname === '/favicon.svg' || u.pathname === '/favicon.ico' || u.pathname === '/favicon.png')
+          (u.pathname === '/favicon.svg' ||
+            u.pathname === '/favicon.ico' ||
+            u.pathname === '/favicon.png')
         ) {
           callback({ redirectURL: 'urchin://dsh-icon/' });
           return;

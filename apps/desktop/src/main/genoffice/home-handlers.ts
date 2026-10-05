@@ -72,7 +72,7 @@ export interface GenOfficeHomeDeps {
   /** 路由打开本地文件（GenOffice 伪地址分流）；返回 true 表示已受理。 */
   readonly openLocalPath: (path: string) => boolean;
   /** 新建空白文档标签（docs/markdown/html）。 */
-  readonly openBlankDocument: (kind: 'docs' | 'markdown' | 'html') => boolean;
+  readonly openBlankDocument: (kind: 'docs' | 'markdown' | 'html' | 'slides' | 'sheets') => boolean;
   /** 写空白 PDF（vendor pdf-lib）。 */
   readonly writeBlankPdf: (filePath: string) => Promise<void>;
   /** 切换 GenOffice UI 语言（主进程字典 + 原生对话框）。 */
@@ -201,8 +201,19 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
       }
       case 'newDoc':
       case 'newMarkdown':
-      case 'newHtml': {
-        const kind = method === 'newDoc' ? 'docs' : method === 'newMarkdown' ? 'markdown' : 'html';
+      case 'newHtml':
+      case 'newSlide':
+      case 'newSheet': {
+        const kind =
+          method === 'newDoc'
+            ? 'docs'
+            : method === 'newMarkdown'
+              ? 'markdown'
+              : method === 'newSlide'
+                ? 'slides'
+                : method === 'newSheet'
+                  ? 'sheets'
+                  : 'html';
         deps.openBlankDocument(kind);
         return null;
       }
@@ -211,20 +222,6 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
         const target = await uniquePath(dir, 'untitled.pdf');
         await deps.writeBlankPdf(target);
         await recordAndOpen(target);
-        return null;
-      }
-      case 'newSheet':
-      case 'newSlide': {
-        // Sheets/Slides 尚未接入（二期评估 Rust sidecar 与体积代价）：静默 no-op
-        // 会让用户以为按钮坏了——给一次明确的原生提示。
-        log.warn('new file kind not supported in Urchin yet', { method });
-        void dialog.showMessageBox({
-          type: 'info',
-          message: method === 'newSheet' ? 'Excel 表格尚未接入' : '演示文稿尚未接入',
-          detail:
-            '当前版本的「打开文件」模块支持 Word / PDF / Markdown / HTML；表格与演示文稿将在二期接入。',
-          buttons: ['知道了'],
-        });
         return null;
       }
       case 'revealPath': {

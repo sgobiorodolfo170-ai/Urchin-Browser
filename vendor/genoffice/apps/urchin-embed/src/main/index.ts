@@ -20,9 +20,22 @@
  *      `requestGenOfficeClose(kind, wc, parent)` reuse GenOffice's own
  *      Save / Don't Save / Cancel flow.
  *
- * Wired kinds (phase 4 complete): `markdown`, `pdf`, `html`, `docs` (docx).
- * Every kind follows the same three-call shape — a per-kind `configure*Runtime`,
- * `create*View` and close guard, all exported by the GenOffice app mains.
+ * Wired kinds (phase 4 + phase 5): `markdown`, `pdf`, `html`, `docs` (docx),
+ * `slides` (pptx), `sheets` (xlsx). Every kind follows the same three-call
+ * shape — a per-kind `configure*Runtime`, `create*View` and close guard, all
+ * exported by the GenOffice app mains.
+ *
+ * Note on `registerProjectIpc`: docs, sheets and slides each export their own
+ * copy, all registering the same shared `project:*` channels (used by the AI
+ * panel to resolve a chat session for a file). Upstream shell only calls docs'
+ * version once — the three copies are functionally equivalent (all read the
+ * same `<userData>/project-store`), and sheets/slides' copies exist solely
+ * for their standalone modes. The embed mirrors upstream: `initGenOfficeAi`
+ * calls docs' `registerProjectIpc` once and never calls sheets/slides'. If a
+ * future divergence makes the docs version insufficient for sheets or slides
+ * (e.g. session-id → path reverse lookup needs their internal maps), prefer
+ * **renaming the diverging app's channels** (`sheets:project:resolveChat` etc.)
+ * over `removeHandler` patching — that keeps the other apps untouched.
  */
 import type { BrowserWindow, CustomScheme, WebContents, WebContentsView } from 'electron'
 import { ipcMain } from 'electron'
@@ -70,9 +83,23 @@ import {
   registerProjectIpc,
   requestDocsClose,
 } from '../../../docs/src/main/docs-main'
+import {
+  configureSlidesRuntime,
+  createSlidesView,
+  requestSlidesClose,
+  slidesIsDirty,
+} from '../../../slides/src/main/slides-main'
+import {
+  configureSheetsRuntime,
+  createSheetsView,
+  queueWorkbookForView,
+  requestSheetsClose,
+  setSheetsNewBlank,
+  sheetsPendingEditCount,
+} from '../../../sheets/src/main/sheets-main'
 
 /** Editor modules the embed can host. */
-export type GenOfficeKind = 'markdown' | 'pdf' | 'html' | 'docs'
+export type GenOfficeKind = 'markdown' | 'pdf' | 'html' | 'docs' | 'slides' | 'sheets'
 
 /** Privileged schemes the embed's renderers need. Spread these into the host's
  * single `registerSchemesAsPrivileged([...])` call before `app.whenReady()`.
@@ -120,6 +147,15 @@ export interface GenOfficeEmbedOptions {
    * shell Home renderer (`shell`), which it mounts with its own preload.
    */
   readonly extraRendererRoots?: Record<string, string>
+  /**
+   * Absolute path of the Rust xlsx-sidecar binary for sheets. Required for
+   * sheets to read/write .xlsx via the Rust engine; if omitted sheets-main
+   * falls back to its own resolver (dev: `<vendor>/native/xlsx-engine/target/
+   * release`; packaged: `process.resourcesPath/native/`), which works only
+   * when the host's appPath lines up with the vendor tree (dev) or when the
+   * sidecar ships under resources/native (packaged).
+   */
+  readonly sheetsSidecarPath?: string
 }
 
 /** True once the GenOffice AI + project IPC pair has been registered. */
@@ -249,6 +285,40 @@ export function initGenOfficeEmbed(opts: GenOfficeEmbedOptions): void {
       rendererFile: docsRendererFile,
     })
   }
+
+  // Slides: configureSlidesRuntime lives in apps/slides/src/main/session-state.ts
+  // and is re-exported by slides-main. Slides' registerSlidesIpc is called
+  // inside createSlidesView (with its own idempotency guard), so we don't
+  // call it here. Slides does NOT register its own project:resolveChat — see
+  // the module header note on registerProjectIpc.
+  const slidesPreload = opts.preloads.slides
+  const slidesRendererFile = rendererFileOf('slides')
+  if (slidesPreload && slidesRendererFile) {
+    configureSlidesRuntime({
+      preloadPath: resolve(slidesPreload),
+      rendererDevUrl: opts.devRendererUrls?.slides,
+      rendererFilePath: slidesRendererFile,
+      openGeneratedPath,
+    })
+  }
+
+  // Sheets: needs the Rust xlsx-sidecar binary. The host resolves the path
+  // (dev: vendor build target; packaged: resources/native/) and passes it via
+  // sheetsSidecarPath; if absent, sheets-main's own resolver runs (correct
+  // only when appPath lines up with the vendor tree in dev, or the sidecar
+  // ships under resources/native in packaged builds). registerSheetsIpc is
+  // called inside createSheetsView with its own idempotency guard.
+  const sheetsPreload = opts.preloads.sheets
+  const sheetsRendererFile = rendererFileOf('sheets')
+  if (sheetsPreload && sheetsRendererFile) {
+    configureSheetsRuntime({
+      preloadPath: resolve(sheetsPreload),
+      rendererUrl: opts.devRendererUrls?.sheets,
+      rendererFile: sheetsRendererFile,
+      ...(opts.sheetsSidecarPath ? { sidecarPath: resolve(opts.sheetsSidecarPath) } : {}),
+      openGeneratedPath,
+    })
+  }
 }
 
 /**
@@ -266,6 +336,24 @@ export function createGenOfficeView(kind: GenOfficeKind, filePath: string | null
       return createHtmlView(filePath)
     case 'docs':
       return createDocsView(filePath ?? undefined)
+    case 'slides':
+      // Slides createView takes an optional nullable path, same shape as docs.
+      // The renderer's consumePendingOpen on mount picks up the path; if null
+      // the renderer calls `slides:new-blank` IPC itself to start a blank deck.
+      return createSlidesView(filePath)
+    case 'sheets':
+      // Sheets createView does NOT take a path — it only takes options
+      // ({ includeAiHandlers }). The path is injected separately via
+      // queueWorkbookForView, which the renderer consumes on mount. When
+      // filePath is null the renderer opens its default blank workbook.
+      // includeAiHandlers=false: ai:* channels are registered once by docs'
+      // registerAiIpc (via initGenOfficeAi), so sheets must NOT register
+      // its own (would throw "second handler for 'ai:get-settings'").
+      {
+        const view = createSheetsView({ includeAiHandlers: false })
+        if (filePath) queueWorkbookForView(view.webContents, filePath)
+        return view
+      }
     default: {
       const exhaustive: never = kind
       throw new Error(`GenOffice kind not wired yet: ${String(exhaustive)}`)
@@ -292,6 +380,18 @@ export function createGenOfficeBlankView(kind: GenOfficeKind): WebContentsView {
       return createHtmlView(null)
     case 'pdf':
       return createPdfView(null)
+    case 'slides':
+      // No main-process markNewBlank for slides (unlike docs' markDocsNewBlank):
+      // the renderer's startup logic detects no pending path and calls the
+      // `slides:new-blank` IPC itself to build an empty deck via createBlankPptx.
+      return createSlidesView(null)
+    case 'sheets':
+      // setSheetsNewBlank() raises a global flag the sheets renderer reads on
+      // mount to skip any queued workbook and open a fresh blank workbook
+      // instead. Must be called BEFORE createSheetsView (the flag is consumed
+      // during view creation/load). includeAiHandlers=false: see createGenOfficeView.
+      setSheetsNewBlank()
+      return createSheetsView({ includeAiHandlers: false })
     default: {
       const exhaustive: never = kind
       throw new Error(`GenOffice kind not wired yet: ${String(exhaustive)}`)
@@ -300,7 +400,7 @@ export function createGenOfficeBlankView(kind: GenOfficeKind): WebContentsView {
 }
 
 /** Write a blank single-page PDF (Home "new PDF" action; pdf-lib is already in
- * the bundle through the PDF editor main). */
+ *  the bundle through the PDF editor main). */
 export async function writeBlankPdfFile(filePath: string): Promise<void> {
   const doc = await PDFDocument.create()
   doc.addPage([595.28, 841.89])
@@ -316,8 +416,12 @@ export function setGenOfficeLanguage(lang: string): void {
  * Whether the view has unsaved changes (drives the host's tab dirty mark).
  *
  * Async because the docs editor reports dirtiness through its own close-check
- * handshake (`docsQueryDirty`) instead of a dirty-changed push; the other three
- * kinds answer synchronously from their in-process state.
+ * handshake (`docsQueryDirty`) instead of a dirty-changed push; slides is
+ * synchronous (`slidesIsDirty` reads the in-process sessions map) but the host
+ * polls it the same way since slides, like docs, does not emit a
+ * `slides:dirty-changed` push. Sheets likewise has no dirty-changed push —
+ * `sheetsPendingEditCount` returns the number of pending cell edits, and dirty
+ * is `count > 0`. markdown/pdf/html answer synchronously too.
  */
 export async function genOfficeIsDirty(
   kind: GenOfficeKind,
@@ -332,6 +436,11 @@ export async function genOfficeIsDirty(
       return htmlIsDirty(contents.id)
     case 'docs':
       return docsQueryDirty(contents)
+    case 'slides':
+      return slidesIsDirty(contents.id)
+    case 'sheets':
+      // dirty = any pending cell edit hasn't been journaled to the sidecar yet
+      return sheetsPendingEditCount(contents.id) > 0
     default: {
       const exhaustive: never = kind
       throw new Error(`GenOffice kind not wired yet: ${String(exhaustive)}`)
@@ -358,6 +467,10 @@ export function requestGenOfficeClose(
       return requestHtmlClose(contents, parent)
     case 'docs':
       return requestDocsClose(contents, parent)
+    case 'slides':
+      return requestSlidesClose(contents, parent)
+    case 'sheets':
+      return requestSheetsClose(contents, parent)
     default: {
       const exhaustive: never = kind
       throw new Error(`GenOffice kind not wired yet: ${String(exhaustive)}`)

@@ -11,6 +11,10 @@
     // upstream declaration shims required by the imported graph (same list as
     // apps/shell/tsconfig.json)
     "../../packages/pdf2docx/src/bidi-js.d.ts",
-    "../../packages/html2docx/src/raw.d.ts"
+    "../../packages/html2docx/src/raw.d.ts",
+    // slides main-process shims (`*?asset` + harfbuzzjs deep-path). Local copy
+    // instead of `../slides/src/main/env.d.ts` because that file also declares
+    // a minimal `bidi-js` that clashes with pdf2docx's richer declaration.
+    "src/main/env.d.ts"
   ]
 }

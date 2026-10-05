@@ -26,8 +26,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const vendorRoot = join(repoRoot, 'vendor', 'genoffice');
 
-/** 支持的编辑器 app（npm workspace 名后缀）。shell = 上游 Home 前端（阶段 4.6）。 */
-const SUPPORTED = ['markdown', 'pdf', 'html', 'docs', 'shell'];
+/** 支持的编辑器 app（npm workspace 名后缀）。shell = 上游 Home 前端（阶段 4.6）。
+ *  slides = PowerPoint 演示文档（阶段 5）；sheets = Excel 表格（阶段 5，需 Rust sidecar）。 */
+const SUPPORTED = ['markdown', 'pdf', 'html', 'docs', 'slides', 'sheets', 'shell'];
 const requested = process.argv.slice(2);
 const apps = requested.length > 0 ? requested : [...SUPPORTED];
 for (const app of apps) {
@@ -82,6 +83,22 @@ const artifacts = [
     ? [
         join(vendorRoot, 'node_modules', '@embedpdf', 'pdfium', 'dist', 'pdfium.wasm'),
         join(vendorRoot, 'apps', 'pdf', 'node_modules', 'harfbuzzjs', 'hb-subset.wasm'),
+      ]
+    : []),
+  // Sheets Rust xlsx-sidecar 二进制（由 sheets 的 npm run build → native:build
+  // 产出；打包时经 electron-builder extraResources 复制到 resources/native/）
+  ...(apps.includes('sheets')
+    ? [
+        join(
+          vendorRoot,
+          'apps',
+          'sheets',
+          'native',
+          'xlsx-engine',
+          'target',
+          'release',
+          process.platform === 'win32' ? 'xlsx-sidecar.exe' : 'xlsx-sidecar',
+        ),
       ]
     : []),
 ];

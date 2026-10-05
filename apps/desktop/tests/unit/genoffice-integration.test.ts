@@ -285,6 +285,69 @@ describe('createGenOfficeIntegration', () => {
     }
   });
 
+  it('should poll slides dirtiness through genOfficeIsDirty (slides has no dirty-changed push)', async () => {
+    vi.useFakeTimers();
+    try {
+      const api = makeEmbedApi();
+      api.genOfficeIsDirty = vi.fn().mockResolvedValue(true);
+      mockedArtifacts.mockReturnValue(makeArtifacts());
+      mockedLoad.mockReturnValue(api);
+      const tab: FakeTab = {
+        id: 14,
+        windowId: 1,
+        url: 'urchin://genoffice/?kind=slides&path=C%3A%5Ca.pptx',
+        dirty: false,
+        viewKind: 'genoffice',
+        genofficeKind: 'slides',
+        webContents: { id: 140 },
+      };
+      const { deps, setDirty, emitTab } = makeDeps([tab]);
+      const integration = createGenOfficeIntegration(deps);
+      integration.install();
+
+      emitTab('created', { id: tab.id, windowId: 1 });
+      await vi.advanceTimersByTimeAsync(2000);
+
+      // slides 与 docs 同款轮询：调用 genOfficeIsDirty('slides', wc)
+      expect(api.genOfficeIsDirty).toHaveBeenCalledWith('slides', tab.webContents);
+      expect(setDirty).toHaveBeenCalledWith(14, true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('should poll sheets dirtiness through genOfficeIsDirty (sheets uses pendingEditCount)', async () => {
+    vi.useFakeTimers();
+    try {
+      const api = makeEmbedApi();
+      api.genOfficeIsDirty = vi.fn().mockResolvedValue(true);
+      mockedArtifacts.mockReturnValue(makeArtifacts());
+      mockedLoad.mockReturnValue(api);
+      const tab: FakeTab = {
+        id: 15,
+        windowId: 1,
+        url: 'urchin://genoffice/?kind=sheets&path=C%3A%5Ca.xlsx',
+        dirty: false,
+        viewKind: 'genoffice',
+        genofficeKind: 'sheets',
+        webContents: { id: 150 },
+      };
+      const { deps, setDirty, emitTab } = makeDeps([tab]);
+      const integration = createGenOfficeIntegration(deps);
+      integration.install();
+
+      emitTab('created', { id: tab.id, windowId: 1 });
+      await vi.advanceTimersByTimeAsync(2000);
+
+      // sheets 与 docs/slides 同款轮询：调用 genOfficeIsDirty('sheets', wc)
+      // embed 内部用 sheetsPendingEditCount > 0 判定 dirty
+      expect(api.genOfficeIsDirty).toHaveBeenCalledWith('sheets', tab.webContents);
+      expect(setDirty).toHaveBeenCalledWith(15, true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('should mirror kind:dirty-changed to TabManager.setDirty', () => {
     const api = makeEmbedApi();
     mockedArtifacts.mockReturnValue(makeArtifacts());

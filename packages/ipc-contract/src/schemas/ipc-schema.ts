@@ -579,6 +579,10 @@ export const fileKindSchema = z.enum([
   'binary',
   /** 阶段 4：Word 文档（GenOffice docs 编辑器接管） */
   'docx',
+  /** 阶段 5：PowerPoint 演示文档（GenOffice slides 编辑器接管） */
+  'pptx',
+  /** 阶段 5：Excel 表格（GenOffice sheets 编辑器接管） */
+  'xlsx',
 ]);
 export type FileKind = z.infer<typeof fileKindSchema>;
 

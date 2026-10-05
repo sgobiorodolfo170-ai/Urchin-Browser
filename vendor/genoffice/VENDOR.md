@@ -28,13 +28,14 @@ v0.1.0-dev.91 起（dev.90 为前置的 Electron 43 升级）。
 1. **新增 `apps/urchin-embed/`**（本仓自研，非上游）：宿主嵌入层。
    - `src/main/index.ts`：`GENOFFICE_SCHEME_PRIVILEGES`（特权 scheme 数据，
      由宿主并入自己的 `registerSchemesAsPrivileged` 单次调用，含 html 的
-     html-preview/html-asset）、`initGenOfficeEmbed()`（四编辑器运行时装配 +
-     docs 的 `registerDocsIpc` 一次性注册；`extraRendererRoots` 供宿主挂载
-     shell Home 渲染产物）、`initGenOfficeAi()`（ai:*/project:* 与
-     `genoffice:ai-catalogs`）、`createGenOfficeView()`、
+     html-preview/html-asset）、`initGenOfficeEmbed()`（六编辑器运行时装配
+     markdown/pdf/html/docs/slides/sheets + docs 的 `registerDocsIpc` 一次性注册；
+     `extraRendererRoots` 供宿主挂载 shell Home 渲染产物）、`initGenOfficeAi()`
+     （ai:*/project:* 与 `genoffice:ai-catalogs`）、`createGenOfficeView()`、
      `createGenOfficeBlankView()`（Home「新建」）、`writeBlankPdfFile()`、
      `setGenOfficeLanguage()`、`genOfficeIsDirty()`（docs 走 close-check
-     查询故为异步）、`requestGenOfficeClose()`。
+     查询、slides 走 sessions map 同步查询、sheets 走 pendingEditCount>0，
+     均故为异步；md/pdf/html 同步）、`requestGenOfficeClose()`。
    - 构建：`npm run build -w @genoffice/urchin-embed` → `out/main/index.js`
      （CommonJS、自包含，仅 electron/node 内置外部依赖）。
    - `tsconfig.json` 含上游声明 shim（`packages/pdf2docx/src/bidi-js.d.ts`、
@@ -46,6 +47,24 @@ v0.1.0-dev.91 起（dev.90 为前置的 Electron 43 升级）。
      承载：`window.aiOffice` 适配层（genoffice:home 通道）与 `window.aiOfficeTabs`
      最小桩在 Urchin preload 内实现；Home 自带 `.tab-bar` 由宿主注入 CSS 隐藏
      （浏览器侧栏即标签条）。
+   - `registerProjectIpc` 设计：docs/sheets/slides 各自导出 `registerProjectIpc`，
+     都注册同一 `project:resolveChat` 通道。上游 shell 只调用 docs 版本一次
+     （三者共用 `<userData>/project-store`，等价；sheets/slides 版本仅供各自
+     standalone 模式）。embed 沿用上游做法，`initGenOfficeAi` 只调 docs 版本，
+     **不调用** sheets/slides 的 `registerProjectIpc`。若未来 sheets 或 slides 的
+     session→path 反查需要其内部 map 而 docs 版本不足，优先
+     **改该 app 通道名**（如 `sheets:project:resolveChat`）隔离，不动其他 app。
+   - `includeAiHandlers=false`（sheets 关键修复）：`createSheetsView` 默认
+     `includeAiHandlers: true` 会调 `registerSheetsAiIpc()`，注册 `ai:get-settings`
+     等通道——但 `initGenOfficeAi` 已调 docs 的 `registerAiIpc()` 注册了全部
+     `ai:*` 通道，二次注册抛 "second handler"。embed 对 sheets 一律传
+     `includeAiHandlers: false`（AI 通道由 docs 的 registerAiIpc 统一注册，
+     sheets/slides 共用；与上游 shell 行为一致）。`createGenOfficeBlankView`
+     的 sheets 分支同款。
+   - sheets sidecar 路径：`GenOfficeEmbedOptions.sheetsSidecarPath` 由宿主
+     `resolveSheetsSidecarPath()` 解析后传入（开发态 vendor/.../target/release，
+     打包态 resources/native/）。不传时 sheets-main 自行解析，但开发态
+     `app.getAppPath()` 指 apps/desktop 而非 vendor，路径不对。
 2. **`package-lock.json`**：新增 `apps/urchin-embed` workspace 条目后经
    `npm install` 更新（`npm ci` 要求锁文件与 workspace 同步）。
    上游升级流程中，替换整树后需重新执行 `npm install` 再提交锁文件。
@@ -98,12 +117,20 @@ v0.1.0-dev.91 起（dev.90 为前置的 Electron 43 升级）。
    刷新才能落到完整 catalog）；并对 `getAiSettings` 补 `.catch` 防未处理拒绝。
    逻辑/UI 不变，纯加载时序修正。设置弹窗默认区段改为 `aiModel`（与原「账号」
    首屏等价的信息架构）。
+6. **`apps/urchin-embed/src/main/env.d.ts`**（slides 接入伴随的 type shim）：
+   slides 的 `fonts.ts`/`shaped-metrics.ts` 用了 electron-vite 的 `?asset`
+   后缀导入（字体/wasm 文件路径）与 harfbuzzjs 深路径 factory，纯 `tsc --noEmit`
+   不识别。本仓在 embed 下新建 `src/main/env.d.ts`，仅声明 `*?asset` 与
+   `*/harfbuzzjs/dist/harfbuzz.js` 两个模块（**不含** `bidi-js`——让
+   `packages/pdf2docx/src/bidi-js.d.ts` 的完整声明生效，避免与 slides 自带
+   `env.d.ts` 的简化版 bidi-js 冲突）。embed tsconfig 的 include 改指向此
+   本地文件（而非 `../slides/src/main/env.d.ts` 整文件）。
 
 ## 安装与构建（Urchin 侧）
 
 ```bash
-# 一条命令：确保 vendor 依赖（缺失时 npm ci）→ 构建 markdown → 构建嵌入包 → 校验产物
-pnpm genoffice:build            # 默认 markdown；可传 app：pnpm genoffice:build pdf
+# 一条命令：确保 vendor 依赖（缺失时 npm ci）→ 构建各 app → 构建嵌入包 → 校验产物
+pnpm genoffice:build            # 默认全部（markdown/pdf/html/docs/slides/shell）；可传 app：pnpm genoffice:build slides
 ```
 
 产物路径（开发态，Urchin 主进程直接读；打包态由 electron-builder

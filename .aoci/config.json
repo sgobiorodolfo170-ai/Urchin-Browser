@@ -45,7 +45,56 @@
       "entry_removal_count": 25,
       "entry_removal_percent": 25
     },
-    "rules": []
+    "rules": [
+      {
+        "rule_id": "exclude-ico-raster-assets",
+        "action": "exclude",
+        "pattern": "apps/desktop/ico/icon-*.png",
+        "pattern_kind": "glob",
+        "reason": "品牌图标源文件(二进制构建资产),无逐文件可维护语义,由build-ico.cjs消费;维护者指令排除",
+        "decision_basis": "maintainer_direction",
+        "source": "user",
+        "created_by": "maintainer",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "exclude-ico-source-jpg",
+        "action": "exclude",
+        "pattern": "apps/desktop/ico/61c359892bac24a7500ece0e10a807e6.jpg",
+        "pattern_kind": "file",
+        "reason": "图标处理源图(JPG,二进制),由process-icon.ps1消费;维护者指令排除",
+        "decision_basis": "maintainer_direction",
+        "source": "user",
+        "created_by": "maintainer",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "exclude-renderer-root-png",
+        "action": "exclude",
+        "pattern": "apps/desktop/src/renderer/public/*.png",
+        "pattern_kind": "glob",
+        "reason": "渲染器品牌图标(二进制资产),无独立可维护语义;维护者指令排除",
+        "decision_basis": "maintainer_direction",
+        "source": "user",
+        "created_by": "maintainer",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "exclude-site-favicons",
+        "action": "exclude",
+        "pattern": "apps/desktop/src/renderer/public/sites",
+        "pattern_kind": "directory",
+        "reason": "952个站点favicon(新标签页数据资产,由fetch-site-icons.mjs生成),逐文件语义无意义;维护者指令排除",
+        "decision_basis": "maintainer_direction",
+        "source": "user",
+        "created_by": "maintainer",
+        "order": 0,
+        "enabled": true
+      }
+    ]
   },
   "cognition_budget": {
     "version": "cognition-budget-policy/v1",

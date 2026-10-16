@@ -96,15 +96,18 @@ describe('PiWebLauncher', () => {
     // dev.43：spawn 前对 agentDir 注入 auth.json 空白占位（隐藏下载引导）
     expect(h.seedAuth).toHaveBeenCalledWith('/fake/userData/pi/agent');
     expect(h.spawn).toHaveBeenCalledTimes(1);
-    // spawn 参数：系统 node 直启预装依赖的 CLI（无 shell、无 npx 运行时下载），
-    // --no-browser 禁止 pi-web-ui 拉起系统默认浏览器（dev.39）
+    // spawn 参数：Electron 内置 Node（process.execPath + ELECTRON_RUN_AS_NODE）直启
+    // 预装依赖的 CLI（无 shell、无 npx 运行时下载、新机器无需另装 Node.js），
+    // --no-browser 禁止 pi-web-ui 拉起系统默认浏览器（dev.39，dev.109 修正启动方式）
     expect(h.spawn).toHaveBeenCalledWith(
-      'node',
+      process.execPath,
       ['/fake/node_modules/pi-web-ui/bin/pi-web-ui.mjs', '--no-browser'],
       expect.objectContaining({ stdio: 'ignore' }),
     );
     // 目录经 env 注入（不经命令行）；PI_CODING_AGENT_DIR 把会话库隔离到 userData/pi
     const env = h.children[0]!.spawnEnv;
+    // dev.109：ELECTRON_RUN_AS_NODE 让 Electron 二进制作为纯 Node.js 运行时
+    expect(env.ELECTRON_RUN_AS_NODE).toBe('1');
     // dev.84：0.90.0 官方仅认 PI_WEB_PORT（v0.60.0 移除 PORT 兼容）
     expect(env.PI_WEB_PORT).toBe('45001');
     // pi-web-ui 0.97+ 会检测 workspace 里的 pi-coding-agent（无 dist/）→ 强制 bundled

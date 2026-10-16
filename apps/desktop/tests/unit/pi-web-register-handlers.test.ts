@@ -3,11 +3,18 @@
  *
  * 验证 piWeb.launch / status / stop 三个通道：
  * - launch：成功返回 {ok, url, port}；launcher 抛错转为 IpcError(INTERNAL)
+ * - launch：注册时使用加长 IPC 超时（覆盖默认 30s，见 dev.111 死路径修复）
  * - status：透传 launcher 状态快照
  * - stop：调用 launcher.stop 并返回 {ok}
  * - dispose：调用 launcher.dispose
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// 捕获 registerHandler 第 4 参（opts），用于断言 per-channel 超时覆盖。
+// vi.hoisted：vi.mock 工厂在静态 import 执行期运行，普通模块级变量此时处于 TDZ。
+const mocks = vi.hoisted(() => ({
+  capturedOpts: new Map<string, { timeoutMs?: number } | undefined>(),
+}));
 
 vi.mock('@urchin/ipc-contract', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@urchin/ipc-contract')>();
@@ -17,7 +24,9 @@ vi.mock('@urchin/ipc-contract', async (importOriginal) => {
       ipcMain: { handle: (channel: string, fn: unknown) => void },
       channel: string,
       fn: (req: unknown, ctx: unknown) => unknown,
+      opts?: { timeoutMs?: number },
     ) => {
+      mocks.capturedOpts.set(channel, opts);
       ipcMain.handle(channel, (event: unknown, rawReq: unknown) => fn(rawReq, { event }));
     },
   };
@@ -59,6 +68,20 @@ function createMockLauncher(status: PiWebStatusSnapshot = { state: 'stopped' }) 
 describe('registerPiWebHandlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.capturedOpts.clear();
+  });
+
+  it('piWeb.launch should register with extended IPC timeout (override 30s default)', () => {
+    const ipcMain = createMockIpcMain();
+    const launcher = createMockLauncher();
+    registerPiWebHandlers(ipcMain as never, launcher);
+
+    // 90s = 健康检查上限 60s + 余量；必须 > 60s，否则负载下 IPC 先超时、
+    // 渲染层放弃自动开标签（dev.111 修复的死路径）
+    expect(mocks.capturedOpts.get('piWeb.launch')?.timeoutMs).toBe(90_000);
+    // 快操作保持默认 30s（不传 opts）
+    expect(mocks.capturedOpts.get('piWeb.status')).toBeUndefined();
+    expect(mocks.capturedOpts.get('piWeb.stop')).toBeUndefined();
   });
 
   it('piWeb.launch should return ok with url and port', async () => {

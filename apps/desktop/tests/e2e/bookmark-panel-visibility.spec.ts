@@ -95,10 +95,30 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
     expect(viewBefore).not.toBeNull();
 
     // 2. 点击收藏夹按钮 → 弹出悬浮面板（第二个 BrowserWindow）
+    //    面板为异步创建（渲染层 IPC → 主进程 new BrowserWindow + 定位 + 加载
+    //    urchin://panel），全量套件冷启动/高负载下「窗口计数到 2」与「280×430
+    //    尺寸就绪」都可能有延迟——直接轮询目标属性本身（dev.111 加固，修复
+    //    2026-10-16 全量回归偶发失败：曾出现窗口数已 2 但尺寸未命中）。
     await window.getByLabel('收藏夹').click();
-    await window.waitForTimeout(1200);
-
-    const during = await listWindows(electronApp);
+    let during = await listWindows(electronApp);
+    try {
+      await expect
+        .poll(
+          async () => {
+            during = await listWindows(electronApp);
+            return during.bounds.some((b) => b.width === 280 && b.height === 430);
+          },
+          {
+            timeout: 15_000,
+            message: '点击收藏夹按钮后应出现 280×430 的悬浮面板子窗口',
+          },
+        )
+        .toBe(true);
+    } catch (e) {
+      // 失败时输出实际窗口快照（数量/尺寸），便于定位创建时序竞态
+      console.log('[bookmark-panel-debug] windows =', JSON.stringify(during));
+      throw e;
+    }
     expect(during.count).toBe(2); // 主窗口 + 悬浮面板
 
     // 面板为右下角小窗：280×430
@@ -129,7 +149,31 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
     // 4. 面板内容可见：三选项卡（收藏夹/历史/下载）加载真实数据。
     // 注意 windows() 包含主窗口 renderer + BrowserView 网页 + 面板窗口（3 个 page），
     // 必须按 URL 定位面板窗口（urchin://panel）。
-    const panelWindow = electronApp.windows().find((w) => w.url().includes('urchin://panel'));
+    // 时序说明（dev.111 加固）：Playwright 的页面注册晚于原生窗口创建——
+    // 面板窗口已存在（上文 bounds 断言通过）但 url() 尚未变为 urchin://panel，
+    // 故轮询页面列表直到出现（曾出现「窗口有、页面列表没有」的偶发失败）。
+    let panelWindow = electronApp.windows().find((w) => w.url().includes('urchin://panel'));
+    try {
+      await expect
+        .poll(
+          () => {
+            panelWindow = electronApp.windows().find((w) => w.url().includes('urchin://panel'));
+            return Boolean(panelWindow);
+          },
+          {
+            timeout: 15_000,
+            message: '面板窗口（urchin://panel）应出现在 Playwright 页面列表',
+          },
+        )
+        .toBe(true);
+    } catch (e) {
+      // 失败时输出当前所有 page 的 URL，便于定位注册时序问题
+      console.log(
+        '[bookmark-panel-debug] pages =',
+        JSON.stringify(electronApp.windows().map((w) => w.url())),
+      );
+      throw e;
+    }
     expect(panelWindow).toBeTruthy();
     await panelWindow!.waitForLoadState('domcontentloaded');
     await expect(panelWindow!.getByText('收藏夹').first()).toBeVisible();
@@ -150,6 +194,13 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
       main?.focus();
     });
     await window.waitForTimeout(800);
+    // 失焦关闭同为异步（blur → 主进程 close）：轮询回落到 1 个窗口（dev.111 加固）
+    await expect
+      .poll(async () => (await listWindows(electronApp)).count, {
+        timeout: 5_000,
+        message: '主窗口失焦后面板应自动关闭（窗口数回到 1）',
+      })
+      .toBe(1);
     const afterOutside = await listWindows(electronApp);
     expect(afterOutside.count).toBe(1);
   } finally {

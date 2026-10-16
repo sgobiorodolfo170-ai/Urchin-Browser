@@ -18,9 +18,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "package:win": "pnpm run build:main && pnpm run build:preload && pnpm run build:renderer && node ../../scripts/genoffice-build.mjs && node ../../scripts/clean-release.mjs && electron-builder --win --x64"
+    "package:win": "pnpm run build:main && pnpm run build:preload && pnpm run build:renderer && node ../../scripts/genoffice-build.mjs && node ../../scripts/fetch-node.mjs && node ../../scripts/clean-release.mjs && node ../../scripts/package-win.mjs"
   },
   "dependencies": {
+    "@deepseek-ai/dsh": "0.2.0-rc.2",
     "@radix-ui/react-slot": "^1.3.3",
     "better-sqlite3": "^13.0.3",
     "clsx": "^2.1.1",

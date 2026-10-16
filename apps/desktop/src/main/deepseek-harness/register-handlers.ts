@@ -14,27 +14,39 @@ import type { DshLauncher } from './launcher';
 const log = createLogger('dsh-ipc');
 
 /**
+ * launch 通道 IPC 超时。
+ *
+ * 必须 > launcher 启动上限（STARTUP_TIMEOUT_MS=120s，dsh 冷启动含 Cordis
+ * 插件加载与 tsx 转译），让启动器自身错误成为唯一失败出口——默认 30s 会在
+ * 冷启动慢时先杀 invoke，渲染层放弃自动开标签（与 piWeb.launch 同病，
+ * 2026-10-16 一并修复）。
+ */
+const LAUNCH_TIMEOUT_MS = 180_000;
+
+/**
  * 注册 deepseekHarness 域 IPC handler。
  *
  * @returns dispose 函数：app 退出时调用，终止 dsh 子进程树。
  */
-export function registerDshHandlers(
-  ipcMain: IpcMain,
-  launcher: DshLauncher,
-): { dispose(): void } {
-  registerHandler(ipcMain, 'deepseekHarness.launch', async () => {
-    log.info('deepseekHarness.launch');
-    try {
-      const result = await launcher.launch();
-      return { ok: true as const, url: result.url, port: result.port };
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      log.error('deepseekHarness.launch failed', { error: message });
-      throw new IpcError(IpcErrorCode.INTERNAL, `deepseekHarness.launch: ${message}`, {
-        channel: 'deepseekHarness.launch',
-      });
-    }
-  });
+export function registerDshHandlers(ipcMain: IpcMain, launcher: DshLauncher): { dispose(): void } {
+  registerHandler(
+    ipcMain,
+    'deepseekHarness.launch',
+    async () => {
+      log.info('deepseekHarness.launch');
+      try {
+        const result = await launcher.launch();
+        return { ok: true as const, url: result.url, port: result.port };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        log.error('deepseekHarness.launch failed', { error: message });
+        throw new IpcError(IpcErrorCode.INTERNAL, `deepseekHarness.launch: ${message}`, {
+          channel: 'deepseekHarness.launch',
+        });
+      }
+    },
+    { timeoutMs: LAUNCH_TIMEOUT_MS },
+  );
 
   registerHandler(ipcMain, 'deepseekHarness.status', () => {
     return launcher.status();

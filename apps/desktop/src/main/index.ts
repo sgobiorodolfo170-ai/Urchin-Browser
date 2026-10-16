@@ -791,23 +791,67 @@ function registerIpcHandlers(): void {
   });
   registerPiWebHandlers(ipcMain, piWebLauncher);
 
-  // DeepSeek Harness 启动器：vendor/deepseek-harness 作为独立子进程运行 dsh web。
-  // CLI 入口：node --import tsx/esm apps/cli/src/bin.ts web --no-open --port <port>
-  // cwd 设为 vendor 目录（tsx 从其 node_modules 解析）；DSH_HOME 指向 userData 下数据目录。
+  // DeepSeek Harness 启动器（X4 双模式，两种模式均用便携 node.exe 直启）：
+  // - 开发态：vendor/deepseek-harness TypeScript 源码 + tsx ESM loader，
+  //   运行时 = apps/desktop/build/node/node.exe（scripts/fetch-node.mjs 前置生成）。
+  // - 打包态：npm 包 @deepseek-ai/dsh（app.asar.unpacked，asarUnpack 自动部署）
+  //   + 便携 node.exe（process.resourcesPath/node，extraResources）。
+  // 为何不能复用 Electron 内置 Node（ELECTRON_RUN_AS_NODE）：dsh 依赖
+  // node-addon-require-builtin 校验运行时指纹，实探双态均拒绝 Electron V8
+  // （unsupported Electron runtime fingerprint），必须有独立纯 Node 运行时。
+  // （pi-web 不走 dsh 依赖，仍用 Electron 内置 Node，无需此文件。）
   // 与 piWeb 的关键差异：标签关闭后自动停止后端（bindTabCloseToStop）。
-  // 路径解析与 genoffice/paths.ts 一致：开发态从 app.getAppPath() 上溯两级至项目根，
-  // 打包态从 process.resourcesPath 取（electron-builder extraResources 部署位置）。
-  const dshVendorDir = app.isPackaged
-    ? join(process.resourcesPath, 'deepseek-harness')
-    : resolve(app.getAppPath(), '..', '..', 'vendor', 'deepseek-harness');
-  if (!existsSync(dshVendorDir)) {
-    log.error('dsh vendor directory not found', { dshVendorDir });
-  }
   const dshDataDir = join(startupUserDataPath, 'deepseek-harness');
-  dshLauncher = createDshLauncher({
-    vendorDir: dshVendorDir,
-    dataDir: dshDataDir,
-  });
+  if (app.isPackaged) {
+    const dshPackagedCliPath = join(
+      app.getAppPath(),
+      'node_modules',
+      '@deepseek-ai',
+      'dsh',
+      'lib',
+      'bin.js',
+    ).replace('app.asar', 'app.asar.unpacked');
+    const dshNodeExePath = join(process.resourcesPath, 'node', 'node.exe');
+    if (!existsSync(dshNodeExePath)) {
+      log.error('portable node.exe not found (package:win 应经 fetch-node.mjs 生成)', {
+        dshNodeExePath,
+      });
+    }
+    if (!existsSync(dshPackagedCliPath)) {
+      log.error('@deepseek-ai/dsh CLI not found in app.asar.unpacked', { dshPackagedCliPath });
+    }
+    dshLauncher = createDshLauncher({
+      cwdDir: dshDataDir,
+      cliEntry: dshPackagedCliPath,
+      nodePath: dshNodeExePath,
+      usesTsxLoader: false,
+      dataDir: dshDataDir,
+    });
+  } else {
+    const dshVendorDir = resolve(app.getAppPath(), '..', '..', 'vendor', 'deepseek-harness');
+    if (!existsSync(dshVendorDir)) {
+      log.error('dsh vendor directory not found', { dshVendorDir });
+    }
+    // 开发态同样用便携 node.exe 作运行时（Electron-as-Node 会被 dsh 的
+    // node-addon-require-builtin 指纹校验拒绝，见上方注释）。缺失时按提示
+    // 生成；仍传入路径，使启动器在 UI 上给出可诊断的 spawn 错误。
+    const dshDevNodeExePath = join(app.getAppPath(), 'build', 'node', 'node.exe');
+    if (!existsSync(dshDevNodeExePath)) {
+      log.error(
+        'portable node.exe not found（开发态 dsh 运行时）—— 请先运行 node scripts/fetch-node.mjs',
+        {
+          dshDevNodeExePath,
+        },
+      );
+    }
+    dshLauncher = createDshLauncher({
+      cwdDir: dshVendorDir,
+      cliEntry: 'apps/cli/src/bin.ts',
+      nodePath: dshDevNodeExePath,
+      usesTsxLoader: true,
+      dataDir: dshDataDir,
+    });
+  }
   registerDshHandlers(ipcMain, dshLauncher);
   unbindDshTabClose = bindTabCloseToStop(tabManager, dshLauncher);
 

@@ -2,15 +2,18 @@
  * pi 网页版启动器（阶段 1）· 系统 Node 子进程生命周期管理
  *
  * 职责：
- * 1. 以系统 Node 直启 pi-web-ui CLI（依赖已在 pnpm install 时预装，运行时零下载）
+ * 1. 以 Electron 内置 Node 直启 pi-web-ui CLI（依赖已在 pnpm install 时预装，运行时零下载）
  * 2. 随机空闲端口探测 + 健康检查轮询，就绪后返回入口 URL
  * 3. 进程树终止（Windows taskkill /T /F；类 Unix kill 进程组）
  * 4. 状态机：stopped → starting → running / error，支持崩溃后重启
  *
- * 启动方式（dev.39 用户决策）：
+ * 启动方式（dev.39 用户决策，dev.109 修正）：
  * - 包 pi-web-ui 以精确版本钉在 apps/desktop dependencies（供应链单一真源），
  *   `--no-browser` 禁用其启动时自动拉起系统默认浏览器（本项目内一律由 Urchin 打开）
- * - spawn 系统 `node <cliPath>`，不走 npx（npx 会运行时下载依赖）
+ * - spawn `process.execPath`（即 Urchin Browser.exe / 开发态 electron.exe）+
+ *   `ELECTRON_RUN_AS_NODE=1`，让 Electron 二进制作为纯 Node.js 运行时启动子进程。
+ *   Electron 43 内置 Node v24.147.0（≥pi-web-ui 要求的 22.19），新机器无需另装 Node.js，
+ *   无需额外打包 node.exe，安装包体积零增加。不走 npx（npx 会运行时下载依赖）。
  *
  * 隔离设计（docs/pi-web-评估.md）：
  * - pi 及其 Web UI 全部运行在系统 Node 子进程，Electron 主进程零 pi 依赖
@@ -104,7 +107,7 @@ export interface PiWebLauncherOptions {
   readonly healthPollIntervalMs?: number;
 }
 
-/** 默认进程工厂：直启 node.exe（经 PATH 解析，无需 shell——cliPath 含空格安全） */
+/** 默认进程工厂：spawn process.execPath（无需 shell——cliPath 含空格安全；ELECTRON_RUN_AS_NODE 由调用方注入 env） */
 function defaultSpawn(
   command: string,
   args: readonly string[],
@@ -285,10 +288,13 @@ export class PiWebLauncher {
 
     let exited = false;
     let exitCode: number | null = null;
-    const child = this.opts.spawnFn('node', [this.opts.cliPath, '--no-browser'], {
+    const child = this.opts.spawnFn(process.execPath, [this.opts.cliPath, '--no-browser'], {
       // 目录经环境变量传递（不经命令行，路径含空格安全）
       env: {
         ...process.env,
+        // dev.109：让 Electron 二进制作为纯 Node.js 运行时（不启动 Chromium）。
+        // Electron 43 内置 Node v24.147.0（≥pi-web-ui 要求的 22.19），新机器无需另装 Node.js。
+        ELECTRON_RUN_AS_NODE: '1',
         // 0.90.0 起官方仅认 PI_WEB_PORT（v0.60.0 移除了 PORT 兼容，见 pi-web-评估 §六B）
         PI_WEB_PORT: String(port),
         PI_WEB_DATA_DIR: this.opts.dataDir,
@@ -321,7 +327,7 @@ export class PiWebLauncher {
     child.on('error', (err) => {
       exited = true;
       this.state = 'error';
-      this.lastError = `无法启动 node（${err.message}）。请确认系统已安装 Node.js ≥22.19 并在 PATH 中`;
+      this.lastError = `无法启动子进程（${err.message}）。Electron 内置 Node 应随安装包就绪，无需另装`;
       log.error('spawn node failed', { error: err.message });
     });
 
@@ -329,7 +335,7 @@ export class PiWebLauncher {
     while (Date.now() < deadline) {
       if (exited) {
         return this.failLaunch(
-          `pi-web-ui 启动即退出（code=${String(exitCode)}）。请检查系统 Node 环境（需 ≥22.19，可用 node --version 验证）与依赖安装（pnpm install）`,
+          `pi-web-ui 启动即退出（code=${String(exitCode)}）。请检查依赖安装（pnpm install）与 Electron 内置 Node 是否可用`,
         );
       }
       if (await this.opts.healthCheckFn(port)) {

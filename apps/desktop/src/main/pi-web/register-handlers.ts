@@ -17,6 +17,16 @@ import type { PiWebLauncher } from './launcher';
 const log = createLogger('pi-web-ipc');
 
 /**
+ * launch 通道 IPC 超时。
+ *
+ * 必须 > launcher 健康检查上限（HEALTH_TIMEOUT_MS=60s），让启动器自身的
+ * 「健康检查超时」错误成为唯一失败出口——默认 30s 会在冷启动慢时先杀 invoke：
+ * 渲染层收到 TIMEOUT 后放弃自动开标签，而主进程稍后才完成启动，
+ * 形成「服务 running 但标签永不出现」的死路径（2026-10-16 E2E 实测复现）。
+ */
+const LAUNCH_TIMEOUT_MS = 90_000;
+
+/**
  * 注册 piWeb 域 IPC handler。
  *
  * @returns dispose 函数：app 退出时调用，终止 pi-web-ui 子进程树。
@@ -26,19 +36,24 @@ export function registerPiWebHandlers(
   launcher: PiWebLauncher,
 ): { dispose(): void } {
   // ── piWeb.launch：启动（或复用）服务 ──
-  registerHandler(ipcMain, 'piWeb.launch', async () => {
-    log.info('piWeb.launch');
-    try {
-      const port = await launcher.launch();
-      return { ok: true as const, url: `http://127.0.0.1:${port}`, port };
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      log.error('piWeb.launch failed', { error: message });
-      throw new IpcError(IpcErrorCode.INTERNAL, `piWeb.launch: ${message}`, {
-        channel: 'piWeb.launch',
-      });
-    }
-  });
+  registerHandler(
+    ipcMain,
+    'piWeb.launch',
+    async () => {
+      log.info('piWeb.launch');
+      try {
+        const port = await launcher.launch();
+        return { ok: true as const, url: `http://127.0.0.1:${port}`, port };
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        log.error('piWeb.launch failed', { error: message });
+        throw new IpcError(IpcErrorCode.INTERNAL, `piWeb.launch: ${message}`, {
+          channel: 'piWeb.launch',
+        });
+      }
+    },
+    { timeoutMs: LAUNCH_TIMEOUT_MS },
+  );
 
   // ── piWeb.status：状态快照 ──
   registerHandler(ipcMain, 'piWeb.status', () => {

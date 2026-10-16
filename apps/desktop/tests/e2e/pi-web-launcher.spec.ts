@@ -148,7 +148,7 @@ async function probe(url: string): Promise<number> {
 
 test.describe('pi 网页版启动器（整项目运行路径）', () => {
   test('从主项目入口启动 pi 模块并在 Urchin 标签页内打开，随应用退出终止', async () => {
-    test.setTimeout(180_000);
+    test.setTimeout(240_000);
     const { electronApp, window, userDataDir } = await launchApp();
 
     // 1. 左侧栏「AI 助手」→ urchin://ai 启动器标签页（dev.39 一键直达：进入即自动启动）
@@ -203,11 +203,15 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
     expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/?$/);
 
     // 4. pi 网页以标签页在 Urchin 内打开：侧栏出现该标签（折叠态为按钮 aria-label，
-    //    展开态为卡片标题，两种布局任一命中即可）
+    //    展开态为卡片标题，两种布局任一命中即可）。
+    //    时序说明（dev.111 修复）：launch 通道 IPC 超时已提升为 90s（> launcher
+    //    健康检查 60s 上限），负载下渲染层也能等到结果并自动开标签；修复前默认
+    //    30s 会先杀 invoke、渲染层放弃开标签，形成「服务 running 但标签永不出现」
+    //    的死路径。此处 90s 窗口保留为余量。
     const piTab = window
       .getByRole('button', { name: /pi-web-ui/i })
       .or(window.getByText(/pi-web-ui/i).first());
-    await expect(piTab.first()).toBeVisible({ timeout: 30_000 });
+    await expect(piTab.first()).toBeVisible({ timeout: 90_000 });
 
     // 5. 测试进程 HTTP 探活（服务真实可访问）
     expect(await probe(url)).toBe(200);
@@ -235,10 +239,20 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       async ({ webContents }, piUrl): Promise<PickResult> => {
         const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith(piUrl));
         if (!wc) return { error: 'pi webContents not found' };
-        // 注入脚本幂等标志存在 = 拦截已生效
-        const installed = (await wc.executeJavaScript(
-          '!!window.__ubCwdPickerInstalled',
-        )) as boolean;
+        // 注入脚本幂等标志存在 = 拦截已生效。
+        // 时序注意：页面首载 / 主题脚本 reload 窗口期内，did-finish-load 注入可能尚未
+        // 落地——轮询等待（导航重建执行上下文时 executeJavaScript 可能抛错，需容忍重试）
+        let installed = false;
+        const injectDeadline = Date.now() + 30_000;
+        while (Date.now() < injectDeadline) {
+          try {
+            installed = (await wc.executeJavaScript('!!window.__ubCwdPickerInstalled')) as boolean;
+          } catch {
+            installed = false; // 上下文已销毁（导航中）：重试
+          }
+          if (installed) break;
+          await new Promise((r) => setTimeout(r, 250));
+        }
         if (!installed) return { installed, error: 'picker script not injected' };
 
         // 真实点击链路：覆写 fetch 截获（不真发），点击按钮后检查拦截效果
@@ -681,7 +695,9 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           if (slotPresence.official && slotPresence.mirrored) break;
           await wait(500);
         }
-        const sessRowCount = (await wc.executeJavaScript(`document.querySelectorAll('.panel-sessions [class*="lp-row"]').length`)) as number;
+        const sessRowCount = (await wc.executeJavaScript(
+          `document.querySelectorAll('.panel-sessions [class*="lp-row"]').length`,
+        )) as number;
         const slotForwarded = (await wc.executeJavaScript(`(async () => {
           const official = document.querySelector('.lp-slot-sessions button.lp-slot-btn');
           const mine = Array.from(document.querySelectorAll('.__ubLPSlotBtn')).find((b) => (b.textContent || '').indexOf('E2E槽按钮') >= 0);

@@ -1711,6 +1711,91 @@ export const mailEventNewMessageSchema = z.object({
 export type MailEventNewMessage = z.infer<typeof mailEventNewMessageSchema>;
 
 // ============================================================================
+// update.* —— 应用自动更新（dev.114 提前落地 · GitHub Releases dev 预发布通道）
+// ============================================================================
+
+/**
+ * 更新状态机（跨进程唯一真源在主进程 update-service）：
+ * disabled=开发态/未启用（!app.isPackaged）；idle=就绪未检查；checking=检查中；
+ * up-to-date=已最新；available=发现新版本（可下载）；downloading=下载中（带进度）；
+ * downloaded=已下载（可安装；退出应用时自动安装）；installing=正在退出安装；
+ * error=失败（error 字段给原因）。
+ */
+export const updateStatusSchema = z.enum([
+  'disabled',
+  'idle',
+  'checking',
+  'up-to-date',
+  'available',
+  'downloading',
+  'downloaded',
+  'installing',
+  'error',
+]);
+export type UpdateStatus = z.infer<typeof updateStatusSchema>;
+
+/** 下载进度快照（来源 electron-updater download-progress 事件）。 */
+export const updateProgressSchema = z.object({
+  /** 0-100 */
+  percent: z.number().min(0).max(100),
+  /** 已传输字节数 */
+  transferred: z.number().nonnegative(),
+  /** 总字节数（服务端未给 Content-Length 时为 0） */
+  total: z.number().nonnegative(),
+  /** 实时速率（字节/秒） */
+  bytesPerSecond: z.number().nonnegative(),
+});
+export type UpdateProgress = z.infer<typeof updateProgressSchema>;
+
+/**
+ * 更新状态快照：update.getState / check / download 的返回值与
+ * `update:event` 推送（主进程状态变化时广播）共用同一结构。
+ */
+export const updateStateSchema = z.object({
+  status: updateStatusSchema,
+  /** 当前安装版本（app.getVersion()，如 0.1.0-dev.113） */
+  currentVersion: z.string().min(1),
+  /** 新版本号（available / downloading / downloaded 时存在） */
+  latestVersion: z.string().min(1).optional(),
+  /** release 标题（electron-updater releaseName；通常为 GitHub release 名） */
+  releaseName: z.string().optional(),
+  /** 更新说明（release notes 纯文本；非字符串格式时不返回） */
+  releaseNotes: z.string().optional(),
+  /** 下载进度（downloading 时存在） */
+  progress: updateProgressSchema.optional(),
+  /** 失败原因（error 时存在，人类可读） */
+  error: z.string().optional(),
+  /** 最近一次检查完成时间（ISO 8601；从未检查时缺失） */
+  checkedAt: z.string().optional(),
+});
+export type UpdateState = z.infer<typeof updateStateSchema>;
+
+// --- update.getState（读取当前状态快照，打开设置页时调用） ---
+
+export const updateGetStateReqSchema = z.object({}).default({});
+export type UpdateGetStateReq = z.infer<typeof updateGetStateReqSchema>;
+export const updateGetStateResSchema = updateStateSchema;
+
+// --- update.check（手动检查更新；GitHub 抓取慢，handler 侧放宽 IPC 超时） ---
+
+export const updateCheckReqSchema = z.object({}).default({});
+export type UpdateCheckReq = z.infer<typeof updateCheckReqSchema>;
+export const updateCheckResSchema = updateStateSchema;
+
+// --- update.download（开始下载；立即返回，进度经 update:event 推送） ---
+
+export const updateDownloadReqSchema = z.object({}).default({});
+export type UpdateDownloadReq = z.infer<typeof updateDownloadReqSchema>;
+export const updateDownloadResSchema = updateStateSchema;
+
+// --- update.install（退出应用并安装已下载的新版本） ---
+
+export const updateInstallReqSchema = z.object({}).default({});
+export type UpdateInstallReq = z.infer<typeof updateInstallReqSchema>;
+export const updateInstallResSchema = z.object({ ok: z.literal(true) });
+export type UpdateInstallRes = z.infer<typeof updateInstallResSchema>;
+
+// ============================================================================
 // IPC Schema 总表
 // ============================================================================
 
@@ -1843,6 +1928,12 @@ export const ipcSchema = {
     req: mailAttachmentSelectReqSchema,
     res: mailAttachmentSelectResSchema,
   },
+  // Update 域（M20 提前落地，dev.114）：设置页更新按钮 → GitHub Releases 自动更新。
+  // 进度经 `update:event` 推送（同 translate:progress 模式），4 个 RPC 返回状态快照。
+  'update.getState': { req: updateGetStateReqSchema, res: updateGetStateResSchema },
+  'update.check': { req: updateCheckReqSchema, res: updateCheckResSchema },
+  'update.download': { req: updateDownloadReqSchema, res: updateDownloadResSchema },
+  'update.install': { req: updateInstallReqSchema, res: updateInstallResSchema },
 } as const;
 
 /** IPC schema 的类型推导工具：取 channel 名联合。 */

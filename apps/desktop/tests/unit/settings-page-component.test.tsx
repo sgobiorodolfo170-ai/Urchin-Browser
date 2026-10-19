@@ -19,6 +19,7 @@ beforeEach(() => {
   Object.defineProperty(window, 'urchin', {
     value: {
       invoke: mockInvoke,
+      on: vi.fn(() => () => undefined),
       platform: 'win32',
       versions: { electron: '32.0.0', chrome: '128.0.0', node: '22.0.0' },
     },
@@ -53,6 +54,14 @@ function mockLoadSuccess() {
       });
     }
     if (channel === 'settings.set') return Promise.resolve({ ok: true });
+    // 更新选项卡 / 关于选项卡：状态快照（dev.114 起版本来自主进程）
+    if (channel === 'update.getState' || channel === 'update.check') {
+      return Promise.resolve({
+        status: 'up-to-date',
+        currentVersion: '0.1.0-dev.113',
+        checkedAt: '2026-10-19T00:00:00.000Z',
+      });
+    }
     return Promise.resolve({});
   });
 }
@@ -103,7 +112,8 @@ describe('SettingsPage', () => {
     // 更新
     clickTab('更新');
     expect(screen.getByText('当前版本')).toBeTruthy();
-    expect(screen.getByText('v0.1.0')).toBeTruthy();
+    // 版本来自主进程 update.getState（真实 app.getVersion()）
+    await waitFor(() => expect(screen.getByText('v0.1.0-dev.113')).toBeTruthy());
     expect(screen.getByText('立即检查')).toBeTruthy();
 
     // 关于

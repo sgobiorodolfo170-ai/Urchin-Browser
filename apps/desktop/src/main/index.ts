@@ -112,6 +112,7 @@ import { createGoogleEngine } from './translate/engines/google';
 import { createMyMemoryEngine } from './translate/engines/mymemory';
 import type { HttpTransport } from './translate/engines/types';
 import { resolvePortableUserData } from './portable';
+import { createUpdateService, registerUpdateHandlers, UPDATE_EVENT_CHANNEL } from './update';
 
 const log = createLogger('main');
 
@@ -653,6 +654,16 @@ function registerIpcHandlers(): void {
 
   // M23 download 域 handler
   registerDownloadHandlers(ipcMain, downloadManager);
+
+  // M20 update 域 handler（dev.114 提前落地）：设置页更新按钮 → GitHub Releases
+  // dev 预发布通道。electron-updater 懒加载（首次检查才 dynamic import，不拖
+  // 启动），开发态整体 disabled；状态变化经 update:event 推送设置页。
+  const updateService = createUpdateService({
+    currentVersion: app.getVersion(),
+    isPackaged: app.isPackaged,
+    notify: (state) => sendToMainWindow(UPDATE_EVENT_CHANNEL, state),
+  });
+  registerUpdateHandlers(ipcMain, updateService);
 
   // M24 网页翻译域 handler（dev.79）：微软/谷歌免费双引擎互为兜底（TD2）。
   // HTTP 经 net.fetch（Chromium 网络栈）——系统代理下谷歌可达，auto 引擎的

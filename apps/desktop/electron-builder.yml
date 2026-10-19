@@ -133,5 +133,28 @@ asarUnpack:
 # v0.1 暂无代码签名（CON-07：v0.1 不引入签名基础设施依赖）
 # v0.4+ 引入代码签名
 
-# v0.1 不启用自动更新（避免 electron-builder update-info 创建失败）
-publish: null
+# 自动更新（dev.114 提前落地，用户指令「设置页更新按钮接入发布版更新路径」）：
+# 更新源 = GitHub Releases dev 预发布通道（仓库 PUBLIC，应用内无需 token）。
+# 该配置有两处作用：① 打包时在产物内生成 resources/app-update.yml（运行时
+# electron-updater 读取 provider 信息）；② 在本地产出 dev.yml 更新清单
+# （含版本号 + 安装包 sha512），随安装包上传到对应 release——本机打包
+# --publish never 不上传，发布由 gh release upload 显式完成。
+# 版本号约定：0.1.0-dev.NNN（package-win.mjs 从 CHANGELOG 派生盖章）。
+# 更新通道由下方 publish.channel 显式指定为 dev → electron-builder 生成 dev.yml；
+# electron-updater 端 channel="dev" + allowPrerelease=true 与之匹配。
+# ⚠ 不要删除 channel 字段：app-builder-lib 26 对 GitHub provider 不按版本
+#   预发布段自动派生通道（实测会回落到 latest.yml），删除后运行时取 dev.yml 将 404。
+# ⚠ 发布纪律：每个 release 必须同时上传 exe + blockmap + dev.yml，
+# 缺 dev.yml 时检查更新直接报错（CHANNEL_FILE_NOT_FOUND，不会回退跳版本）。
+# ⚠ 不要置回 null：electron-builder 26 仅在发布配置存在时写更新清单
+# （app-builder-lib PublishManager），置 null 则 dev.yml / app-update.yml
+# 双双消失、自动更新整体失效（历史注释「避免 update-info 创建失败」的
+# 场景已由本地 --publish never 规避）。
+# CON-07（v0.1 无代码签名）不阻塞本链路：NSIS 更新路径校验 dev.yml 内的
+# sha512 完整性，不做 Authenticode 检查；签名校验留 v0.4+。
+publish:
+  - provider: github
+    owner: sgobiorodolfo170-ai
+    repo: Urchin-Browser
+    releaseType: prerelease
+    channel: dev

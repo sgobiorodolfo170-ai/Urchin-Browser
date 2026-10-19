@@ -20,10 +20,18 @@
  *
  * 后续若 electron-builder 修复 pnpm 收集器在该树形上的指数膨胀，可移除本包装
  * 直接调用 electron-builder。
+ *
+ * dev.114 自动更新落地（用户指令：设置页更新按钮接入发布版更新路径）：
+ * - 版本盖章：`--config.extraMetadata.version=<版本>` 注入 CHANGELOG 派生版本
+ *   （build-version.mjs），不改工作区 package.json；产物名与 app.getVersion()
+ *   同步——electron-updater 的 semver 比较以此为基准。
+ * - `--publish never`：只在本地产出更新清单（dev.yml / 包内 app-update.yml），
+ *   上传由发布流程用 gh release upload 显式执行，本机不触发任何上传。
  */
 import { spawnSync } from 'node:child_process';
 import { delimiter, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveBuildVersion } from './build-version.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // 直接以 node 运行本脚本（不经 pnpm 脚本）时 PATH 不含 .bin，显式补齐
@@ -40,10 +48,17 @@ const env = {
 
 // shell: true —— Windows 下经 cmd 解析 node_modules/.bin 中的 electron-builder.cmd
 // （PATH 已由 pnpm 脚本环境注入）；stdio: inherit 保持日志直通。
-const result = spawnSync('electron-builder', ['--win', '--x64'], {
-  stdio: 'inherit',
-  env,
-  shell: true,
-});
+const version = resolveBuildVersion();
+console.log(`[package-win] build version: ${version}`);
+
+const result = spawnSync(
+  'electron-builder',
+  ['--win', '--x64', '--publish', 'never', `--config.extraMetadata.version=${version}`],
+  {
+    stdio: 'inherit',
+    env,
+    shell: true,
+  },
+);
 
 process.exit(result.status ?? 1);

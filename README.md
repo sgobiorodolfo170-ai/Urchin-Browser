@@ -118,7 +118,7 @@ pnpm package:win
 - 技术栈与覆盖率门槛（[03](./docs/03-技术栈.md)）
 - 模块全景与 v0.1 范围（M1-M24 + 非编号能力，[04](./docs/04-模块全景.md)）
 - 11 份接口契约（[Provider API / IPC / Chrome 兼容 / Tab Manager 等 A-K](./docs/contracts/)）
-- 决策留痕：4 份关键 ADR + 决策索引（核心 46 项 + 契约内 68 项 = 114 项）（[decisions/](./docs/decisions/决策索引.md)）
+- 决策留痕：6 份关键 ADR + 决策索引（核心 53 项 + 契约内 68 项 = 121 项）（[decisions/](./docs/decisions/决策索引.md)）
 
 ## 开发规范
 

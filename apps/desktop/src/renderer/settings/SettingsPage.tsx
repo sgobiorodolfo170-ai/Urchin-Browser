@@ -805,19 +805,119 @@ function ProfileSelect({
 
 // ───────────────── 更新选项卡 ─────────────────
 
-function UpdateTab() {
-  const appVersion = '0.1.0';
-  const [checking, setChecking] = useState(false);
-  const [lastCheck, setLastCheck] = useState<string>('未检查');
+/** update.* IPC 状态快照（与 packages/ipc-contract updateStateSchema 对齐）。 */
+interface UpdateStateView {
+  readonly status:
+    | 'disabled'
+    | 'idle'
+    | 'checking'
+    | 'up-to-date'
+    | 'available'
+    | 'downloading'
+    | 'downloaded'
+    | 'installing'
+    | 'error';
+  readonly currentVersion: string;
+  readonly latestVersion?: string;
+  readonly releaseName?: string;
+  readonly releaseNotes?: string;
+  readonly progress?: {
+    readonly percent: number;
+    readonly transferred: number;
+    readonly total: number;
+    readonly bytesPerSecond: number;
+  };
+  readonly error?: string;
+  readonly checkedAt?: string;
+}
 
-  const handleCheck = useCallback(() => {
-    setChecking(true);
-    // v0.1 暂未实现自动更新检查，模拟异步操作
-    setTimeout(() => {
-      setChecking(false);
-      setLastCheck(new Date().toLocaleString('zh-CN'));
-    }, 800);
+/** 字节数 → 人类可读文案（下载进度用）。 */
+function formatBytes(n: number): string {
+  if (n >= 1024 * 1024 * 1024) return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${n} B`;
+}
+
+/** ISO 时间 → 本地时间文案（检查时间展示）。 */
+function formatCheckedAt(iso?: string): string {
+  if (!iso) return '未检查';
+  const t = new Date(iso);
+  return Number.isNaN(t.getTime()) ? '未检查' : t.toLocaleString('zh-CN');
+}
+
+/** 状态 → 一句话描述（错误优先展示具体原因）。 */
+function describeUpdateStatus(state: UpdateStateView | null, actionError: string | null): string {
+  switch (state?.status ?? 'idle') {
+    case 'disabled':
+      return '开发模式下不检查更新（安装版自动连接 GitHub Releases）';
+    case 'checking':
+      return '正在检查更新…';
+    case 'up-to-date':
+      return '已是最新版本';
+    case 'available':
+      return `发现新版本 v${state?.latestVersion ?? ''}`;
+    case 'downloading':
+      return `正在下载 v${state?.latestVersion ?? ''}…`;
+    case 'downloaded':
+      return `新版本 v${state?.latestVersion ?? ''} 已下载，重启后完成更新`;
+    case 'installing':
+      return '正在退出并安装，应用将自动重启…';
+    case 'error':
+      return actionError ?? state?.error ?? '更新失败';
+    default:
+      return '点击「立即检查」连接 GitHub Releases 获取最新版本';
+  }
+}
+
+function UpdateTab() {
+  const [state, setState] = useState<UpdateStateView | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const apply = (payload: unknown): void => {
+      if (alive) setState(payload as UpdateStateView);
+    };
+    // 主进程状态变化推送（下载进度 / 已下载 / 错误…）
+    const off = window.urchin.on('update:event', apply);
+    void window.urchin
+      .invoke('update.getState', {})
+      .then((s) => {
+        apply(s);
+        const status = (s as UpdateStateView).status;
+        // 打开更新页自动检查一次（进行中/已下载/安装中/开发态不打扰）
+        if (
+          status === 'idle' ||
+          status === 'up-to-date' ||
+          status === 'available' ||
+          status === 'error'
+        ) {
+          return window.urchin.invoke('update.check', {}).then(apply, () => undefined);
+        }
+        return undefined;
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+      off();
+    };
   }, []);
+
+  const run = useCallback((channel: 'update.check' | 'update.download' | 'update.install') => {
+    setActionError(null);
+    void window.urchin.invoke(channel, {}).then(
+      (s) => {
+        if (s && typeof s === 'object' && 'status' in s) setState(s as UpdateStateView);
+      },
+      (e: unknown) => setActionError(e instanceof Error ? e.message : String(e)),
+    );
+  }, []);
+
+  const status = state?.status ?? 'idle';
+  const busy = status === 'checking' || status === 'downloading' || status === 'installing';
+  const errorText = actionError ?? (status === 'error' ? state?.error : undefined);
+  const progress = state?.progress ?? { percent: 0, transferred: 0, total: 0, bytesPerSecond: 0 };
 
   return (
     <section>
@@ -825,21 +925,90 @@ function UpdateTab() {
       <div className="space-y-4">
         <div className="rounded-md border border-border bg-surface-secondary px-4 py-3">
           <div className="text-xs text-text-secondary">当前版本</div>
-          <div className="mt-1 text-lg font-medium">v{appVersion}</div>
+          <div className="mt-1 text-lg font-medium">v{state?.currentVersion ?? '…'}</div>
+          <div className="mt-1 text-xs text-text-secondary">
+            更新通道：dev（GitHub Releases 预发布）
+          </div>
         </div>
+
         <div className="rounded-md border border-border px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
               <div className="font-medium">检查更新</div>
               <div className="mt-0.5 text-xs text-text-secondary">
-                v0.1 暂未启用自动更新；上次检查：{lastCheck}
+                {describeUpdateStatus(state, actionError)}（上次检查：
+                {formatCheckedAt(state?.checkedAt)}）
               </div>
+              {errorText && <div className="mt-1 text-xs text-error">{errorText}</div>}
             </div>
-            <Button variant="primary" size="sm" onClick={handleCheck} disabled={checking}>
-              {checking ? '检查中…' : '立即检查'}
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => run('update.check')}
+              disabled={busy || status === 'disabled'}
+            >
+              {status === 'checking' ? '检查中…' : '立即检查'}
             </Button>
           </div>
         </div>
+
+        {status === 'available' && (
+          <div className="rounded-md border border-border px-4 py-3">
+            <div className="font-medium">发现新版本 v{state?.latestVersion ?? ''}</div>
+            {state?.releaseName && (
+              <div className="mt-0.5 text-xs text-text-secondary">{state.releaseName}</div>
+            )}
+            {state?.releaseNotes && (
+              <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-surface-secondary p-2 text-xs text-text-secondary">
+                {state.releaseNotes}
+              </pre>
+            )}
+            <div className="mt-3 flex justify-end">
+              <Button variant="primary" size="sm" onClick={() => run('update.download')}>
+                下载并更新
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {status === 'downloading' && (
+          <div className="rounded-md border border-border px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="font-medium">正在下载 v{state?.latestVersion ?? ''}</div>
+              <div className="text-xs text-text-secondary">{Math.floor(progress.percent)}%</div>
+            </div>
+            <div
+              className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-secondary"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.floor(progress.percent)}
+            >
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-200"
+                style={{ width: `${Math.min(100, progress.percent)}%` }}
+              />
+            </div>
+            <div className="mt-1.5 text-xs text-text-secondary">
+              {formatBytes(progress.transferred)} / {formatBytes(progress.total)} ·{' '}
+              {formatBytes(progress.bytesPerSecond)}/s
+            </div>
+          </div>
+        )}
+
+        {status === 'downloaded' && (
+          <div className="rounded-md border border-border px-4 py-3">
+            <div className="font-medium">v{state?.latestVersion ?? ''} 已就绪</div>
+            <div className="mt-0.5 text-xs text-text-secondary">
+              点击「重启并安装」立即更新；直接退出应用也会自动完成安装。
+            </div>
+            <div className="mt-3 flex justify-end">
+              <Button variant="primary" size="sm" onClick={() => run('update.install')}>
+                重启并安装
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -848,6 +1017,22 @@ function UpdateTab() {
 // ───────────────── 关于选项卡 ─────────────────
 
 function AboutTab() {
+  // 应用版本经 update.getState 取主进程 app.getVersion()（打包时由
+  // package-win.mjs 从 CHANGELOG 盖章 0.1.0-dev.NNN；开发态为 package.json 的 0.1.0）
+  const [appVersion, setAppVersion] = useState<string>('—');
+  useEffect(() => {
+    let alive = true;
+    void window.urchin
+      .invoke('update.getState', {})
+      .then((s) => {
+        if (alive) setAppVersion((s as UpdateStateView).currentVersion);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const versions = useMemo(() => {
     if (typeof window !== 'undefined' && window.urchin?.versions) {
       return {
@@ -866,7 +1051,7 @@ function AboutTab() {
       <div className="space-y-4">
         <div className="rounded-md border border-border bg-surface-secondary px-4 py-4">
           <div className="text-lg font-semibold">Urchin Browser</div>
-          <div className="mt-1 text-sm text-text-secondary">版本 0.1.0</div>
+          <div className="mt-1 text-sm text-text-secondary">版本 {appVersion}</div>
           <div className="mt-3 text-xs text-text-secondary">
             一款基于 Electron + Chromium 的 AI 浏览器，集成多 Provider AI 助手与隐私保护。
           </div>

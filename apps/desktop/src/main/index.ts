@@ -50,6 +50,7 @@ import {
 } from './tabs';
 import { HistoryManager, registerHistoryHandlers, type HistoryPersistence } from './history';
 import { BookmarkManager, registerBookmarkHandlers, type BookmarkPersistence } from './bookmarks';
+import { initStartupLog, markStartup } from './startup-log';
 import { SettingsManager, registerSettingsHandlers } from './settings';
 import { DownloadManager, registerDownloadHandlers } from './downloads';
 import { registerAiHandlers } from './ai';
@@ -149,6 +150,25 @@ if (portableUserData) {
   app.setPath('userData', portableUserData);
 }
 
+// 启动耗时打点初始化（启动优化 B5 诊断）：<userData>/logs/startup.log，从本行起可打点
+initStartupLog(app.getPath('userData'));
+markStartup('main:boot');
+
+// 单例锁：防止多实例打开（02-架构设计 §1.2）。
+// 位置提前到数据目录解析/迁移、scheme 注册（含 GenOffice 嵌入包加载）与管理器构造之前——
+// 重复双击时第二实例在完成这些重活前即退出，避免慢盘上再重走一遍完整冷启动。
+// 必须在便携版 userData 重定向之后（单例锁按 userData 身份建立），且不依赖任何后续初始化。
+// E2E 测试环境（PLAYWRIGHT）跳过单实例锁，避免与 Playwright loader 冲突
+if (!process.env.PLAYWRIGHT) {
+  const gotLock = app.requestSingleInstanceLock();
+  if (!gotLock) {
+    markStartup('main:lock-lost');
+    app.quit();
+  } else {
+    markStartup('main:lock-acquired');
+  }
+}
+
 /**
  * 当前生效的用户数据目录（DD1 决策；app ready 前解析，供截图等按数据目录落盘的功能读取）。
  * 提前到顶层解析：app.setPath('sessionData') 必须在 app ready 之前调用，
@@ -175,6 +195,7 @@ migrateLegacySummaries(startupUserDataPath, currentDataDir);
 // 重定向到 <数据目录>/cookies（必须在 app ready 之前调用，否则不生效）。
 // 注意：切换后旧 cookies 不会迁移（旧登录态失效，需重新登录一次）。
 app.setPath('sessionData', join(currentDataDir, 'cookies'));
+markStartup('main:data-dir');
 
 // 注册 urchin: scheme 为特权协议（必须在 app ready 之前）。
 // 阶段 2：GenOffice 编辑器渲染页（genoffice-app:）等特权 scheme 由嵌入包导出，
@@ -184,6 +205,7 @@ app.setPath('sessionData', join(currentDataDir, 'cookies'));
 // 加载），用于隔离「嵌入层影响启动内存/行为」类问题。
 const GENOFFICE_DISABLED = process.env.URCHIN_DISABLE_GENOFFICE === '1';
 registerUrchinSchemePrivileged(GENOFFICE_DISABLED ? [] : getGenOfficeSchemePrivileges());
+markStartup('main:scheme-privileged');
 
 // GPU 硬件加速（2026-08-17 恢复）：
 // 曾全局禁用（disableHardwareAcceleration）以规避 LiveKernelEvent 0x1CC
@@ -226,15 +248,6 @@ function installEventLoopWatchdog(): void {
   setTimeout(tick, 500);
 }
 installEventLoopWatchdog();
-
-// 单例锁：防止多实例打开（02-架构设计 §1.2）
-// E2E 测试环境（PLAYWRIGHT）跳过单实例锁，避免与 Playwright loader 冲突
-if (!process.env.PLAYWRIGHT) {
-  const gotLock = app.requestSingleInstanceLock();
-  if (!gotLock) {
-    app.quit();
-  }
-}
 
 /**
  * 全局 WindowManager 实例（M1）。
@@ -1281,7 +1294,12 @@ function send(msg) {
 `;
 
 // 应用就绪
+// 模块顶层初始化完成（scheme/lock/data-dir 均就绪；等待 app ready）
+markStartup('main:module-top-done');
+
 void app.whenReady().then(() => {
+  markStartup('main:ready');
+
   // 注册 urchin:// 协议处理器（必须在 app ready 之后）。
   // onZoom：页面注入脚本 Ctrl+滚轮时 fetch urchin://zoom[-main] 触发——
   // 'tab' 缩放网页 BrowserView（active tab），'main' 缩放主窗口 webContents（React 内部页）。
@@ -1335,6 +1353,7 @@ void app.whenReady().then(() => {
   const piDir = join(userDataPath, PI_DIR_NAME);
   const sl = new StorageLayer(dataDir, piDir, new ElectronSafeStorage(), createSqliteDatabase);
   storageLayer = sl;
+  markStartup('main:storage');
 
   // 初始化 SettingsManager，注入 StorageLayer 持久化（设置变更自动写入 SQLite）。
   // DD1 决策：pi 键（ai.* / summary.*）持久化到 pi 库 + pi 密钥存储，
@@ -1441,6 +1460,7 @@ void app.whenReady().then(() => {
   // 初始化 SummaryManager（摘要文档本地存储）。
   // DD1 决策：摘要文档存 <数据目录>/summaries（随用户数据目录迁移，无可配置项）
   summaryManager = new SummaryManager(dataDir);
+  markStartup('main:managers');
 
   // 数据目录设置变更（DD1 决策）：写入 data-location 指针，重启后整体迁移生效。
   // pi 数据（ai.db / secrets / providers）固定 userData/pi，不受此变更影响。
@@ -1531,7 +1551,8 @@ void app.whenReady().then(() => {
     },
   });
 
-  registerIpcHandlers();
+  // 注：registerIpcHandlers() 已移至主窗口创建后的 setImmediate 延迟块
+  //（启动优化 B3：窗口先出——渲染进程发出首个 IPC 远晚于本轮 setImmediate）
 
   // 注入链接打开行为解析器：根据设置决定点击链接时在当前/新标签页打开
   // 设置 links.openInNewTab = true 时新标签页打开，否则当前标签页打开（默认）
@@ -1590,10 +1611,8 @@ void app.whenReady().then(() => {
     }
   });
 
-  // 扫描 Provider 注册表（W4：加载已安装的 AI Provider）
-  // 先确保内置 OpenAI 兼容 Provider 已部署到 userData/providers 目录
-  ensureBuiltinProviders(providersDir);
-  providerRegistry.scan();
+  // 注：Provider 注册表扫描（ensureBuiltinProviders + scan）已移至主窗口创建后的
+  // setImmediate 延迟块（启动优化 B3）
 
   // 安装 TabManager ↔ WindowManager 集成（BrowserView 挂载 + 事件推送）
   tabViewIntegration = installTabViewIntegration(tabManager, windowManager);
@@ -1670,6 +1689,7 @@ void app.whenReady().then(() => {
     });
   }
   const mainWindow = windowManager.createWindow(mainWindowOpts);
+  markStartup('main:window-created');
 
   // 追踪主窗口几何变更（resize/move 防抖 500ms，maximize/close 立即），
   // 落盘 window.bounds 供下次启动恢复。仅主窗口追踪：拖出的新窗口/
@@ -1686,80 +1706,104 @@ void app.whenReady().then(() => {
     handleContextMenu(mainWebContents, params, mainTab, contextMenuDeps);
   });
 
-  // Ctrl+滚轮缩放（v2，修复 v1 不生效根因）：
-  // before-input-event 在 Electron 32 仅键盘事件触发（滚轮不达），v1 失效；
-  // v2 改为向页面注入 wheel 监听脚本，识别 Ctrl+滚轮后 fetch urchin://zoom[-main]
-  // 通知主进程缩放（协议特权 bypassCSP + supportFetchAPI 保证任意网页可发）。
-  // 页面脚本在 did-finish-load 后注入；缩放状态由 Electron 按 webContents 持有，
-  // 每标签独立、切 tab 保留，无需模块级状态。
-  disposeZoomControl = installZoomControl(tabManager, mainWebContents);
+  // 首帧渲染完成打点（启动优化 B5 诊断）：主窗口首载 HTML 完成
+  mainWebContents.once('did-finish-load', () => markStartup('main:did-finish-load'));
 
-  // dev.44：pi 页右下角「📁 项目路径」→ 原生目录选择器注入（脚本按 DOM 守卫，
-  // 仅 pi-web-ui 页面的 status-cwd 生效；其他页面零影响）
-  //
-  // 调试开关（临时排查用）：URCHIN_DISABLE_PIWEB_PICKER=1 /
-  // URCHIN_DISABLE_PIWEB_ENHANCE=1 分别跳过两处注入，用于隔离
-  // 「注入脚本导致 pi 页 renderer 卡死」类问题。
-  if (process.env.URCHIN_DISABLE_PIWEB_PICKER !== '1') {
-    disposeCwdPicker = installCwdPickerControl(tabManager);
-  }
+  // 启动优化（B3，窗口先出）：主窗口与 mainWebContents 已就绪——「窗口可见」的
+  // 关键路径到此为止，以下初始化不阻塞首帧，移入 setImmediate 延后执行：
+  // 渲染进程需先经协议加载页面资源、再执行 JS 才会发出首个 IPC（远晚于本轮
+  // setImmediate），故与渲染侧无竞态；各监听相对「归属对象创建」的先后语义不变
+  // （tab/window 的 created 监听本就在窗口创建之后注册）。次序沿用原序列；
+  // 各 dispose 变量在 performCleanup 已有 null 守卫。
+  setImmediate(() => {
+    markStartup('main:deferred-start');
 
-  if (process.env.URCHIN_DISABLE_PIWEB_ENHANCE !== '1') {
-    // dev.45：pi 页体验增强注入——主题默认亮色 + 最近项目删除按钮 + 路径提示
-    // 抑制（同样按 DOM 守卫仅 pi 页生效；详见 pi-web/page-enhance.ts 头注释）
-    disposePiEnhance = installPiWebPageEnhance(tabManager);
-  }
+    // IPC 全量注册（原位置在主窗口创建之前，B3 下移：最大同步块）
+    registerIpcHandlers();
 
-  // dev.45：pi 网页 favicon 统一为 π 品牌图标——拦截 pi 服务（当前随机端口）的
-  // favicon 请求重定向到 urchin://pi-icon。效果覆盖标签栏/历史/主页等所有经
-  // favicon URL 渲染的位置；仅匹配 pi 端口，不影响其他 localhost 应用。
-  session.defaultSession.webRequest.onBeforeRequest(
-    { urls: ['http://127.0.0.1/*'] },
-    (details, callback) => {
-      try {
-        const u = new URL(details.url);
-        const piPort = piWebLauncher?.status().port;
-        if (
-          piPort &&
-          u.port === String(piPort) &&
-          (u.pathname === '/favicon.svg' || u.pathname === '/favicon.ico')
-        ) {
-          callback({ redirectURL: 'urchin://pi-icon/' });
-          return;
+    // 扫描 Provider 注册表（W4：加载已安装的 AI Provider）
+    // 先确保内置 OpenAI 兼容 Provider 已部署到 userData/providers 目录
+    ensureBuiltinProviders(providersDir);
+    providerRegistry.scan();
+
+    // Ctrl+滚轮缩放（v2，修复 v1 不生效根因）：
+    // before-input-event 在 Electron 32 仅键盘事件触发（滚轮不达），v1 失效；
+    // v2 改为向页面注入 wheel 监听脚本，识别 Ctrl+滚轮后 fetch urchin://zoom[-main]
+    // 通知主进程缩放（协议特权 bypassCSP + supportFetchAPI 保证任意网页可发）。
+    // 页面脚本在 did-finish-load 后注入；缩放状态由 Electron 按 webContents 持有，
+    // 每标签独立、切 tab 保留，无需模块级状态。
+    disposeZoomControl = installZoomControl(tabManager, mainWebContents);
+
+    // dev.44：pi 页右下角「📁 项目路径」→ 原生目录选择器注入（脚本按 DOM 守卫，
+    // 仅 pi-web-ui 页面的 status-cwd 生效；其他页面零影响）
+    //
+    // 调试开关（临时排查用）：URCHIN_DISABLE_PIWEB_PICKER=1 /
+    // URCHIN_DISABLE_PIWEB_ENHANCE=1 分别跳过两处注入，用于隔离
+    // 「注入脚本导致 pi 页 renderer 卡死」类问题。
+    if (process.env.URCHIN_DISABLE_PIWEB_PICKER !== '1') {
+      disposeCwdPicker = installCwdPickerControl(tabManager);
+    }
+
+    if (process.env.URCHIN_DISABLE_PIWEB_ENHANCE !== '1') {
+      // dev.45：pi 页体验增强注入——主题默认亮色 + 最近项目删除按钮 + 路径提示
+      // 抑制（同样按 DOM 守卫仅 pi 页生效；详见 pi-web/page-enhance.ts 头注释）
+      disposePiEnhance = installPiWebPageEnhance(tabManager);
+    }
+
+    // dev.45：pi 网页 favicon 统一为 π 品牌图标——拦截 pi 服务（当前随机端口）的
+    // favicon 请求重定向到 urchin://pi-icon。效果覆盖标签栏/历史/主页等所有经
+    // favicon URL 渲染的位置；仅匹配 pi 端口，不影响其他 localhost 应用。
+    session.defaultSession.webRequest.onBeforeRequest(
+      { urls: ['http://127.0.0.1/*'] },
+      (details, callback) => {
+        try {
+          const u = new URL(details.url);
+          const piPort = piWebLauncher?.status().port;
+          if (
+            piPort &&
+            u.port === String(piPort) &&
+            (u.pathname === '/favicon.svg' || u.pathname === '/favicon.ico')
+          ) {
+            callback({ redirectURL: 'urchin://pi-icon/' });
+            return;
+          }
+          const dshPort = dshLauncher?.status().port;
+          if (
+            dshPort &&
+            u.port === String(dshPort) &&
+            (u.pathname === '/favicon.svg' ||
+              u.pathname === '/favicon.ico' ||
+              u.pathname === '/favicon.png')
+          ) {
+            callback({ redirectURL: 'urchin://dsh-icon/' });
+            return;
+          }
+        } catch {
+          /* URL 解析异常按原请求放行 */
         }
-        const dshPort = dshLauncher?.status().port;
-        if (
-          dshPort &&
-          u.port === String(dshPort) &&
-          (u.pathname === '/favicon.svg' ||
-            u.pathname === '/favicon.ico' ||
-            u.pathname === '/favicon.png')
-        ) {
-          callback({ redirectURL: 'urchin://dsh-icon/' });
-          return;
-        }
-      } catch {
-        /* URL 解析异常按原请求放行 */
-      }
-      callback({});
-    },
-  );
+        callback({});
+      },
+    );
 
-  // 初始化收藏夹悬浮面板（子窗口，悬浮于网页之上；随主窗口移动/缩放重定位）。
-  // 面板定位避开底部地址栏与右侧边栏：布局尺寸从 view-integration 的 layoutState 读取。
-  bookmarkPanel = new BookmarkPanel({
-    getParentWindow: () => windowManager.getWindow(mainWindow.id)?.browserWindow ?? null,
-    preloadPath: join(__dirname, '..', 'preload', 'index.js'),
-    getLayout: () => {
-      const state = getLayoutState();
-      return { rightWidth: state.rightWidth, bottomHeight: state.bottomHeight };
-    },
+    // 初始化收藏夹悬浮面板（子窗口，悬浮于网页之上；随主窗口移动/缩放重定位）。
+    // 面板定位避开底部地址栏与右侧边栏：布局尺寸从 view-integration 的 layoutState 读取。
+    bookmarkPanel = new BookmarkPanel({
+      getParentWindow: () => windowManager.getWindow(mainWindow.id)?.browserWindow ?? null,
+      preloadPath: join(__dirname, '..', 'preload', 'index.js'),
+      getLayout: () => {
+        const state = getLayoutState();
+        return { rightWidth: state.rightWidth, bottomHeight: state.bottomHeight };
+      },
+    });
+
+    markStartup('main:deferred-end');
   });
 
   // 为主窗口创建初始 tab：默认打开主页占位标签（urchin://newtab）。
   // 主页占位设计（2026-08-15）：打开网站时主页就地转为网站标签，避免空标签堆积。
   // 后续标签栏持久化（v0.2 队列）将改为：无缓存 → 主页占位；有缓存 → 恢复标签。
   tabManager.create({ windowId: mainWindow.id, url: 'urchin://newtab' });
+  markStartup('main:first-tab');
 
   // Windows 文件关联启动：命令行带文件路径（双击关联文件打开浏览器）时，
   // 直接以查看器/原生播放器打开该文件。须在主窗口与初始 tab 创建后执行，
@@ -1828,6 +1872,16 @@ async function performCleanup(): Promise<void> {
         log.error('Failed to dispose piWeb launcher on quit', { error: String(e) });
       }
       piWebLauncher = null;
+    }
+
+    // 0.55 停 GenOffice Rust sidecar 子进程（dev.109 上游 shell 的 before-quit 对应钩子；
+    //      Windows 上父进程退出不自动杀 spawn 子进程，不显式停会遗留 xlsx-sidecar.exe）
+    if (genofficeIntegration) {
+      try {
+        genofficeIntegration.stopProcesses();
+      } catch (e) {
+        log.error('Failed to stop genoffice sidecar on quit', { error: String(e) });
+      }
     }
 
     // 0.6 终止 DeepSeek Harness 子进程树 + 解绑标签关闭监听

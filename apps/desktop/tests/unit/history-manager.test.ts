@@ -303,4 +303,50 @@ describe('HistoryManager', () => {
     mgr.record('https://b.com');
     expect(listener).toHaveBeenCalledTimes(1);
   });
+
+  // ===== 惰性装载（启动优化 B4）=====
+
+  it('lazy load: constructor does not call loadAll; first access loads and restores nextId', () => {
+    const loadAll = vi
+      .fn()
+      .mockReturnValue([
+        { id: 7, url: 'https://old.com', title: 'Old', visitedAt: 100, visitCount: 3 },
+      ]);
+    const mgr = new HistoryManager({
+      loadAll,
+      upsert: vi.fn(),
+      remove: vi.fn(),
+      clearAll: vi.fn(),
+    });
+
+    // 构造器不触发加载（启动关键路径零读盘）
+    expect(loadAll).not.toHaveBeenCalled();
+
+    expect(mgr.getCount()).toBe(1);
+    expect(loadAll).toHaveBeenCalledTimes(1);
+
+    // nextId 恢复：新记录 id = 已有最大 id + 1
+    const entry = mgr.record('https://new.com');
+    expect(entry.id).toBe(8);
+    expect(mgr.getCount()).toBe(2);
+  });
+
+  it('lazy load: dedup index applies to pre-loaded entries', () => {
+    const loadAll = vi
+      .fn()
+      .mockReturnValue([
+        { id: 1, url: 'https://dup.com', title: 'Dup', visitedAt: 100, visitCount: 1 },
+      ]);
+    const mgr = new HistoryManager({
+      loadAll,
+      upsert: vi.fn(),
+      remove: vi.fn(),
+      clearAll: vi.fn(),
+    });
+
+    const updated = mgr.record('https://dup.com');
+
+    expect(updated.id).toBe(1);
+    expect(updated.visitCount).toBe(2);
+  });
 });

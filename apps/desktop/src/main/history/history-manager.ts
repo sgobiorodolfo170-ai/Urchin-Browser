@@ -54,21 +54,38 @@ export class HistoryManager {
   private readonly persistence?: HistoryPersistence;
 
   /**
-   * 构造时可选注入持久化存储。注入后从 SQLite 加载已有历史记录到内存，
-   * 并将 nextId 初始化为已有最大 id + 1。
+   * 惰性装载标记（启动优化 B4）：false 表示内存集合尚未从 persistence 装载。
+   * 未注入 persistence 时天然为 true（无需装载）。
+   */
+  private loaded: boolean;
+
+  /**
+   * 构造时可选注入持久化存储。**不在构造器加载**——首次读取内存集合时
+   * 经 ensureLoaded() 一次性装载（含 nextId 恢复；避免大表在启动关键路径上
+   * 同步读盘）。
    *
    * @param persistence 可选的持久化存储（StorageLayer.mainStore 的 SQL facade）
    */
   constructor(persistence?: HistoryPersistence) {
     this.persistence = persistence;
-    if (persistence) {
-      const rows = persistence.loadAll();
-      for (const entry of rows) {
-        this.entries.set(entry.id, entry);
-        this.urlIndex.set(entry.url, entry.id);
-        if (entry.id >= this.nextId) {
-          this.nextId = entry.id + 1;
-        }
+    this.loaded = !persistence;
+  }
+
+  /**
+   * 惰性装载已有历史记录（仅一次）：填充 entries / urlIndex 并恢复 nextId。
+   *
+   * 设计理由（启动优化 B4）：构造器同步 loadAll 会把「历史表规模 × 磁盘延迟」
+   * 计入窗口创建前的关键路径；改为首次访问内存集合时装载，行为对调用方透明。
+   */
+  private ensureLoaded(): void {
+    if (this.loaded) return;
+    this.loaded = true;
+    const rows = this.persistence?.loadAll() ?? [];
+    for (const entry of rows) {
+      this.entries.set(entry.id, entry);
+      this.urlIndex.set(entry.url, entry.id);
+      if (entry.id >= this.nextId) {
+        this.nextId = entry.id + 1;
       }
     }
   }
@@ -85,6 +102,7 @@ export class HistoryManager {
    * @returns 记录后的 HistoryEntry
    */
   record(url: string, title?: string): HistoryEntry {
+    this.ensureLoaded();
     const existingId = this.urlIndex.get(url);
     if (existingId !== undefined) {
       const existing = this.entries.get(existingId);
@@ -131,6 +149,7 @@ export class HistoryManager {
    * @returns 匹配的 HistoryEntry 数组
    */
   search(query: string, limit: number = DEFAULT_SEARCH_LIMIT): HistoryEntry[] {
+    this.ensureLoaded();
     const q = query.toLowerCase();
     const matched: HistoryEntry[] = [];
     for (const entry of this.entries.values()) {
@@ -160,6 +179,7 @@ export class HistoryManager {
     limit: number = DEFAULT_LIST_LIMIT,
     offset: number = DEFAULT_LIST_OFFSET,
   ): { entries: HistoryEntry[]; total: number } {
+    this.ensureLoaded();
     const all = Array.from(this.entries.values());
     all.sort((a, b) => b.visitedAt - a.visitedAt);
     return {
@@ -175,6 +195,7 @@ export class HistoryManager {
    * @throws 若记录不存在
    */
   delete(id: number): void {
+    this.ensureLoaded();
     const entry = this.entries.get(id);
     if (!entry) {
       throw new Error(`History entry not found: ${id}`);
@@ -191,6 +212,7 @@ export class HistoryManager {
    * @returns 被删除的记录数
    */
   clear(): number {
+    this.ensureLoaded();
     const count = this.entries.size;
     this.entries.clear();
     this.urlIndex.clear();
@@ -201,6 +223,7 @@ export class HistoryManager {
 
   /** 获取记录总数。 */
   getCount(): number {
+    this.ensureLoaded();
     return this.entries.size;
   }
 

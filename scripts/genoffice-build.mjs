@@ -12,6 +12,8 @@
  *    （main 产物本脚本不使用——宿主只加载 embed 包；但 electron-vite 一次
  *    构建三目标，无法只选 preload/renderer，全建代价可接受）
  * 3. 构建 @genoffice/urchin-embed → out/main/index.js（宿主唯一运行时入口）
+ * 3.5 从嵌入包抽取 scheme-privileges.json（宿主启动早期只读的轻量常量，
+ *     见 genoffice-extract-scheme-privileges.mjs）
  * 4. 校验全部产物路径存在，缺失即非零退出（CI/打包前置门禁）
  *
  * 用法：node scripts/genoffice-build.mjs [app...]   # 默认 markdown
@@ -21,6 +23,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { extractSchemePrivileges } from './genoffice-extract-scheme-privileges.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -69,9 +72,14 @@ for (const app of apps) {
 }
 npm(['run', 'build', '-w', '@genoffice/urchin-embed']);
 
+// 3.5 抽取宿主启动所需的轻量 scheme 常量 JSON（启动优化；失败即抛错门禁）
+extractSchemePrivileges();
+
 /** 产物清单（宿主运行时的相对路径；缺失即失败）。 */
 const artifacts = [
   join(vendorRoot, 'apps', 'urchin-embed', 'out', 'main', 'index.js'),
+  // 宿主 ready 前注册特权 scheme 用的轻量常量（避免加载整个嵌入包）
+  join(vendorRoot, 'apps', 'urchin-embed', 'out', 'main', 'scheme-privileges.json'),
   ...apps.flatMap((app) => [
     join(vendorRoot, 'apps', app, 'out', 'renderer', 'index.html'),
     // shell Home 由宿主自有 preload 承载，不需要上游 preload 产物

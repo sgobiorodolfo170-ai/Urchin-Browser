@@ -47,17 +47,34 @@ export class BookmarkManager {
   private readonly persistence?: BookmarkPersistence;
 
   /**
-   * 构造时可选注入持久化存储。注入后从 SQLite 加载已有书签到内存。
+   * 惰性装载标记（启动优化 B4）：false 表示内存集合尚未从 persistence 装载。
+   * 未注入 persistence 时天然为 true（无需装载）。
+   */
+  private loaded: boolean;
+
+  /**
+   * 构造时可选注入持久化存储。**不在构造器加载**——首次读取内存集合时
+   * 经 ensureLoaded() 一次性装载（避免大表在启动关键路径上同步读盘）。
    *
    * @param persistence 可选的持久化存储（StorageLayer.mainStore 的 SQL facade）
    */
   constructor(persistence?: BookmarkPersistence) {
     this.persistence = persistence;
-    if (persistence) {
-      const rows = persistence.loadAll();
-      for (const bookmark of rows) {
-        this.entries.set(bookmark.id, bookmark);
-      }
+    this.loaded = !persistence;
+  }
+
+  /**
+   * 惰性装载已有书签（仅一次）。
+   *
+   * 设计理由（启动优化 B4）：构造器同步 loadAll 会把「书签表规模 × 磁盘延迟」
+   * 计入窗口创建前的关键路径；改为首次访问内存集合时装载，行为对调用方透明。
+   */
+  private ensureLoaded(): void {
+    if (this.loaded) return;
+    this.loaded = true;
+    const rows = this.persistence?.loadAll() ?? [];
+    for (const bookmark of rows) {
+      this.entries.set(bookmark.id, bookmark);
     }
   }
 
@@ -74,6 +91,7 @@ export class BookmarkManager {
    * @returns 新建的 Bookmark
    */
   create(opts: BookmarkCreateOptions): Bookmark {
+    this.ensureLoaded();
     const parentId: string | null = opts.parentId ?? null;
     const type: BookmarkType = opts.type ?? (opts.url ? 'bookmark' : 'folder');
     const now = Date.now();
@@ -109,6 +127,7 @@ export class BookmarkManager {
    * @returns 排序后的 Bookmark 数组
    */
   list(parentId?: string | null): Bookmark[] {
+    this.ensureLoaded();
     const all = Array.from(this.entries.values());
     const filtered = parentId === undefined ? all : all.filter((b) => b.parentId === parentId);
     return filtered.sort((a, b) => a.position - b.position);
@@ -125,6 +144,7 @@ export class BookmarkManager {
    * @returns 匹配的 Bookmark 数组
    */
   search(query: string, limit: number = DEFAULT_SEARCH_LIMIT): Bookmark[] {
+    this.ensureLoaded();
     const q = query.toLowerCase();
     const matched: Bookmark[] = [];
     for (const bookmark of this.entries.values()) {
@@ -148,6 +168,7 @@ export class BookmarkManager {
    * @throws 若节点不存在
    */
   delete(id: string): void {
+    this.ensureLoaded();
     const bookmark = this.entries.get(id);
     if (!bookmark) {
       throw new Error(`Bookmark not found: ${id}`);
@@ -157,6 +178,7 @@ export class BookmarkManager {
 
   /** 获取节点总数。 */
   getCount(): number {
+    this.ensureLoaded();
     return this.entries.size;
   }
 

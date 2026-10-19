@@ -37,7 +37,7 @@
  * **renaming the diverging app's channels** (`sheets:project:resolveChat` etc.)
  * over `removeHandler` patching — that keeps the other apps untouched.
  */
-import type { BrowserWindow, CustomScheme, WebContents, WebContentsView } from 'electron'
+import type { BrowserWindow, WebContents, WebContentsView } from 'electron'
 import { ipcMain } from 'electron'
 import { resolve } from 'node:path'
 import { writeFile } from 'node:fs/promises'
@@ -47,11 +47,7 @@ import {
   AI_SEARCH_PROVIDERS,
   getProviderAdapter,
 } from '@genoffice/ai-provider/browser'
-import {
-  DOCX_MEDIA_SCHEME_PRIVILEGE,
-  RENDERER_SCHEME_PRIVILEGE,
-  installRendererProtocol,
-} from '@genoffice/electron-utils'
+import { installRendererProtocol } from '@genoffice/electron-utils'
 import { setUiLang, isLang } from '@genoffice/i18n'
 import { PDFDocument } from 'pdf-lib'
 import {
@@ -72,7 +68,6 @@ import {
   htmlIsDirty,
   requestHtmlClose,
 } from '../../../html/src/main/html-main'
-import { ASSET_SCHEME, PREVIEW_SCHEME } from '../../../html/src/main/preview-document'
 import {
   configureDocsRuntime,
   createDocsView,
@@ -96,37 +91,16 @@ import {
   requestSheetsClose,
   setSheetsNewBlank,
   sheetsPendingEditCount,
+  stopSheetsSidecar,
 } from '../../../sheets/src/main/sheets-main'
 
 /** Editor modules the embed can host. */
 export type GenOfficeKind = 'markdown' | 'pdf' | 'html' | 'docs' | 'slides' | 'sheets'
 
-/** Privileged schemes the embed's renderers need. Spread these into the host's
- * single `registerSchemesAsPrivileged([...])` call before `app.whenReady()`.
- *
- * - `RENDERER_SCHEME_PRIVILEGE` serves the built renderer pages and
- *   `DOCX_MEDIA_SCHEME_PRIVILEGE` carries lazily served document pictures; both
- *   come straight from GenOffice's own helpers so privileges never drift.
- * - `html-preview` / `html-asset` (scheme names from the html app's
- *   preview-document module) serve the live preview iframe and its assets. */
-export const GENOFFICE_SCHEME_PRIVILEGES: readonly CustomScheme[] = [
-  RENDERER_SCHEME_PRIVILEGE,
-  DOCX_MEDIA_SCHEME_PRIVILEGE,
-  {
-    scheme: PREVIEW_SCHEME,
-    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
-  },
-  {
-    scheme: ASSET_SCHEME,
-    privileges: {
-      standard: true,
-      secure: true,
-      supportFetchAPI: true,
-      corsEnabled: true,
-      stream: true,
-    },
-  },
-]
+/** Privileged schemes the embed's renderers need（定义已迁移到
+ * ./scheme-privileges，供构建期轻量抽取为 JSON；此处 re-export 保持嵌入包
+ * 公共 API 不变）。 */
+export { GENOFFICE_SCHEME_PRIVILEGES } from './scheme-privileges'
 
 export interface GenOfficeEmbedOptions {
   /** Absolute path of each editor's built renderer directory (served as
@@ -405,6 +379,17 @@ export async function writeBlankPdfFile(filePath: string): Promise<void> {
   const doc = await PDFDocument.create()
   doc.addPage([595.28, 841.89])
   await writeFile(filePath, await doc.save())
+}
+
+/**
+ * Stop the Rust XLSX sidecar child process. Mirrors the upstream shell's
+ * before-quit hook: on Windows a spawned child is NOT killed when the parent
+ * exits, so the host must call this during its own quit cleanup or
+ * `xlsx-sidecar.exe` survives the app. Safe to call repeatedly / when the
+ * sidecar never started.
+ */
+export function stopGenOfficeSidecars(): void {
+  stopSheetsSidecar()
 }
 
 /** Switch the GenOffice UI language (main-process dictionaries + native dialogs). */

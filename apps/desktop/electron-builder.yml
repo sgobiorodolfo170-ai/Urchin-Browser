@@ -42,6 +42,11 @@ extraResources:
   # （package:win 已内置 genoffice:build 前置步骤）。
   - from: ../../vendor/genoffice/apps/urchin-embed/out/main/index.js
     to: genoffice/embed/index.js
+  # 启动优化：宿主 ready 前注册特权 scheme 用的轻量常量 JSON
+  # （genoffice-extract-scheme-privileges 从嵌入包抽取，见 vendor 侧
+  # scheme-privileges.ts；避免启动早期加载整个 embed bundle）
+  - from: ../../vendor/genoffice/apps/urchin-embed/out/main/scheme-privileges.json
+    to: genoffice/embed/scheme-privileges.json
   - from: ../../vendor/genoffice/apps/markdown/out/renderer
     to: genoffice/apps/markdown/renderer
   - from: ../../vendor/genoffice/apps/markdown/out/preload/index.js

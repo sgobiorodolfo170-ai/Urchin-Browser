@@ -251,4 +251,50 @@ describe('BookmarkManager', () => {
     mgr.create({ title: 'B', url: 'https://b.com' });
     expect(listener).toHaveBeenCalledTimes(1);
   });
+
+  // ===== 惰性装载（启动优化 B4）=====
+
+  it('lazy load: constructor does not call loadAll; first access loads exactly once', () => {
+    const loadAll = vi.fn().mockReturnValue([
+      {
+        id: 'b1',
+        parentId: null,
+        url: 'https://loaded.com',
+        title: 'Loaded',
+        type: 'bookmark',
+        position: 0,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+    const mgr = new BookmarkManager({ loadAll, upsert: vi.fn(), remove: vi.fn() });
+
+    // 构造器不触发加载（启动关键路径零读盘）
+    expect(loadAll).not.toHaveBeenCalled();
+
+    // 首次访问内存集合时装载，且仅装一次
+    expect(mgr.list()).toHaveLength(1);
+    expect(mgr.getCount()).toBe(1);
+    expect(loadAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('lazy load: position allocation counts pre-loaded rows', () => {
+    const loadAll = vi.fn().mockReturnValue([
+      {
+        id: 'b1',
+        parentId: null,
+        url: 'https://a.com',
+        title: 'A',
+        type: 'bookmark',
+        position: 0,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+    const mgr = new BookmarkManager({ loadAll, upsert: vi.fn(), remove: vi.fn() });
+
+    const created = mgr.create({ title: 'B', url: 'https://b.com' });
+
+    expect(created.position).toBe(1);
+  });
 });

@@ -23,13 +23,17 @@ describe('TokenBucket', () => {
   });
 
   it('acquireRequestToken 成功扣 1 个 token', async () => {
-    const bucket = new TokenBucket(60);
+    // 冻结时钟：避免真实时钟跨毫秒导致 refill 补入小数 token（flaky）
+    const time = { now: () => 0 };
+    const bucket = new TokenBucket(60, { time });
     await bucket.acquireRequestToken();
     expect(bucket.availableTokens).toBe(59);
   });
 
   it('连续 acquire 多次扣多个 token', async () => {
-    const bucket = new TokenBucket(60);
+    // 冻结时钟：与上同理，断言要求精确整数
+    const time = { now: () => 0 };
+    const bucket = new TokenBucket(60, { time });
     await bucket.acquireRequestToken();
     await bucket.acquireRequestToken();
     await bucket.acquireRequestToken();
@@ -132,7 +136,9 @@ describe('TokenBucket', () => {
   });
 
   it('并发 acquire 互不影响', async () => {
-    const bucket = new TokenBucket(100);
+    // 冻结时钟：同上，保证 token 计数为精确整数
+    const time = { now: () => 0 };
+    const bucket = new TokenBucket(100, { time });
     const promises: Promise<void>[] = [];
     for (let i = 0; i < 10; i++) {
       promises.push(bucket.acquireRequestToken());

@@ -55,6 +55,25 @@ export function resolveArtifactsRoot(): string | null {
 }
 
 /**
+ * 解析 GenOffice 特权 scheme 常量 JSON（启动优化，见 loader.ts 调用点）。
+ *
+ * 该文件由 `scripts/genoffice-extract-scheme-privileges.mjs` 在构建期从嵌入包
+ * 抽取（genoffice-build.mjs 自动调用），供 app ready 前**轻量**读取：
+ * - 开发态：vendor/genoffice/apps/urchin-embed/out/main/scheme-privileges.json
+ * - 打包态：resources/genoffice/embed/scheme-privileges.json
+ *
+ * 不存在返回 null——宿主回退到「加载嵌入包取常量」的旧行为（慢但正确）。
+ */
+export function resolveGenOfficeSchemePrivilegesPath(): string | null {
+  const root = resolveArtifactsRoot();
+  if (!root) return null;
+  const candidate = app.isPackaged
+    ? join(root, 'embed', 'scheme-privileges.json')
+    : join(root, 'apps', 'urchin-embed', 'out', 'main', 'scheme-privileges.json');
+  return existsSync(candidate) ? candidate : null;
+}
+
+/**
  * 解析 sheets Rust xlsx-sidecar 二进制路径。
  *
  * - 开发态：`<vendor>/apps/sheets/native/xlsx-engine/target/release/xlsx-sidecar(.exe)`

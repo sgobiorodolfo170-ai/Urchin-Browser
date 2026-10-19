@@ -63,6 +63,8 @@ export interface GenOfficeIntegration {
   guardTabClose(tabId: number): Promise<boolean>;
   /** 整窗关闭守卫：逐个脏编辑器确认；任一取消返回 false。 */
   confirmWindowClose(windowId: number): Promise<boolean>;
+  /** 宿主退出清理：停 sheets Rust sidecar 子进程（防孤儿 xlsx-sidecar.exe）。 */
+  stopProcesses(): void;
 }
 
 export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenOfficeIntegration {
@@ -251,6 +253,15 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
     return true;
   }
 
+  function stopProcesses(): void {
+    try {
+      // 只停子进程（Rust sidecar）；webContents/定时器由宿主统一销毁
+      embed?.stopGenOfficeSidecars?.();
+    } catch (e) {
+      log.error('genoffice sidecar stop failed on quit', { error: String(e) });
+    }
+  }
+
   return {
     get available() {
       return available;
@@ -262,5 +273,6 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
     resolveTabCreate,
     guardTabClose,
     confirmWindowClose,
+    stopProcesses,
   };
 }

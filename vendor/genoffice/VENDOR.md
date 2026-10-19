@@ -65,6 +65,11 @@ v0.1.0-dev.91 起（dev.90 为前置的 Electron 43 升级）。
      `resolveSheetsSidecarPath()` 解析后传入（开发态 vendor/.../target/release，
      打包态 resources/native/）。不传时 sheets-main 自行解析，但开发态
      `app.getAppPath()` 指 apps/desktop 而非 vendor，路径不对。
+   - sheets sidecar 退出清理：上游 shell 在其 before-quit 钩子调用
+     sheets-main 的 `stopSheetsSidecar()`（Windows 父进程退出不自动杀
+     spawn 子进程，不显式停会遗留 `xlsx-sidecar.exe`）。embed 导出
+     `stopGenOfficeSidecars()`（直接 re-export），宿主在自身退出清理
+     （`performCleanup`）中调用。
 2. **`package-lock.json`**：新增 `apps/urchin-embed` workspace 条目后经
    `npm install` 更新（`npm ci` 要求锁文件与 workspace 同步）。
    上游升级流程中，替换整树后需重新执行 `npm install` 再提交锁文件。

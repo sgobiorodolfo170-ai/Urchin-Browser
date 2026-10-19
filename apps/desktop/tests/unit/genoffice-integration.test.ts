@@ -48,6 +48,7 @@ function makeEmbedApi(viewResult: unknown = { kind: 'genoffice-view' }) {
     createGenOfficeView: vi.fn().mockReturnValue(viewResult),
     genOfficeIsDirty: vi.fn().mockResolvedValue(false),
     requestGenOfficeClose: vi.fn().mockResolvedValue(true),
+    stopGenOfficeSidecars: vi.fn(),
   };
 }
 
@@ -443,5 +444,28 @@ describe('createGenOfficeIntegration', () => {
     api.requestGenOfficeClose.mockReset().mockResolvedValue(true);
     await expect(integration.confirmWindowClose(1)).resolves.toBe(true);
     expect(api.requestGenOfficeClose).toHaveBeenCalledTimes(2);
+  });
+
+  it('stopProcesses should stop the sidecar via embed and survive embed errors', () => {
+    const api = makeEmbedApi();
+    mockedArtifacts.mockReturnValue(makeArtifacts());
+    mockedLoad.mockReturnValue(api);
+    const { deps } = makeDeps([]);
+
+    const integration = createGenOfficeIntegration(deps);
+    // 未 install / embed 为 null 时也不应抛错
+    expect(() => integration.stopProcesses()).not.toThrow();
+    expect(api.stopGenOfficeSidecars).not.toHaveBeenCalled();
+
+    integration.install();
+    integration.stopProcesses();
+    expect(api.stopGenOfficeSidecars).toHaveBeenCalledTimes(1);
+
+    api.stopGenOfficeSidecars.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    expect(() => integration.stopProcesses()).not.toThrow();
+    errSpy.mockRestore();
   });
 });

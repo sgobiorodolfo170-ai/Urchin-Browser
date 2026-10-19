@@ -102,7 +102,10 @@ win:
     - target: nsis
       arch:
         - x64
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  # 文件名不含空格：GitHub 上传会把资产名中的空格归一化为「.」，而更新清单
+  # dev.yml 的下载 URL 由 electron-updater 按「-」拼接（GitHubProvider.resolveFiles），
+  # 含空格时实际资产名（点）与请求名（连字符）不一致 → 下载 404（dev.114 实测）。
+  artifactName: Urchin-Browser-${version}-${arch}.${ext}
 
 nsis:
   oneClick: false

@@ -2,3 +2,4 @@ packages:
   - 'apps/*'
   - 'packages/*'
   - 'vendor/pi/packages/*'
+  - '!vendor/pi/packages/tui'

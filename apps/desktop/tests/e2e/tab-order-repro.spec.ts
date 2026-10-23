@@ -12,6 +12,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { getStatusBarPage } from './helpers/status-bar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -47,8 +48,9 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
 test('新建标签后旧标签保持原状态且置顶新标签', async () => {
   const { electronApp, window } = await launchApp();
 
-  // 1. 地址栏导航 example.com（当前标签内导航）
-  const omniboxInput = window.getByRole('textbox').first();
+  // 1. 地址栏导航 example.com（当前标签内导航；地址栏位于独立悬浮状态栏子窗口）
+  const statusBar = await getStatusBarPage(electronApp);
+  const omniboxInput = statusBar.getByLabel('地址栏');
   await omniboxInput.fill('https://example.com');
   await omniboxInput.press('Enter');
   await expect(omniboxInput).toHaveValue(/example\.com/, { timeout: 15_000 });

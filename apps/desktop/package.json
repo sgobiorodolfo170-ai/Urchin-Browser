@@ -31,7 +31,7 @@
     "lucide-react": "^1.27.0",
     "marked": "18.0.5",
     "nodemailer": "^6.10.1",
-    "pi-web-ui": "0.97.0",
+    "pi-web-ui": "0.110.0",
     "postal-mime": "^2.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

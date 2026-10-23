@@ -670,6 +670,8 @@ export const uiStatusBarActionReqSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('focus-page') }),
 ]);
 export type UiStatusBarActionReq = z.infer<typeof uiStatusBarActionReqSchema>;
+/** 悬浮层用户动作（便于导入的别名） */
+export type StatusBarAction = UiStatusBarActionReq;
 export const uiStatusBarActionResSchema = z.object({ ok: z.literal(true) });
 export type UiStatusBarActionRes = z.infer<typeof uiStatusBarActionResSchema>;
 

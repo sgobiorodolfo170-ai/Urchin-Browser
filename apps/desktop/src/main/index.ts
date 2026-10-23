@@ -95,6 +95,11 @@ import { resolveShellRendererRoot } from './genoffice/paths';
 import { currentThemeBackground } from './theme';
 import { BookmarkPanel } from './panel/bookmark-panel';
 import {
+  StatusBarOverlay,
+  DEFAULT_STATUS_BAR_STATE,
+  type StatusBarHostWindow,
+} from './status-bar/status-bar-overlay';
+import {
   resolveDataLocation,
   setDataLocation,
   migrateLegacyPiData,
@@ -497,8 +502,33 @@ function sendToMainWindow(channel: string, payload: unknown): void {
     log.warn('send to main window failed', { channel, error: String(err) });
   }
 }
+
+/**
+ * 把键盘焦点还回活跃网页（状态栏导航/Escape 后调用）。
+ *
+ * 状态栏是独立 BrowserWindow，导航后若不显式聚焦，键盘焦点会留在悬浮层，
+ * 导致网页无法接收空格/方向键等按键。这里先聚焦主窗口，再聚焦活跃 tab 的
+ * webContents（BrowserView），使焦点回到网页。
+ */
+function focusActivePage(): void {
+  try {
+    const entry = windowManager.getAllWindows()[0];
+    if (!entry) return;
+    const win = entry.browserWindow as unknown as Electron.BrowserWindow;
+    win.focus?.();
+    const active = tabManager.query({ windowId: entry.id }).find((t) => t.active);
+    if (active) {
+      const tab = tabManager.getTab(active.id);
+      (tab?.webContents as unknown as Electron.WebContents | undefined)?.focus?.();
+    }
+  } catch (err) {
+    log.warn('focus active page failed', { error: String(err) });
+  }
+}
 /** 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
 let bookmarkPanel: BookmarkPanel | null = null;
+/** 底部悬浮状态栏（独立透明子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
+let statusBarOverlay: StatusBarOverlay | null = null;
 /**
  * AI IPC handlers 的 dispose 句柄（由 registerAiHandlers 返回）。
  * 进程退出时调用 dispose()，abort 所有活跃 chat/agent 流，
@@ -1006,8 +1036,9 @@ function registerIpcHandlers(): void {
     });
     // 立即刷新所有窗口的 BrowserView bounds
     tabViewIntegration?.refreshAllViewBounds();
-    // 布局变化（如右侧栏宽度拖拽调节）时，悬浮面板跟随重新定位
+    // 布局变化（如右侧栏宽度拖拽调节）时，悬浮面板与状态栏跟随重新定位
     bookmarkPanel?.refreshPosition();
+    statusBarOverlay?.refreshPosition();
     log.info('layout state updated', {
       leftWidth: newState.leftWidth,
       rightWidth: newState.rightWidth,
@@ -1057,6 +1088,41 @@ function registerIpcHandlers(): void {
     const x = pos[0] ?? 0;
     const y = pos[1] ?? 0;
     win.setPosition(x + req.dx, y + req.dy);
+    return { ok: true as const };
+  });
+
+  // UI 域 handler：状态栏状态同步（主渲染 → 主进程，缓存并转发给悬浮层）
+  registerHandler(ipcMain, 'ui.statusbar.sync', (req) => {
+    statusBarOverlay?.handleSync(req);
+    return { ok: true as const };
+  });
+
+  // UI 域 handler：悬浮层取缓存状态（悬浮层 → 主进程）
+  registerHandler(ipcMain, 'ui.statusbar.getState', () => {
+    return statusBarOverlay?.getState() ?? DEFAULT_STATUS_BAR_STATE;
+  });
+
+  // UI 域 handler：悬浮层上报建议/提示展开高度（悬浮层 → 主进程，重定位窗口）
+  registerHandler(ipcMain, 'ui.statusbar.setExpanded', (req) => {
+    statusBarOverlay?.setExpanded(req.panelHeight);
+    return { ok: true as const };
+  });
+
+  // UI 域 handler：悬浮层用户动作转发（悬浮层 → 主进程 → 主渲染）
+  registerHandler(ipcMain, 'ui.statusbar.action', (req) => {
+    const action = req;
+    // 转发给主渲染进程（App.tsx 监听 ui.statusbar.action 事件）
+    sendToMainWindow('ui.statusbar.action', action);
+    // 导航类动作：把焦点还回网页，避免悬浮层占用键盘焦点
+    if (
+      action.type === 'navigate' ||
+      action.type === 'back' ||
+      action.type === 'forward' ||
+      action.type === 'reload' ||
+      action.type === 'focus-page'
+    ) {
+      focusActivePage();
+    }
     return { ok: true as const };
   });
 
@@ -1944,6 +2010,53 @@ void app.whenReady().then(() => {
       },
     });
 
+    // 初始化底部悬浮状态栏（透明子窗口，悬浮于网页之上；网页内容铺到窗口底部）。
+    // 状态由主渲染进程经 ui.statusbar.sync 推送；悬浮层动作经 ui.statusbar.action 转发。
+    statusBarOverlay = new StatusBarOverlay({
+      getParentWindow: () =>
+        (windowManager.getWindow(mainWindow.id)?.browserWindow ??
+          null) as unknown as StatusBarHostWindow | null,
+      preloadPath: join(__dirname, '..', 'preload', 'index.js'),
+      getLayout: () => {
+        const state = getLayoutState();
+        return {
+          leftWidth: state.leftWidth,
+          rightWidth: state.rightWidth,
+          bottomHeight: state.bottomHeight,
+        };
+      },
+      onLoad: async (win) => {
+        const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
+        if (isDev) {
+          const base = process.env.URCHIN_RENDERER_URL ?? 'http://localhost:5173';
+          const u = new URL(base);
+          u.searchParams.set('view', 'statusbar');
+          await win.loadURL(u.toString());
+        } else {
+          await win.loadFile(join(__dirname, '..', 'renderer', 'index.html'), {
+            query: { view: 'statusbar' },
+          });
+        }
+      },
+      onAction: (action) => {
+        // 动作已由 ui.statusbar.action handler 转发并处理焦点；
+        // 此回调保留为扩展点，当前无需额外处理。
+        void action;
+      },
+    });
+    statusBarOverlay.open();
+
+    // HTML5 全屏抑制悬浮状态栏：内嵌视频全屏时隐藏地址栏（同 view-integration 撑满）
+    tabManager.on('updated', (snapshot) => {
+      if (!snapshot.active) return;
+      const tab = tabManager.getTab(snapshot.id);
+      statusBarOverlay?.setHtmlFullscreen(tab?.htmlFullscreen ?? false);
+    });
+    tabManager.on('activated', (snapshot) => {
+      const tab = tabManager.getTab(snapshot.id);
+      statusBarOverlay?.setHtmlFullscreen(tab?.htmlFullscreen ?? false);
+    });
+
     markStartup('main:deferred-end');
   });
 
@@ -2100,6 +2213,16 @@ async function performCleanup(): Promise<void> {
         log.error('Failed to dispose zoom control on quit', { error: String(e) });
       }
       disposeZoomControl = null;
+    }
+
+    // 4.6.1 销毁底部悬浮状态栏子窗口（不受 WindowManager 管理，需显式释放）
+    if (statusBarOverlay) {
+      try {
+        statusBarOverlay.destroy();
+      } catch (e) {
+        log.error('Failed to dispose status bar overlay on quit', { error: String(e) });
+      }
+      statusBarOverlay = null;
     }
 
     // 4.7 移除 pi 页目录选择器注入的 created/did-finish-load 监听（dev.44）

@@ -22,6 +22,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { getStatusBarPage } from './helpers/status-bar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -102,8 +103,9 @@ test.describe('v0.1 关键路径', () => {
       timeout: 15_000,
     });
 
-    // 在地址栏输入 URL 并提交
-    const omniboxInput = window.getByRole('textbox').first();
+    // 在地址栏输入 URL 并提交（地址栏位于独立悬浮状态栏子窗口）
+    const statusBar = await getStatusBarPage(electronApp);
+    const omniboxInput = statusBar.getByLabel('地址栏');
     await omniboxInput.fill('https://example.com');
     await omniboxInput.press('Enter');
 

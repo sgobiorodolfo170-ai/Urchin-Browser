@@ -3,10 +3,15 @@
  *
  * 依据：02-架构设计 §1 进程模型 / 04-模块全景 M2* Tab UI 镜像
  * v0.1 W2-D1：挂载 React + ThemeProvider + 全局样式
+ *
+ * 2026-10-23：底部状态栏改为独立透明子窗口悬浮于网页之上。该子窗口加载同一
+ * index.html 并附加 ?view=statusbar 查询参数，此处按参数分支挂载 StatusBarRoot
+ * （不跑完整 App，状态由主渲染进程经 IPC 同步）。
  */
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { StatusBarRoot } from './status-bar/status-bar-app';
 import { ThemeProvider } from './theme/theme-provider';
 import { initRuntimeErrorLog } from './lib/runtime-error-log';
 import './styles/globals.css';
@@ -20,10 +25,16 @@ if (!rootEl) {
   throw new Error('Root element #root not found');
 }
 
+const isStatusBarView = new URLSearchParams(location.search).get('view') === 'statusbar';
+
 createRoot(rootEl).render(
   <StrictMode>
-    <ThemeProvider>
-      <App />
-    </ThemeProvider>
+    {isStatusBarView ? (
+      <StatusBarRoot />
+    ) : (
+      <ThemeProvider>
+        <App />
+      </ThemeProvider>
+    )}
   </StrictMode>,
 );

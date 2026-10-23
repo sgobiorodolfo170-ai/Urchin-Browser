@@ -155,8 +155,15 @@ test.describe('GenOffice Markdown 编辑器（阶段 2 融合）', () => {
     expect(aiSettings?.provider).toBeTruthy();
     expect(aiSettings?.hasProviders).toBe(true);
 
-    // 3. 编辑器标签隐藏底部地址栏（后退按钮不渲染）
+    // 3. 编辑器标签隐藏底部悬浮状态栏（主窗口不再渲染后退按钮；状态栏子窗口应不可见）
     await expect(window.getByRole('button', { name: '后退' })).toHaveCount(0);
+    const statusBarVisible = await electronApp.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows().find((w) =>
+        w.webContents?.getURL?.()?.includes('view=statusbar'),
+      );
+      return win ? win.isVisible() : false;
+    });
+    expect(statusBarVisible).toBe(false);
 
     // 4. 编辑 → 脏状态（侧栏脏点数据源 TabSnapshot.dirty）
     await electronApp.evaluate(async ({ webContents }) => {
@@ -328,7 +335,8 @@ test.describe('GenOffice Markdown 编辑器（阶段 2 融合）', () => {
     // 可见性断言（回归 2026-09-21 白屏）：shell Home 视图必须有真实 bounds
     // （此前 urchin://genoffice-home 被当作 React 内部页置零 → 挂载但不可见）
     const bounds = await electronApp.evaluate(({ BrowserWindow }) => {
-      const win = BrowserWindow.getAllWindows()[0];
+      // 状态栏悬浮层是独立 BrowserWindow；取挂载了 BrowserView 的主窗口
+      const win = BrowserWindow.getAllWindows().find((w) => w.getBrowserViews().length > 0);
       const views = (win?.contentView?.children ?? []) as unknown as {
         webContents?: { getURL(): string };
         getBounds?(): { width: number; height: number };

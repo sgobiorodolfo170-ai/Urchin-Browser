@@ -23,6 +23,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { getStatusBarPage } from './helpers/status-bar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -88,18 +89,15 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
     });
     await window.waitForTimeout(2500);
 
-    // 面板打开前的状态：1 个窗口（主窗口），BrowserView 全宽
+    // 面板打开前的状态：2 个窗口（主窗口 + 底部悬浮状态栏子窗口），BrowserView 全宽
     const before = await listWindows(electronApp);
-    expect(before.count).toBe(1);
+    expect(before.count).toBe(2);
     const viewBefore = await readActiveViewBounds(electronApp);
     expect(viewBefore).not.toBeNull();
 
-    // 2. 点击收藏夹按钮 → 弹出悬浮面板（第二个 BrowserWindow）
-    //    面板为异步创建（渲染层 IPC → 主进程 new BrowserWindow + 定位 + 加载
-    //    urchin://panel），全量套件冷启动/高负载下「窗口计数到 2」与「280×430
-    //    尺寸就绪」都可能有延迟——直接轮询目标属性本身（dev.111 加固，修复
-    //    2026-10-16 全量回归偶发失败：曾出现窗口数已 2 但尺寸未命中）。
-    await window.getByLabel('收藏夹').click();
+    // 2. 点击收藏夹按钮 → 弹出悬浮面板（收藏夹按钮位于悬浮状态栏子窗口）
+    const statusBar = await getStatusBarPage(electronApp);
+    await statusBar.getByLabel('收藏夹').click();
     let during = await listWindows(electronApp);
     try {
       await expect
@@ -119,7 +117,7 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
       console.log('[bookmark-panel-debug] windows =', JSON.stringify(during));
       throw e;
     }
-    expect(during.count).toBe(2); // 主窗口 + 悬浮面板
+    expect(during.count).toBe(3); // 主窗口 + 状态栏 + 悬浮面板
 
     // 面板为右下角小窗：280×430
     const panelBounds = during.bounds.find((b) => b.width === 280 && b.height === 430);
@@ -194,15 +192,15 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
       main?.focus();
     });
     await window.waitForTimeout(800);
-    // 失焦关闭同为异步（blur → 主进程 close）：轮询回落到 1 个窗口（dev.111 加固）
+    // 失焦关闭同为异步（blur → 主进程 close）：轮询回落到 2 个窗口（主窗口 + 状态栏）
     await expect
       .poll(async () => (await listWindows(electronApp)).count, {
         timeout: 5_000,
-        message: '主窗口失焦后面板应自动关闭（窗口数回到 1）',
+        message: '主窗口失焦后面板应自动关闭（窗口数回到 2）',
       })
-      .toBe(1);
+      .toBe(2);
     const afterOutside = await listWindows(electronApp);
-    expect(afterOutside.count).toBe(1);
+    expect(afterOutside.count).toBe(2);
   } finally {
     await electronApp.close();
   }

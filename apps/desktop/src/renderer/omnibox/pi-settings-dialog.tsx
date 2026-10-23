@@ -2,7 +2,7 @@
  * pi 设置对话框
  *
  * 职责：
- * 1. 提供模型提供商（Provider）配置 UI：从 pi 内置 41 个 provider 中选择，或选择「自定义」OpenAI 兼容 provider
+ * 1. 提供模型提供商（Provider）配置 UI：从 pi 内置 42 个 provider 中选择，或选择「自定义」OpenAI 兼容 provider
  * 2. 配置项：Provider / API Key / Base URL / Model
  * 3. 通过 settings.set IPC 持久化到 SQLite（key: ai.providerId / ai.apiKey / ai.baseUrl / ai.model）
  * 4. 保存后派发 urchin:settings-changed 事件，AI 模块监听后刷新配置
@@ -101,10 +101,12 @@ export function PiSettingsDialog({ open, onClose }: PiSettingsDialogProps) {
 
         setProviders(piRes.providers ?? []);
 
-        // 读取当前 ai.* 设置
+        // 读取当前 ai.* 设置（pi 1.4.0: azure-openai-responses → azure）
         const next: Record<string, unknown> = {};
         for (const e of settingsRes.entries) next[e.key] = e.value;
-        setProviderId(typeof next['ai.providerId'] === 'string' ? next['ai.providerId'] : '');
+        const rawProviderId =
+          typeof next['ai.providerId'] === 'string' ? next['ai.providerId'] : '';
+        setProviderId(rawProviderId === 'azure-openai-responses' ? 'azure' : rawProviderId);
         setApiKey(typeof next['ai.apiKey'] === 'string' ? next['ai.apiKey'] : '');
         setBaseUrl(typeof next['ai.baseUrl'] === 'string' ? next['ai.baseUrl'] : '');
         setModel(typeof next['ai.model'] === 'string' ? next['ai.model'] : '');

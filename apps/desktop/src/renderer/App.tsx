@@ -20,9 +20,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus,
   X,
-  ArrowLeft,
-  ArrowRight,
-  RotateCw,
   Moon,
   Sun,
   Settings as SettingsIcon,
@@ -36,9 +33,7 @@ import {
   ChevronDown,
   Mail as MailIcon,
 } from 'lucide-react';
-import { Button } from './components/ui/button';
 import { AppTitleBar } from './components/app-titlebar';
-import { Omnibox } from './omnibox/omnibox';
 // 回退提示：旧对话视图 AiChatView(@urchin/ai-extension)在阶段 1 启动器切换时移出渲染树,
 // 恢复时重新 import 并在 isAiTab 分支渲染即可（配套:const host = useMemo(() => createHostFromUrchin(), [])）
 import { PiWebLauncherView } from './pi-web/launcher-view';
@@ -53,6 +48,7 @@ import { useDragScroll } from './lib/use-drag-scroll';
 import { lookupBuiltinSite, builtinIconUrl } from './home/site-directory-lookup';
 import { PiSettingsDialog } from './omnibox/pi-settings-dialog';
 import { useTheme } from './theme/theme-provider';
+import type { StatusBarState, StatusBarAction } from '@urchin/ipc-contract';
 import type { Suggestion } from './omnibox/types';
 import { buildSuggestions } from './omnibox/build-suggestions';
 import { cn } from './lib/utils';
@@ -2083,6 +2079,115 @@ export function App() {
   // 其他平台保留原生标题栏，渲染层不叠加外框/标题栏，避免双重窗口装饰。
   const useCustomChrome = window.urchin.platform === 'win32';
 
+  // ── 底部悬浮状态栏：状态同步 + 动作分发 ──
+  // 状态栏为独立透明子窗口（main/status-bar/status-bar-overlay.ts），主渲染进程
+  // 仍是 tab/建议/书签/toast/主题 的单一真源；此处组装快照并同步给主进程转发。
+  const statusBarState = useMemo<StatusBarState>(() => {
+    const statusBarVisible = !isAiTab && !isGenOfficeTab && !isGenOfficeHomeTab;
+    // toast 优先级：DeepSeek Harness 启动 > 摘要/截图/翻译 > 书签
+    const toast = dshStarting
+      ? { text: '正在启动 DeepSeek Harness…', spinning: true }
+      : summaryToast
+        ? { text: summaryToast, spinning: summaryRunning }
+        : bookmarkToast
+          ? { text: bookmarkToast }
+          : null;
+    return {
+      visible: statusBarVisible,
+      url: activeTab?.url ?? '',
+      loading: activeTab?.loading ?? false,
+      securityState: getSecurityState(activeTab?.url ?? ''),
+      canGoBack: !isInternalPage && !!activeTab?.canGoBack,
+      canGoForward: !isInternalPage && !!activeTab?.canGoForward,
+      reloadDisabled: !activeTabId || isInternalPage,
+      bookmarkSaved,
+      bookmarkable: !isInternalPage && !!activeTab?.url && isBookmarkable(activeTab.url),
+      summarizeDisabled: summaryRunning || !activeTab?.url || !/^https?:\/\//i.test(activeTab.url),
+      screenshotDisabled: !activeTabId,
+      translateActive,
+      translateDisabled: !activeTab?.url || !/^https?:\/\//i.test(activeTab.url),
+      searchEngine,
+      suggestions: suggestions.map((s) => ({ ...s })),
+      toast,
+      theme,
+    };
+  }, [
+    isAiTab,
+    isGenOfficeTab,
+    isGenOfficeHomeTab,
+    isInternalPage,
+    activeTab?.url,
+    activeTab?.loading,
+    activeTab?.canGoBack,
+    activeTab?.canGoForward,
+    activeTabId,
+    bookmarkSaved,
+    summaryRunning,
+    summaryToast,
+    bookmarkToast,
+    dshStarting,
+    translateActive,
+    searchEngine,
+    suggestions,
+    theme,
+  ]);
+
+  useEffect(() => {
+    void window.urchin.invoke('ui.statusbar.sync', statusBarState).catch((e) => {
+      console.error('Failed to sync status bar state:', e);
+    });
+  }, [statusBarState]);
+
+  // 悬浮层用户动作 → 分发到既有 handler（与原内嵌地址栏行为一致）
+  useEffect(() => {
+    const off = window.urchin.on('ui.statusbar.action', (payload) => {
+      const action = payload as StatusBarAction;
+      switch (action.type) {
+        case 'navigate':
+          void handleNavigate(action.url);
+          break;
+        case 'back':
+          void handleGoBack();
+          break;
+        case 'forward':
+          void handleGoForward();
+          break;
+        case 'reload':
+          void handleReload();
+          break;
+        case 'bookmark-toggle':
+          void handleSaveBookmark();
+          break;
+        case 'summarize':
+          void handleSummarize();
+          break;
+        case 'screenshot':
+          void handleScreenshot();
+          break;
+        case 'translate':
+          void handleTranslate();
+          break;
+        case 'suggestion-query':
+          void handleSuggestionQuery(action.query);
+          break;
+        case 'focus-page':
+          // 主进程已处理焦点；此处无需动作
+          break;
+      }
+    });
+    return off;
+  }, [
+    handleNavigate,
+    handleGoBack,
+    handleGoForward,
+    handleReload,
+    handleSaveBookmark,
+    handleSummarize,
+    handleScreenshot,
+    handleTranslate,
+    handleSuggestionQuery,
+  ]);
+
   return (
     <div
       className={cn(
@@ -2387,127 +2492,41 @@ export function App() {
               ]}
             />
 
-            {/* 下侧边栏：整条地址栏/状态栏（导航 + 地址输入 + 功能按钮，被左右侧栏夹住）
-             *  整条栏收窄为中间栏宽度的 3/5 并居中（两端各留 1/5），四角圆角；
-             *  底色随主题切换（--color-address-bar），与窗口渐变自然衔接；
-             *  AI 标签页隐藏地址栏：AI 模块作为独立全屏对话应用，不需要 URL 导航
-             *  GenOffice 编辑器/主页标签同样隐藏：编辑器自带工具条与保存流程，
-             *  主页为内部页面，伪地址均无导航意义 */}
-            {!isAiTab && !isGenOfficeTab && !isGenOfficeHomeTab && (
+            {/* 底部状态栏已改为独立透明子窗口悬浮于网页之上（main/status-bar/status-bar-overlay.ts），
+             * 不再在主窗口 React 层渲染。状态经 ui.statusbar.sync 同步给悬浮层，
+             * 用户动作经 ui.statusbar.action 回传（见下方 effect）。 */}
+
+            {/* 划词翻译结果卡（M24 dev.81）：右键菜单触发，主进程翻译后经事件回传。
+             * 定位用右键菜单同款窗口相对坐标（已含 BrowserView 偏移补偿），防溢出夹边。
+             * 注意：BrowserView 在网页标签时覆盖主窗口 React，此卡仅在落入底部状态栏区域或
+             * 内部 React 页面时可见；网页中部命中时层级受限是既有行为，本次不改变。 */}
+            {!isAiTab && !isGenOfficeTab && !isGenOfficeHomeTab && selectionCard && (
               <div
-                className="flex shrink-0 items-center justify-center"
-                style={{ height: BOTTOM_HEIGHT }}
+                className="fixed z-50 max-w-md rounded-lg border border-border bg-surface p-3 shadow-dropdown"
+                style={{
+                  left: Math.max(8, Math.min(selectionCard.x, window.innerWidth - 420)),
+                  top: Math.min(selectionCard.y + 12, window.innerHeight - 180),
+                }}
               >
-                {/* 浮动地址栏本体：3/5 宽 + 圆角；高度 40px，上下各留 4px 呼吸空间 */}
-                <div className="flex h-10 w-3/5 min-w-0 items-center gap-1.5 rounded-lg border border-border/60 bg-[var(--color-address-bar)] px-2 shadow-sm">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 shrink-0 p-0"
-                    onClick={() => void handleGoBack()}
-                    disabled={!activeTab?.canGoBack || isInternalPage}
-                    aria-label="后退"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 shrink-0 p-0"
-                    onClick={() => void handleGoForward()}
-                    disabled={!activeTab?.canGoForward || isInternalPage}
-                    aria-label="前进"
-                  >
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 shrink-0 p-0"
-                    onClick={() => void handleReload()}
-                    disabled={!activeTabId || isInternalPage}
-                    aria-label="刷新"
-                  >
-                    <RotateCw className={cn('h-4 w-4', activeTab?.loading && 'animate-spin')} />
-                  </Button>
-
-                  <Omnibox
-                    currentUrl={activeTab?.url ?? ''}
-                    loading={activeTab?.loading ?? false}
-                    securityState={getSecurityState(activeTab?.url ?? '')}
-                    suggestions={suggestions}
-                    onNavigate={(url) => void handleNavigate(url)}
-                    onSuggestionQuery={(q) => void handleSuggestionQuery(q)}
-                    bookmarkSaved={bookmarkSaved}
-                    bookmarkable={
-                      !isInternalPage && !!activeTab?.url && isBookmarkable(activeTab.url)
-                    }
-                    onBookmarkToggle={() => void handleSaveBookmark()}
-                    onSummarize={() => void handleSummarize()}
-                    summarizeDisabled={
-                      summaryRunning || !activeTab?.url || !/^https?:\/\//i.test(activeTab.url)
-                    }
-                    onScreenshot={() => void handleScreenshot()}
-                    screenshotDisabled={!activeTabId}
-                    onTranslate={() => void handleTranslate()}
-                    translateActive={translateActive}
-                    translateDisabled={!activeTab?.url || !/^https?:\/\//i.test(activeTab.url)}
-                    searchEngine={searchEngine}
-                  />
-                </div>
-
-                {bookmarkToast && (
-                  <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border">
-                    {bookmarkToast}
-                  </div>
-                )}
-
-                {summaryToast && (
-                  <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border flex items-center gap-1.5">
-                    {summaryRunning && <RotateCw className="h-3 w-3 animate-spin" />}
-                    <span>{summaryToast}</span>
-                  </div>
-                )}
-
-                {/* DeepSeek Harness 启动中的持久提示（启动完成前不自动消失） */}
-                {dshStarting && (
-                  <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border flex items-center gap-1.5">
-                    <RotateCw className="h-3 w-3 animate-spin" />
-                    <span>正在启动 DeepSeek Harness…</span>
-                  </div>
-                )}
-
-                {/* 划词翻译结果卡（M24 dev.81）：右键菜单触发，主进程翻译后经事件回传；
-                定位用右键菜单同款窗口相对坐标（已含 BrowserView 偏移补偿），防溢出夹边 */}
-                {selectionCard && (
+                <div className="mb-1.5 flex items-start justify-between gap-3">
                   <div
-                    className="fixed z-50 max-w-md rounded-lg border border-border bg-surface p-3 shadow-dropdown"
-                    style={{
-                      left: Math.max(8, Math.min(selectionCard.x, window.innerWidth - 420)),
-                      top: Math.min(selectionCard.y + 12, window.innerHeight - 180),
-                    }}
+                    className="min-w-0 flex-1 truncate text-xs text-text-secondary"
+                    title={selectionCard.source}
                   >
-                    <div className="mb-1.5 flex items-start justify-between gap-3">
-                      <div
-                        className="min-w-0 flex-1 truncate text-xs text-text-secondary"
-                        title={selectionCard.source}
-                      >
-                        {selectionCard.source}
-                      </div>
-                      <button
-                        type="button"
-                        className="shrink-0 text-text-secondary hover:text-text"
-                        onClick={() => setSelectionCard(null)}
-                        aria-label="关闭划词翻译"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <div className="whitespace-pre-wrap text-sm leading-relaxed text-text">
-                      {selectionCard.error ?? selectionCard.result}
-                    </div>
+                    {selectionCard.source}
                   </div>
-                )}
+                  <button
+                    type="button"
+                    className="shrink-0 text-text-secondary hover:text-text"
+                    onClick={() => setSelectionCard(null)}
+                    aria-label="关闭划词翻译"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="whitespace-pre-wrap text-sm leading-relaxed text-text">
+                  {selectionCard.error ?? selectionCard.result}
+                </div>
               </div>
             )}
           </main>

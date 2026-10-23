@@ -71,6 +71,19 @@ export interface PiAgentHandle {
   readonly tools: readonly AgentTool[];
 }
 
+/**
+ * pi 1.4.0 将 Azure provider id 从 `azure-openai-responses` 重命名为 `azure`。
+ * 旧设置仍可能存有旧 id，此映射确保旧配置能正常解析。
+ */
+const PROVIDER_ID_ALIASES: ReadonlyMap<string, string> = new Map([
+  ['azure-openai-responses', 'azure'],
+]);
+
+/** 将旧 provider id 规范化为当前 id（无别名则原样返回）。 */
+function normalizeProviderId(providerId: string): string {
+  return PROVIDER_ID_ALIASES.get(providerId) ?? providerId;
+}
+
 /** 内置 provider 集合（懒加载缓存） */
 let builtinProviderSet: ReadonlySet<string> | undefined;
 
@@ -87,7 +100,8 @@ function getBuiltinProviderSet(): ReadonlySet<string> {
  * api 类型设为 'openai' 以走 OpenAI 兼容 stream 路径。
  */
 function resolveModel(providerId: string, modelId: string, baseUrl?: string): Model {
-  const builtin = getModel(providerId, modelId);
+  const normalizedId = normalizeProviderId(providerId);
+  const builtin = getModel(normalizedId, modelId);
   const trimmedBaseUrl = baseUrl?.trim();
   if (builtin) {
     // OpenAI 兼容端点覆盖：若用户指定了 baseUrl，覆盖内置 Model 的 baseUrl
@@ -98,7 +112,7 @@ function resolveModel(providerId: string, modelId: string, baseUrl?: string): Mo
   }
 
   log.warn('model not in pi builtin catalog, constructing minimal model', {
-    providerId,
+    providerId: normalizedId,
     modelId,
     baseUrl,
   });
@@ -107,7 +121,7 @@ function resolveModel(providerId: string, modelId: string, baseUrl?: string): Mo
   return {
     id: modelId,
     name: modelId,
-    provider: providerId,
+    provider: normalizedId,
     api: OPENAI_COMPATIBLE_API,
     baseUrl: trimmedBaseUrl ?? undefined,
     reasoning: false,
@@ -206,15 +220,16 @@ export function createPiAgent(options: CreatePiAgentOptions): PiAgentHandle {
     throw new Error(`createPiAgent: apiKey is required for provider '${providerId}'`);
   }
 
-  // 1. 解析 Model
-  const model = resolveModel(providerId, modelId, baseUrl);
+  // 1. 解析 Model（规范化旧 provider id）
+  const normalizedProviderId = normalizeProviderId(providerId);
+  const model = resolveModel(normalizedProviderId, modelId, baseUrl);
 
   // 2. 构建 streamFn（注入 apiKey）
   const streamFn = createStreamFn(apiKey);
 
   // 3. 构建 getApiKey（供 Agent 在需要时按 provider 取密钥）
   const getApiKey = (provider: string): string | undefined => {
-    if (provider === providerId) return apiKey;
+    if (provider === normalizedProviderId) return apiKey;
     return undefined;
   };
 
@@ -242,11 +257,12 @@ export function createPiAgent(options: CreatePiAgentOptions): PiAgentHandle {
   });
 
   log.info('pi agent created', {
-    providerId,
+    providerId: normalizedProviderId,
+    originalProviderId: providerId !== normalizedProviderId ? providerId : undefined,
     modelId,
     hasBaseUrl: !!baseUrl,
     toolsEnabled: tools.length > 0,
-    inBuiltinCatalog: getBuiltinProviderSet().has(providerId),
+    inBuiltinCatalog: getBuiltinProviderSet().has(normalizedProviderId),
   });
 
   return { agent, model, tools };
@@ -257,5 +273,6 @@ export function createPiAgent(options: CreatePiAgentOptions): PiAgentHandle {
  * 用于在 UI 层提示用户该 provider 的模型目录可用。
  */
 export function isBuiltinProvider(providerId: string): boolean {
-  return getBuiltinProviderSet().has(providerId);
+  const normalizedId = normalizeProviderId(providerId);
+  return getBuiltinProviderSet().has(normalizedId);
 }

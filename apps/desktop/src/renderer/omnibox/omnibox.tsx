@@ -67,6 +67,8 @@ export interface OmniboxProps {
   readonly translateDisabled?: boolean;
   /** 当前搜索引擎标识（searchEngine 设置；供搜索词生成搜索 URL） */
   readonly searchEngine?: string;
+  /** 焦点变化透传（悬浮层据此展开/收起建议面板高度） */
+  readonly onFocusChange?: (focused: boolean) => void;
 }
 
 /** 安全状态图标。 */
@@ -98,6 +100,7 @@ export function Omnibox({
   translateActive = false,
   translateDisabled = false,
   searchEngine,
+  onFocusChange,
 }: OmniboxProps) {
   const [input, setInput] = useState(currentUrl);
   const [isFocused, setIsFocused] = useState(false);
@@ -148,15 +151,20 @@ export function Omnibox({
   );
 
   // 获得焦点全选（OM7 决策）
-  const handleFocus = useCallback((e: React.FocusEvent<HTMLInputElement>) => {
-    setIsFocused(true);
-    e.target.select();
-  }, []);
+  const handleFocus = useCallback(
+    (e: React.FocusEvent<HTMLInputElement>) => {
+      setIsFocused(true);
+      onFocusChange?.(true);
+      e.target.select();
+    },
+    [onFocusChange],
+  );
 
   const handleBlur = useCallback(() => {
     setIsFocused(false);
+    onFocusChange?.(false);
     setInput(currentUrl);
-  }, [currentUrl]);
+  }, [currentUrl, onFocusChange]);
 
   // 清理 debounce timer
   useEffect(() => {

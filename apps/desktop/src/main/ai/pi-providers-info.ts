@@ -2,7 +2,7 @@
  * pi 内置 Provider 元信息（方案 A 适配层）
  *
  * 职责：
- * 返回 pi 仓库内置 43 个 provider 的静态元信息（id/name/baseUrl/apiKeyEnvVar/supportsOAuth），
+ * 返回 pi 仓库内置 42 个 provider 的静态元信息（id/name/baseUrl/apiKeyEnvVar/supportsOAuth），
  * 供渲染层 pi 设置对话框的 provider 下拉选择使用。
  *
  * 设计理由：
@@ -28,8 +28,8 @@ const PI_PROVIDERS: readonly PiProviderInfo[] = [
     supportsOAuth: true,
   },
   {
-    id: 'azure-openai-responses',
-    name: 'Azure OpenAI Responses',
+    id: 'azure',
+    name: 'Azure',
     apiKeyEnvVar: 'AZURE_OPENAI_API_KEY',
     supportsOAuth: false,
   },
@@ -180,8 +180,20 @@ const PI_PROVIDERS: readonly PiProviderInfo[] = [
     apiKeyEnvVar: 'ZAI_CODING_CN_API_KEY',
     supportsOAuth: false,
   },
-  { id: 'meta', name: 'Meta', baseUrl: 'https://api.meta.ai/v1', apiKeyEnvVar: 'META_API_KEY', supportsOAuth: false },
-  { id: 'typesafe', name: 'TypeSafe', baseUrl: 'https://api.typesafe.ai/v1/', apiKeyEnvVar: 'TYPESAFE_API_KEY', supportsOAuth: false },
+  {
+    id: 'meta',
+    name: 'Meta',
+    baseUrl: 'https://api.meta.ai/v1',
+    apiKeyEnvVar: 'META_API_KEY',
+    supportsOAuth: false,
+  },
+  {
+    id: 'typesafe',
+    name: 'TypeSafe',
+    baseUrl: 'https://api.typesafe.ai/v1/',
+    apiKeyEnvVar: 'TYPESAFE_API_KEY',
+    supportsOAuth: false,
+  },
 ];
 
 /** 缓存结果（元信息不可变，进程内只计算一次） */

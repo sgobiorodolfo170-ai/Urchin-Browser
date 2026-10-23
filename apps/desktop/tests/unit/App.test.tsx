@@ -87,6 +87,14 @@ async function expandRightSidebar(): Promise<void> {
   fireEvent.doubleClick(sidebar);
 }
 
+/** 取 App 最近一次注册的 ui.statusbar.action 监听（用于模拟悬浮层转发用户动作） */
+function getStatusBarActionHandler(): (payload: unknown) => void {
+  const call = [...mockOn.mock.calls].reverse().find((c) => c[0] === 'ui.statusbar.action');
+  const handler = call?.[1] as ((payload: unknown) => void) | undefined;
+  if (!handler) throw new Error('ui.statusbar.action handler not registered');
+  return handler;
+}
+
 describe('App (Browser Shell)', () => {
   it('should load tabs via tab.list on mount', async () => {
     const tab = makeTab();
@@ -113,17 +121,29 @@ describe('App (Browser Shell)', () => {
     expect(screen.getByLabelText('新建标签')).toBeInTheDocument();
   });
 
-  it('should render bottom bar with navigation buttons and theme toggle', async () => {
-    const tab = makeTab({ id: 1, url: 'https://urchin.dev' });
+  it('should sync status bar state with navigation flags (bottom bar moved to overlay)', async () => {
+    const tab = makeTab({
+      id: 1,
+      url: 'https://urchin.dev',
+      canGoBack: true,
+      canGoForward: true,
+    });
     mockInvoke.mockResolvedValue({ tabs: [tab] });
 
     renderApp();
 
+    // 底部状态栏已移至独立悬浮子窗口，主窗口不再渲染后退/前进/刷新按钮；
+    // App 通过 ui.statusbar.sync 将导航可用性同步给悬浮层。
     await waitFor(() => {
-      expect(screen.getByLabelText('后退')).toBeInTheDocument();
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'ui.statusbar.sync',
+        expect.objectContaining({ visible: true, canGoBack: true, canGoForward: true }),
+      );
     });
-    expect(screen.getByLabelText('前进')).toBeInTheDocument();
-    expect(screen.getByLabelText('刷新')).toBeInTheDocument();
+    expect(screen.queryByLabelText('后退')).toBeNull();
+    expect(screen.queryByLabelText('前进')).toBeNull();
+    expect(screen.queryByLabelText('刷新')).toBeNull();
+    // 主题切换仍在主窗口标题栏
     expect(screen.getByLabelText('切换主题')).toBeInTheDocument();
   });
 
@@ -357,9 +377,13 @@ describe('App (Browser Shell)', () => {
       expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 });
     });
 
-    expect(screen.getByLabelText('后退')).toBeDisabled();
-    expect(screen.getByLabelText('前进')).toBeDisabled();
-    expect(screen.getByLabelText('刷新')).toBeDisabled();
+    // 无活跃标签时，同步给悬浮层的导航可用性应为 false
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'ui.statusbar.sync',
+        expect.objectContaining({ canGoBack: false, canGoForward: false, reloadDisabled: true }),
+      );
+    });
   });
 
   it('should handle tab.list failure gracefully', async () => {
@@ -533,14 +557,24 @@ describe('App (Browser Shell)', () => {
     renderApp();
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
 
-    fireEvent.click(screen.getByLabelText('收藏到书签'));
-    expect(mockInvoke).toHaveBeenCalledWith('bookmark.create', {
-      url: 'https://example.com',
-      title: 'Example',
-      type: 'bookmark',
-    });
-    // toast
-    await waitFor(() => expect(screen.getByText('已添加到书签')).toBeTruthy());
+    // 悬浮层点击书签按钮 → ui.statusbar.action bookmark-toggle
+    act(() => getStatusBarActionHandler()({ type: 'bookmark-toggle' }));
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('bookmark.create', {
+        url: 'https://example.com',
+        title: 'Example',
+        type: 'bookmark',
+      }),
+    );
+    // toast 经 ui.statusbar.sync 同步给悬浮层（不再在主窗口渲染）
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'ui.statusbar.sync',
+        expect.objectContaining({
+          toast: expect.objectContaining({ text: '已添加到书签' }) as object,
+        }),
+      ),
+    );
   });
 
   it('should delete bookmark when already saved', async () => {
@@ -564,12 +598,24 @@ describe('App (Browser Shell)', () => {
 
     renderApp();
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
-    // 等收藏状态刷新完成（bookmark.search 返回已收藏）
-    await waitFor(() => expect(screen.getByLabelText('已收藏')).toBeTruthy());
+    // 等收藏状态刷新完成（bookmark.search 返回已收藏 → sync.bookmarkSaved=true）
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'ui.statusbar.sync',
+        expect.objectContaining({ bookmarkSaved: true }),
+      ),
+    );
 
-    fireEvent.click(screen.getByLabelText('已收藏'));
-    expect(mockInvoke).toHaveBeenCalledWith('bookmark.delete', { id: 'b1' });
-    await waitFor(() => expect(screen.getByText('已从书签移除')).toBeTruthy());
+    act(() => getStatusBarActionHandler()({ type: 'bookmark-toggle' }));
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('bookmark.delete', { id: 'b1' }));
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'ui.statusbar.sync',
+        expect.objectContaining({
+          toast: expect.objectContaining({ text: '已从书签移除' }) as object,
+        }),
+      ),
+    );
   });
 
   // ── 摘要（AI 助手）：summary.run ──
@@ -597,9 +643,17 @@ describe('App (Browser Shell)', () => {
     renderApp();
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
 
-    fireEvent.click(screen.getByLabelText('提取网页内容并保存'));
-    expect(mockInvoke).toHaveBeenCalledWith('summary.run', { tabId: 1 });
-    await waitFor(() => expect(screen.getByText('已保存：Example 摘要')).toBeTruthy());
+    // 悬浮层点击摘要按钮 → ui.statusbar.action summarize
+    act(() => getStatusBarActionHandler()({ type: 'summarize' }));
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('summary.run', { tabId: 1 }));
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'ui.statusbar.sync',
+        expect.objectContaining({
+          toast: expect.objectContaining({ text: '已保存：Example 摘要' }) as object,
+        }),
+      ),
+    );
   });
 
   // ── tab:event 推送分支：created / updated / removed / crashed ──
@@ -841,10 +895,8 @@ describe('App (Browser Shell)', () => {
     renderApp();
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
 
-    // 地址栏输入跨站网址 → 当前标签导航（不新建标签）
-    const omniboxInput = screen.getByRole('textbox', { name: '地址栏' });
-    fireEvent.change(omniboxInput, { target: { value: 'https://b.com' } });
-    fireEvent.keyDown(omniboxInput, { key: 'Enter' });
+    // 悬浮层地址栏导航 → ui.statusbar.action navigate（当前标签导航，不新建标签）
+    act(() => getStatusBarActionHandler()({ type: 'navigate', url: 'https://b.com' }));
 
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('tab.loadUrl', {

@@ -207,3 +207,46 @@ body {
   border-top: 1px solid var(--color-border);
   margin: 1.5em 0;
 }
+
+/* ===== 底部悬浮状态栏（独立透明子窗口，?view=statusbar） =====
+ * 该窗口背景透明，仅渲染 3D 卡片，透出底层网页。
+ * html[data-window=statusbar] 限定不影响主窗口样式。
+ */
+html[data-window='statusbar'],
+html[data-window='statusbar'] body,
+html[data-window='statusbar'] #root {
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+html[data-window='statusbar'] body {
+  margin: 0;
+  color: var(--color-text);
+}
+
+/* 状态栏卡片：3D 悬浮感（阴影 + 顶部高光 + 轻微渐变）。
+ * --color-address-bar 为底色令牌，亮/暗主题切换。 */
+.status-bar-card {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-address-bar) 94%, #ffffff) 0%,
+    var(--color-address-bar) 100%
+  );
+  box-shadow:
+    0 10px 24px rgba(15, 23, 42, 0.22),
+    0 2px 6px rgba(15, 23, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+[data-theme='dark'] .status-bar-card {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-address-bar) 92%, #ffffff) 0%,
+    var(--color-address-bar) 100%
+  );
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.45),
+    0 2px 6px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}

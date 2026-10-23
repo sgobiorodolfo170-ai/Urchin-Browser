@@ -1,19 +1,19 @@
-ï»¿/**
- * BrowserView çª—å£é›†æˆï¼ˆinstallTabViewIntegrationï¼‰å•å…ƒæµ‹è¯•
+/**
+ * BrowserView ´°¿Ú¼¯³É£¨installTabViewIntegration£©µ¥Ôª²âÊÔ
  *
- * éªŒè¯ï¼š
- * 1. å®‰è£…åè®¢é˜… created/updated/activated/removed/crashed äº‹ä»¶å¹¶æ¡¥æ¥çª—å£æ“ä½œ
- * 2. created æ´»è·ƒ tabï¼šsetBrowserView + å¼ºåˆ¶ setBounds + pushEvent
- * 3. updatedï¼šURL å˜åŒ–æ—¶é‡ç®— boundsï¼›16ms èŠ‚æµåˆå¹¶æ¨é€
- * 4. activatedï¼šåˆ‡æ¢ setBrowserView + å¼ºåˆ¶ setBounds + pushEvent
- * 5. removedï¼šå¸è½½æ´»è·ƒ tab çš„ view + æ¸…ç† URL è·Ÿè¸ª
- * 6. crashedï¼špushEvent
- * 7. å†…éƒ¨ URLï¼ˆurchin://settings / urchin://aiï¼‰â†’ ZERO_BOUNDS
- * 8. browserViewHidden â†’ ZERO_BOUNDS
- * 9. computeViewBoundsï¼šè€ƒè™‘å·¦/å³ä¾§æ å®½åº¦ä¸ä¸‹ä¾§æ é«˜åº¦
- * 10. getLayoutState / setLayoutStateï¼šå¸ƒå±€çŠ¶æ€è¯»å†™ + contentHidden å…¼å®¹
- * 11. dispose å¸è½½æ‰€æœ‰ç›‘å¬
- * 12. çª—å£ resize / ready-to-show äº‹ä»¶ç»‘å®š
+ * ÑéÖ¤£º
+ * 1. °²×°ºó¶©ÔÄ created/updated/activated/removed/crashed ÊÂ¼ş²¢ÇÅ½Ó´°¿Ú²Ù×÷
+ * 2. created »îÔ¾ tab£ºsetBrowserView + Ç¿ÖÆ setBounds + pushEvent
+ * 3. updated£ºURL ±ä»¯Ê±ÖØËã bounds£»16ms ½ÚÁ÷ºÏ²¢ÍÆËÍ
+ * 4. activated£ºÇĞ»» setBrowserView + Ç¿ÖÆ setBounds + pushEvent
+ * 5. removed£ºĞ¶ÔØ»îÔ¾ tab µÄ view + ÇåÀí URL ¸ú×Ù
+ * 6. crashed£ºpushEvent
+ * 7. ÄÚ²¿ URL£¨urchin://settings / urchin://ai£©¡ú ZERO_BOUNDS
+ * 8. browserViewHidden ¡ú ZERO_BOUNDS
+ * 9. computeViewBounds£º¿¼ÂÇ×ó/ÓÒ²àÀ¸¿í¶ÈÓëÏÂ²àÀ¸¸ß¶È
+ * 10. getLayoutState / setLayoutState£º²¼¾Ö×´Ì¬¶ÁĞ´ + contentHidden ¼æÈİ
+ * 11. dispose Ğ¶ÔØËùÓĞ¼àÌı
+ * 12. ´°¿Ú resize / ready-to-show ÊÂ¼ş°ó¶¨
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -57,7 +57,7 @@ interface FakeTab {
   view: FakeView;
 }
 
-/** ç®€å•äº‹ä»¶å‘å°„å™¨ï¼Œç”¨äºæ¨¡æ‹Ÿ TabManager / WindowManager */
+/** ¼òµ¥ÊÂ¼ş·¢ÉäÆ÷£¬ÓÃÓÚÄ£Äâ TabManager / WindowManager */
 function makeEmitter() {
   const listeners = new Map<string, ((payload: never) => void)[]>();
   return {
@@ -109,7 +109,7 @@ function makeTab(overrides: Partial<FakeTab> = {}): FakeTab {
   };
 }
 
-/** æ„å»º tab ç®¡ç†å™¨ mockï¼ˆå†…éƒ¨æ˜¯äº‹ä»¶å‘å°„å™¨ï¼‰ */
+/** ¹¹½¨ tab ¹ÜÀíÆ÷ mock£¨ÄÚ²¿ÊÇÊÂ¼ş·¢ÉäÆ÷£© */
 function makeTabManager() {
   const emitter = makeEmitter();
   const tabs = new Map<number, FakeTab>();
@@ -126,7 +126,7 @@ function makeTabManager() {
   };
 }
 
-/** æ„å»ºçª—å£ç®¡ç†å™¨ mock */
+/** ¹¹½¨´°¿Ú¹ÜÀíÆ÷ mock */
 function makeWindowManager() {
   const emitter = makeEmitter();
   const windows = new Map<number, FakeManagedWindow>();
@@ -153,7 +153,7 @@ function install(): void {
   handle = installTabViewIntegration(tabManager as never, windowManager as never);
 }
 
-/** è§¦å‘ TabManager äº‹ä»¶ */
+/** ´¥·¢ TabManager ÊÂ¼ş */
 function fireTab(event: string, tab: FakeTab): void {
   tabManager.emit(event, tab as never);
 }
@@ -220,7 +220,7 @@ describe('view-integration', () => {
 
       expect(window.browserWindow.setBrowserView).toHaveBeenCalledWith(tab.view);
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 96 }),
+        expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 48 }),
       );
       expect(window.browserWindow.webContents.send).toHaveBeenCalledWith(
         'tab:event',
@@ -287,7 +287,7 @@ describe('view-integration', () => {
       fireTab('updated', { ...tab });
 
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        expect.objectContaining({ y: 40, width: 800 - 104, height: 600 - 96 }),
+        expect.objectContaining({ y: 40, width: 800 - 104, height: 600 - 48 }),
       );
     });
 
@@ -368,10 +368,10 @@ describe('view-integration', () => {
     });
   });
 
-  describe('tab removed while another active (å…³é—­è®¾ç½®/AI æ ‡ç­¾å›å½’)', () => {
+  describe('tab removed while another active (¹Ø±ÕÉèÖÃ/AI ±êÇ©»Ø¹é)', () => {
     it('should keep next tab BrowserView attached after removing active tab', () => {
-      // 2026-08-14 ä¿®å¤ï¼šremove() å…ˆå‘ removed åå‘ activatedï¼Œé¿å… onRemoved çš„
-      // setBrowserView(null) æŠŠåˆšæ¿€æ´»çš„ä¸‹ä¸€ä¸ªç½‘é¡µ view å¸è½½ï¼ˆç½‘é¡µä¸æ˜¾ç¤ºï¼‰ã€‚
+      // 2026-08-14 ĞŞ¸´£ºremove() ÏÈ·¢ removed ºó·¢ activated£¬±ÜÃâ onRemoved µÄ
+      // setBrowserView(null) °Ñ¸Õ¼¤»îµÄÏÂÒ»¸öÍøÒ³ view Ğ¶ÔØ£¨ÍøÒ³²»ÏÔÊ¾£©¡£
       const tab1 = makeTab({ id: 21, windowId: 1, active: true });
       const tab2 = makeTab({ id: 22, windowId: 1, active: false });
       tabManager.register(tab1);
@@ -382,14 +382,14 @@ describe('view-integration', () => {
       fireTab('created', tab2);
       window.browserWindow.setBrowserView.mockClear();
 
-      // ç§»é™¤æ´»è·ƒ tab1ï¼ˆæ¨¡æ‹Ÿå…³é—­è®¾ç½®/AI æ ‡ç­¾ï¼‰â†’ TabManager è‡ªåŠ¨æ¿€æ´» tab2
+      // ÒÆ³ı»îÔ¾ tab1£¨Ä£Äâ¹Ø±ÕÉèÖÃ/AI ±êÇ©£©¡ú TabManager ×Ô¶¯¼¤»î tab2
       tabManager.emit('removed', tab1 as never);
       tabManager.emit('activated', tab2 as never);
 
-      // å…³é”®ï¼šremovedï¼ˆå¸è½½æ—§ viewï¼‰åœ¨å‰ï¼Œactivatedï¼ˆæŒ‚è½½ tab2ï¼‰åœ¨åï¼Œ
-      // æœ€ç»ˆçŠ¶æ€æ˜¯ tab2 çš„ view æŒ‚è½½ï¼ˆæœªè¢«åç»­ null å¸è½½è¦†ç›–ï¼‰ã€‚
+      // ¹Ø¼ü£ºremoved£¨Ğ¶ÔØ¾É view£©ÔÚÇ°£¬activated£¨¹ÒÔØ tab2£©ÔÚºó£¬
+      // ×îÖÕ×´Ì¬ÊÇ tab2 µÄ view ¹ÒÔØ£¨Î´±»ºóĞø null Ğ¶ÔØ¸²¸Ç£©¡£
       const calls = window.browserWindow.setBrowserView.mock.calls;
-      // æœ€åä¸€æ¬¡è°ƒç”¨å¿…é¡»æ˜¯æŒ‚è½½ tab2ï¼ˆè€Œé null å¸è½½ï¼‰
+      // ×îºóÒ»´Îµ÷ÓÃ±ØĞëÊÇ¹ÒÔØ tab2£¨¶ø·Ç null Ğ¶ÔØ£©
       expect(calls[calls.length - 1]?.[0]).toBe(tab2.view);
     });
   });
@@ -482,7 +482,7 @@ describe('view-integration', () => {
   });
 });
 
-describe('HTML5 fullscreen (å†…åµŒè§†é¢‘å…¨å±è¦†ç›– UI æ )', () => {
+describe('HTML5 fullscreen (ÄÚÇ¶ÊÓÆµÈ«ÆÁ¸²¸Ç UI À¸)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     tabManager = makeTabManager();
@@ -506,7 +506,7 @@ describe('HTML5 fullscreen (å†…åµŒè§†é¢‘å…¨å±è¦†ç›– UI æ )', () => {
     fireTab('created', tab);
     fireTab('updated', tab);
 
-    // çª—å£ 800x600 â†’ BrowserView æ’‘æ»¡æ•´ä¸ªå†…å®¹åŒºï¼ˆx:0, y:0, å…¨å®½å…¨é«˜ï¼‰ï¼Œè¦†ç›– UI æ 
+    // ´°¿Ú 800x600 ¡ú BrowserView ³ÅÂúÕû¸öÄÚÈİÇø£¨x:0, y:0, È«¿íÈ«¸ß£©£¬¸²¸Ç UI À¸
     expect(tab.view.setBounds).toHaveBeenCalledWith({
       x: 0,
       y: 0,
@@ -530,13 +530,13 @@ describe('HTML5 fullscreen (å†…åµŒè§†é¢‘å…¨å±è¦†ç›– UI æ )', () => {
     tab.view.setBounds.mockClear();
     tab.htmlFullscreen = false;
     fireTab('updated', tab);
-    // æ¢å¤å¸¸è§„å¸ƒå±€ï¼ˆå« 8px å¤–æ¡†ã€32px æ ‡é¢˜æ ã€å·¦å³ä¾§æ ä¸åº•éƒ¨åœ°å€æ å†…ç¼©ï¼‰
+    // »Ö¸´³£¹æ²¼¾Ö£¨º¬ 8px Íâ¿ò¡¢32px ±êÌâÀ¸¡¢×óÓÒ²àÀ¸Óëµ×²¿µØÖ·À¸ÄÚËõ£©
     expect(tab.view.setBounds).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 96 }),
+      expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 48 }),
     );
   });
 
-  describe('GenOffice ç¼–è¾‘å™¨è§†å›¾æŒ‚è½½ï¼ˆé˜¶æ®µ 2ï¼‰', () => {
+  describe('GenOffice ±à¼­Æ÷ÊÓÍ¼¹ÒÔØ£¨½×¶Î 2£©', () => {
     it('should mount editor view via contentView and release the browser view', () => {
       const tab = makeTab({ id: 41, windowId: 1, viewKind: 'genoffice' });
       tabManager.register(tab);
@@ -547,7 +547,7 @@ describe('HTML5 fullscreen (å†…åµŒè§†é¢‘å…¨å±è¦†ç›– UI æ )', () => {
       expect(window.browserWindow.setBrowserView).toHaveBeenCalledWith(null);
       expect(window.browserWindow.contentView.addChildView).toHaveBeenCalledWith(tab.view);
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        // GenOffice æ ‡ç­¾åœ°å€æ éšè—ï¼Œè§†å›¾è¦†ç›–å†…å®¹åŒºå…¨éƒ¨é«˜åº¦ï¼ˆä»æ‰£å¤–æ¡†ä¸æ ‡é¢˜æ ï¼‰
+        // GenOffice ±êÇ©µØÖ·À¸Òş²Ø£¬ÊÓÍ¼¸²¸ÇÄÚÈİÇøÈ«²¿¸ß¶È£¨ÈÔ¿ÛÍâ¿òÓë±êÌâÀ¸£©
         expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 48 }),
       );
     });
@@ -576,8 +576,8 @@ describe('HTML5 fullscreen (å†…åµŒè§†é¢‘å…¨å±è¦†ç›– UI æ )', () => {
     });
 
     it('should give genoffice views real bounds even for renderer-managed urls (shell Home)', () => {
-      // å›å½’ï¼ˆ2026-09-21 ç”¨æˆ·å®æµ‹ç™½å±ï¼‰ï¼šurchin://genoffice-home åŒæ—¶æ˜¯ React ä¿åº•
-      // é¡µåœ°å€ï¼Œæ­¤å‰è¢« isRendererManagedUrl ç½®é›¶ â†’ shell Home è§†å›¾æŒ‚è½½ä½†ä¸å¯è§ã€‚
+      // »Ø¹é£¨2026-09-21 ÓÃ»§Êµ²â°×ÆÁ£©£ºurchin://genoffice-home Í¬Ê±ÊÇ React ±£µ×
+      // Ò³µØÖ·£¬´ËÇ°±» isRendererManagedUrl ÖÃÁã ¡ú shell Home ÊÓÍ¼¹ÒÔØµ«²»¿É¼û¡£
       const tab = makeTab({
         id: 45,
         windowId: 1,
@@ -590,7 +590,7 @@ describe('HTML5 fullscreen (å†…åµŒè§†é¢‘å…¨å±è¦†ç›– UI æ )', () => {
       fireTab('created', tab);
 
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        // GenOffice æ ‡ç­¾åœ°å€æ éšè—ï¼Œè§†å›¾è¦†ç›–å†…å®¹åŒºå…¨éƒ¨é«˜åº¦ï¼ˆä»æ‰£å¤–æ¡†ä¸æ ‡é¢˜æ ï¼‰
+        // GenOffice ±êÇ©µØÖ·À¸Òş²Ø£¬ÊÓÍ¼¸²¸ÇÄÚÈİÇøÈ«²¿¸ß¶È£¨ÈÔ¿ÛÍâ¿òÓë±êÌâÀ¸£©
         expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 48 }),
       );
       expect(tab.view.setBounds).not.toHaveBeenCalledWith({

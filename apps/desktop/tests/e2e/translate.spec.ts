@@ -22,6 +22,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { getStatusBarPage } from './helpers/status-bar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -148,13 +149,14 @@ function getBrowserViewText(electronApp: ElectronApplication): Promise<string> {
 test.describe('网页翻译', () => {
   test('should translate the page and restore the original text via omnibox button', async () => {
     const { server, port } = await startFakeTranslateServer();
-    const { electronApp, window } = await launchApp({
+    const { electronApp } = await launchApp({
       URCHIN_TRANSLATE_TEST_BASE: `http://127.0.0.1:${port}`,
     });
 
     try {
-      // 导航到本地 fixture 页
-      const omniboxInput = window.getByRole('textbox').first();
+      // 导航到本地 fixture 页（地址栏位于独立悬浮状态栏子窗口）
+      const statusBar = await getStatusBarPage(electronApp);
+      const omniboxInput = statusBar.getByLabel('地址栏');
       await omniboxInput.fill(`http://127.0.0.1:${port}/fixture`);
       await omniboxInput.press('Enter');
       await expect(omniboxInput).toHaveValue(new RegExp(`127\\.0\\.0\\.1:${port}`), {
@@ -166,23 +168,23 @@ test.describe('网页翻译', () => {
         .poll(() => getBrowserViewText(electronApp), { timeout: 20_000 })
         .toContain('Hello beautiful world');
 
-      const translateButton = window.getByRole('button', { name: '翻译网页' });
+      const translateButton = statusBar.getByRole('button', { name: '翻译网页' });
       await translateButton.click({ timeout: 15_000 });
 
       // 正文出现确定性标记译文 + 按钮切换为「恢复原文」
       await expect
         .poll(() => getBrowserViewText(electronApp), { timeout: 20_000 })
         .toContain('【译】Hello beautiful world');
-      await expect(window.getByRole('button', { name: '恢复原文' })).toBeVisible({
+      await expect(statusBar.getByRole('button', { name: '恢复原文' })).toBeVisible({
         timeout: 10_000,
       });
 
       // 恢复原文：正文还原 + 按钮态切回
-      await window.getByRole('button', { name: '恢复原文' }).click();
+      await statusBar.getByRole('button', { name: '恢复原文' }).click();
       await expect
         .poll(() => getBrowserViewText(electronApp), { timeout: 20_000 })
         .toContain('Hello beautiful world');
-      await expect(window.getByRole('button', { name: '翻译网页' })).toBeVisible({
+      await expect(statusBar.getByRole('button', { name: '翻译网页' })).toBeVisible({
         timeout: 10_000,
       });
     } finally {

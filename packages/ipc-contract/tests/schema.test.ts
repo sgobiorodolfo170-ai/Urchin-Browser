@@ -120,10 +120,15 @@ describe('ipcSchema', () => {
     expect(channels).toContain('tab.goForward');
     expect(channels).toContain('tab.loadUrl');
     expect(channels).toContain('tab.stop');
+    expect(channels).toContain('tab.captureThumbnail');
     expect(channels).toContain('window.create');
     expect(channels).toContain('window.close');
+    expect(channels).toContain('window.minimize');
+    expect(channels).toContain('window.toggleMaximize');
+    expect(channels).toContain('window.getState');
     expect(channels).toContain('window.createWithUrl');
     expect(channels).toContain('window.getCurrent');
+    expect(channels).toContain('window.captureUi');
     // AI 域（W4）
     expect(channels).toContain('ai.chat.start');
     expect(channels).toContain('ai.chat.abort');

@@ -26,6 +26,7 @@
  * 原硬编码白色在深色模式下造成加载白闪 + 缝隙透白），不再做透明合成。
  */
 import { BrowserView } from 'electron';
+import type { Session } from 'electron';
 import { createLogger } from '@urchin/logger';
 import { currentThemeBackground } from '../theme';
 import type { BrowserViewLike } from './types';
@@ -35,10 +36,16 @@ const log = createLogger('view-factory');
 /**
  * 创建 BrowserView 并配置 M18 安全边界。
  *
+ * @param workspaceId 标签所属工作区（TP7）：默认工作区走默认 session，
+ *  自定义工作区使用 persist 分区（Cookie/存储 全隔离）。
+ * @param resolveSession 工作区 → Session 解析器（主进程注入，分区幂等配置在解体内完成）
  * @returns 符合 BrowserViewLike 接口的 BrowserView 实例
  */
-export function createBrowserView(): BrowserViewLike {
-  log.info('creating browser view');
+export function createBrowserView(
+  workspaceId: string,
+  resolveSession: (workspaceId: string) => Session,
+): BrowserViewLike {
+  log.info('creating browser view', { workspaceId });
 
   const view = new BrowserView({
     webPreferences: {
@@ -47,6 +54,8 @@ export function createBrowserView(): BrowserViewLike {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: true,
+      // TP7 工作区 session：Cookie/localStorage/IndexedDB/Service Worker 全隔离
+      session: resolveSession(workspaceId),
       // ⚠️ 不要添加 preload——见文件头部说明
     },
   });

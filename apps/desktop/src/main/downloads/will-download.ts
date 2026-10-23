@@ -9,14 +9,16 @@
  * 2. 下载进度/状态同步到 DownloadManager（收藏夹面板「下载」页展示用）
  *
  * 设计理由（agents.md §七.2 + §六 项目特化审查点）：
- * - BrowserView 使用默认 session，挂 session.defaultSession 的 will-download
- *   即覆盖所有网页下载；对话框懒取焦点窗口（无窗口时走无父窗口模态）
+ * - 默认 session 挂 will-download 即覆盖默认工作区所有网页下载；
+ *   自定义工作区（TP7 持久化分区）需逐 session 安装（installWillDownloadForSession），
+ *   否则账号分区内的下载走 Chromium 默认行为（无 UI 弹窗）
  * - 每次下载询问 + 可设默认（DL1 决策，用户指定交互）：设置后直达目录不打扰
  * - 状态同步经 DownloadManager 事件驱动，面板侧已有 download.list 消费，
  *   无需新增 IPC 通道
  */
 import { join, dirname } from 'node:path';
 import { session, dialog, BrowserWindow } from 'electron';
+import type { Session } from 'electron';
 import type { DownloadManager } from './download-manager';
 import { createLogger } from '@urchin/logger';
 
@@ -38,19 +40,23 @@ export interface WillDownloadDeps {
 }
 
 /**
- * 安装下载挂钩（幂等：重复调用先移除旧监听）。
+ * 安装下载挂钩到指定 Session（幂等：重复调用先移除旧监听）。
  * 需在 app ready 后、首次下载前调用。
  */
-export function installWillDownload(deps: WillDownloadDeps): void {
-  const ses = session.defaultSession;
+export function installWillDownloadForSession(ses: Session, deps: WillDownloadDeps): void {
   // 幂等：移除上一次安装的监听，避免热重载/重复初始化叠加
   ses.removeAllListeners('will-download');
-
   ses.on('will-download', (event, item) => {
     void handleDownload(event, item, deps);
   });
+  log.info('will-download handler installed for session');
+}
 
-  log.info('will-download handler installed');
+/**
+ * 安装下载挂钩到默认 session（向后兼容入口）。
+ */
+export function installWillDownload(deps: WillDownloadDeps): void {
+  installWillDownloadForSession(session.defaultSession, deps);
 }
 
 /** 单个下载的完整流程（异步：保存对话框 + 设默认询问）。 */

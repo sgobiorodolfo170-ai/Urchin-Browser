@@ -10,7 +10,8 @@
     "dev": "vite",
     "dev:electron": "wait-on ./dist/main/index.js && electron .",
     "start": "node scripts/launch.mjs",
-    "build": "tsc -b && pnpm run build:renderer && pnpm run build:main && pnpm run build:preload",
+    "build": "pnpm run icon:build && tsc -b && pnpm run build:renderer && pnpm run build:main && pnpm run build:preload",
+    "icon:build": "node ico/build-ico.cjs",
     "build:main": "vite build --mode main",
     "build:preload": "vite build --mode preload",
     "build:renderer": "vite build --mode renderer",
@@ -18,7 +19,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "package:win": "pnpm run build:main && pnpm run build:preload && pnpm run build:renderer && node ../../scripts/genoffice-build.mjs && node ../../scripts/fetch-node.mjs && node ../../scripts/clean-release.mjs && node ../../scripts/package-win.mjs"
+    "package:win": "pnpm run icon:build && pnpm run build:main && pnpm run build:preload && pnpm run build:renderer && node ../../scripts/genoffice-build.mjs && node ../../scripts/fetch-node.mjs && node ../../scripts/clean-release.mjs && node ../../scripts/package-win.mjs"
   },
   "dependencies": {
     "@deepseek-ai/dsh": "0.2.0-rc.2",

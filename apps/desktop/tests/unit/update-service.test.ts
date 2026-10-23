@@ -1,9 +1,12 @@
 /**
- * M20 Update Service 单元测试（dev.114 提前落地）
+ * M20 Update Service 单元测试（dev.114 提前落地，dev.115 双通道治理）
  *
  * 覆盖状态机全路径：
  * - disabled：未打包态 check/download/install 的守卫行为（不触网、不初始化更新器）
- * - check：无更新 → up-to-date；有更新 → available（版本/标题/说明透传）；失败 → error
+ * - 通道派生：dev 版本 → dev/prerelease；stable 版本 → latest/release
+ * - check：dev 有更新 → available（不查 stable）；dev 无更新 → 查 stable；
+ *   stable 404 → up-to-date（不闪 error）；无更新 → up-to-date；失败 → error
+ * - 防降级：每次切通道后 allowDowngrade=false
  * - download：状态守卫（非 available 抛 IpcError STATE）→ downloading（进度推送）
  *   → downloaded（事件路径 + 兜底路径）
  * - install：状态守卫 → installing + quitAndInstall(true, true)（静默装 + 装完拉起）
@@ -12,12 +15,27 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   createUpdateService,
-  UPDATE_CHANNEL,
+  resolveUpdateChannel,
+  type UpdaterCheckResult,
   type UpdaterHandle,
   type UpdateServiceOptions,
 } from '../../src/main/update/update-service';
 import { IpcError } from '@urchin/ipc-contract';
 import type { UpdateState } from '@urchin/ipc-contract';
+
+/** 构造 electron-updater 真实形状的「无更新」结果。 */
+function noUpdate(version = '0.1.0-dev.113'): UpdaterCheckResult {
+  return { isUpdateAvailable: false, updateInfo: { version } };
+}
+
+/** 构造 electron-updater 真实形状的「有更新」结果。 */
+function updateAvailable(
+  version: string,
+  releaseName?: string,
+  releaseNotes?: string,
+): UpdaterCheckResult {
+  return { isUpdateAvailable: true, updateInfo: { version, releaseName, releaseNotes } };
+}
 
 /** 可手动触发事件的 mock 更新器（真实 AppUpdater 的 EventEmitter 子集）。 */
 function createMockUpdater(overrides: Partial<UpdaterHandle> = {}) {
@@ -26,8 +44,9 @@ function createMockUpdater(overrides: Partial<UpdaterHandle> = {}) {
     autoDownload: true,
     autoInstallOnAppQuit: false,
     allowPrerelease: false,
+    allowDowngrade: false,
     channel: null,
-    checkForUpdates: vi.fn(() => Promise.resolve(null)),
+    checkForUpdates: vi.fn(() => Promise.resolve(noUpdate())),
     downloadUpdate: vi.fn(() => Promise.resolve(undefined)),
     quitAndInstall: vi.fn(),
     on: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
@@ -42,6 +61,16 @@ function createMockUpdater(overrides: Partial<UpdaterHandle> = {}) {
     for (const listener of listeners.get(event) ?? []) listener(...args);
   };
   return { updater, emit };
+}
+
+/** 按调用顺序返回结果的 checkForUpdates mock；Error 表示该次调用失败。 */
+function sequenceCheck(...results: (UpdaterCheckResult | Error)[]) {
+  let index = 0;
+  return vi.fn(() => {
+    const next = results[Math.min(index, results.length - 1)];
+    index++;
+    return next instanceof Error ? Promise.reject(next) : Promise.resolve(next ?? null);
+  });
 }
 
 /** 组装服务 + 事件收集 + 更新器工厂 spy。 */
@@ -63,6 +92,26 @@ function flushImmediate(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
+describe('resolveUpdateChannel', () => {
+  it('should derive dev channel for prerelease versions', () => {
+    expect(resolveUpdateChannel('0.2.0-dev.115')).toEqual({
+      channel: 'dev',
+      allowPrerelease: true,
+    });
+    expect(resolveUpdateChannel('1.0.0-beta.1')).toEqual({
+      channel: 'beta',
+      allowPrerelease: true,
+    });
+  });
+
+  it('should derive latest channel for stable versions', () => {
+    expect(resolveUpdateChannel('0.2.0')).toEqual({
+      channel: 'latest',
+      allowPrerelease: false,
+    });
+  });
+});
+
 describe('createUpdateService', () => {
   it('should report disabled and block all actions when not packaged', async () => {
     const { service, createUpdater } = setup({ isPackaged: false });
@@ -74,31 +123,122 @@ describe('createUpdateService', () => {
     expect(() => service.install()).toThrow(IpcError);
   });
 
-  it('should configure updater for dev channel and manual-confirm mode', async () => {
-    const { updater } = createMockUpdater();
+  it('should configure manual-confirm mode and keep dev channel when dev update exists', async () => {
+    const { updater } = createMockUpdater({
+      checkForUpdates: sequenceCheck(updateAvailable('0.1.0-dev.114')),
+    });
+    const { service, createUpdater } = setup();
+    createUpdater.mockResolvedValue(updater);
+
+    const state = await service.check();
+
+    expect(state.status).toBe('available');
+    expect(updater.autoDownload).toBe(false);
+    expect(updater.autoInstallOnAppQuit).toBe(true);
+    expect(updater.allowPrerelease).toBe(true);
+    expect(updater.channel).toBe('dev');
+    expect(updater.allowDowngrade).toBe(false);
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it('should not report an update when isUpdateAvailable is false for the same version', async () => {
+    // 回归：electron-updater 无更新时返回非 null 的 { isUpdateAvailable: false }；
+    // dev.114 曾误判为 available，测试 mock 返回 null 掩盖了该行为。
+    const { updater } = createMockUpdater({
+      checkForUpdates: sequenceCheck(noUpdate('0.1.0-dev.113')),
+    });
     const { service, createUpdater } = setup();
     createUpdater.mockResolvedValue(updater);
 
     const state = await service.check();
 
     expect(state.status).toBe('up-to-date');
-    // 手动确认制 + dev 预发布通道（与 electron-builder 生成的 dev.yml 匹配）
-    expect(updater.autoDownload).toBe(false);
-    expect(updater.autoInstallOnAppQuit).toBe(true);
-    expect(updater.allowPrerelease).toBe(true);
-    expect(updater.channel).toBe(UPDATE_CHANNEL);
+    expect(state.latestVersion).toBeUndefined();
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(2); // dev + stable fallback
+  });
+
+  it('should fall back to stable when dev has no update', async () => {
+    const { updater } = createMockUpdater({
+      checkForUpdates: sequenceCheck(
+        noUpdate('0.1.0-dev.113'),
+        updateAvailable('0.2.0', 'Urchin Browser v0.2.0', '正式版说明'),
+      ),
+    });
+    const { service, createUpdater, events } = setup();
+    createUpdater.mockResolvedValue(updater);
+
+    const state = await service.check();
+
+    expect(state).toMatchObject({
+      status: 'available',
+      currentVersion: '0.1.0-dev.113',
+      latestVersion: '0.2.0',
+      releaseName: 'Urchin Browser v0.2.0',
+      releaseNotes: '正式版说明',
+    });
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(2);
+    expect(updater.channel).toBe('latest');
+    expect(updater.allowPrerelease).toBe(false);
+    expect(updater.allowDowngrade).toBe(false);
+    expect(events.map((e) => e.status)).toEqual(['checking', 'available']);
+  });
+
+  it('should treat missing stable release as up-to-date and suppress error event', async () => {
+    const { updater, emit } = createMockUpdater();
+    let calls = 0;
+    updater.checkForUpdates = vi.fn(() => {
+      calls++;
+      if (calls === 1) return Promise.resolve(noUpdate('0.1.0-dev.113'));
+      // 首个 stable 发布前 GitHub /releases/latest 404；electron-updater 先发
+      // error 事件再拒绝，应被两段检查抑制，不把 UI 打成 error。
+      const error = new Error('ERR_UPDATER_LATEST_VERSION_NOT_FOUND');
+      emit('error', error);
+      return Promise.reject(error);
+    });
+    const { service, createUpdater, events } = setup();
+    createUpdater.mockResolvedValue(updater);
+
+    const state = await service.check();
+
+    expect(state.status).toBe('up-to-date');
+    expect(state.error).toBeUndefined();
+    expect(events.some((e) => e.status === 'error')).toBe(false);
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(2);
+  });
+
+  it('should only query latest channel for stable current version', async () => {
+    const { updater } = createMockUpdater({
+      checkForUpdates: sequenceCheck(updateAvailable('0.1.1')),
+    });
+    const { service, createUpdater } = setup({ currentVersion: '0.1.0' });
+    createUpdater.mockResolvedValue(updater);
+
+    const state = await service.check();
+
+    expect(state.status).toBe('available');
+    expect(state.latestVersion).toBe('0.1.1');
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(updater.channel).toBe('latest');
+    expect(updater.allowPrerelease).toBe(false);
+    expect(updater.allowDowngrade).toBe(false);
+  });
+
+  it('should return up-to-date for stable current version without update', async () => {
+    const { updater } = createMockUpdater();
+    const { service, createUpdater } = setup({ currentVersion: '0.2.0' });
+    createUpdater.mockResolvedValue(updater);
+
+    const state = await service.check();
+
+    expect(state.status).toBe('up-to-date');
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(updater.channel).toBe('latest');
   });
 
   it('should return available state with release info when update exists', async () => {
     const { updater } = createMockUpdater({
-      checkForUpdates: vi.fn(() =>
-        Promise.resolve({
-          updateInfo: {
-            version: '0.1.0-dev.114',
-            releaseName: 'Urchin Browser v0.1.0-dev.114',
-            releaseNotes: '更新说明',
-          },
-        }),
+      checkForUpdates: sequenceCheck(
+        updateAvailable('0.1.0-dev.114', 'Urchin Browser v0.1.0-dev.114', '更新说明'),
       ),
     });
     const { service, createUpdater, events } = setup();
@@ -168,7 +308,7 @@ describe('createUpdateService', () => {
   it('should stream progress while downloading and finish via update-downloaded event', async () => {
     let resolveDownload: (() => void) | undefined;
     const { updater, emit } = createMockUpdater({
-      checkForUpdates: vi.fn(() => Promise.resolve({ updateInfo: { version: '0.1.0-dev.114' } })),
+      checkForUpdates: sequenceCheck(updateAvailable('0.1.0-dev.114')),
       downloadUpdate: vi.fn(
         () =>
           new Promise<void>((resolve) => {
@@ -208,7 +348,7 @@ describe('createUpdateService', () => {
 
   it('should fall back to downloaded when downloadUpdate resolves without event', async () => {
     const { updater } = createMockUpdater({
-      checkForUpdates: vi.fn(() => Promise.resolve({ updateInfo: { version: '0.1.0-dev.114' } })),
+      checkForUpdates: sequenceCheck(updateAvailable('0.1.0-dev.114')),
       downloadUpdate: vi.fn(() => Promise.resolve(undefined)),
     });
     const { service, createUpdater } = setup();
@@ -227,7 +367,7 @@ describe('createUpdateService', () => {
 
   it('should quit and install silently with force relaunch after downloaded', async () => {
     const { updater } = createMockUpdater({
-      checkForUpdates: vi.fn(() => Promise.resolve({ updateInfo: { version: '0.1.0-dev.114' } })),
+      checkForUpdates: sequenceCheck(updateAvailable('0.1.0-dev.114')),
       downloadUpdate: vi.fn(() => Promise.resolve(undefined)),
     });
     const { service, createUpdater } = setup();

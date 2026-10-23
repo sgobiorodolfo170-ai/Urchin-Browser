@@ -72,6 +72,37 @@ describe('BookmarkManager', () => {
     expect(b1.id.length).toBeGreaterThan(0);
   });
 
+  it('create: stores favicon for bookmarks but not folders', () => {
+    const mgr = new BookmarkManager();
+
+    const bookmark = mgr.create({
+      title: 'Example',
+      url: 'https://example.com',
+      favicon: 'urchin://favicon/abc',
+    });
+    const folder = mgr.create({
+      title: 'Folder',
+      favicon: 'urchin://favicon/abc',
+    });
+
+    expect(bookmark.favicon).toBe('urchin://favicon/abc');
+    expect(folder.favicon).toBeUndefined();
+  });
+
+  it('updateFaviconByUrl: backfills matching bookmarks only', () => {
+    const mgr = new BookmarkManager();
+    const bookmark = mgr.create({ title: 'Example', url: 'https://example.com' });
+    const other = mgr.create({ title: 'Other', url: 'https://other.com' });
+
+    const changed = mgr.updateFaviconByUrl('https://example.com', 'urchin://favicon/abc');
+
+    expect(changed).toBe(1);
+    expect(mgr.list().find((item) => item.id === bookmark.id)?.favicon).toBe(
+      'urchin://favicon/abc',
+    );
+    expect(mgr.list().find((item) => item.id === other.id)?.favicon).toBeUndefined();
+  });
+
   // ===== list 测试 =====
 
   it('list: returns all bookmarks when parentId is undefined', () => {

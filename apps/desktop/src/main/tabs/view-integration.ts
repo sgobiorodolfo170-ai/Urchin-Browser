@@ -34,6 +34,21 @@ const DEFAULT_LEFT_WIDTH = 44;
 const DEFAULT_RIGHT_WIDTH = 44;
 const DEFAULT_BOTTOM_HEIGHT = 48;
 
+/**
+ * Windows 自绘窗口 chrome 尺寸（px）。
+ *
+ * 与渲染层同步：
+ * - tokens.css 的 --window-frame-width / --window-titlebar-height
+ * - components/app-titlebar.tsx 的标题栏高度（由 CSS 变量控制）
+ *
+ * BrowserView 是独立原生视图，不受渲染层 CSS 裁剪；不按这些尺寸内缩的话，
+ * 网页会盖住 8px #F6F2F0 外框与自绘标题栏。
+ * 非 Windows 保留原生标题栏，不做内缩（0）。
+ */
+const USE_CUSTOM_CHROME = process.platform === 'win32';
+export const WINDOW_FRAME_WIDTH = USE_CUSTOM_CHROME ? 8 : 0;
+export const WINDOW_TITLEBAR_HEIGHT = USE_CUSTOM_CHROME ? 32 : 0;
+
 /** 由渲染进程 React 组件渲染的内部 URL 前缀（不显示 BrowserView）。
  *  阶段2 解耦：settings 和 ai 都作为 React 渲染的内部页面；newtab 主页同为 React 渲染；
  *  file-viewer 本地文件查看器同为 React 渲染（文件路径经 ?path= 参数传入）；
@@ -45,6 +60,7 @@ const URCHIN_RENDERER_HOSTS = [
   'urchin://newtab',
   'urchin://file-viewer',
   'urchin://genoffice-home',
+  'urchin://workspaces',
 ];
 
 /** 判断 URL 是否应由渲染进程 React 组件渲染（而非 BrowserView）。
@@ -67,10 +83,14 @@ export interface TabEventPayload {
   readonly snapshot: TabSnapshot;
 }
 
-/** 布局状态：左/右侧栏宽度 + 下侧栏高度 */
+/** 布局状态：左/右侧栏宽度 + 下侧栏区域高度 */
 export interface LayoutState {
   leftWidth: number;
   rightWidth: number;
+  /**
+   * 底部悬浮状态栏区域高度（供 BookmarkPanel 定位与悬浮层几何计算）。
+   * BrowserView 不再据此内缩——网页铺到窗口底部，状态栏以独立子窗口悬浮其上。
+   */
   bottomHeight: number;
   /** 临时隐藏 BrowserView（如收藏夹面板弹出时） */
   browserViewHidden: boolean;
@@ -86,8 +106,13 @@ const layoutState: LayoutState = {
 
 /**
  * 计算 BrowserView 的 bounds。
- * BrowserView 占据中间区域：x=leftWidth, y=0,
- * 宽度=windowWidth-leftWidth-rightWidth, 高度=windowHeight-bottomHeight。
+ *
+ * 内容区 = 窗口减去四周外框（frame）与顶部自绘标题栏；再按左右侧栏宽度扣除中间网页区域。
+ * 不再减去底部状态栏高度：状态栏改为独立透明子窗口悬浮于网页之上，
+ * 网页内容可铺到窗口底部，状态栏不再占用布局高度。
+ * x = frame + leftWidth, y = frame + titlebar,
+ * width = windowWidth - 2*frame - leftWidth - rightWidth,
+ * height = windowHeight - 2*frame - titlebar。
  */
 function computeViewBounds(windowBounds: { width: number; height: number }): {
   x: number;
@@ -95,11 +120,16 @@ function computeViewBounds(windowBounds: { width: number; height: number }): {
   width: number;
   height: number;
 } {
+  const horizontalInset = WINDOW_FRAME_WIDTH * 2;
+  const verticalInset = WINDOW_FRAME_WIDTH * 2 + WINDOW_TITLEBAR_HEIGHT;
   return {
-    x: layoutState.leftWidth,
-    y: 0,
-    width: Math.max(0, windowBounds.width - layoutState.leftWidth - layoutState.rightWidth),
-    height: Math.max(0, windowBounds.height - layoutState.bottomHeight),
+    x: WINDOW_FRAME_WIDTH + layoutState.leftWidth,
+    y: WINDOW_FRAME_WIDTH + WINDOW_TITLEBAR_HEIGHT,
+    width: Math.max(
+      0,
+      windowBounds.width - horizontalInset - layoutState.leftWidth - layoutState.rightWidth,
+    ),
+    height: Math.max(0, windowBounds.height - verticalInset),
   };
 }
 
@@ -260,9 +290,13 @@ export function installTabViewIntegration(
     const contentBounds = managed.browserWindow.getContentBounds();
     const bounds = computeViewBounds(contentBounds);
     // GenOffice 标签页地址栏在 React 层隐藏（App.tsx !isGenOfficeTab 条件），
-    // 视图需覆盖全部高度，否则底部留 48px 空白条
+    // 视图需覆盖内容区全部高度。computeViewBounds 现已不再扣除底部状态栏高度，
+    // GenOffice 与普通网页一致铺到底部；此分支保留以明示语义并防御未来回归。
     if (tab.viewKind === 'genoffice') {
-      bounds.height = contentBounds.height;
+      bounds.height = Math.max(
+        0,
+        contentBounds.height - WINDOW_FRAME_WIDTH * 2 - WINDOW_TITLEBAR_HEIGHT,
+      );
     }
     // 防御性检查：确保 bounds 宽高不为零，否则网页不可见
     if (bounds.width <= 0 || bounds.height <= 0) {

@@ -31,11 +31,33 @@ export function getBookmarkPanelScript(): string {
     const contentEl = document.getElementById('content');
     let activeTab = 'bookmarks';
 
-    const ICONS = { bookmark: '⭐', history: '🕐', download: '⬇', folder: '📁' };
+    const ICONS = { bookmark: '⭐', history: '🕐', download: '⬇', folder: '📁', site: '🌐' };
 
     function escapeHtml(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // 图标槽：优先显示主进程缓存的网站图标；加载失败时回退到 emoji，
+    // 避免远程/缓存文件缺失时出现破图。
+    function faviconSlot(favicon, fallback) {
+      if (!favicon) {
+        return '<span class="favicon-slot"><span class="icon favicon-fallback">' + fallback + '</span></span>';
+      }
+      return '<span class="favicon-slot">' +
+        '<img class="favicon" src="' + escapeHtml(favicon) + '" alt="" />' +
+        '<span class="icon favicon-fallback" style="display:none">' + fallback + '</span>' +
+        '</span>';
+    }
+
+    function bindFaviconFallbacks() {
+      contentEl.querySelectorAll('img.favicon').forEach(img => {
+        img.addEventListener('error', () => {
+          img.style.display = 'none';
+          const fallback = img.nextElementSibling;
+          if (fallback) fallback.style.display = 'inline';
+        });
+      });
     }
 
     // 收藏夹面板数据源（经 preload 暴露的 typedInvoke，主进程 zod 校验）
@@ -64,10 +86,12 @@ export function getBookmarkPanelScript(): string {
       }
       contentEl.innerHTML = items.map(b => (
         '<div class="item" data-url="' + escapeHtml(b.url) + '">' +
-        '<span class="icon star" data-id="' + escapeHtml(b.id) + '" title="取消收藏">⭐</span>' +
+        faviconSlot(b.favicon, ICONS.site) +
+        '<span class="icon star" data-id="' + escapeHtml(b.id) + '" title="取消收藏">' + ICONS.bookmark + '</span>' +
         '<div class="main"><div class="title">' + escapeHtml(b.title || b.url) + '</div>' +
         '<div class="url">' + escapeHtml(b.url) + '</div></div></div>'
       )).join('');
+      bindFaviconFallbacks();
       bindOpen('.item');
       // 星标点击取消收藏：stopPropagation 防止冒泡触发"打开网址"，删除后刷新列表
       contentEl.querySelectorAll('.item .star').forEach(el => {
@@ -124,10 +148,11 @@ export function getBookmarkPanelScript(): string {
       }
       contentEl.innerHTML = items.map(h => (
         '<div class="item" data-url="' + escapeHtml(h.url) + '">' +
-        '<span class="icon">🕐</span>' +
+        faviconSlot(h.favicon, ICONS.history) +
         '<div class="main"><div class="title">' + escapeHtml(h.title || h.url) + '</div>' +
         '<div class="url">' + escapeHtml(h.url) + '</div></div></div>'
       )).join('');
+      bindFaviconFallbacks();
       bindOpen('.item');
     }
 
@@ -255,6 +280,13 @@ export function getBookmarkPanelHtml(): string {
     }
     .item:hover { background: var(--bg-secondary); }
     .item .icon { flex-shrink: 0; width: 14px; text-align: center; }
+    /* 网站图标槽：固定 16px，图片加载失败时显示 emoji 回退 */
+    .favicon-slot {
+      width: 16px; height: 16px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .favicon { width: 16px; height: 16px; object-fit: contain; border-radius: 2px; }
+    .favicon-fallback { width: 14px; }
     /* 收藏星标：可点击取消收藏（hover 变暗提示可点击） */
     .item .icon.star { cursor: pointer; }
     .item .icon.star:hover { filter: grayscale(0.5) brightness(0.7); }

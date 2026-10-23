@@ -104,6 +104,33 @@ describe('protocol/index', () => {
       expect(res.status).toBe(404);
     });
 
+    it('should serve cached favicon bytes with image headers', async () => {
+      registerUrchinProtocol({
+        getFavicon: (name) =>
+          Promise.resolve(
+            name === 'abc'
+              ? { data: Uint8Array.from([0x89, 0x50, 0x4e, 0x47]), contentType: 'image/png' }
+              : null,
+          ),
+      });
+      const res = await getHandler()({ url: 'urchin://favicon/abc' });
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Content-Type')).toBe('image/png');
+      expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+      expect(res.headers.get('Content-Security-Policy')).toContain("default-src 'none'");
+      expect(new Uint8Array(await res.arrayBuffer())).toEqual(
+        Uint8Array.from([0x89, 0x50, 0x4e, 0x47]),
+      );
+    });
+
+    it('should return 404 for missing favicon', async () => {
+      registerUrchinProtocol({ getFavicon: () => Promise.resolve(null) });
+      const res = await getHandler()({ url: 'urchin://favicon/missing' });
+
+      expect(res.status).toBe(404);
+    });
+
     it('should return 500 for malformed url', async () => {
       registerUrchinProtocol();
       const res = await getHandler()({ url: 'not-a-url' });

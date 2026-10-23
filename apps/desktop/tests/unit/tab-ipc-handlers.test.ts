@@ -36,6 +36,7 @@ function createMockTabManager(): TabManager & {
     indexInWindow: 0,
     viewKind: 'browser',
     dirty: false,
+    workspaceId: 'default',
   };
 
   const tab: Tab = {
@@ -237,5 +238,61 @@ describe('registerTabHandlers', () => {
     await ipcMain.invoke('tab.goForward', { tabId: 1 });
     // canGoForward is false in mock, so goForward should NOT be called
     expect(mgr._createResult.webContents.goForward).not.toHaveBeenCalled();
+  });
+
+  it('should register tab.captureThumbnail handler returning dataUrl', async () => {
+    const ipcMain = createMockIpcMain();
+    const mgr = createMockTabManager();
+    registerTabHandlers(ipcMain as never, mgr);
+
+    // 注入 capturePage 相关 mock（运行时经 as unknown as Electron.WebContents 访问）
+    const capturePage = vi.fn().mockResolvedValue({
+      isEmpty: vi.fn().mockReturnValue(false),
+      getSize: vi.fn().mockReturnValue({ width: 800, height: 500 }),
+      resize: vi.fn().mockReturnValue({
+        toDataURL: vi.fn().mockReturnValue('data:image/png;base64,humb'),
+      }),
+      toDataURL: vi.fn().mockReturnValue('data:image/png;base64,humb'),
+    });
+    (mgr._createResult.webContents as unknown as { capturePage: unknown }).capturePage =
+      capturePage;
+
+    const result = (await ipcMain.invoke('tab.captureThumbnail', { tabId: 1 })) as {
+      tabId: number;
+      dataUrl: string | null;
+    };
+    expect(capturePage).toHaveBeenCalledOnce();
+    expect(result.tabId).toBe(1);
+    // 800px 宽 → 缩到 480px（scale=0.6，非 1）
+    expect(result.dataUrl).toMatch(/^data:image\/png/);
+  });
+
+  it('should register tab.captureThumbnail handler returning null on missing tab', async () => {
+    const ipcMain = createMockIpcMain();
+    const mgr = createMockTabManager();
+    mgr.getTab = vi.fn().mockReturnValue(undefined) as never;
+    registerTabHandlers(ipcMain as never, mgr);
+
+    const result = (await ipcMain.invoke('tab.captureThumbnail', { tabId: 999 })) as {
+      tabId: number;
+      dataUrl: string | null;
+    };
+    expect(result.dataUrl).toBeNull();
+  });
+
+  it('should register tab.captureThumbnail handler returning null on capture failure', async () => {
+    const ipcMain = createMockIpcMain();
+    const mgr = createMockTabManager();
+    registerTabHandlers(ipcMain as never, mgr);
+
+    (mgr._createResult.webContents as unknown as { capturePage: unknown }).capturePage = vi
+      .fn()
+      .mockRejectedValue(new Error('capture failed'));
+
+    const result = (await ipcMain.invoke('tab.captureThumbnail', { tabId: 1 })) as {
+      tabId: number;
+      dataUrl: string | null;
+    };
+    expect(result.dataUrl).toBeNull();
   });
 });

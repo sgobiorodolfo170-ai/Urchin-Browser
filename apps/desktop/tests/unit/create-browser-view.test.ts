@@ -17,6 +17,10 @@ const browserViewMock = {
 /** dev.50：nativeTheme 暗色标志（背景色跟随主题断言用） */
 const electronState = vi.hoisted(() => ({ dark: false }));
 
+/** TP7：mock session（工作区分区解析结果）。 */
+const mockSession = { partition: 'persist:urchin-workspace-test' } as unknown as Electron.Session;
+const resolveSession = vi.fn(() => mockSession);
+
 vi.mock('electron', () => ({
   BrowserView: vi.fn().mockImplementation(() => browserViewMock),
   nativeTheme: {
@@ -35,8 +39,8 @@ describe('createBrowserView', () => {
     electronState.dark = false;
   });
 
-  it('should create BrowserView with M18 security boundaries', () => {
-    const view = createBrowserView();
+  it('should create BrowserView with M18 security boundaries + workspace session', () => {
+    const view = createBrowserView('test', resolveSession);
 
     expect(BrowserView).toHaveBeenCalledWith({
       webPreferences: {
@@ -44,24 +48,26 @@ describe('createBrowserView', () => {
         contextIsolation: true,
         nodeIntegration: false,
         webSecurity: true,
+        session: mockSession,
       },
     });
+    expect(resolveSession).toHaveBeenCalledWith('test');
     expect(view).toBeDefined();
   });
 
   it('should set opaque background color following theme (dev.50)', () => {
     // 亮色：白（与渲染层 --color-surface 亮值一致）
-    createBrowserView();
+    createBrowserView('test', resolveSession);
     expect(browserViewMock.setBackgroundColor).toHaveBeenCalledWith('#ffffff');
 
     // 暗色：surface 深色——硬编码白在深色模式造成加载白闪 + 缝隙透白分割线
     electronState.dark = true;
-    createBrowserView();
+    createBrowserView('test', resolveSession);
     expect(browserViewMock.setBackgroundColor).toHaveBeenLastCalledWith('#0f172a');
   });
 
   it('should return a BrowserViewLike-compatible instance', () => {
-    const view = createBrowserView() as unknown as { setBounds: unknown };
+    const view = createBrowserView('test', resolveSession) as unknown as { setBounds: unknown };
 
     expect(typeof view.setBounds).toBe('function');
   });

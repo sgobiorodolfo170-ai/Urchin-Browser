@@ -216,7 +216,7 @@ adapted_for: Urchin-Browser
 - 下一步：权限到位后接入联调
 ```
 
-**项目落地**：决策留痕体系已建于 [docs/](docs/文档索引.md)——核心决策 53 项（首轮 36 + 迭代新增 17：T7/GR1/DD1/DL1/DB1/GF1-GF5/ML1-ML4/UP1-UP3）见 [docs/decisions/决策索引](docs/decisions/决策索引.md)，契约内决策 68 项见各契约文档末尾决策表；任务与 wave 跟踪见 [docs/04-模块全景 §4](docs/04-模块全景.md#4-v01-分波次交付计划6-8-周) 与 [docs/07-立项准备](docs/07-立项准备.md)。新增决策一律附带「否决方案理由」并分配系列 ID（D/T/IP/CP/TP/SP/PC/DT/ST/OM/TH/OR/SC，及迭代新增 GR/DD/DL/DB/GF/ML/UP）。
+**项目落地**：决策留痕体系已建于 [docs/](docs/文档索引.md)——核心决策 56 项（首轮 36 + 迭代新增 20：T7/GR1/DD1/DL1/DB1/GF1-GF5/ML1-ML4/UP1-UP3/RC1-RC3）见 [docs/decisions/决策索引](docs/decisions/决策索引.md)，契约内决策 68 项见各契约文档末尾决策表；任务与 wave 跟踪见 [docs/04-模块全景 §4](docs/04-模块全景.md#4-v01-分波次交付计划6-8-周) 与 [docs/07-立项准备](docs/07-立项准备.md)。新增决策一律附带「否决方案理由」并分配系列 ID（D/T/IP/CP/TP/SP/PC/DT/ST/OM/TH/OR/SC，及迭代新增 GR/DD/DL/DB/GF/ML/UP/RC）。
 
 ---
 

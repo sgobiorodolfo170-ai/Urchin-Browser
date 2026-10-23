@@ -1,6 +1,6 @@
 # 契约 D · M2 Tab Manager 状态与生命周期
 
-> 状态：已定稿 · 日期：2026-07-27  · 关联决策：TP1-TP6
+> 状态：已定稿 · 日期：2026-07-27  · 关联决策：TP1-TP7
 > 代码示例：文中代码为示意伪码，用于表达设计意图，非可编译实现；文中文件路径为设计期示意，实际代码布局以 [03-技术栈 §3](../03-技术栈.md#3-目录结构现状2026-09-24-同步) 为准。
 
 ## 1. 设计目标
@@ -351,7 +351,24 @@ FR-BROWSE-09 要求隐身窗口「不记录历史、不缓存表单输入、不�
 - 隐身窗口的 tab 会话**不参与** §7 的持久化——关闭即销毁，重启不恢复。
 - 窗口级标记：`Window.isIncognito` 由 M1 创建窗口时确定，不可中途切换；隐身窗口需有明确视觉标识（主题色 / 图标，M19 配合）。
 
-## 9. 关键技术风险
+## 9. 工作区 session 隔离（TP7）
+
+FR-ACCOUNT 要求「同一网站可保存多个账号登录 Cookie，且多账号可同时在线」。落地为**工作区**（Workspace）机制：
+
+- **定义**：每个标签页属于一个工作区（`tab.workspaceId`，缺省 `'default'`）。工作区决定标签使用的 session 分区，Cookie / localStorage / IndexedDB / Service Worker / 缓存全隔离。
+- **默认工作区**：`id='default'`，映射 `session.defaultSession`——保留既有登录态，升级无感；不可删除（可改名/换色）。
+- **自定义工作区**：`session.fromPartition('persist:urchin-workspace-<id>')`，`persist:` 前缀保证跨重启持久化；partition 名由主进程解析，渲染层只传 `workspaceId`，禁止传任意 partition。
+- **元数据**：工作区名字/颜色等非敏感元数据存 Settings `workspaces.registry`（zod 校验 + 版本号）；Cookie 由 Chromium 落在 `<sessionData>/Partitions/urchin-workspace-*`，不写 SQLite。
+- **工作区归属解析**（`TabManager`）：
+  - 显式传 `workspaceId` 则用之；
+  - 未传（AI / 地址栏 / 拖出窗口等）→ 继承窗口当前活动标签的工作区；无活动标签 → 默认工作区；
+  - `window.open` 新标签继承来源标签的工作区。
+- **会话级配置**：自定义工作区分区 session 首次解析时幂等配置——注册 `urchin://` 协议处理器（内部页占位可在任意工作区渲染）+ 下载挂钩（账号分区下载同样弹保存 UI）。默认 session 由既有启动路径配置。
+- **删除/清空保护**：`workspace.remove` / `workspace.clearData` 前置检查该工作区无打开标签（防清掉正在写入的会话）；`clearData` 执行 `clearStorageData()` + `clearCache()` + `clearAuthCache()`。
+- **变更广播**：工作区 create/update/remove/clearData 后经 `workspace:changed` 推送所有窗口，渲染层统一刷新。
+- **与 TP6 的关系**：TP6 隐身窗口使用**非持久** partition（无 `persist:`），会话随退出蒸发；TP7 工作区使用**持久** partition（`persist:`），会话跨重启保留。两者互不干扰。
+
+## 10. 关键技术风险
 
 | 风险 | 缓解 |
 |---|---|

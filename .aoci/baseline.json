@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-26T07:44:45Z",
-  "updated_at": "2026-10-16T17:15:30Z",
+  "updated_at": "2026-10-23T10:33:31Z",
   "files": {
     ".editorconfig": {
       "role": "index",
@@ -88,9 +88,9 @@
       "normalized_sha256": "6dccf133f494c5e01e569b3a620fed9fdaa5a6c238581e8a8ed7d005fe22f6c7"
     },
     "aoci.code.txt": {
-      "sha256": "3de0f5e55c888b17f9547b524dfc0176a94fb923ec25c91b48224be5b434e53d",
-      "size": 81070,
-      "normalized_sha256": "3de0f5e55c888b17f9547b524dfc0176a94fb923ec25c91b48224be5b434e53d"
+      "sha256": "b2e4ae0717d7cb46e5ba8674f2fc11428e4bcbeb7b458f3a2d5ef5e3818a9fbe",
+      "size": 81304,
+      "normalized_sha256": "b2e4ae0717d7cb46e5ba8674f2fc11428e4bcbeb7b458f3a2d5ef5e3818a9fbe"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -117,16 +117,14 @@
       "normalized_sha256": "fa56fde8ad328d09d2fb741d6e342d3e42dbce373208c21adb5d95afaae87ef5"
     },
     "apps/desktop/ico/process-icon.ps1": {
-      "role": "index",
-      "sha256": "2835ee03256dd5d9b3e1f8bceee22698aec3bd5316e468e51f1c8e40c552eefe",
-      "size": 4641,
-      "normalized_sha256": "2835ee03256dd5d9b3e1f8bceee22698aec3bd5316e468e51f1c8e40c552eefe"
+      "sha256": "4ca996634566f950ea6c0cd75cbf46cedb8219efeb1b171086601fd35760e2d7",
+      "size": 5789,
+      "normalized_sha256": "4ca996634566f950ea6c0cd75cbf46cedb8219efeb1b171086601fd35760e2d7"
     },
     "apps/desktop/package.json": {
-      "role": "index",
-      "sha256": "c84f6042f678519ad000591f0c2a06b6a3c0a4eb63611687264c4944f95208c0",
-      "size": 2335,
-      "normalized_sha256": "c84f6042f678519ad000591f0c2a06b6a3c0a4eb63611687264c4944f95208c0"
+      "sha256": "c5e4bdce1256ddce72a9a9b34bdc4a0b35365a278798a15073c43d207f59812e",
+      "size": 2459,
+      "normalized_sha256": "c5e4bdce1256ddce72a9a9b34bdc4a0b35365a278798a15073c43d207f59812e"
     },
     "apps/desktop/playwright.config.ts": {
       "role": "index",

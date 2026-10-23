@@ -59,6 +59,7 @@ function createMockTabManager(exists = true): TabManager & {
     indexInWindow: 0,
     viewKind: 'browser',
     dirty: false,
+    workspaceId: 'default',
   };
   const webContents = createMockWebContents();
   const tab: Tab = {

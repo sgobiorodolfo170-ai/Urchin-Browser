@@ -76,13 +76,21 @@ const ProviderInfoSchema = z.object({
 });
 
 export const ipcSchema = {
-  'tab.create':       { req: z.object({ url: z.string().optional(), windowId: z.string() }), res: z.object({ tabId: z.string() }) },
+  'tab.create':       { req: z.object({ url: z.string().optional(), windowId: z.string(), workspaceId: WorkspaceIdSchema.optional() /* TP7：未传则主进程继承活动标签工作区 */ }), res: z.object({ tabId: z.string() }) },
   'tab.close':        { req: z.object({ tabId: z.string() }),                                      res: z.object({ ok: z.boolean() }) },
   'tab.list':         { req: z.object({ windowId: z.string() }),                                   res: z.object({ tabs: z.array(TabSnapshotSchema) }) },
   'tab.setActive':    { req: z.object({ tabId: z.string() }),                                      res: z.object({ ok: z.boolean() }) },
   'tab.reload':       { req: z.object({ tabId: z.string(), ignoreCache: z.boolean().optional() }), res: z.object({ ok: z.boolean() }) },
   'tab.goBack':       { req: z.object({ tabId: z.string() }),                                      res: z.object({ ok: z.boolean() }) },
   'tab.goForward':    { req: z.object({ tabId: z.string() }),                                      res: z.object({ ok: z.boolean() }) },
+
+  // TP7 工作区（工作区 CRUD + 清空数据；变更经 'workspace:changed' 事件广播）
+  'workspace.list':     { req: z.object({}),                                                      res: z.object({ workspaces: z.array(WorkspaceSchema) }) },
+  'workspace.create':   { req: z.object({ name: z.string().min(1).max(32), color: WorkspaceColorSchema }), res: z.object({ workspace: WorkspaceSchema }) },
+  'workspace.update':   { req: z.object({ id: WorkspaceIdSchema, name: z.string().min(1).max(32).optional(), color: WorkspaceColorSchema.optional() }), res: z.object({ workspace: WorkspaceSchema }) },
+  'workspace.remove':   { req: z.object({ id: WorkspaceIdSchema }),                                res: z.object({ ok: z.boolean() }) },
+  'workspace.clearData':{ req: z.object({ id: WorkspaceIdSchema }),                                res: z.object({ ok: z.boolean() }) },
+
 
   'bookmark.add':     { req: z.object({ url: z.string(), title: z.string(), parentId: z.string().optional() }), res: z.object({ id: z.string() }) },
   'bookmark.list':    { req: z.object({}),                                                          res: z.object({ bookmarks: z.array(BookmarkSchema) }) },
@@ -403,6 +411,8 @@ export const tabEventsSchema = {
   'tab.removed':   z.object({ tabId: z.string() }),
   'tab.activated': z.object({ tabId: z.string(), windowId: z.string() }),
   'tab.crashed':   z.object({ tabId: z.string(), details: z.object({ reason: z.string() }) }),
+  // TP7：工作区变更（create/update/remove/clearData）后广播，渲染层刷新列表
+  'workspace:changed': z.object({}),
 } as const;
 
 export type TabEvent = keyof typeof tabEventsSchema;

@@ -30,6 +30,8 @@ export interface Bookmark {
   url?: string;
   /** 节点标题 */
   title: string;
+  /** 缓存的网站图标（urchin://favicon/<hash>；旧数据/未访问时缺省） */
+  favicon?: string;
   /** 节点类型 */
   readonly type: BookmarkType;
   /** 在同级兄弟中的排序位置（0 起始，升序） */
@@ -52,6 +54,8 @@ export interface BookmarkCreateOptions {
   readonly parentId?: string | null;
   /** 节点类型；不传时按 url 是否存在推导 */
   readonly type?: BookmarkType;
+  /** 创建时一并保存的网站图标（由主进程从标签快照注入） */
+  readonly favicon?: string;
 }
 
 /**

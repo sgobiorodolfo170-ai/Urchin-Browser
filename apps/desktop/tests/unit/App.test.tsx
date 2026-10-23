@@ -147,6 +147,7 @@ describe('App (Browser Shell)', () => {
         windowId: 1,
         url: 'urchin://newtab',
         active: true,
+        workspaceId: 'default',
       });
     });
   });
@@ -254,6 +255,7 @@ describe('App (Browser Shell)', () => {
           url: 'https://example.com',
           x: 500,
           y: 260,
+          workspaceId: 'default',
         });
       });
       await waitFor(() => {
@@ -311,8 +313,19 @@ describe('App (Browser Shell)', () => {
     renderApp();
 
     await waitFor(() => {
-      expect(mockOn).toHaveBeenCalled();
-      expect(mockOn.mock.calls[0]?.[0]).toBe('tab:event');
+      // TP7：App 还订阅 workspace:changed，这里断言 tab:event 一定在订阅列表中
+      expect(mockOn.mock.calls.some(([c]) => c === 'tab:event')).toBe(true);
+    });
+  });
+
+  it('should subscribe to workspace:changed channel (TP7)', async () => {
+    const tab = makeTab();
+    mockInvoke.mockResolvedValue({ tabs: [tab] });
+
+    renderApp();
+
+    await waitFor(() => {
+      expect(mockOn.mock.calls.some(([c]) => c === 'workspace:changed')).toBe(true);
     });
   });
 
@@ -709,7 +722,9 @@ describe('App (Browser Shell)', () => {
     act(() => {
       tabEventHandler!({ type: 'removed', snapshot: makeTab({ id: 1, active: true }) });
     });
-    await waitFor(() => expect(screen.getByText('Urchin Browser')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'Urchin Browser' })).toBeInTheDocument(),
+    );
 
     // 无激活标签时导航（主页按钮）→ 新建标签，而非对已删除 tab 调 loadUrl
     fireEvent.click(screen.getByLabelText('主页'));

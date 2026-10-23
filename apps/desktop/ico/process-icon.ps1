@@ -1,105 +1,122 @@
+﻿# 应用图标生成：单张源图 → 多尺寸 PNG + Windows ICO + 渲染层品牌图标
+#
+# 依据：AGENTS.md §七（注释记录设计理由）与 electron-builder.yml extraResources。
+# 设计理由：
+# - 源图为带透明通道的圆形球体，按 alpha 包围盒自动裁切并居中补透明边距；
+#   不套圆角矩形遮罩——球体本身即圆角轮廓，遮罩只会无谓裁掉边缘像素。
+# - 尺寸集合覆盖 Windows 任务栏（16/32）、文件资源管理器（48/64/128）与
+#   ICO 最大尺寸（256）；512 PNG 供 electron-builder 与非 Windows 窗口图标使用。
+# - 输出路径固定为 build/icon.ico（安装包/EXE/窗口图标）与
+#   src/renderer/public/browser-icon.png（标题栏/标签页/新标签页占位）。
+
 Add-Type -AssemblyName System.Drawing
 
-$src = "G:\pj\pj--ing\111111\Urchin-Browser\apps\desktop\ico\61c359892bac24a7500ece0e10a807e6.jpg"
-$buildDir = "G:\pj\pj--ing\111111\Urchin-Browser\apps\desktop\build"
-$icoDir = "G:\pj\pj--ing\111111\Urchin-Browser\apps\desktop\ico"
-if(!(Test-Path $buildDir)){ New-Item -ItemType Directory -Path $buildDir | Out-Null }
+$ErrorActionPreference = 'Stop'
 
-# 加载
+$icoDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$buildDir = Join-Path (Split-Path -Parent $icoDir) 'build'
+$src = Join-Path $icoDir 'icon-source.png'
+$rendererIcon = Join-Path (Split-Path -Parent $icoDir) 'src\renderer\public\browser-icon.png'
+
+if (!(Test-Path -LiteralPath $src)) {
+  throw "Source image not found: $src"
+}
+if (!(Test-Path -LiteralPath $buildDir)) {
+  New-Item -ItemType Directory -Path $buildDir | Out-Null
+}
+
+# 1) 读取源图并按 alpha 包围盒定位内容（阈值 16 过滤 JPEG/抗锯齿噪点）
 $bmp = New-Object System.Drawing.Bitmap($src)
 "Source: $($bmp.Width)x$($bmp.Height) PixelFormat=$($bmp.PixelFormat)"
 
-# 动态采样四角背景色（取均值）
-$corners = @(
-  $bmp.GetPixel(2,2),
-  $bmp.GetPixel($bmp.Width-3,2),
-  $bmp.GetPixel(2,$bmp.Height-3),
-  $bmp.GetPixel($bmp.Width-3,$bmp.Height-3)
-)
-$bgR = [int](($corners[0].R + $corners[1].R + $corners[2].R + $corners[3].R) / 4)
-$bgG = [int](($corners[0].G + $corners[1].G + $corners[2].G + $corners[3].G) / 4)
-$bgB = [int](($corners[0].B + $corners[1].B + $corners[2].B + $corners[3].B) / 4)
-"Background sampled: R=$bgR G=$bgG B=$bgB"
-$p00 = $bmp.GetPixel(0,0)
-"Pixel(0,0): R=$($p00.R) G=$($p00.G) B=$($p00.B)"
-
-# 边界框（基于精确扫描结果硬编码：JPG 压缩噪点会干扰动态检测）
-# 之前步长4精确扫描得到：BBox (224,208)-(1220,1244)，中心 (722,726)，边长 997
-$cx = 722; $cy = 726; $side = 1005
-$x0 = $cx - [int]($side/2); $y0 = $cy - [int]($side/2)
-"cropFrom=($x0,$y0) side=$side"
-
-# 裁剪：用 DrawImage（Clone 重载在 PS 里不稳）
-$cropped = New-Object System.Drawing.Bitmap($side, $side)
-$g = [System.Drawing.Graphics]::FromImage($cropped)
-$g.DrawImage($bmp, (New-Object System.Drawing.Rectangle(0,0,$side,$side)), $x0, $y0, $side, $side, [System.Drawing.GraphicsUnit]::Pixel)
-$g.Dispose(); $bmp.Dispose()
-"Cropped: $($cropped.Width)x$($cropped.Height)"
-
-# 圆角透明 PNG 生成
-function New-RoundedBitmap($srcBmp, $size, $radiusRatio){
-  $out = New-Object System.Drawing.Bitmap($size, $size)
-  $out.SetResolution(96,96)
-  $g = [System.Drawing.Graphics]::FromImage($out)
-  $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-  $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-  $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
-  $g.Clear([System.Drawing.Color]::Transparent)
-  $radius = [int]($size * $radiusRatio)
-  $path = New-Object System.Drawing.Drawing2D.GraphicsPath
-  $r = $radius
-  $path.AddArc(0,0,$r,$r,180,90)
-  $path.AddArc($size-$r,0,$r,$r,270,90)
-  $path.AddArc($size-$r,$size-$r,$r,$r,0,90)
-  $path.AddArc(0,$size-$r,$r,$r,90,90)
-  $path.CloseFigure()
-  $rgn = New-Object System.Drawing.Region($path)
-  $g.SetClip($rgn, [System.Drawing.Drawing2D.CombineMode]::Replace)
-  $g.DrawImage($srcBmp, (New-Object System.Drawing.Rectangle(0,0,$size,$size)), (New-Object System.Drawing.Rectangle(0,0,$srcBmp.Width,$srcBmp.Height)), [System.Drawing.GraphicsUnit]::Pixel)
-  $g.ResetClip()
-  $g.Dispose(); $path.Dispose(); $rgn.Dispose()
-  return $out
+$minX = $bmp.Width
+$minY = $bmp.Height
+$maxX = -1
+$maxY = -1
+for ($y = 0; $y -lt $bmp.Height; $y++) {
+  for ($x = 0; $x -lt $bmp.Width; $x++) {
+    if ($bmp.GetPixel($x, $y).A -ge 16) {
+      if ($x -lt $minX) { $minX = $x }
+      if ($x -gt $maxX) { $maxX = $x }
+      if ($y -lt $minY) { $minY = $y }
+      if ($y -gt $maxY) { $maxY = $y }
+    }
+  }
+}
+if ($maxX -lt 0 -or $maxY -lt 0) {
+  $bmp.Dispose()
+  throw 'Source image contains no visible pixels'
 }
 
-# 多尺寸 PNG
-$sizes = @(16,32,48,64,128,256,512)
-$pngBytes = @{}
-foreach($s in $sizes){
-  $rounded = New-RoundedBitmap $cropped $s 0.22
-  $p = Join-Path $icoDir "icon-$s.png"
-  $rounded.Save($p, [System.Drawing.Imaging.ImageFormat]::Png)
-  $ms = New-Object System.IO.MemoryStream
-  $rounded.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
-  $pngBytes[$s] = $ms.ToArray()
-  $ms.Dispose(); $rounded.Dispose()
+$contentW = $maxX - $minX + 1
+$contentH = $maxY - $minY + 1
+# 6% 总留白（每边 3%）：让球体在任务栏/资源管理器小尺寸下不顶满边缘
+$side = [int][Math]::Ceiling([Math]::Max($contentW, $contentH) * 1.06)
+$cx = ($minX + $maxX) / 2.0
+$cy = ($minY + $maxY) / 2.0
+$offsetX = [int][Math]::Round($cx - $side / 2.0)
+$offsetY = [int][Math]::Round($cy - $side / 2.0)
+"Content bbox=($minX,$minY)-($maxX,$maxY) size=${contentW}x${contentH}; square=$side offset=($offsetX,$offsetY)"
+
+# 2) 生成方形透明画布（源图整体平移到居中位置，避免源矩形越界）
+$square = New-Object System.Drawing.Bitmap($side, $side, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+$square.SetResolution(96, 96)
+$g = [System.Drawing.Graphics]::FromImage($square)
+$g.Clear([System.Drawing.Color]::Transparent)
+$g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+$g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+$g.DrawImage($bmp, (New-Object System.Drawing.Rectangle(-$offsetX, -$offsetY, $bmp.Width, $bmp.Height)))
+$g.Dispose()
+$bmp.Dispose()
+
+# 3) 缩放生成各尺寸 PNG（SourceCopy 保证透明像素不被预乘/串色）
+$sizes = @(16, 32, 48, 64, 128, 256, 512)
+foreach ($s in $sizes) {
+  $out = New-Object System.Drawing.Bitmap($s, $s, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $out.SetResolution(96, 96)
+  $g = [System.Drawing.Graphics]::FromImage($out)
+  $g.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+  $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+  $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+  $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+  $g.Clear([System.Drawing.Color]::Transparent)
+  $destRect = New-Object System.Drawing.Rectangle(0, 0, $s, $s)
+  $g.DrawImage($square, $destRect, 0, 0, $side, $side, [System.Drawing.GraphicsUnit]::Pixel)
+  $g.Dispose()
+  $out.Save((Join-Path $icoDir "icon-$s.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+  $out.Dispose()
   "Saved icon-$s.png"
 }
 
-# build/icon.png（512）
-Copy-Item (Join-Path $icoDir "icon-512.png") (Join-Path $buildDir "icon.png") -Force
+# 4) 512 PNG 同时作为 electron-builder 后备图标与非 Windows 窗口图标
+Copy-Item (Join-Path $icoDir 'icon-512.png') (Join-Path $buildDir 'icon.png') -Force
 "Copied build/icon.png"
 
-# 多尺寸 ICO（直接流式写入文件，避免 PS 数组展开问题）
-$icoSizes = @(16,32,48,64,128,256)
-$icoPath = Join-Path $buildDir "icon.ico"
-# 先收集各尺寸文件字节长度
+# 5) 128 PNG 作为渲染层品牌图标（标题栏/标签页占位/新标签页）
+if (!(Test-Path -LiteralPath (Split-Path -Parent $rendererIcon))) {
+  New-Item -ItemType Directory -Path (Split-Path -Parent $rendererIcon) | Out-Null
+}
+Copy-Item (Join-Path $icoDir 'icon-128.png') $rendererIcon -Force
+"Copied src/renderer/public/browser-icon.png"
+
+# 6) 多尺寸 ICO（PNG 嵌入，Vista+ 支持；256 的宽高字段写 0）
+$icoSizes = @(16, 32, 48, 64, 128, 256)
 $meta = @()
-foreach($s in $icoSizes){
-  $f = Join-Path $icoDir "icon-$s.png"
-  $fi = Get-Item $f
-  $meta += [pscustomobject]@{ Size=$s; File=$f; Len=$fi.Length }
+foreach ($s in $icoSizes) {
+  $file = Join-Path $icoDir "icon-$s.png"
+  $meta += [pscustomobject]@{ Size = $s; File = $file; Len = (Get-Item $file).Length }
 }
 $headerSize = 6 + 16 * $meta.Count
+$icoPath = Join-Path $buildDir 'icon.ico'
 $fs = [System.IO.File]::Create($icoPath)
 $bw = New-Object System.IO.BinaryWriter($fs)
-# ICONDIR
 $bw.Write([uint16]0)
 $bw.Write([uint16]1)
 $bw.Write([uint16]$meta.Count)
-# ICONDIRENTRY
 $dataOffset = $headerSize
-foreach($m in $meta){
-  $w = if($m.Size -ge 256){[byte]0}else{[byte]$m.Size}
+foreach ($m in $meta) {
+  $w = if ($m.Size -ge 256) { [byte]0 } else { [byte]$m.Size }
   $bw.Write($w)
   $bw.Write($w)
   $bw.Write([byte]0)
@@ -110,14 +127,13 @@ foreach($m in $meta){
   $bw.Write([uint32]$dataOffset)
   $dataOffset += $m.Len
 }
-# 图像数据
-foreach($m in $meta){
-  $bytes = [System.IO.File]::ReadAllBytes($m.File)
-  $bw.Write($bytes)
+foreach ($m in $meta) {
+  $bw.Write([System.IO.File]::ReadAllBytes($m.File))
 }
 $bw.Flush()
-$bw.Dispose(); $fs.Dispose()
+$bw.Dispose()
+$fs.Dispose()
 "Saved build/icon.ico ($($meta.Count) sizes: $($icoSizes -join ','))"
 
-$cropped.Dispose()
+$square.Dispose()
 "DONE"

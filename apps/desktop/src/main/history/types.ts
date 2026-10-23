@@ -19,6 +19,8 @@ export interface HistoryEntry {
   readonly url: string;
   /** 页面标题（可变，后续访问可更新） */
   title: string;
+  /** 缓存的网站图标（urchin://favicon/<hash>；旧数据/未抓到时缺省） */
+  favicon?: string;
   /** 最近一次访问的时间戳（ms） */
   readonly visitedAt: number;
   /** 访问次数（可变，同 URL 再次访问时递增） */

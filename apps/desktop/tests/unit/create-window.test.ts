@@ -97,6 +97,7 @@ describe('createBrowserWindow', () => {
       minWidth?: number;
       minHeight?: number;
       autoHideMenuBar?: boolean;
+      frame?: boolean;
       webPreferences?: {
         sandbox?: boolean;
         contextIsolation?: boolean;
@@ -111,6 +112,8 @@ describe('createBrowserWindow', () => {
       minWidth: 800,
       minHeight: 600,
       autoHideMenuBar: true,
+      // Windows 使用自绘 chrome；其他平台保留原生标题栏
+      frame: process.platform !== 'win32',
     });
     expect(args?.webPreferences).toMatchObject({
       sandbox: true,

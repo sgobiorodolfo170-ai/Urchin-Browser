@@ -102,6 +102,7 @@ export class BookmarkManager {
       parentId,
       url: opts.url,
       title: opts.title,
+      ...(type === 'bookmark' && opts.favicon ? { favicon: opts.favicon } : {}),
       type,
       position,
       createdAt: now,
@@ -112,6 +113,34 @@ export class BookmarkManager {
     this.persistence?.upsert(bookmark);
     this.emit('created', bookmark);
     return bookmark;
+  }
+
+  /**
+   * 按 URL 回填已缓存图标（书签先创建、favicon 后到达时使用）。
+   *
+   * 不改变 position / createdAt，仅更新 favicon 与 updatedAt。返回更新条数，
+   * 调用方据此决定是否广播 bookmark:changed。
+   *
+   * @param url 书签 URL（精确匹配）
+   * @param favicon 已缓存的 urchin://favicon/<hash>
+   * @returns 实际更新的书签数量
+   */
+  updateFaviconByUrl(url: string, favicon: string): number {
+    this.ensureLoaded();
+    let changed = 0;
+    for (const bookmark of Array.from(this.entries.values())) {
+      if (bookmark.type !== 'bookmark' || bookmark.url !== url) continue;
+      if (bookmark.favicon === favicon) continue;
+      const updated: Bookmark = {
+        ...bookmark,
+        favicon,
+        updatedAt: Date.now(),
+      };
+      this.entries.set(bookmark.id, updated);
+      this.persistence?.upsert(updated);
+      changed += 1;
+    }
+    return changed;
   }
 
   /**

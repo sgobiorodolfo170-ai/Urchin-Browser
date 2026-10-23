@@ -467,6 +467,43 @@ describe('TabManager webContents events', () => {
     expect(mgr.getTab(tab.id)?.favicon).toBe('https://a.com/fav.ico');
   });
 
+  it('should resolve favicon through injected resolver with all candidates', async () => {
+    const { wc, mgr, tab } = setup();
+    const resolver = vi.fn().mockResolvedValue('urchin://favicon/abc123');
+    mgr.setFaviconResolver(resolver);
+
+    wc._emitEvent('page-favicon-updated', undefined, [
+      'https://a.com/fav.ico',
+      'https://a.com/fav.png',
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(resolver).toHaveBeenCalledWith({
+      pageUrl: tab.url,
+      candidates: ['https://a.com/fav.ico', 'https://a.com/fav.png'],
+      workspaceId: tab.workspaceId,
+    });
+    expect(mgr.getTab(tab.id)?.favicon).toBe('urchin://favicon/abc123');
+  });
+
+  it('should clear favicon on main-frame navigation start', () => {
+    const { wc, mgr, tab } = setup();
+    wc._emitEvent('page-favicon-updated', undefined, ['https://a.com/fav.ico']);
+
+    wc._emitEvent('did-start-navigation', {}, 'https://b.com', false, true);
+
+    expect(mgr.getTab(tab.id)?.favicon).toBeUndefined();
+  });
+
+  it('should keep favicon on in-place navigation', () => {
+    const { wc, mgr, tab } = setup();
+    wc._emitEvent('page-favicon-updated', undefined, ['https://a.com/fav.ico']);
+
+    wc._emitEvent('did-start-navigation', {}, 'https://a.com#section', true, true);
+
+    expect(mgr.getTab(tab.id)?.favicon).toBe('https://a.com/fav.ico');
+  });
+
   it('should mark crashed and emit crashed event on render-process-gone', () => {
     const { wc, crashed, mgr, tab } = setup();
     wc._emitEvent('render-process-gone');
@@ -651,5 +688,73 @@ describe('TabManager GenOffice 编辑器标签（阶段 2）', () => {
     mgr.setDirty(webTab.id, true);
     expect(mgr.getSnapshot(webTab.id)?.dirty).toBe(false);
     expect(updated).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // TP7 工作区：workspaceId 贯通（快照 / 工厂透传 / 未显式指定时继承活跃标签）
+  // ---------------------------------------------------------------------------
+
+  it('should set workspaceId on tab and include it in snapshot', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+
+    const tab = mgr.create({ windowId: 1, url: 'https://a.com', workspaceId: 'work' });
+    expect(tab.workspaceId).toBe('work');
+    expect(mgr.getSnapshot(tab.id)?.workspaceId).toBe('work');
+  });
+
+  it('should pass workspaceId to the BrowserView factory', () => {
+    const factorySpy = vi.fn<(workspaceId: string) => BrowserViewLike>(() =>
+      createMockBrowserView(),
+    );
+    const mgr = new TabManager((workspaceId) => factorySpy(workspaceId));
+
+    mgr.create({ windowId: 1, url: 'https://a.com', workspaceId: 'work' });
+    expect(factorySpy).toHaveBeenLastCalledWith('work');
+  });
+
+  it('should default to default workspace when no active tab in window', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+
+    const tab = mgr.create({ windowId: 99 });
+    expect(tab.workspaceId).toBe('default');
+  });
+
+  it('should inherit active tab workspace when workspaceId omitted', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+
+    // 第一个标签显式归属 work 工作区并被激活
+    mgr.create({ windowId: 1, url: 'https://a.com', workspaceId: 'work', active: true });
+    // 未指定工作区 → 继承活跃标签的 work
+    const inherited = mgr.create({ windowId: 1, url: 'https://b.com' });
+    expect(inherited.workspaceId).toBe('work');
+
+    // 显式指定可覆盖继承
+    const override = mgr.create({ windowId: 1, url: 'https://c.com', workspaceId: 'other' });
+    expect(override.workspaceId).toBe('other');
+  });
+
+  it('should inherit source tab workspace for window.open created tabs', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+    mgr.setLinkBehaviorResolver(() => 'new-tab');
+
+    const source = mgr.create({
+      windowId: 1,
+      url: 'https://a.com',
+      workspaceId: 'work',
+      active: true,
+    });
+    const wc = source.view.webContents as unknown as {
+      _windowOpenHandler: ((details: { url: string }) => { action: string }) | null;
+    };
+    const handler = wc._windowOpenHandler;
+    expect(handler).toBeTruthy();
+    if (handler) handler({ url: 'https://new.example.com/1' });
+
+    const opened = mgr.query({}).find((t) => t.url === 'https://new.example.com/1');
+    expect(opened?.workspaceId).toBe('work');
   });
 });

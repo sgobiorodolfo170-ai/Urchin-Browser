@@ -75,6 +75,9 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   ['links.openInNewTab', false],
   // 右侧边栏展开方式（默认双击展开；true=悬停自动展开，与双击互斥，设置页 select 切换）
   ['ui.rightSidebarAutoExpand', false],
+  // 折叠态工作区切换模式（'wheel'=滚轮循环切换【默认】；'cards'=点击弹出卡片面板切换，
+  // 参考 ego-lite Space 卡片切换设计；仅影响折叠态交互，展开态 WorkspaceBar 不变）
+  ['ui.workspaceSwitcherMode', 'wheel'],
   // 主页常用网站（用户手动添加/拖拽排序，持久化于 settings；仅存根网址）
   ['home.frequentSites', []],
   // 用户数据目录（DD1 决策）：书签/历史/普通设置/摘要/截图/下载/网页保存的根目录。

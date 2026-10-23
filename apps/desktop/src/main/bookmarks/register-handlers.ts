@@ -17,22 +17,44 @@ import type { BookmarkManager } from './bookmark-manager';
 
 const log = createLogger('bookmark-ipc');
 
+/** 可持久化的图标 URL：仅主进程缓存的协议地址（拒绝远程 URL 进入面板 DOM）。 */
+function isCachedFavicon(value: string | undefined): value is string {
+  return (
+    typeof value === 'string' &&
+    (value.startsWith('urchin://favicon/') ||
+      value.startsWith('urchin://pi-icon/') ||
+      value.startsWith('urchin://dsh-icon/'))
+  );
+}
+
+export interface BookmarkHandlerOptions {
+  /** 按 URL 查找当前标签快照中的已缓存图标（由主进程注入）。 */
+  readonly getFavicon?: (url: string) => string | undefined;
+}
+
 /**
  * 注册 bookmark 域 IPC handler。
  *
  * @param ipcMain Electron ipcMain 实例
  * @param bookmarkManager BookmarkManager 实例
+ * @param options 主进程依赖（图标来源）
  */
-export function registerBookmarkHandlers(ipcMain: IpcMain, bookmarkManager: BookmarkManager): void {
+export function registerBookmarkHandlers(
+  ipcMain: IpcMain,
+  bookmarkManager: BookmarkManager,
+  options: BookmarkHandlerOptions = {},
+): void {
   // bookmark.create：创建书签 / 文件夹
   registerHandler(ipcMain, 'bookmark.create', (req) => {
     log.info('bookmark.create', { title: req.title, type: req.type });
 
+    const favicon = req.url ? options.getFavicon?.(req.url) : undefined;
     const bookmark = bookmarkManager.create({
       url: req.url,
       title: req.title,
       parentId: req.parentId,
       type: req.type,
+      ...(isCachedFavicon(favicon) ? { favicon } : {}),
     });
 
     return { bookmark };

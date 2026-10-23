@@ -20,6 +20,8 @@
   --color-text: #0f172a;
   --color-text-secondary: #64748b;
   --color-border: #e2e8f0;
+  /* 底部地址栏/状态栏底色：亮色固定浅灰（用户指定 #F0F1F2），暗色随主题切换 */
+  --color-address-bar: #f0f1f2;
   --color-error: #ef4444;
   --color-success: #22c55e;
   --color-warning: #f59e0b;
@@ -49,6 +51,15 @@
   --radius-md: 8px;
   --radius-lg: 12px;
 
+  /* 自绘窗口 chrome（Windows frameless）：
+   * 外框宽度/标题栏高度需与主进程 view-integration.ts 的
+   * WINDOW_FRAME_WIDTH / WINDOW_TITLEBAR_HEIGHT 保持同步（BrowserView 内缩）。
+   * 外框始终为 #F6F2F0：亮/暗主题下都作为「悬浮窗底座」，不随主题切换。 */
+  --window-frame-width: 8px;
+  --window-titlebar-height: 32px;
+  --window-shell-radius: 12px;
+  --window-frame-background: #f6f2f0;
+
   /* 阴影 */
   --shadow-dropdown: 0 4px 12px rgba(0, 0, 0, 0.1);
   --shadow-modal: 0 8px 24px rgba(0, 0, 0, 0.15);
@@ -71,4 +82,5 @@
   --color-text: #f8fafc;
   --color-text-secondary: #94a3b8;
   --color-border: #334155;
+  --color-address-bar: #1e293b;
 }

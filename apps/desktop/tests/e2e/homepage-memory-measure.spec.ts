@@ -31,6 +31,8 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
       NODE_ENV: 'production',
       PLAYWRIGHT: '1',
       URCHIN_TEST_USER_DATA: userDataDir,
+      // 设置库隔离：共享 apps/desktop/data 会残留 cards 模式，导致标签栏（新建标签）不可见
+      URCHIN_TEST_DATA_DIR: join(userDataDir, 'data'),
       NODE_OPTIONS: '',
     },
     timeout: 30_000,

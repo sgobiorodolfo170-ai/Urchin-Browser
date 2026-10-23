@@ -45,6 +45,7 @@ import {
   installTabViewIntegration,
   getLayoutState,
   setLayoutState,
+  WINDOW_FRAME_WIDTH,
   type TabViewIntegrationHandle,
   type BrowserViewLike,
 } from './tabs';
@@ -84,6 +85,7 @@ import { ProviderRegistry } from './orchestrator/provider-registry';
 import { electronProcessFactory } from './orchestrator/electron-factory';
 import { StorageLayer, createSqliteDatabase, ElectronSafeStorage } from './storage';
 import { registerUrchinSchemePrivileged, registerUrchinProtocol } from './protocol';
+import { FaviconService } from './favicons/favicon-service';
 import { createGenOfficeIntegration, type GenOfficeIntegration } from './genoffice/integration';
 import { getGenOfficeSchemePrivileges, loadGenOfficeEmbed } from './genoffice/loader';
 import { createAiPanelPrefsStore } from './genoffice/host-channels';
@@ -99,7 +101,13 @@ import {
   migrateLegacySummaries,
   PI_DIR_NAME,
 } from './storage/data-location';
-import { installWillDownload } from './downloads/will-download';
+import { installWillDownload, installWillDownloadForSession } from './downloads/will-download';
+import {
+  WorkspaceRegistry,
+  WorkspaceSessionManager,
+  registerWorkspaceHandlers,
+  type WorkspacePersistence,
+} from './workspaces';
 import { CaptureOverlay } from './screenshots/capture-overlay';
 import { registerScreenshotHandlers } from './screenshots/register-handlers';
 import { installTabContextMenu, handleContextMenu } from './context-menu';
@@ -122,6 +130,7 @@ interface BookmarkRow {
   parent_id: string | null;
   url: string | null;
   title: string;
+  favicon: string | null;
   type: string;
   position: number;
   created_at: number;
@@ -133,6 +142,7 @@ interface HistoryRow {
   id: number;
   url: string;
   title: string | null;
+  favicon: string | null;
   visited_at: number;
   visit_count: number;
 }
@@ -187,7 +197,11 @@ let currentDataDir = '';
 // 避免旧 ai.db 被带进新默认数据目录（pi 隔离破坏）。
 const startupUserDataPath = app.getPath('userData');
 migrateLegacyPiData(startupUserDataPath);
-const defaultDataRoot = app.isPackaged ? startupUserDataPath : app.getAppPath();
+// 默认数据目录：打包后落 <userData>/data；开发模式落软件根目录 data（apps/desktop/data）。
+// 测试可通过 URCHIN_TEST_DATA_DIR 覆盖（与 URCHIN_TEST_USER_DATA 配套），
+// 让需要隔离设置库的 E2E 不再共享 apps/desktop/data（避免卡片模式等设置残留）。
+const testDataDir = process.env.URCHIN_TEST_DATA_DIR;
+const defaultDataRoot = testDataDir ?? (app.isPackaged ? startupUserDataPath : app.getAppPath());
 currentDataDir = resolveDataLocation(startupUserDataPath, defaultDataRoot);
 // 一次性升级迁移：旧 userData/summaries 迁入数据目录（DD1 决策）
 migrateLegacySummaries(startupUserDataPath, currentDataDir);
@@ -266,8 +280,17 @@ const windowManager = new WindowManager(createBrowserWindow);
  * 单例管理所有 tab，保证 tabId 分配的全局唯一性。
  * 主进程是 Single Source of Truth，渲染层 store 只是镜像。
  * 通过工厂函数注入，使核心逻辑可测试。
+ *
+ * TP7 工作区：工厂按标签的工作区 id 解析 session（自定义工作区 = 持久化分区）。
+ * workspaceSessions 在 whenReady 内初始化——首个标签在 whenReady 完成前不会创建，
+ * 因此闭包运行时该绑定恒已就绪；未就绪兜底走默认 session。
  */
-const tabManager = new TabManager(createBrowserView);
+const tabManager = new TabManager((workspaceId) =>
+  createBrowserView(
+    workspaceId,
+    workspaceSessions ? (id) => workspaceSessions.resolve(id) : () => session.defaultSession,
+  ),
+);
 
 /**
  * 打开本地文件（Windows 文件关联 / 命令行启动 / GenOffice Home 打开动作）。
@@ -373,10 +396,24 @@ let historyManager!: HistoryManager;
 let bookmarkManager!: BookmarkManager;
 
 /**
+ * 全局 favicon 缓存服务（M2 图标链路）。
+ * 在 app.whenReady() 中按当前数据目录初始化；协议与 TabManager 共用。
+ */
+let faviconService: FaviconService | undefined;
+
+/**
  * 全局 SettingsManager 实例（M7）。
  * 在 app.whenReady() 中初始化，注入 StorageLayer 持久化。
  */
 let settingsManager!: SettingsManager;
+
+/**
+ * 全局 WorkspaceRegistry / WorkspaceSessionManager 实例（TP7 工作区）。
+ * 在 app.whenReady() 中初始化（依赖 SettingsManager 持久化 + 下载管理器）。
+ * workspaceRegistry 只管元数据；session 分区在首开工作区标签时惰性配置。
+ */
+let workspaceRegistry!: WorkspaceRegistry;
+let workspaceSessions!: WorkspaceSessionManager;
 
 /**
  * 全局 SummaryManager 实例（摘要文档本地存储）。
@@ -647,10 +684,30 @@ function registerIpcHandlers(): void {
   registerHistoryHandlers(ipcMain, historyManager);
 
   // M5 bookmark 域 handler
-  registerBookmarkHandlers(ipcMain, bookmarkManager);
+  // 新建书签时从当前标签快照取已缓存图标（主进程可信来源，渲染层不可伪造）。
+  registerBookmarkHandlers(ipcMain, bookmarkManager, {
+    getFavicon: (url) => {
+      const tabs = tabManager.query({});
+      return (
+        tabs.find((tab) => tab.active && tab.url === url) ?? tabs.find((tab) => tab.url === url)
+      )?.favicon;
+    },
+  });
 
   // M7 settings 域 handler
   registerSettingsHandlers(ipcMain, settingsManager);
+
+  // TP7 workspace 域 handler：CRUD + 清空数据；变更广播所有窗口刷新。
+  registerWorkspaceHandlers(ipcMain, {
+    registry: workspaceRegistry,
+    sessions: workspaceSessions,
+    tabManager,
+    broadcastChanged: () => {
+      for (const managed of windowManager.getAllWindows()) {
+        managed.browserWindow.webContents.send('workspace:changed', {});
+      }
+    },
+  });
 
   // M23 download 域 handler
   registerDownloadHandlers(ipcMain, downloadManager);
@@ -1018,9 +1075,19 @@ function registerIpcHandlers(): void {
   // x/y（拖出瞬间屏幕坐标）：窗口左上角定位到拖拽位置，避免新窗口重叠在原窗口上；
   // clamp 到主屏工作区（至少留 120px 窗口主体可见），测试环境无 screen 时跳过定位。
   registerHandler(ipcMain, 'window.createWithUrl', (req) => {
-    log.info('window.createWithUrl', { url: req.url, x: req.x, y: req.y });
+    log.info('window.createWithUrl', {
+      url: req.url,
+      x: req.x,
+      y: req.y,
+      workspaceId: req.workspaceId,
+    });
     const managed = windowManager.createWindow({});
-    tabManager.create({ windowId: managed.id, url: req.url, active: true });
+    tabManager.create({
+      windowId: managed.id,
+      url: req.url,
+      active: true,
+      workspaceId: req.workspaceId,
+    });
     if (req.x !== undefined && req.y !== undefined) {
       try {
         const wa = screen.getPrimaryDisplay().workArea;
@@ -1312,16 +1379,15 @@ void app.whenReady().then(() => {
   markStartup('main:ready');
 
   // 注册 urchin:// 协议处理器（必须在 app ready 之后）。
-  // onZoom：页面注入脚本 Ctrl+滚轮时 fetch urchin://zoom[-main] 触发——
-  // 'tab' 缩放网页 BrowserView（active tab），'main' 缩放主窗口 webContents（React 内部页）。
-  // 回调在用户操作时执行，此时 mainWebContents 已初始化（定义于下方窗口创建处）。
+  // onZoom：页面注入脚本 Ctrl+滚轮时 fetch urchin://zoom 触发——
+  // 仅缩放网页 BrowserView（active tab，中区内容页）。
+  // 用户指令 2026-10-23：左侧栏/地址栏/右侧栏尺寸固定，不随 Ctrl+滚轮缩放；
+  // 因此不再处理 'main' 目标（主窗口整体 zoomFactor 会连带缩放全部 chrome）。
+  // 内部页（设置/主页等 React 页面）由渲染层内容容器单独缩放。
   registerUrchinProtocol({
     onZoom: (direction, target) => {
+      if (target !== 'tab') return;
       const delta = direction === 'in' ? -1 : 1;
-      if (target === 'main') {
-        applyZoomByDelta(mainWebContents, delta);
-        return;
-      }
       const active = tabManager.query({}).find((t) => t.active);
       const tab = active ? tabManager.getTab(active.id) : undefined;
       if (tab) applyZoomByDelta(tab.webContents, delta);
@@ -1351,6 +1417,9 @@ void app.whenReady().then(() => {
     // M25：邮箱正文内容查询（urchin://mail-content/<token>）——
     // 惰性闭包引用模块级 mailContentStore（请求到达时已初始化）
     getMailContent: (token) => mailContentStore?.get(token) ?? null,
+    // 网站图标缓存（M2）：标签栏/书签/历史统一读取主进程缓存。
+    // faviconService 在下面 StorageLayer 初始化后创建；回调在请求到达时才执行。
+    getFavicon: (name) => faviconService?.serve(name) ?? Promise.resolve(null),
   });
 
   // 初始化需要文件系统 / SQLite 的模块（W6：移入 whenReady 避免模块加载阶段崩溃）
@@ -1364,6 +1433,8 @@ void app.whenReady().then(() => {
   const piDir = join(userDataPath, PI_DIR_NAME);
   const sl = new StorageLayer(dataDir, piDir, new ElectronSafeStorage(), createSqliteDatabase);
   storageLayer = sl;
+  // 图标缓存随数据目录迁移；目录在服务内异步创建，不阻塞启动关键路径。
+  faviconService = new FaviconService(dataDir);
   markStartup('main:storage');
 
   // 初始化 SettingsManager，注入 StorageLayer 持久化（设置变更自动写入 SQLite）。
@@ -1384,19 +1455,59 @@ void app.whenReady().then(() => {
     },
   });
 
+  // TP7：工作区注册表（元数据存 Settings，非敏感）＋ session 分区管理器。
+  // 持久化记录形状 { version, workspaces }；cookies 由 Chromium 分区自动落盘
+  // （<sessionData>/Partitions），不进 SQLite。
+  const workspacePersistence: WorkspacePersistence = {
+    load: () => settingsManager.get('workspaces.registry'),
+    save: (record) => settingsManager.set('workspaces.registry', record),
+  };
+  workspaceRegistry = new WorkspaceRegistry(workspacePersistence);
+  workspaceSessions = new WorkspaceSessionManager();
+  workspaceSessions.setSessionConfigure((ses) => {
+    // 分区 session 也需可访问 urchin:// 内部页（settings/ai/newtab 等 React 占位页）
+    registerUrchinProtocol(
+      {
+        getFavicon: (name) => faviconService?.serve(name) ?? Promise.resolve(null),
+      },
+      ses,
+    );
+    // 账号分区内的下载同样走统一保存位置策略（TP7：否则静默落入默认目录无 UI）
+    installWillDownloadForSession(ses, {
+      getSetting: (key) => settingsManager.get(key) as string | undefined,
+      setSetting: (key, value) => settingsManager.set(key, value),
+      getDataDir: () => currentDataDir,
+      downloadManager,
+    });
+  });
+
+  // 图标解析：按标签所属工作区选择 session（Cookie/代理与页面一致），
+  // 由 FaviconService 下载、校验并落盘，返回 urchin://favicon/<hash>。
+  tabManager.setFaviconResolver(async ({ pageUrl, candidates, workspaceId }) => {
+    if (!faviconService) return undefined;
+    try {
+      const ses = workspaceSessions.resolve(workspaceId);
+      return await faviconService.resolve({ pageUrl, candidates, session: ses });
+    } catch {
+      // 非法工作区/会话已销毁：图标失败不影响页面本身。
+      return undefined;
+    }
+  });
+
   // 初始化 BookmarkManager，注入 SQLite 持久化适配器。
   // 启动时从 bookmarks 表加载已有书签到内存，create/delete 时同步写入 SQLite。
   // 修复：此前 BookmarkManager 仅用内存 Map，软件重启后书签全部丢失。
   const bookmarkPersistence: BookmarkPersistence = {
     loadAll(): ReturnType<BookmarkPersistence['loadAll']> {
       const rows = sl.mainStore.query<BookmarkRow>(
-        'SELECT id, parent_id, url, title, type, position, created_at, updated_at FROM bookmarks',
+        'SELECT id, parent_id, url, title, favicon, type, position, created_at, updated_at FROM bookmarks',
       );
       return rows.map((row) => ({
         id: row.id,
         parentId: row.parent_id,
         url: row.url ?? undefined,
         title: row.title,
+        favicon: row.favicon ?? undefined,
         type: row.type as 'bookmark' | 'folder',
         position: row.position,
         createdAt: row.created_at,
@@ -1405,11 +1516,12 @@ void app.whenReady().then(() => {
     },
     upsert(bookmark): void {
       sl.mainStore.run(
-        'INSERT INTO bookmarks (id, parent_id, url, title, type, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET parent_id = excluded.parent_id, url = excluded.url, title = excluded.title, type = excluded.type, position = excluded.position, updated_at = excluded.updated_at',
+        'INSERT INTO bookmarks (id, parent_id, url, title, favicon, type, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET parent_id = excluded.parent_id, url = excluded.url, title = excluded.title, favicon = excluded.favicon, type = excluded.type, position = excluded.position, updated_at = excluded.updated_at',
         bookmark.id,
         bookmark.parentId,
         bookmark.url ?? null,
         bookmark.title,
+        bookmark.favicon ?? null,
         bookmark.type,
         bookmark.position,
         bookmark.createdAt,
@@ -1439,22 +1551,24 @@ void app.whenReady().then(() => {
   const historyPersistence: HistoryPersistence = {
     loadAll(): ReturnType<HistoryPersistence['loadAll']> {
       const rows = sl.mainStore.query<HistoryRow>(
-        'SELECT id, url, title, visited_at, visit_count FROM history',
+        'SELECT id, url, title, favicon, visited_at, visit_count FROM history',
       );
       return rows.map((row) => ({
         id: row.id,
         url: row.url,
         title: row.title ?? '',
+        favicon: row.favicon ?? undefined,
         visitedAt: row.visited_at,
         visitCount: row.visit_count,
       }));
     },
     upsert(entry): void {
       sl.mainStore.run(
-        'INSERT INTO history (id, url, title, visited_at, visit_count) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET url = excluded.url, title = excluded.title, visited_at = excluded.visited_at, visit_count = excluded.visit_count',
+        'INSERT INTO history (id, url, title, favicon, visited_at, visit_count) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET url = excluded.url, title = excluded.title, favicon = excluded.favicon, visited_at = excluded.visited_at, visit_count = excluded.visit_count',
         entry.id,
         entry.url,
         entry.title,
+        entry.favicon ?? null,
         entry.visitedAt,
         entry.visitCount,
       );
@@ -1595,16 +1709,33 @@ void app.whenReady().then(() => {
   // 且 URL 为 http/https 时记录到 historyManager。
   // 通过 lastUrlPerTab 去重，避免同一 URL 因 title 更新等事件被重复记录。
   const lastUrlPerTab = new Map<number, string>();
+  // 图标通常晚于页面加载完成到达：记录每个 tab 最近一次已处理的图标，
+  // 新图标到达时回填历史/书签，不重复计数访问。
+  const lastFaviconPerTab = new Map<number, string>();
   tabManager.on('updated', (snapshot) => {
+    const url = snapshot.url;
+    const isHttp = url.startsWith('http://') || url.startsWith('https://');
+    const favicon = snapshot.favicon;
+
+    if (isHttp && favicon && lastFaviconPerTab.get(snapshot.id) !== favicon) {
+      lastFaviconPerTab.set(snapshot.id, favicon);
+      historyManager.setFavicon(url, favicon);
+      if (bookmarkManager.updateFaviconByUrl(url, favicon) > 0) {
+        broadcastBookmarkChanged({ url });
+      }
+    } else if (!favicon) {
+      // 导航清空图标后允许新页面复用同一图标 URL。
+      lastFaviconPerTab.delete(snapshot.id);
+    }
+
     // 等待页面加载完成后再记录（此时 URL 和 title 都已确定）
     if (snapshot.loading) return;
-    const url = snapshot.url;
     // 仅记录 http/https URL（排除 about:blank / urchin:// 等内部页面）
-    if (!url.startsWith('http://') && !url.startsWith('https://')) return;
+    if (!isHttp) return;
     // 去重：同一 tab 的同一 URL 只记录一次（后续重复访问由 historyManager.record 内部递增 visitCount）
     if (lastUrlPerTab.get(snapshot.id) === url) return;
     lastUrlPerTab.set(snapshot.id, url);
-    historyManager.record(url, snapshot.title);
+    historyManager.record(url, snapshot.title, favicon);
   });
 
   // 监听 AI 设置变更：当 ai.apiKey / ai.baseUrl / ai.model / ai.providerId 变化时，
@@ -1739,11 +1870,13 @@ void app.whenReady().then(() => {
 
     // Ctrl+滚轮缩放（v2，修复 v1 不生效根因）：
     // before-input-event 在 Electron 32 仅键盘事件触发（滚轮不达），v1 失效；
-    // v2 改为向页面注入 wheel 监听脚本，识别 Ctrl+滚轮后 fetch urchin://zoom[-main]
+    // v2 改为向页面注入 wheel 监听脚本，识别 Ctrl+滚轮后 fetch urchin://zoom
     // 通知主进程缩放（协议特权 bypassCSP + supportFetchAPI 保证任意网页可发）。
     // 页面脚本在 did-finish-load 后注入；缩放状态由 Electron 按 webContents 持有，
     // 每标签独立、切 tab 保留，无需模块级状态。
-    disposeZoomControl = installZoomControl(tabManager, mainWebContents);
+    // 用户指令 2026-10-23：不向主窗口注入缩放脚本，避免侧栏/地址栏随 Ctrl+滚轮缩放；
+    // 仅网页 BrowserView（中区内容页）参与缩放。
+    disposeZoomControl = installZoomControl(tabManager);
 
     // dev.44：pi 页右下角「📁 项目路径」→ 原生目录选择器注入（脚本按 DOM 守卫，
     // 仅 pi-web-ui 页面的 status-cwd 生效；其他页面零影响）
@@ -1803,7 +1936,11 @@ void app.whenReady().then(() => {
       preloadPath: join(__dirname, '..', 'preload', 'index.js'),
       getLayout: () => {
         const state = getLayoutState();
-        return { rightWidth: state.rightWidth, bottomHeight: state.bottomHeight };
+        // 面板吸附在内容区右下角：额外让出外框（Windows 为 8px；其他平台 0）。
+        return {
+          rightWidth: state.rightWidth + WINDOW_FRAME_WIDTH,
+          bottomHeight: state.bottomHeight + WINDOW_FRAME_WIDTH,
+        };
       },
     });
 

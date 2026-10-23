@@ -13,6 +13,87 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ===== 自绘窗口 chrome（Windows frameless） =====
+ * 结构：.app-window-frame（8px #F6F2F0 外框）→ .app-window-shell（圆角悬浮层）→ 标题栏 + 内容。
+ * 外框固定为 #F6F2F0，亮/暗主题共用；shell 的投影/内侧高光营造 3D 悬浮层次。
+ * 注意：BrowserView 不参与 CSS 裁剪，主进程 view-integration.ts 必须按同样的
+ * 外框宽度与标题栏高度内缩网页区域，否则网页会盖住边框/标题栏。 */
+.app-window-frame {
+  padding: var(--window-frame-width);
+  background: var(--window-frame-background);
+}
+
+.app-window-shell {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--window-shell-radius);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.9),
+    0 0 0 2px rgba(15, 23, 42, 0.12),
+    0 1px 3px rgba(15, 23, 42, 0.18);
+}
+
+/* 内侧一圈高光/暗边：模拟玻璃窗口边缘的厚度，弱化纯色块的扁平感 */
+.app-window-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 1px 0 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12);
+}
+
+.app-titlebar {
+  -webkit-app-region: drag;
+  height: var(--window-titlebar-height);
+  background: color-mix(in srgb, var(--color-titlebar) 70%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  user-select: none;
+}
+
+.app-window-control {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  color: var(--color-text-secondary);
+  transition:
+    background-color var(--duration-fast) var(--easing-default),
+    color var(--duration-fast) var(--easing-default);
+}
+
+.app-window-control:hover {
+  background-color: color-mix(in srgb, var(--color-text) 10%, transparent);
+  color: var(--color-text);
+}
+
+.app-window-control:active {
+  background-color: color-mix(in srgb, var(--color-text) 16%, transparent);
+}
+
+.app-window-control:focus-visible {
+  outline: 1px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* 关闭按钮沿用 Windows 原生红底白图标交互 */
+.app-window-control-close:hover {
+  background-color: #e81123;
+  color: #ffffff;
+}
+
+.app-window-control-close:active {
+  background-color: #c50f1f;
+  color: #ffffff;
+}
+
 /* 本地文件查看器（urchin://file-viewer）Markdown 渲染样式。
  * 无 Tailwind typography 插件，手写最小必要规则；颜色跟随设计令牌，
  * 暗色模式经 [data-theme='dark'] 自动切换（令牌变量生效）。 */

@@ -89,6 +89,37 @@ describe('HistoryManager', () => {
     expect(listener).toHaveBeenCalledWith(entry);
   });
 
+  it('record: stores favicon and preserves it on later record without favicon', () => {
+    const mgr = new HistoryManager();
+
+    const first = mgr.record('https://example.com', 'Example', 'urchin://favicon/abc');
+    const second = mgr.record('https://example.com', 'Example');
+
+    expect(first.favicon).toBe('urchin://favicon/abc');
+    expect(second.favicon).toBe('urchin://favicon/abc');
+    expect(second.visitCount).toBe(2);
+  });
+
+  it('setFavicon: updates existing entry without counting a visit', () => {
+    const mgr = new HistoryManager();
+    mgr.record('https://example.com', 'Example');
+
+    const changed = mgr.setFavicon('https://example.com', 'urchin://favicon/abc');
+
+    expect(changed).toBe(true);
+    const entry = mgr.list().entries[0]!;
+    expect(entry.favicon).toBe('urchin://favicon/abc');
+    expect(entry.visitCount).toBe(1);
+  });
+
+  it('setFavicon: returns false for unknown URL or unchanged value', () => {
+    const mgr = new HistoryManager();
+    mgr.record('https://example.com', 'Example', 'urchin://favicon/abc');
+
+    expect(mgr.setFavicon('https://missing.example', 'urchin://favicon/x')).toBe(false);
+    expect(mgr.setFavicon('https://example.com', 'urchin://favicon/abc')).toBe(false);
+  });
+
   // ===== search 测试 =====
 
   it('search: returns matching entries by URL', () => {

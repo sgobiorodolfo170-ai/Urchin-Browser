@@ -2,7 +2,7 @@
 
 > AI 原生 + 开发者友好的桌面浏览器，基于 Electron / 完整 Chromium 内核。
 
-**当前阶段**：v0.1.0 已发布（2026-07-29，MVP 最小闭环 + per-provider 强隔离架构）并持续迭代，当前 dev.101（2026-09-22）。已交付 GenOffice 四编辑器融合、pi-web、网页翻译、本地文件查看/编辑等能力，逐条记录见 [CHANGELOG.md](./CHANGELOG.md)。
+**当前阶段**：v0.1.0 里程碑（2026-07-29，MVP 最小闭环 + per-provider 强隔离架构）后持续迭代，当前 dev.115（2026-10-20）；首个 GitHub stable 计划 v0.2.0。已交付 GenOffice 四编辑器融合、pi-web、网页翻译、本地文件查看/编辑、应用内自动更新等能力，逐条记录见 [CHANGELOG.md](./CHANGELOG.md)。安装包见 [GitHub Releases](https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases)。
 
 ## 项目定位
 
@@ -43,6 +43,7 @@
 - **本地文件查看器/编辑器**：打开入口 ×4（侧栏按钮 / Ctrl+O / 拖放 / 地址栏路径）、文件夹浏览、Tiptap 富文本编辑
 - **截图**（整屏框选裁剪保存）、**Windows 文件关联**（可设为默认打开方式）、**网页右键菜单**（复制/粘贴/保存网页）
 - **Ctrl+滚轮缩放**、**广告浮窗屏蔽**（默认开）等体验能力
+- **应用内自动更新**（dev 预发布通道；稳定版发布后 dev 无更新时可迁移到 stable）
 
 ## 快速开始
 
@@ -118,7 +119,7 @@ pnpm package:win
 - 技术栈与覆盖率门槛（[03](./docs/03-技术栈.md)）
 - 模块全景与 v0.1 范围（M1-M24 + 非编号能力，[04](./docs/04-模块全景.md)）
 - 11 份接口契约（[Provider API / IPC / Chrome 兼容 / Tab Manager 等 A-K](./docs/contracts/)）
-- 决策留痕：6 份关键 ADR + 决策索引（核心 53 项 + 契约内 68 项 = 121 项）（[decisions/](./docs/decisions/决策索引.md)）
+- 决策留痕：7 份关键 ADR + 决策索引（核心 56 项 + 契约内 68 项 = 124 项）（[decisions/](./docs/decisions/决策索引.md)）
 
 ## 开发规范
 

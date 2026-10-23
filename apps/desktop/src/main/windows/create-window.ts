@@ -60,6 +60,13 @@ export function createBrowserWindow(opts: CreateWindowOptions): BrowserWindowLik
     ? join(process.resourcesPath, iconName)
     : join(app.getAppPath(), 'build', iconName);
 
+  // Windows 首版启用无边框窗口：原生标题栏由渲染层自绘标题栏替代，
+  // 从而让 8px #F6F2F0 外框 + 圆角 shell 能包裹「整个窗口（含标题栏）」。
+  // 非 Windows 保留原生标题栏，避免 macOS/Linux 丢失系统红绿灯/窗口装饰。
+  // 不启用 transparent：仓库已有透明 BrowserView 触发 Windows DWM/TDR 的记录，
+  // 且不透明窗口仍保留系统阴影与圆角。
+  const useCustomChrome = process.platform === 'win32';
+
   const win = new BrowserWindow({
     width,
     height,
@@ -67,6 +74,7 @@ export function createBrowserWindow(opts: CreateWindowOptions): BrowserWindowLik
     minWidth: MIN_WINDOW_WIDTH,
     minHeight: MIN_WINDOW_HEIGHT,
     show: false,
+    frame: !useCustomChrome,
     title: 'Urchin Browser',
     // 背景跟随主题（dev.50）：硬编码白色在深色模式下会从窗口未覆盖区域/
     // 几何缝隙透出白光；暗色取 --color-surface 同值。切换主题时由

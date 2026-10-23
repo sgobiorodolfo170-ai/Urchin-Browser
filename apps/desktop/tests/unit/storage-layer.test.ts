@@ -230,7 +230,7 @@ describe('StorageLayer', () => {
       const rows = storage.mainStore.query<{ version: number }>(
         'SELECT version FROM schema_migrations',
       );
-      expect(rows[0]?.version).toBe(1);
+      expect(Math.max(...rows.map((row) => row.version))).toBe(4);
     });
   });
 

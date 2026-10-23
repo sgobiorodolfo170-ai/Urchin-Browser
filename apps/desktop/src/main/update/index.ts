@@ -5,10 +5,18 @@
  * register-handlers（IPC 注册）。本模块不 import electron（依赖注入），
  * electron-updater 走动态 import（见 update-service）——开发态零副作用。
  */
-export { createUpdateService, UPDATE_CHANNEL, UPDATE_EVENT_CHANNEL } from './update-service';
+export {
+  createUpdateService,
+  resolveUpdateChannel,
+  DEV_CHANNEL,
+  STABLE_CHANNEL,
+  UPDATE_EVENT_CHANNEL,
+} from './update-service';
 export type {
+  UpdateChannelInfo,
   UpdateService,
   UpdateServiceOptions,
+  UpdaterCheckResult,
   UpdaterHandle,
   UpdaterUpdateInfo,
 } from './update-service';

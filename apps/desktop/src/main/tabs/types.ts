@@ -87,8 +87,9 @@ export interface BrowserViewLike {
 /**
  * BrowserView 工厂函数类型（依赖注入）。
  * TabManager 通过它创建真实 BrowserView，测试时注入 mock。
+ * 参数 = 标签所属工作区 id（TP7）：主进程据此解析 session 分区。
  */
-export type BrowserViewFactory = () => BrowserViewLike;
+export type BrowserViewFactory = (workspaceId: string) => BrowserViewLike;
 
 /**
  * 标签承载的视图类型（阶段 2 GenOffice 融合）：
@@ -129,6 +130,8 @@ export interface Tab {
   crashed: boolean;
   /** 在窗口中的位置索引 */
   indexInWindow: number;
+  /** 所属工作区（TP7）：决定使用的 session 分区（default = 默认 session）。 */
+  readonly workspaceId: string;
   /**
    * 页面是否处于 HTML5 全屏（如内嵌视频点击全屏）。
    * 仅主进程持有（不进 TabSnapshot）：全屏时 view-integration 将 BrowserView
@@ -163,11 +166,31 @@ export interface TabSnapshot {
   readonly canGoForward: boolean;
   readonly crashed: boolean;
   readonly indexInWindow: number;
+  /** 所属工作区（TP7）：决定使用的 session 分区（default = 默认 session）。 */
+  readonly workspaceId: string;
   /** 视图类型（阶段 2）：渲染层据此隐藏地址栏 / 渲染脏点（契约 schema 同步） */
   readonly viewKind: TabViewKind;
   /** 编辑器未保存修改标记 */
   readonly dirty: boolean;
 }
+
+/**
+ * favicon 解析输入。
+ *
+ * 由 TabManager 在 page-favicon-updated 时构造；resolver 负责按标签所属
+ * 工作区 session 下载并缓存，返回可持久化的 urchin://favicon/<hash>。
+ */
+export interface FaviconResolveInput {
+  /** 页面 URL（用于补全相对图标地址）。 */
+  readonly pageUrl: string;
+  /** Chromium 上报的候选图标地址。 */
+  readonly candidates: readonly string[];
+  /** 标签所属工作区（决定网络 session）。 */
+  readonly workspaceId: string;
+}
+
+/** favicon 解析器（主进程注入；未注入时保留旧的直接透传行为）。 */
+export type FaviconResolver = (input: FaviconResolveInput) => Promise<string | undefined>;
 
 /**
  * 创建 Tab 的选项。
@@ -181,6 +204,11 @@ export interface CreateTabOptions {
   active?: boolean;
   /** 在窗口中的位置索引（可选，追加到末尾） */
   index?: number;
+  /**
+   * 所属工作区（TP7，可选）：未传时继承窗口活动标签的工作区，无活动则默认工作区。
+   * 决定该标签使用的 session 分区（主进程 factory 解析）。
+   */
+  workspaceId?: string;
   /**
    * 预构建视图（阶段 2）：GenOffice 编辑器标签由调用方（tab.create handler）
    * 创建 WebContentsView 后传入，TabManager 不再经 factory 创建 BrowserView。

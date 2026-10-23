@@ -3,11 +3,14 @@
  *
  * 依据：02-架构设计 §4 安全边界 / M2 Tab Manager
  * 职责：
- * 1. 向每个 webContents（网页 tab + 主窗口内部页）注入 wheel 监听脚本：
+ * 1. 向每个网页 tab 的 webContents 注入 wheel 监听脚本：
  *    识别 Ctrl+滚轮后 preventDefault（阻止页面滚动），并 fetch urchin://zoom 通知主进程
  * 2. 主进程按方向调整 zoomFactor（向上放大 / 向下缩小），范围 25% ~ 500%
  * 3. 缩放状态由 Electron 按 webContents 持有（每标签独立、切 tab 保留），
  *    模块不维护额外状态，tab 销毁时自动释放
+ *
+ * 用户指令 2026-10-23：浏览器 chrome（左/右侧栏、地址栏）尺寸固定，不随 Ctrl+滚轮
+ * 缩放。因此主窗口不再注入缩放脚本；缩放只作用于中区网页 BrowserView。
  *
  * 设计理由（agents.md §七.2 + §六 项目特化审查点「进程隔离」）：
  * - 修复根因（2026-08-18 用户反馈「未实现」）：第一版用 before-input-event 拦截滚轮，
@@ -18,8 +21,8 @@
  * - 不用 preload 注入：固化教训 BrowserView 注入 preload 会阻塞网页加载
  *   （见 create-browser-view.ts 头部说明）；executeJavaScript 在 did-finish-load 后
  *   执行页面脚本，不阻塞加载
- * - 内部页（React 渲染于主窗口 webContents）与外部网页（BrowserView）分别注入
- *   不同 host 的脚本（zoom-main / zoom），缩放目标各自对应，互不串扰
+ * - 仅外部网页（BrowserView）注入 zoom 脚本；主窗口内部页由渲染层内容容器
+ *   单独缩放，避免整窗 chrome 跟随缩放（用户指令 2026-10-23）
  */
 import type { TabManager } from '../tabs/tab-manager';
 import type { TabSnapshot } from '../tabs/types';

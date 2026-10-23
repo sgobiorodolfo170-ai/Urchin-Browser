@@ -29,6 +29,38 @@ export const titleSchema = z.string().max(4096);
 export type Title = z.infer<typeof titleSchema>;
 
 // ============================================================================
+// Workspace 域（工作区 = 持久化 session 分区，TP7）
+// ============================================================================
+
+/**
+ * 工作区 ID：'default'（默认工作区，使用默认 session）或随机 uuid（自定义工作区）。
+ * 只允许小写字母/数字/连字符，渲染层只传 id，partition 由主进程解析。
+ */
+export const workspaceIdSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9-]+$/);
+export type WorkspaceId = z.infer<typeof workspaceIdSchema>;
+
+/** 默认工作区 ID：对应 session.defaultSession，不可删除（可改名/换色）。 */
+export const DEFAULT_WORKSPACE_ID = 'default';
+
+/** 工作区主题色（首字头像/选项卡高亮用，渲染层映射为 Tailwind 色板）。 */
+export const workspaceColorSchema = z.enum(['blue', 'green', 'amber', 'rose', 'violet', 'cyan']);
+export type WorkspaceColor = z.infer<typeof workspaceColorSchema>;
+
+/** 工作区元数据（非敏感，存 Settings；Cookie/存储由 Chromium 分区自动落盘）。 */
+export const workspaceSchema = z.object({
+  id: workspaceIdSchema,
+  name: z.string().trim().min(1).max(32),
+  color: workspaceColorSchema,
+  isDefault: z.boolean().default(false),
+  createdAt: z.number().int().nonnegative(),
+});
+export type Workspace = z.infer<typeof workspaceSchema>;
+
+// ============================================================================
 // Tab 域
 // ============================================================================
 
@@ -39,6 +71,8 @@ export const tabSnapshotSchema = z.object({
   url: urlSchema,
   title: titleSchema.default(''),
   favicon: z.string().optional(),
+  /** 所属工作区（TP7）：决定标签使用的 session 分区（默认 default = 默认 session）。 */
+  workspaceId: workspaceIdSchema.default(DEFAULT_WORKSPACE_ID),
   active: z.boolean().default(false),
   loading: z.boolean().default(false),
   canGoBack: z.boolean().default(false),
@@ -58,6 +92,8 @@ export const tabCreateReqSchema = z.object({
   url: urlSchema.default('about:blank'),
   active: z.boolean().default(true),
   index: z.number().int().nonnegative().optional(),
+  /** 目标工作区（可选；未传时主进程继承窗口活动标签的工作区，无活动则默认工作区）。 */
+  workspaceId: workspaceIdSchema.optional(),
 });
 export type TabCreateReq = z.infer<typeof tabCreateReqSchema>;
 
@@ -157,6 +193,19 @@ export const tabStopResSchema = z.object({
 });
 export type TabStopRes = z.infer<typeof tabStopResSchema>;
 
+// 标签页网页快照（工作区总览页缩略图）。dataUrl 为 PNG data URL；抓取失败/空白时返回 null
+//（渲染层降级显示 favicon+标题）。缩略图为“display-only hint”，失败不影响功能。
+export const tabCaptureThumbnailReqSchema = z.object({
+  tabId: tabIdSchema,
+});
+export type TabCaptureThumbnailReq = z.infer<typeof tabCaptureThumbnailReqSchema>;
+
+export const tabCaptureThumbnailResSchema = z.object({
+  tabId: tabIdSchema,
+  dataUrl: z.string().nullable(),
+});
+export type TabCaptureThumbnailRes = z.infer<typeof tabCaptureThumbnailResSchema>;
+
 // ============================================================================
 // Window 域
 // ============================================================================
@@ -178,6 +227,8 @@ export const windowCreateWithUrlReqSchema = z.object({
   url: urlSchema,
   x: z.number().int().optional(),
   y: z.number().int().optional(),
+  /** 拖出窗口时携带来源标签的工作区（可选；未传则新窗口默认工作区）。 */
+  workspaceId: workspaceIdSchema.optional(),
 });
 export type WindowCreateWithUrlReq = z.infer<typeof windowCreateWithUrlReqSchema>;
 
@@ -185,6 +236,61 @@ export const windowCreateWithUrlResSchema = z.object({
   windowId: windowIdSchema,
 });
 export type WindowCreateWithUrlRes = z.infer<typeof windowCreateWithUrlResSchema>;
+
+// ============================================================================
+// Workspace 域 IPC（工作区 CRUD / 清空数据）
+// ============================================================================
+
+export const workspaceListReqSchema = z.object({}).default({});
+export type WorkspaceListReq = z.infer<typeof workspaceListReqSchema>;
+
+export const workspaceListResSchema = z.object({
+  workspaces: z.array(workspaceSchema),
+});
+export type WorkspaceListRes = z.infer<typeof workspaceListResSchema>;
+
+export const workspaceCreateReqSchema = z.object({
+  name: workspaceSchema.shape.name,
+  color: workspaceColorSchema,
+});
+export type WorkspaceCreateReq = z.infer<typeof workspaceCreateReqSchema>;
+
+export const workspaceCreateResSchema = z.object({
+  workspace: workspaceSchema,
+});
+export type WorkspaceCreateRes = z.infer<typeof workspaceCreateResSchema>;
+
+export const workspaceUpdateReqSchema = z.object({
+  id: workspaceIdSchema,
+  name: workspaceSchema.shape.name.optional(),
+  color: workspaceColorSchema.optional(),
+});
+export type WorkspaceUpdateReq = z.infer<typeof workspaceUpdateReqSchema>;
+
+export const workspaceUpdateResSchema = z.object({
+  workspace: workspaceSchema,
+});
+export type WorkspaceUpdateRes = z.infer<typeof workspaceUpdateResSchema>;
+
+export const workspaceRemoveReqSchema = z.object({
+  id: workspaceIdSchema,
+});
+export type WorkspaceRemoveReq = z.infer<typeof workspaceRemoveReqSchema>;
+
+export const workspaceRemoveResSchema = z.object({
+  ok: z.literal(true),
+});
+export type WorkspaceRemoveRes = z.infer<typeof workspaceRemoveResSchema>;
+
+export const workspaceClearDataReqSchema = z.object({
+  id: workspaceIdSchema,
+});
+export type WorkspaceClearDataReq = z.infer<typeof workspaceClearDataReqSchema>;
+
+export const workspaceClearDataResSchema = z.object({
+  ok: z.literal(true),
+});
+export type WorkspaceClearDataRes = z.infer<typeof workspaceClearDataResSchema>;
 
 /** 查询当前渲染进程所属窗口 id（多窗口下渲染层不再硬编码 windowId=1）。 */
 export const windowGetCurrentReqSchema = z.object({}).default({});
@@ -194,6 +300,19 @@ export const windowGetCurrentResSchema = z.object({
   windowId: windowIdSchema,
 });
 export type WindowGetCurrentRes = z.infer<typeof windowGetCurrentResSchema>;
+
+/** 抓取窗口渲染层（React UI：左右侧栏 + 底部地址栏）截图（PNG data URL）。
+ *  工作区总览页把本截图与激活标签网页截图合成为「整个浏览器窗口」快照。
+ *  抓取失败/空白时返回 null（调用方降级为占位图，不影响功能）。 */
+export const windowCaptureUiReqSchema = z.object({
+  windowId: windowIdSchema,
+});
+export type WindowCaptureUiReq = z.infer<typeof windowCaptureUiReqSchema>;
+
+export const windowCaptureUiResSchema = z.object({
+  dataUrl: z.string().nullable(),
+});
+export type WindowCaptureUiRes = z.infer<typeof windowCaptureUiResSchema>;
 
 export const windowCloseReqSchema = z.object({
   windowId: windowIdSchema,
@@ -205,6 +324,34 @@ export const windowCloseResSchema = z.object({
 });
 export type WindowCloseRes = z.infer<typeof windowCloseResSchema>;
 
+/** 自绘标题栏窗口控制（frameless 窗口）：最小化当前窗口。
+ *  以 IPC sender 反查窗口，渲染层无需传 windowId。 */
+export const windowMinimizeReqSchema = z.object({}).default({});
+export type WindowMinimizeReq = z.infer<typeof windowMinimizeReqSchema>;
+
+export const windowMinimizeResSchema = z.object({
+  ok: z.literal(true),
+});
+export type WindowMinimizeRes = z.infer<typeof windowMinimizeResSchema>;
+
+/** 切换当前窗口最大化/还原，返回切换后的最大化状态用于同步按钮图标。 */
+export const windowToggleMaximizeReqSchema = z.object({}).default({});
+export type WindowToggleMaximizeReq = z.infer<typeof windowToggleMaximizeReqSchema>;
+
+export const windowToggleMaximizeResSchema = z.object({
+  maximized: z.boolean(),
+});
+export type WindowToggleMaximizeRes = z.infer<typeof windowToggleMaximizeResSchema>;
+
+/** 查询当前窗口最大化状态（标题栏挂载/resize 时同步图标）。 */
+export const windowGetStateReqSchema = z.object({}).default({});
+export type WindowGetStateReq = z.infer<typeof windowGetStateReqSchema>;
+
+export const windowGetStateResSchema = z.object({
+  maximized: z.boolean(),
+});
+export type WindowGetStateRes = z.infer<typeof windowGetStateResSchema>;
+
 // ============================================================================
 // M6 History
 // ============================================================================
@@ -213,6 +360,8 @@ export const historyEntrySchema = z.object({
   id: z.number().int().positive(),
   url: urlSchema,
   title: titleSchema,
+  /** 主进程缓存的网站图标（urchin://favicon/<hash>）。 */
+  favicon: z.string().optional(),
   visitedAt: z.number().int().nonnegative(),
   visitCount: z.number().int().nonnegative(),
 });
@@ -285,6 +434,8 @@ export const bookmarkSchema = z.object({
   parentId: z.string().nullable(),
   url: urlSchema.optional(),
   title: titleSchema,
+  /** 主进程缓存的网站图标（urchin://favicon/<hash>）。 */
+  favicon: z.string().optional(),
   type: bookmarkTypeSchema,
   position: z.number().int().nonnegative(),
   createdAt: z.number().int().nonnegative(),
@@ -443,6 +594,92 @@ export const uiWindowDragByResSchema = z.object({
   ok: z.literal(true),
 });
 export type UiWindowDragByRes = z.infer<typeof uiWindowDragByResSchema>;
+
+// ============================================================================
+// 底部悬浮状态栏（独立透明子窗口，悬浮于网页 BrowserView 之上）
+// ============================================================================
+
+/**
+ * ui.statusbar.*：状态栏悬浮层与主渲染进程之间的状态同步 / 动作转发。
+ *
+ * 设计：状态栏为独立透明 frameless 子 BrowserWindow（悬浮于网页之上），
+ * 状态由主渲染进程持有，经主进程中转：
+ * - 主渲染 → 主进程：ui.statusbar.sync 推送状态快照
+ * - 悬浮层 → 主进程：ui.statusbar.getState 取缓存状态、ui.statusbar.setExpanded
+ *   上报建议/提示展开高度、ui.statusbar.action 转发用户动作
+ * - 主进程 → 主渲染：ui.statusbar.action 事件
+ * - 主进程 → 悬浮层：ui.statusbar.state 事件
+ */
+export const statusBarSuggestionSchema = z.object({
+  type: z.enum(['history', 'bookmark', 'search-engine']),
+  title: z.string(),
+  url: z.string(),
+  favicon: z.string().optional(),
+  matchType: z.enum(['url', 'title', 'exact']),
+  score: z.number(),
+});
+export type StatusBarSuggestion = z.infer<typeof statusBarSuggestionSchema>;
+
+export const statusBarToastSchema = z.object({
+  text: z.string().max(2048),
+  spinning: z.boolean().optional(),
+});
+export type StatusBarToast = z.infer<typeof statusBarToastSchema>;
+
+export const statusBarStateSchema = z.object({
+  visible: z.boolean(),
+  url: z.string().max(16384),
+  loading: z.boolean(),
+  securityState: z.enum(['secure', 'insecure', 'mixed']),
+  canGoBack: z.boolean(),
+  canGoForward: z.boolean(),
+  reloadDisabled: z.boolean(),
+  bookmarkSaved: z.boolean(),
+  bookmarkable: z.boolean(),
+  summarizeDisabled: z.boolean(),
+  screenshotDisabled: z.boolean(),
+  translateActive: z.boolean(),
+  translateDisabled: z.boolean(),
+  searchEngine: z.string(),
+  suggestions: z.array(statusBarSuggestionSchema).max(20),
+  toast: statusBarToastSchema.nullable(),
+  theme: z.enum(['light', 'dark']),
+});
+export type StatusBarState = z.infer<typeof statusBarStateSchema>;
+
+export const uiStatusBarSyncReqSchema = statusBarStateSchema;
+export type UiStatusBarSyncReq = z.infer<typeof uiStatusBarSyncReqSchema>;
+export const uiStatusBarSyncResSchema = z.object({ ok: z.literal(true) });
+export type UiStatusBarSyncRes = z.infer<typeof uiStatusBarSyncResSchema>;
+
+export const uiStatusBarGetStateReqSchema = z.object({}).default({});
+export type UiStatusBarGetStateReq = z.infer<typeof uiStatusBarGetStateReqSchema>;
+export const uiStatusBarGetStateResSchema = statusBarStateSchema;
+export type UiStatusBarGetStateRes = z.infer<typeof uiStatusBarGetStateResSchema>;
+
+export const uiStatusBarActionReqSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('navigate'), url: z.string().max(16384) }),
+  z.object({ type: z.literal('back') }),
+  z.object({ type: z.literal('forward') }),
+  z.object({ type: z.literal('reload') }),
+  z.object({ type: z.literal('bookmark-toggle') }),
+  z.object({ type: z.literal('summarize') }),
+  z.object({ type: z.literal('screenshot') }),
+  z.object({ type: z.literal('translate') }),
+  z.object({ type: z.literal('suggestion-query'), query: z.string().max(2048) }),
+  z.object({ type: z.literal('focus-page') }),
+]);
+export type UiStatusBarActionReq = z.infer<typeof uiStatusBarActionReqSchema>;
+export const uiStatusBarActionResSchema = z.object({ ok: z.literal(true) });
+export type UiStatusBarActionRes = z.infer<typeof uiStatusBarActionResSchema>;
+
+export const uiStatusBarSetExpandedReqSchema = z.object({
+  /** 悬浮层内容在卡片之上额外需要的高度（建议/提示），0 表示仅基础卡片区 */
+  panelHeight: z.number().min(0).max(640),
+});
+export type UiStatusBarSetExpandedReq = z.infer<typeof uiStatusBarSetExpandedReqSchema>;
+export const uiStatusBarSetExpandedResSchema = z.object({ ok: z.literal(true) });
+export type UiStatusBarSetExpandedRes = z.infer<typeof uiStatusBarSetExpandedResSchema>;
 
 // ============================================================================
 // 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）
@@ -1814,13 +2051,30 @@ export const ipcSchema = {
   'tab.goForward': { req: tabGoForwardReqSchema, res: tabGoForwardResSchema },
   'tab.loadUrl': { req: tabLoadUrlReqSchema, res: tabLoadUrlResSchema },
   'tab.stop': { req: tabStopReqSchema, res: tabStopResSchema },
+  'tab.captureThumbnail': {
+    req: tabCaptureThumbnailReqSchema,
+    res: tabCaptureThumbnailResSchema,
+  },
   'window.create': { req: windowCreateReqSchema, res: windowCreateResSchema },
   'window.close': { req: windowCloseReqSchema, res: windowCloseResSchema },
+  'window.minimize': { req: windowMinimizeReqSchema, res: windowMinimizeResSchema },
+  'window.toggleMaximize': {
+    req: windowToggleMaximizeReqSchema,
+    res: windowToggleMaximizeResSchema,
+  },
+  'window.getState': { req: windowGetStateReqSchema, res: windowGetStateResSchema },
   'window.createWithUrl': {
     req: windowCreateWithUrlReqSchema,
     res: windowCreateWithUrlResSchema,
   },
   'window.getCurrent': { req: windowGetCurrentReqSchema, res: windowGetCurrentResSchema },
+  'window.captureUi': { req: windowCaptureUiReqSchema, res: windowCaptureUiResSchema },
+  // Workspace 域（TP7 工作区）：CRUD + 清空数据；变更经 'workspace:changed' 事件广播。
+  'workspace.list': { req: workspaceListReqSchema, res: workspaceListResSchema },
+  'workspace.create': { req: workspaceCreateReqSchema, res: workspaceCreateResSchema },
+  'workspace.update': { req: workspaceUpdateReqSchema, res: workspaceUpdateResSchema },
+  'workspace.remove': { req: workspaceRemoveReqSchema, res: workspaceRemoveResSchema },
+  'workspace.clearData': { req: workspaceClearDataReqSchema, res: workspaceClearDataResSchema },
   'history.record': { req: historyRecordReqSchema, res: historyRecordResSchema },
   'history.search': { req: historySearchReqSchema, res: historySearchResSchema },
   'history.list': { req: historyListReqSchema, res: historyListResSchema },
@@ -1837,6 +2091,16 @@ export const ipcSchema = {
   'ui.panel.toggle': { req: uiPanelToggleReqSchema, res: uiPanelToggleResSchema },
   'ui.theme.set': { req: uiThemeSetReqSchema, res: uiThemeSetResSchema },
   'ui.window.dragBy': { req: uiWindowDragByReqSchema, res: uiWindowDragByResSchema },
+  'ui.statusbar.sync': { req: uiStatusBarSyncReqSchema, res: uiStatusBarSyncResSchema },
+  'ui.statusbar.getState': {
+    req: uiStatusBarGetStateReqSchema,
+    res: uiStatusBarGetStateResSchema,
+  },
+  'ui.statusbar.action': { req: uiStatusBarActionReqSchema, res: uiStatusBarActionResSchema },
+  'ui.statusbar.setExpanded': {
+    req: uiStatusBarSetExpandedReqSchema,
+    res: uiStatusBarSetExpandedResSchema,
+  },
   'download.list': { req: downloadListReqSchema, res: downloadListResSchema },
   'download.cancel': { req: downloadCancelReqSchema, res: downloadCancelResSchema },
   'download.pause': { req: downloadPauseReqSchema, res: downloadPauseResSchema },

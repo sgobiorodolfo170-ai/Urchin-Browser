@@ -68,6 +68,7 @@ export function registerTabHandlers(
       url: resolved.url,
       active: req.active,
       index: req.index,
+      workspaceId: req.workspaceId,
       ...(resolved.view
         ? { view: resolved.view as BrowserViewLike, viewKind: resolved.viewKind }
         : {}),
@@ -192,6 +193,38 @@ export function registerTabHandlers(
     tabManager.stopLoading(req.tabId);
 
     return { ok: true as const, tabId: req.tabId };
+  });
+
+  // tab.captureThumbnail：抓取标签页网页快照（工作区总览页缩略图，浏览器视口比例）。
+  // 返回 PNG data URL（限宽缩略，控制内存）；抓取失败/空白/无内容时返回 null，
+  // 渲染层降级显示 favicon+标题。语义是 display-only hint，失败不影响标签功能。
+  registerHandler(ipcMain, 'tab.captureThumbnail', async (req) => {
+    log.info('tab.captureThumbnail', { tabId: req.tabId });
+
+    const tab = tabManager.getTab(req.tabId);
+    if (!tab) {
+      return { tabId: req.tabId, dataUrl: null };
+    }
+
+    try {
+      // WebContentsLike 是结构化接口（不含 capturePage），运行时即 Electron WebContents
+      const wc = tab.webContents as unknown as Electron.WebContents;
+      const image = await wc.capturePage();
+      if (image.isEmpty()) {
+        return { tabId: req.tabId, dataUrl: null };
+      }
+      // 缩略图限宽 480px，保持视口比例缩放，避免大 PNG 尺寸传输
+      const W = 480;
+      const size = image.getSize();
+      const scale = size.width > W ? W / size.width : 1;
+      const dataUrl = image
+        .resize({ width: Math.round(size.width * scale), height: Math.round(size.height * scale) })
+        .toDataURL();
+      return { tabId: req.tabId, dataUrl };
+    } catch (err) {
+      log.warn('captureThumbnail failed', { tabId: req.tabId, error: String(err) });
+      return { tabId: req.tabId, dataUrl: null };
+    }
   });
 
   log.info('tab ipc handlers registered');

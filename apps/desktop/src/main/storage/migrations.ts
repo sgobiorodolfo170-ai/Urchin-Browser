@@ -121,6 +121,15 @@ export const MIGRATIONS_MAIN: readonly Migration[] = [
       ALTER TABLE mail_messages ADD COLUMN body_text TEXT;
     `,
   },
+  // M2/M5/M6 favicon 持久化：图标由主进程缓存为 urchin://favicon/<hash>，
+  // 书签/历史只存协议 URL，重启后无需重新抓取即可显示。
+  {
+    version: 4,
+    up: `
+      ALTER TABLE bookmarks ADD COLUMN favicon TEXT;
+      ALTER TABLE history ADD COLUMN favicon TEXT;
+    `,
+  },
 ];
 
 /** AI 库迁移列表（conversations/messages/providers/secrets_index） */

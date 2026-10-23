@@ -80,6 +80,51 @@ describe('registerBookmarkHandlers', () => {
     expect(result.bookmark).toBe(bookmark);
   });
 
+  it('bookmark.create should attach cached favicon from main-process lookup', async () => {
+    const ipcMain = createMockIpcMain();
+    const manager = createMockBookmarkManager();
+    manager.create.mockReturnValue({ id: 'b1' });
+
+    registerBookmarkHandlers(ipcMain as never, manager as never, {
+      getFavicon: (url) => (url === 'https://urchin.dev' ? 'urchin://favicon/abc' : undefined),
+    });
+
+    await ipcMain.invoke('bookmark.create', {
+      url: 'https://urchin.dev',
+      title: 'Urchin',
+    });
+
+    expect(manager.create).toHaveBeenCalledWith({
+      url: 'https://urchin.dev',
+      title: 'Urchin',
+      parentId: undefined,
+      type: undefined,
+      favicon: 'urchin://favicon/abc',
+    });
+  });
+
+  it('bookmark.create should ignore non-protocol favicon values', async () => {
+    const ipcMain = createMockIpcMain();
+    const manager = createMockBookmarkManager();
+    manager.create.mockReturnValue({ id: 'b1' });
+
+    registerBookmarkHandlers(ipcMain as never, manager as never, {
+      getFavicon: () => 'https://remote.example/favicon.png',
+    });
+
+    await ipcMain.invoke('bookmark.create', {
+      url: 'https://urchin.dev',
+      title: 'Urchin',
+    });
+
+    expect(manager.create).toHaveBeenCalledWith({
+      url: 'https://urchin.dev',
+      title: 'Urchin',
+      parentId: undefined,
+      type: undefined,
+    });
+  });
+
   it('bookmark.list should forward parentId and return bookmarks', async () => {
     const ipcMain = createMockIpcMain();
     const manager = createMockBookmarkManager();

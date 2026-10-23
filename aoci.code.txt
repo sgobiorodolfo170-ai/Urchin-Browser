@@ -28,7 +28,7 @@ pre-commit[XQ6T]: F:pre-commit hook调用pnpm lint-staged执行ESLint->Prettier-
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/===
 electron-builder.yml[FV8S]: F:electron-builder打包-NSIS Win x64/GenOffice六编辑器+wasm+xlsx-sidecar+LICENSE放extraResources(asar外)/便携node.exe(X4:dsh直启用)/node_modules asarUnpack/npmRebuild false | R:code:apps/desktop/package.json | A:03-技术栈§1 T4/07-立项准备§1 | S:v0.1无代码签名(CON-07);deleteAppDataOnUninstall全卸(dev.42);产物缺失报错为有意门禁(package:win内置前置)
-package.json[FV8T]: F:@urchin/desktop主Electron应用-入口dist/main/index.js;scripts(dev/build/test/e2e/package:win);deps(Electron43/zod/better-sqlite3/pi-web-ui/dsh/imapflow/nodemailer) | R:code:pnpm-workspace.yaml;code:apps/desktop/electron-builder.yml | A:main字段被electron-builder定位主进程 | S:package:win链=build三产物->genoffice-build->fetch-node->clean-release->package-win.mjs(traversal收集器;无packageManager字段,X4)
+package.json[FV8T]: F:@urchin/desktop主Electron应用-入口dist/main/index.js;scripts(dev/build/test/e2e/package:win);deps(Electron43/zod/better-sqlite3/pi-web-ui/dsh/imapflow/nodemailer) | R:code:pnpm-workspace.yaml;code:apps/desktop/electron-builder.yml;code:apps/desktop/ico/build-ico.cjs | A:main字段被electron-builder定位主进程;icon:build生成build/icon.ico | S:build与package:win均先跑icon:build;build/被gitignore
 playwright.config.ts[TV5T]: F:Playwright E2E配置-testDir tests/e2e/timeout 60s/fullyParallel false/workers 1/CI重试1/trace on-first-retry | R:code:apps/desktop/package.json | A:03-技术栈§7.3/07-立项准备§1.6 | S:用_electron.launch启动真实Electron实例,不mock任何东西
 postcss.config.js[FV4T]: F:PostCSS配置-tailwindcss+autoprefixer两插件 | R:code:apps/desktop/vite.config.ts | A:- | S:-
 tailwind.config.js[FC5S]: F:Tailwind配置-桥接CSS设计令牌到Tailwind工具类并配置[data-theme=dark]暗色模式 | R:code:apps/desktop/src/renderer/styles/tokens.css | A:- | S:-
@@ -39,7 +39,7 @@ vitest.setup.ts[FQ4T]: F:Vitest setup-@testing-library/jest-dom matchers注册 |
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/ico/===
 build-ico.cjs[XV3S]: F:从icon-{16..256}.png构建multi-size ICO(PNG嵌入Vista+),写入build/icon.ico;复制icon-512.png为build/icon.png | R:code:apps/desktop/electron-builder.yml | A:- | S:与process-icon.ps1互为替代(PS版直接写ICO,CJS版从已有PNG拼装)
-process-icon.ps1[XV3M]: F:图标处理脚本-加载源JPG/四角采样背景色/硬编码BBox裁剪/圆角透明PNG生成(16-512七尺寸)/直接流式写multi-size ICO | R:code:apps/desktop/ico/build-ico.cjs;code:apps/desktop/electron-builder.yml | A:- | S:BBox坐标硬编码(JPG压缩噪点干扰动态检测);System.Drawing依赖
+process-icon.ps1[XV3S]: F:图标处理脚本-以脚本目录定位源图icon-source.png/按alpha包围盒自动裁切/居中补3%透明边距/不套圆角遮罩/缩放生成16-512七尺寸PNG/写multi-size ICO(16-256)/同步build/icon.png与渲染层browser-icon.png | R:code:apps/desktop/ico/build-ico.cjs;code:apps/desktop/electron-builder.yml;code:apps/desktop/package.json | A:输出build/icon.ico(窗口/任务栏/EXE/安装包)与src/renderer/public/browser-icon.png(标题栏/标签页/新标签页) | S:System.Drawing依赖;PS5.1需UTF-8 BOM;build/不入库需前置生成
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/scripts/===
 launch.mjs[EV5T]: F:生产模式启动脚本-校验dist三产物存在后带NODE_ENV=production后台detached启动electron;日志落tmpdir | R:code:apps/desktop/package.json | A:- | S:直接electron .未设NODE_ENV会白屏(dev模式连vite dev server)

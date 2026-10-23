@@ -11,7 +11,7 @@
  * 在 app.whenReady() 之后调用 registerUrchinProtocol。
  */
 import { protocol } from 'electron';
-import type { CustomScheme } from 'electron';
+import type { CustomScheme, Session } from 'electron';
 import { createReadStream, readFileSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { basename } from 'node:path';
@@ -21,6 +21,7 @@ import { getCaptureOverlayHtml } from '../screenshots/capture-overlay-html';
 import { inferMimeType } from '../files/file-kind';
 import { buildPickDirectoryResponse, PICK_DIR_HOST } from '../pi-web/dir-picker';
 import { buildUiStateResponse, UI_STATE_HOST } from '../pi-web/ui-state';
+import type { FaviconResponse } from '../favicons/favicon-service';
 
 const log = createLogger('urchin-protocol');
 
@@ -212,6 +213,7 @@ async function serveLocalFile(request: Request, url: URL): Promise<Response> {
  * - urchin://file-viewer → 本地文件查看器占位 HTML（由主窗口 React FileViewer 渲染，
  *   文件路径经 ?path= 参数传入，BrowserView 仅占位）
  * - urchin://file-resource → 本地文件资源转发（FileViewer 内嵌媒体/PDF/图片加载）
+ * - urchin://favicon/<hash> → 主进程缓存的网站图标（标签栏/书签/历史共用）
  * - urchin://zoom / urchin://zoom-main → Ctrl+滚轮缩放信号（页面注入脚本 fetch，
  *   主进程按方向调整 zoomFactor；zoom 作用于网页 tab、zoom-main 作用于主窗口内部页）
  * - urchin://newtab → 空白页（占位，v0.1 返回简单 HTML）
@@ -226,22 +228,29 @@ async function serveLocalFile(request: Request, url: URL): Promise<Response> {
  *
  * @param opts.onZoom 缩放信号回调：页面 Ctrl+滚轮注入脚本 fetch 触发。
  *   target 'tab' = 网页 BrowserView 缩放、'main' = 主窗口内部页缩放。
+ * @param targetSession 可选：注册到指定 Session（TP7 自定义工作区分区 session）。
+ *   缺省时注册到全局协议栈（影响默认 session）。
  */
-export function registerUrchinProtocol(opts?: {
-  onZoom?: (direction: 'in' | 'out', target: 'tab' | 'main') => void;
-  /** pi 页目录选择回调（dev.44）：弹原生目录选择器，返回所选路径或 null（取消） */
-  onPickDirectory?: () => Promise<string | null>;
-  /** pi 品牌图标 PNG 绝对路径（dev.45，dist/renderer/pi-icon.png；缺省 404） */
-  piIconPath?: string;
-  /** dsh 品牌图标 SVG 绝对路径（dist/renderer/dsh-icon.svg；缺省 404） */
-  dshIconPath?: string;
-  /** 浏览器当前主题是否暗色（dev.48：pi 页主题跟随浏览器，主进程读 nativeTheme） */
-  isBrowserDarkTheme?: () => boolean;
-  /** pi 页 UI 状态文件路径（dev.67：urchin://pi-ui-state 读写端点落盘位置） */
-  piUiStateFile?: string;
-  /** M25 邮箱正文内容查询（urchin://mail-content/<token> → 已 sanitize 的 HTML） */
-  getMailContent?: (token: string) => string | null;
-}): void {
+export function registerUrchinProtocol(
+  opts?: {
+    onZoom?: (direction: 'in' | 'out', target: 'tab' | 'main') => void;
+    /** pi 页目录选择回调（dev.44）：弹原生目录选择器，返回所选路径或 null（取消） */
+    onPickDirectory?: () => Promise<string | null>;
+    /** pi 品牌图标 PNG 绝对路径（dev.45，dist/renderer/pi-icon.png；缺省 404） */
+    piIconPath?: string;
+    /** dsh 品牌图标 SVG 绝对路径（dist/renderer/dsh-icon.svg；缺省 404） */
+    dshIconPath?: string;
+    /** 浏览器当前主题是否暗色（dev.48：pi 页主题跟随浏览器，主进程读 nativeTheme） */
+    isBrowserDarkTheme?: () => boolean;
+    /** pi 页 UI 状态文件路径（dev.67：urchin://pi-ui-state 读写端点落盘位置） */
+    piUiStateFile?: string;
+    /** M25 邮箱正文内容查询（urchin://mail-content/<token> → 已 sanitize 的 HTML） */
+    getMailContent?: (token: string) => string | null;
+    /** favicon 缓存读取（urchin://favicon/<hash> → 位图字节；缺失返回 null） */
+    getFavicon?: (name: string) => Promise<FaviconResponse | null>;
+  },
+  targetSession?: Session,
+): void {
   /**
    * pi 页主题跟随端点（pi-theme host，dev.48）：返回浏览器当前主题
    * {dark:boolean}。pi 页注入脚本轮询此端点并驱动 pi 主题切换
@@ -309,7 +318,7 @@ export function registerUrchinProtocol(opts?: {
     return new Response('', { status: 200 });
   };
 
-  protocol.handle(URCHIN_SCHEME, (request) => {
+  const handler = async (request: Request): Promise<Response> => {
     try {
       const url = new URL(request.url);
       const host = url.hostname;
@@ -339,6 +348,30 @@ export function registerUrchinProtocol(opts?: {
         // dsh 模块品牌图标 SVG：favicon 重定向目标——dsh 网页标签的
         // favicon 请求被 webRequest 重定向到此，统一显示与左侧栏入口一致的图标。
         return serveDshIcon(opts?.dshIconPath);
+      }
+
+      if (host === 'favicon') {
+        // 主进程缓存图标（M2）：标签栏/书签/历史统一经此读取，
+        // 渲染层不直接请求远程站点，避免工作区 Cookie 丢失与隐私泄露。
+        const name = url.pathname.replace(/^\//, '');
+        const favicon = name ? await opts?.getFavicon?.(name) : null;
+        if (!favicon) {
+          return new Response('Not Found', {
+            status: 404,
+            headers: { 'Content-Type': 'text/plain' },
+          });
+        }
+        return new Response(new Uint8Array(favicon.data), {
+          status: 200,
+          headers: {
+            'Content-Type': favicon.contentType,
+            // 哈希由源 URL 决定；图标内容可能更新，缓存 1 小时平衡刷新与开销。
+            'Cache-Control': 'public, max-age=3600',
+            'X-Content-Type-Options': 'nosniff',
+            // 即使被直接导航为文档，也禁止脚本执行（防御纵深；SVG 已在服务层拒绝）。
+            'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'",
+          },
+        });
       }
 
       if (host === 'pi-theme') {
@@ -463,6 +496,16 @@ export function registerUrchinProtocol(opts?: {
         );
       }
 
+      if (host === 'workspaces') {
+        // 工作区总览页由主窗口 React 组件渲染（WorkspaceOverviewPage），
+        // BrowserView 仅加载空白页面（与 settings/newtab/file-viewer 同机制，
+        // 避免无 preload 环境下调用 window.urchin 而报错）。
+        return new Response(
+          '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>工作区</title></head><body></body></html>',
+          { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+        );
+      }
+
       return new Response('Not Found', { status: 404, headers: { 'Content-Type': 'text/plain' } });
     } catch (err) {
       log.error('protocol handler error', { error: String(err) });
@@ -471,6 +514,14 @@ export function registerUrchinProtocol(opts?: {
         headers: { 'Content-Type': 'text/plain' },
       });
     }
-  });
+  };
+
+  if (targetSession) {
+    // TP7：自定义工作区持久化分区 session 也需可访问 urchin:// 内部页
+    //（settings/ai/newtab/file-viewer 等 React 覆盖渲染占位页 + 本地资源转发）
+    targetSession.protocol.handle(URCHIN_SCHEME, handler);
+  } else {
+    protocol.handle(URCHIN_SCHEME, handler);
+  }
   log.info('urchin protocol handler registered');
 }

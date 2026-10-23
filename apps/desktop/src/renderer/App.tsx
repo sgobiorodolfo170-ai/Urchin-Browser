@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Urchin Browser · 根组件
  *
  * 布局：左侧栏 | 中间列(ContentArea + 下侧地址栏) | 右侧栏
@@ -16,7 +16,7 @@
  *
  * 事件订阅：通过 window.urchin.on('tab:event', ...) 接收主进程推送的 tab 状态变更
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus,
   X,
@@ -29,7 +29,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Home,
-  List as ListIcon,
   Folder,
   FolderOpen,
   FileText,
@@ -38,6 +37,7 @@ import {
   Mail as MailIcon,
 } from 'lucide-react';
 import { Button } from './components/ui/button';
+import { AppTitleBar } from './components/app-titlebar';
 import { Omnibox } from './omnibox/omnibox';
 // 回退提示：旧对话视图 AiChatView(@urchin/ai-extension)在阶段 1 启动器切换时移出渲染树,
 // 恢复时重新 import 并在 isAiTab 分支渲染即可（配套:const host = useMemo(() => createHostFromUrchin(), [])）
@@ -49,6 +49,7 @@ import { GenOfficeHome } from './home/GenOfficeHome';
 import { FileViewer } from './files/FileViewer';
 import { ConfirmDialog } from './components/ui/confirm-dialog';
 import { getEditGuardSession, closeNeedsGuard, switchNeedsGuard } from './lib/edit-guard';
+import { useDragScroll } from './lib/use-drag-scroll';
 import { lookupBuiltinSite, builtinIconUrl } from './home/site-directory-lookup';
 import { PiSettingsDialog } from './omnibox/pi-settings-dialog';
 import { useTheme } from './theme/theme-provider';
@@ -57,6 +58,17 @@ import { buildSuggestions } from './omnibox/build-suggestions';
 import { cn } from './lib/utils';
 import { getCurrentWindowId } from './lib/current-window';
 import { getGenOfficeTabIcon } from './components/genoffice-icons';
+import { WorkspaceBar } from './workspaces/WorkspaceBar';
+import { WorkspaceSwitcher, type WorkspaceSwitcherMode } from './workspaces/WorkspaceSwitcher';
+import {
+  WorkspaceOverviewPage,
+  type WorkspaceOverviewItem,
+} from './workspaces/WorkspaceOverviewPage';
+import { TabCardContextMenu } from './workspaces/TabCardContextMenu';
+import { WorkspaceManagerDialog } from './workspaces/WorkspaceManagerDialog';
+import { captureWindowSnapshot } from './workspaces/window-snapshot';
+import type { Workspace, WorkspaceColor } from './workspaces/types';
+import { DEFAULT_WORKSPACE_ID } from './workspaces/types';
 
 // Tab 快照类型（与主进程 TabSnapshot 对齐）
 interface TabSnapshot {
@@ -75,6 +87,8 @@ interface TabSnapshot {
   readonly viewKind?: 'browser' | 'genoffice';
   /** 编辑器未保存修改标记（侧栏脏点） */
   readonly dirty?: boolean;
+  /** 所属工作区（TP7）：决定 session 分区；缺失时按 'default' 处理 */
+  readonly workspaceId?: string;
 }
 
 interface TabEventPayload {
@@ -110,6 +124,10 @@ const LEFT_COLLAPSED = 44;
 const RIGHT_EXPANDED = 360;
 const RIGHT_COLLAPSED = 44;
 const BOTTOM_HEIGHT = 48;
+/** Ctrl+滚轮内部页缩放步长与范围（仅作用于中区 React 内容，侧栏/地址栏不受影响） */
+const CONTENT_ZOOM_STEP = 1.1;
+const CONTENT_ZOOM_MIN = 0.25;
+const CONTENT_ZOOM_MAX = 5;
 /** 右侧边栏宽度拖拽调节范围（px） */
 const RIGHT_MIN = 120;
 const RIGHT_MAX = 600;
@@ -309,7 +327,13 @@ function TabSiteIcon({
   useEffect(() => {
     setStep(0);
   }, [src, fallbackSrc]);
-  const current = step === 0 ? src : fallbackSrc;
+  // 过滤空源并去重：首个加载失败后严格推进到下一候选，两个都失败才显示占位。
+  // 旧实现 step>0 时始终取 fallbackSrc，fallback 也失败会反复渲染破图。
+  const sourceList = [src, fallbackSrc].filter(
+    (value): value is string => typeof value === 'string' && value.length > 0,
+  );
+  const sources = sourceList.filter((value, index) => sourceList.indexOf(value) === index);
+  const current = sources[step];
   if (!current) {
     // 完全无法识别（无内置图标、网页无 favicon 或加载失败）：
     // 用浏览器图标半透明占位，淡化显示避免与真实站点图标混淆
@@ -455,6 +479,63 @@ export function App() {
   // pi 设置对话框显示状态：齿轮按钮位于 AiChatView 中区 header 右上角，
   // 通过此状态与 PiSettingsDialog 解耦（PiSettingsDialog 在 App.tsx 渲染）
   const [showPiSettings, setShowPiSettings] = useState(false);
+
+  // ── TP7 工作区状态 ──
+  const [workspaces, setWorkspaces] = useState<readonly Workspace[]>([]);
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string>(DEFAULT_WORKSPACE_ID);
+  /** 工作区整窗快照（总览页卡片；仅内存，不持久化）。key = workspaceId。 */
+  const [workspaceSnapshots, setWorkspaceSnapshots] = useState<Record<string, string>>({});
+  /** 快照采集中标记：避免切换/打开总览并发抓图。 */
+  const workspaceSnapshotInFlightRef = useRef(false);
+  /** 各工作区上次快照时间（滚轮快速切换时限流，避免每步都抓图卡顿）。 */
+  const lastWorkspaceSnapshotAtRef = useRef<Record<string, number>>({});
+  /** 内容区 DOM 引用：整窗快照叠加网页截图时用于取 BrowserView 对应矩形。 */
+  const contentAreaRef = useRef<HTMLDivElement | null>(null);
+  /** 中区内部页缩放倍率（Ctrl+滚轮；网页标签由主进程单独缩放 BrowserView）。 */
+  const [contentZoom, setContentZoom] = useState(1);
+  /** 展开态标签列表滚动容器（隐藏滚动条；长按左键上下拖动平移）。 */
+  const expandedTabListRef = useDragScroll<HTMLDivElement>();
+  /** 折叠态标签图标列表滚动容器（同上）。 */
+  const collapsedTabListRef = useDragScroll<HTMLDivElement>();
+
+  // Ctrl+滚轮仅缩放中区内部页（设置/主页/邮箱等 React 页面）。
+  // 侧边栏与地址栏尺寸保持固定；网页标签的缩放由主进程注入脚本作用于 BrowserView，
+  // 不会经过这里，因此也不会带动浏览器 chrome 缩放。
+  useEffect(() => {
+    const el = contentAreaRef.current;
+    if (!el) return undefined;
+    const handleWheel = (e: WheelEvent): void => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setContentZoom((prev) => {
+        const raw = e.deltaY < 0 ? prev * CONTENT_ZOOM_STEP : prev / CONTENT_ZOOM_STEP;
+        return Math.min(CONTENT_ZOOM_MAX, Math.max(CONTENT_ZOOM_MIN, Math.round(raw * 100) / 100));
+      });
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, []);
+
+  /** 每工作区最近一次激活的标签（切回该工作区时恢复）。 */
+  const lastActiveByWorkspaceRef = useRef<Record<string, number>>({});
+  /** 折叠态工作区切换器悬停标记：悬停期间抑制侧栏自动展开（滚轮切换不被打断）。 */
+  const workspaceAvatarHoverRef = useRef(false);
+  /** 标签卡片右键菜单状态。 */
+  const [tabCardMenu, setTabCardMenu] = useState<{
+    x: number;
+    y: number;
+    tab: {
+      id: number;
+      url: string;
+      title: string;
+      workspaceId: string;
+    };
+  } | null>(null);
+  /** 工作区管理对话框（右键工作区选项卡触发）。 */
+  const [workspaceManagerTarget, setWorkspaceManagerTarget] = useState<Workspace | null>(null);
+  /** 折叠态工作区切换模式（设置 ui.workspaceSwitcherMode；'wheel'=滚轮循环；'cards'=点击打开工作区总览页）。 */
+  const [workspaceSwitcherMode, setWorkspaceSwitcherMode] =
+    useState<WorkspaceSwitcherMode>('wheel');
 
   // 摘要文档目录树（左侧边栏数据空间入口）
   // 左侧边栏展开时显示已保存的摘要文档树，点击叶节点在新标签页打开
@@ -627,14 +708,15 @@ export function App() {
     activeTabIdRef.current = activeTabId;
   }, [activeTabId]);
 
-  // 加载右侧边栏悬停设置（延迟 + 自动展开开关）+ 搜索引擎设置，并监听设置页变更实时更新
+  // 加载右侧边栏悬停设置（延迟 + 自动展开开关）+ 搜索引擎设置 + 工作区切换模式，并监听设置页变更实时更新
   useEffect(() => {
     async function loadHoverSettings() {
       try {
-        const [delayRes, autoRes, engineRes] = await Promise.all([
+        const [delayRes, autoRes, engineRes, switcherModeRes] = await Promise.all([
           window.urchin.invoke('settings.get', { key: 'debug.sidebarHoverDelay' }),
           window.urchin.invoke('settings.get', { key: 'ui.rightSidebarAutoExpand' }),
           window.urchin.invoke('settings.get', { key: 'searchEngine' }),
+          window.urchin.invoke('settings.get', { key: 'ui.workspaceSwitcherMode' }),
         ]);
         const delay = (delayRes as { value: unknown }).value;
         if (typeof delay === 'number' && Number.isFinite(delay)) {
@@ -653,19 +735,27 @@ export function App() {
         if (typeof engine === 'string' && engine) {
           setSearchEngine(engine);
         }
+        const switcherMode = (switcherModeRes as { value: unknown }).value;
+        // 非法值回退 wheel（默认模式），保持向后兼容
+        if (switcherMode === 'cards') {
+          setWorkspaceSwitcherMode('cards');
+        } else {
+          setWorkspaceSwitcherMode('wheel');
+        }
       } catch {
         // 使用默认值
       }
     }
     void loadHoverSettings();
 
-    // 监听设置页保存事件，实时更新悬停设置与搜索引擎
+    // 监听设置页保存事件，实时更新悬停设置 / 搜索引擎 / 工作区切换模式
     const onSettingsChanged = (e: Event): void => {
       const detail = (e as CustomEvent<{ keys: string[] }>).detail;
       if (
         detail?.keys?.includes('debug.sidebarHoverDelay') ||
         detail?.keys?.includes('ui.rightSidebarAutoExpand') ||
-        detail?.keys?.includes('searchEngine')
+        detail?.keys?.includes('searchEngine') ||
+        detail?.keys?.includes('ui.workspaceSwitcherMode')
       ) {
         void loadHoverSettings();
       }
@@ -715,6 +805,51 @@ export function App() {
     }
     void loadTabs();
   }, []);
+
+  // TP7：加载工作区列表（元数据；会话分区由主进程管理）。
+  const refreshWorkspaces = useCallback(async () => {
+    try {
+      const result = (await window.urchin.invoke('workspace.list', {})) as {
+        workspaces?: readonly Workspace[];
+      };
+      // 防御：mock/异常返回缺字段时按空列表处理
+      setWorkspaces(Array.isArray(result.workspaces) ? result.workspaces : []);
+    } catch (e) {
+      console.error('Failed to load workspaces:', e);
+      setWorkspaces([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshWorkspaces();
+  }, [refreshWorkspaces]);
+
+  // TP7：工作区变更广播（其他窗口创建/删除/改名/清空后本窗口同步刷新）。
+  useEffect(() => {
+    const unsubscribe = window.urchin.on('workspace:changed', () => {
+      void refreshWorkspaces();
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [refreshWorkspaces]);
+
+  // TP7：当前工作区跟随活动标签（不变量：活动标签永远属于当前工作区）。
+  useEffect(() => {
+    if (activeTabId == null) return;
+    const active = tabs.find((t) => t.id === activeTabId);
+    if (active?.workspaceId && active.workspaceId !== currentWorkspaceId) {
+      setCurrentWorkspaceId(active.workspaceId);
+    }
+  }, [activeTabId, tabs, currentWorkspaceId]);
+
+  // TP7：工作区被删除/清空后，当前工作区失效 → 回退默认工作区。
+  useEffect(() => {
+    if (currentWorkspaceId === DEFAULT_WORKSPACE_ID) return;
+    if (workspaces.length > 0 && !workspaces.some((w) => w.id === currentWorkspaceId)) {
+      setCurrentWorkspaceId(DEFAULT_WORKSPACE_ID);
+    }
+  }, [workspaces, currentWorkspaceId]);
 
   // ── 编辑守卫：标签关闭/切换拦截 + 确认弹窗状态 ──
   // 声明在 tab 事件订阅 effect 之前：事件路径（新建标签等绕过 handleSelectTab
@@ -841,6 +976,19 @@ export function App() {
       });
       if (evt.type === 'created' && snapshot.active) {
         setActiveTabId(snapshot.id);
+      }
+      // TP7：维护每工作区「最近激活标签」（切换工作区时恢复现场）。
+      // 排除总览页：它是临时页，激活后不应顶掉该工作区真正的现场标签。
+      if (snapshot.active && !snapshot.url.startsWith('urchin://workspaces')) {
+        lastActiveByWorkspaceRef.current[snapshot.workspaceId ?? DEFAULT_WORKSPACE_ID] =
+          snapshot.id;
+      }
+      if (evt.type === 'removed') {
+        for (const key of Object.keys(lastActiveByWorkspaceRef.current)) {
+          if (lastActiveByWorkspaceRef.current[key] === snapshot.id) {
+            delete lastActiveByWorkspaceRef.current[key];
+          }
+        }
       }
     };
     const unsubscribe = window.urchin.on('tab:event', (payload) => {
@@ -985,16 +1133,18 @@ export function App() {
 
   const handleNewTab = useCallback(async () => {
     try {
-      // 新标签页打开内嵌主页（urchin://newtab，无法自由更换）
+      // 新标签页总是作为内部页（urchin://newtab）无法被归类到某个网站，
+      // 显式归属当前工作区（TP7：空工作区的新建也落在该工作区）。
       await window.urchin.invoke('tab.create', {
         windowId: await getCurrentWindowId(),
         url: 'urchin://newtab',
         active: true,
+        workspaceId: currentWorkspaceId,
       });
     } catch (e) {
       console.error('Failed to create tab:', e);
     }
-  }, []);
+  }, [currentWorkspaceId]);
 
   // 打开设置标签页：如果已有设置标签页则激活它，不重复创建
   const handleOpenSettings = useCallback(async () => {
@@ -1263,16 +1413,25 @@ export function App() {
     pointerId: number;
     url: string;
     tabId: number;
+    workspaceId: string;
     captureEl: HTMLElement;
   } | null>(null);
 
   const handleTabPointerDown = useCallback((e: React.PointerEvent, tab: TabSnapshot) => {
+    // TP7：右键不触发拖拽（右键弹出工作区菜单）
+    if (e.button !== 0) return;
     if (!/^https?:\/\//i.test(tab.url)) return;
     // 关闭按钮等交互元素上不启动拖拽：setPointerCapture 会把 pointerup 后的
     // click 事件重定向到卡片（捕获目标），关闭按钮的 onClick 永远不触发（关闭阻塞）
     if ((e.target as HTMLElement).closest('button')) return;
     const el = e.currentTarget as HTMLElement;
-    tabDragRef.current = { pointerId: e.pointerId, url: tab.url, tabId: tab.id, captureEl: el };
+    tabDragRef.current = {
+      pointerId: e.pointerId,
+      url: tab.url,
+      tabId: tab.id,
+      workspaceId: tab.workspaceId ?? DEFAULT_WORKSPACE_ID,
+      captureEl: el,
+    };
     if (typeof el.setPointerCapture === 'function') {
       try {
         el.setPointerCapture(e.pointerId);
@@ -1298,9 +1457,9 @@ export function App() {
       } catch {
         /* 未捕获/已释放忽略 */
       }
-      const { url, tabId } = st;
+      const { url, tabId, workspaceId } = st;
       void window.urchin
-        .invoke('window.createWithUrl', { url, x: e.screenX, y: e.screenY })
+        .invoke('window.createWithUrl', { url, x: e.screenX, y: e.screenY, workspaceId })
         .then(() => window.urchin.invoke('tab.close', { tabId }))
         .catch((err) => console.error('Failed to open tab in new window:', err));
     }
@@ -1449,6 +1608,8 @@ export function App() {
   // 使用设置中配置的延迟（debug.sidebarHoverDelay），0 = 立即展开
   const handleRightMouseEnter = useCallback(() => {
     if (rightExpanded || !rightSidebarAutoExpand) return;
+    // TP7：鼠标停在工作区切换器图标上时抑制自动展开（滚轮切换工作区不被打断）
+    if (workspaceAvatarHoverRef.current) return;
     // 清除上一个未触发的定时器，避免重复展开
     if (rightHoverTimerRef.current) {
       clearTimeout(rightHoverTimerRef.current);
@@ -1629,6 +1790,7 @@ export function App() {
   const isMailTab = !!activeTab?.url?.startsWith('urchin://mail');
   const isGenOfficeHomeTab = !!activeTab?.url?.startsWith('urchin://genoffice-home');
   const isNewTab = !!activeTab?.url?.startsWith('urchin://newtab');
+  const isWorkspacesTab = !!activeTab?.url?.startsWith('urchin://workspaces');
   const isFileViewerTab = !!activeTab?.url?.startsWith('urchin://file-viewer');
   // GenOffice 编辑器标签（阶段 2）：视图由主进程 WebContentsView 覆盖渲染，
   // React 中区留空、底部地址栏隐藏（编辑器自带工具条与保存流程）
@@ -1645,6 +1807,7 @@ export function App() {
     isMailTab ||
     isGenOfficeHomeTab ||
     isNewTab ||
+    isWorkspacesTab ||
     isFileViewerTab ||
     isGenOfficeTab;
 
@@ -1658,6 +1821,243 @@ export function App() {
       return undefined;
     }
   })();
+  // ── TP7 工作区操作 ──
+
+  /**
+   * 采集指定工作区的整窗快照（工作区总览页卡片）。
+   *
+   * 采集时机（必须在该工作区仍处于激活现场时）：
+   * - 切换到其他工作区前（保留离开时的窗口状态）；
+   * - 打开总览页前（否则截图会包含总览页自身）。
+   * 内部页（设置/主页/总览等）由 React 渲染，窗口截图已包含其内容，不叠加网页；
+   * 普通网页按内容区 DOM 矩形叠加 BrowserView 截图，合成为「整个浏览器窗口」。
+   *
+   * @param throttleMs >0 时按工作区限流（滚轮连续切换避免每步抓图）
+   */
+  const captureWorkspaceSnapshot = useCallback(
+    async (workspaceId: string, throttleMs = 0): Promise<void> => {
+      if (workspaceSnapshotInFlightRef.current) return;
+      const now = Date.now();
+      const last = lastWorkspaceSnapshotAtRef.current[workspaceId] ?? 0;
+      if (throttleMs > 0 && now - last < throttleMs) return;
+
+      workspaceSnapshotInFlightRef.current = true;
+      try {
+        const windowId = await getCurrentWindowId();
+        const rect = contentAreaRef.current?.getBoundingClientRect();
+        const overlayPage = !isInternalPage && activeTabId !== null;
+        const snapshot = await captureWindowSnapshot({
+          windowId,
+          activeTabId: overlayPage ? activeTabId : null,
+          contentRect:
+            overlayPage && rect
+              ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+              : null,
+        });
+        if (snapshot) {
+          lastWorkspaceSnapshotAtRef.current[workspaceId] = Date.now();
+          setWorkspaceSnapshots((prev) => ({ ...prev, [workspaceId]: snapshot }));
+        }
+      } finally {
+        workspaceSnapshotInFlightRef.current = false;
+      }
+    },
+    [activeTabId, isInternalPage],
+  );
+
+  /** 切换工作区：有标签则激活该工作区最近激活/首个标签；空则自动新建主页标签。 */
+  const handleSwitchWorkspace = useCallback(
+    (workspaceId: string) => {
+      if (workspaceId === currentWorkspaceId) return;
+      setCurrentWorkspaceId(workspaceId);
+      const list = tabs.filter((t) => (t.workspaceId ?? DEFAULT_WORKSPACE_ID) === workspaceId);
+      const last = lastActiveByWorkspaceRef.current[workspaceId];
+      const target = list.find((t) => t.id === last) ?? list[0];
+      if (target) {
+        if (target.id !== activeTabId) void doSelectTab(target.id);
+        return;
+      }
+      // 空工作区：自动新建主页标签（TP7 确认行为）
+      void (async () => {
+        try {
+          const windowId = await getCurrentWindowId();
+          await window.urchin.invoke('tab.create', {
+            windowId,
+            url: 'urchin://newtab',
+            active: true,
+            workspaceId,
+          });
+        } catch (e) {
+          console.error('Failed to open newtab in workspace:', e);
+        }
+      })();
+    },
+    [tabs, currentWorkspaceId, activeTabId, doSelectTab],
+  );
+
+  // 自动采集当前工作区整窗快照（总览页卡片）：
+  // 标签切换/加载完成后延迟一拍（等页面绘制稳定），同工作区 2.5s 限流。
+  // 不阻塞工作区切换——总览打开时再补一次最新快照（见 handleOpenWorkspacesPage）。
+  const activeTabLoading = activeTab?.loading ?? false;
+  const activeTabUrl = activeTab?.url ?? '';
+  useEffect(() => {
+    if (isWorkspacesTab || activeTabId === null || activeTabLoading) return;
+    const timer = window.setTimeout(() => {
+      void captureWorkspaceSnapshot(currentWorkspaceId, 2500);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [
+    activeTabId,
+    activeTabUrl,
+    activeTabLoading,
+    currentWorkspaceId,
+    isWorkspacesTab,
+    captureWorkspaceSnapshot,
+  ]);
+
+  /** 滚轮切换（折叠态）：dir=1 下一个 / -1 上一个。 */
+  const handleCycleWorkspace = useCallback(
+    (dir: 1 | -1) => {
+      if (workspaces.length === 0) return;
+      const idx = workspaces.findIndex((w) => w.id === currentWorkspaceId);
+      const next = workspaces[(idx + dir + workspaces.length) % workspaces.length];
+      if (next) handleSwitchWorkspace(next.id);
+    },
+    [workspaces, currentWorkspaceId, handleSwitchWorkspace],
+  );
+
+  const handleCreateWorkspace = useCallback(
+    async (name: string, color: WorkspaceColor): Promise<Workspace | undefined> => {
+      try {
+        const res = (await window.urchin.invoke('workspace.create', { name, color })) as {
+          workspace: Workspace;
+        };
+        await refreshWorkspaces();
+        return res.workspace;
+      } catch (e) {
+        console.error('Failed to create workspace:', e);
+        return undefined;
+      }
+    },
+    [refreshWorkspaces],
+  );
+
+  /** 创建后切换到新工作区（入口保留原行为：创建 → 切过去）。 */
+  const handleCreateAndSwitchWorkspace = useCallback(
+    async (name: string, color: WorkspaceColor) => {
+      const ws = await handleCreateWorkspace(name, color);
+      if (ws) handleSwitchWorkspace(ws.id);
+    },
+    [handleCreateWorkspace, handleSwitchWorkspace],
+  );
+
+  const handleUpdateWorkspace = useCallback(
+    async (id: string, patch: { name?: string; color?: WorkspaceColor }) => {
+      await window.urchin.invoke('workspace.update', { id, ...patch });
+      await refreshWorkspaces();
+    },
+    [refreshWorkspaces],
+  );
+
+  const handleRemoveWorkspace = useCallback(
+    async (id: string) => {
+      await window.urchin.invoke('workspace.remove', { id });
+      await refreshWorkspaces();
+      if (currentWorkspaceId === id) setCurrentWorkspaceId(DEFAULT_WORKSPACE_ID);
+    },
+    [refreshWorkspaces, currentWorkspaceId],
+  );
+
+  const handleClearWorkspaceData = useCallback(
+    async (id: string) => {
+      await window.urchin.invoke('workspace.clearData', { id });
+      await refreshWorkspaces();
+    },
+    [refreshWorkspaces],
+  );
+
+  /** 在另一工作区打开当前页（标签右键菜单）。 */
+  const handleOpenInWorkspace = useCallback(async (workspaceId: string, tab: { url: string }) => {
+    try {
+      const windowId = await getCurrentWindowId();
+      await window.urchin.invoke('tab.create', {
+        windowId,
+        url: tab.url,
+        active: true,
+        workspaceId,
+      });
+    } catch (e) {
+      console.error('Failed to open in workspace:', e);
+    }
+  }, []);
+
+  /** 新建工作区并打开当前页（标签右键菜单兜底）。 */
+  const handleOpenInNewWorkspace = useCallback(
+    async (tab: { url: string }) => {
+      try {
+        const res = (await window.urchin.invoke('workspace.create', {
+          name: '新工作区',
+          color: 'violet',
+        })) as { workspace: Workspace };
+        await refreshWorkspaces();
+        await handleOpenInWorkspace(res.workspace.id, tab);
+      } catch (e) {
+        console.error('Failed to create workspace and open:', e);
+      }
+    },
+    [refreshWorkspaces, handleOpenInWorkspace],
+  );
+
+  /** 折叠态：悬停工作区切换器时抑制侧栏自动展开（滚轮切换不被打断）。 */
+  const handleWorkspaceAvatarEnter = useCallback(() => {
+    workspaceAvatarHoverRef.current = true;
+    if (rightHoverTimerRef.current) {
+      clearTimeout(rightHoverTimerRef.current);
+      rightHoverTimerRef.current = null;
+    }
+    setRightHovered(false);
+  }, []);
+  const handleWorkspaceAvatarLeave = useCallback(() => {
+    workspaceAvatarHoverRef.current = false;
+  }, []);
+
+  // ── 折叠态工作区总览页（cards 模式，参考 ego-lite Space 卡片设计）──
+
+  /** 打开工作区总览页：先抓当前工作区整窗快照，再新建 urchin://workspaces 标签。 */
+  const handleOpenWorkspacesPage = useCallback(() => {
+    // 已在总览页：不重复开页（否则快照会把总览页自身截进去）
+    if (isWorkspacesTab) return;
+    void (async () => {
+      // 必须先抓图：总览页一旦打开，内容区就是总览页本身
+      await captureWorkspaceSnapshot(currentWorkspaceId);
+      try {
+        await window.urchin.invoke('tab.create', {
+          windowId: await getCurrentWindowId(),
+          url: 'urchin://workspaces',
+          active: true,
+          workspaceId: currentWorkspaceId,
+        });
+      } catch (e) {
+        console.error('Failed to open workspaces page:', e);
+      }
+    })();
+  }, [currentWorkspaceId, isWorkspacesTab, captureWorkspaceSnapshot]);
+
+  /** 总览页数据：每工作区一张卡片 + 已采集的整窗快照（无快照时组件渲染占位）。 */
+  const workspaceOverviewItems: readonly WorkspaceOverviewItem[] = useMemo(
+    () =>
+      workspaces.map((ws) => ({
+        workspace: ws,
+        snapshot: workspaceSnapshots[ws.id],
+      })),
+    [workspaces, workspaceSnapshots],
+  );
+
+  // 当前工作区的标签（展开/折叠列表都按工作区过滤，TP7）
+  const visibleTabs = tabs.filter(
+    (t) => (t.workspaceId ?? DEFAULT_WORKSPACE_ID) === currentWorkspaceId,
+  );
+
   // 按住侧边栏空白处拖动窗口（左/右两侧栏共用）
   const windowDrag = useWindowDrag();
 
@@ -1679,9 +2079,16 @@ export function App() {
     })();
   }, [activeTab?.url]);
 
+  // Windows 使用自绘 chrome（8px 外框 + 圆角 shell + 自绘标题栏）；
+  // 其他平台保留原生标题栏，渲染层不叠加外框/标题栏，避免双重窗口装饰。
+  const useCustomChrome = window.urchin.platform === 'win32';
+
   return (
     <div
-      className="flex h-screen w-screen overflow-hidden bg-surface"
+      className={cn(
+        'h-screen w-screen overflow-hidden',
+        useCustomChrome ? 'app-window-frame' : 'bg-titlebar',
+      )}
       // 拖放本地文件到窗口：直接按类型在新标签页打开（audio/video/pdf 原生渲染，文本走查看器）
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
@@ -1691,492 +2098,659 @@ export function App() {
         if (path) handleOpenFilePath(path);
       }}
     >
-      {/* === 左侧栏 ===
-       *  背景用 bg-titlebar（与窗口标题栏同色令牌）：标题栏是 OS 原生色
-       *  （浅色=白 / 暗色=中性深灰），侧栏跟随该令牌后两者间的色差分割线消失，
-       *  视觉上一体。border-r 保留：这是"左侧边栏与网页区"之间的分割线
-       *  （网页区左上角圆角的夹角边之一）。 */}
-      <aside
-        className="flex shrink-0 flex-col border-r border-border bg-titlebar transition-[width] duration-150"
-        style={{ width: leftWidth }}
-        onPointerDown={windowDrag.startDrag}
-        onPointerMove={windowDrag.moveDrag}
-        onPointerUp={windowDrag.endDrag}
-        onPointerCancel={windowDrag.endDrag}
-      >
-        {/* 顶部：折叠/展开按钮 */}
-        <button
-          className="flex h-11 w-full items-center justify-center text-text-secondary hover:bg-surface-secondary hover:text-text"
-          onClick={handleToggleLeft}
-          aria-label={leftExpanded ? '折叠左侧栏' : '展开左侧栏'}
-        >
-          {leftExpanded ? (
-            <PanelLeftClose className="h-4 w-4" />
-          ) : (
-            <PanelLeftOpen className="h-4 w-4" />
-          )}
-        </button>
-
-        {/* 中部：摘要文档目录树（数据空间入口）
-         *  左侧边栏折叠时不渲染（宽度不足）；展开时加载并显示本地摘要文档
-         *  点击文件节点在新标签页打开 HTML 文档 */}
-        <div className="flex-1 overflow-hidden">
-          {leftExpanded && (
-            <SummaryTreeView
-              nodes={summaryTree}
-              loading={summaryTreeLoading}
-              onOpenDoc={handleOpenSummaryDoc}
-            />
-          )}
-        </div>
-
-        {/* 底部：DeepSeek Harness / pi / GenOffice 文档 / 邮箱 / 主页 / 主题切换 / 设置入口
-         *（GenOffice 入口打开模块主页：打开文件 / 格式说明 / 原生 AI 设置） */}
-        <div className="flex flex-col items-center gap-1 border-t border-border p-2">
-          {/* DeepSeek Harness 入口（用户指令：pi 按钮上方新增） */}
-          <button
-            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-            onClick={() => void handleOpenDeepSeekHarness()}
-            aria-label="DeepSeek Harness"
-            title="DeepSeek Harness"
-          >
-            <img
-              src="./dsh-icon.svg"
-              alt=""
-              draggable={false}
-              className="h-5 w-5 rounded object-contain"
-            />
-          </button>
-          {/* pi 入口（与 GenOffice 文档入口互换位置，用户指令） */}
-          <button
-            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-            onClick={() => void handleOpenAi()}
-            aria-label="AI 助手"
-            title="AI 助手"
-          >
-            {/* pi 模块入口图标（用户指定素材，public/pi-icon.png，白底深蓝 π 方形图标） */}
-            <img
-              src="./pi-icon.png"
-              alt=""
-              draggable={false}
-              className="h-5 w-5 rounded object-contain"
-            />
-          </button>
-          {/* GenOffice 文档入口（阶段 4.5，用户指令：由「打开文件」按钮改为
-           *  嵌入的 GenOffice 前端入口；打开文件动作收敛到主页/Ctrl+O/拖放） */}
-          <button
-            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-            onClick={() => void handleOpenGenOfficeHome()}
-            aria-label="GenOffice 文档"
-            title="GenOffice 文档（Word / PDF / Markdown / HTML）"
-          >
-            <FileText className="h-4 w-4" />
-          </button>
-          <button
-            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-            onClick={() => void handleOpenMail()}
-            aria-label="邮箱"
-            title="邮箱"
-          >
-            <MailIcon className="h-4 w-4" />
-          </button>
-          {/* 主页按钮（从地址栏移入，位于邮箱与主题之间，倒数第三） */}
-          <button
-            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-            onClick={() => void handleGoHome()}
-            aria-label="主页"
-            title="主页"
-          >
-            <Home className="h-4 w-4" />
-          </button>
-          <button
-            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-            onClick={toggleTheme}
-            aria-label="切换主题"
-            title="切换主题"
-          >
-            {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-          </button>
-          <button
-            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-            onClick={() => void handleOpenSettings()}
-            aria-label="设置"
-            title="设置"
-          >
-            <SettingsIcon className="h-4 w-4" />
-          </button>
-        </div>
-      </aside>
-
-      {/* === 中间列：ContentArea + 下侧地址栏 === */}
-      <main className="flex flex-1 flex-col overflow-hidden">
-        {/* ContentArea
-         *  背景必须用主题令牌 bg-surface 而非硬编码白色：本 div 位于网页
-         *  BrowserView 之下，DPI 取整级缝隙会透出此背景——硬编码白在深色
-         *  模式下表现为「网页四边白色分割线」（dev.50 修复）。
-         *  内部页面（设置/主页/文件查看器）均自带满幅 bg-surface 根，
-         *  容器换色不影响其外观。 */}
-        <div className="flex-1 overflow-hidden bg-surface">
-          {
-            isSettingsTab ? (
-              /* 设置页：React 组件渲染；key 随 ?tab= 深链变化重挂载以定位选项卡 */
-              <SettingsPage
-                key={settingsInitialTab ?? 'settings'}
-                initialTab={settingsInitialTab}
-              />
-            ) : isAiTab ? (
-              /* AI 页：pi 网页版启动器（阶段 1，docs/pi-web-评估.md）——pi 对话迁移至
-               * 独立系统 Node 子进程的 pi-web-ui 网页,本页仅作入口（启动/停止/打开）。
-               * 旧对话视图 AiChatView 保留于 @urchin/ai-extension,回退时恢复渲染即可。 */
-              <PiWebLauncherView autoStart onOpenUrl={(url) => void handleOpenPiWebUrl(url)} />
-            ) : isMailTab ? (
-              /* M25 邮箱模块：IMAP 收信 + 邮件阅读（ADR-010）。
-               * 引擎在主进程（imapflow），UI 在渲染进程，IPC 走 zod 契约。 */
-              <MailView />
-            ) : isGenOfficeHomeTab && !isGenOfficeTab ? (
-              /* GenOffice 文档主页保底（阶段 4.6）：正常情况下主进程以
-               *  GenOffice shell Home 视图承载（viewKind=genoffice，React 留空）；
-               *  仅当 shell 产物缺失时回落本 React 页面（浏览器标签） */
-              <GenOfficeHome onOpenFile={() => void handleOpenFilePicker()} />
-            ) : isNewTab || tabs.length === 0 ? (
-              /* 主页：React 组件渲染（内嵌，无法自由更换）。
-               * 关闭最后一个标签后 activeTab 为空，此时同样回落到主页 */
-              <NewTabPage onNavigate={(url) => void handleNavigate(url)} />
-            ) : isFileViewerTab ? (
-              /* 本地文件查看器/文件夹浏览器：React 组件渲染（urchin://file-viewer），
-               * ?path= 查看文件（媒体/PDF/图片内嵌 + 同类型连续切换），?dir= 浏览文件夹。
-               * onNavigate 走 handleNavigate：同标签导航（上/下一个、进入子目录）不堆标签 */
-              <FileViewer
-                url={activeTab?.url ?? ''}
-                onNavigate={(u) => void handleNavigate(u)}
-                tabId={activeTabId ?? undefined}
-                onToast={showEditorToast}
-              />
-            ) : null /* 普通网页：由 Electron BrowserView 渲染，React 仅留空 */
-          }
-        </div>
-
-        {/* 编辑守卫确认弹窗（关闭/切换标签时目标涉及脏编辑会话） */}
-        <ConfirmDialog
-          open={editorGuardAsk !== null}
-          title={editorGuardAsk?.kind === 'close' ? '关闭前保存更改？' : '切换前保存更改？'}
-          message="当前文档有未保存的修改。（保存写入原文件；失败可改用查看器右上角「另存为」）"
-          onDismiss={() => setEditorGuardAsk(null)}
-          actions={[
-            {
-              label: editorGuardAsk?.kind === 'close' ? '保存并关闭' : '保存并切换',
-              variant: 'primary',
-              autoFocus: true,
-              onClick: () => {
-                void (async () => {
-                  const s = getEditGuardSession();
-                  if (!s || !editorGuardAsk) {
-                    setEditorGuardAsk(null);
-                    return;
-                  }
-                  const ok = await s.save();
-                  setEditorGuardAsk(null);
-                  if (ok) editorGuardAsk.run();
-                })();
-              },
-            },
-            {
-              label: '不保存',
-              variant: 'danger',
-              onClick: () => {
-                void (async () => {
-                  const s = getEditGuardSession();
-                  const ask = editorGuardAsk;
-                  setEditorGuardAsk(null);
-                  if (s && ask) await s.discard();
-                  if (ask) ask.run();
-                })();
-              },
-            },
-            {
-              label: '取消',
-              onClick: () => setEditorGuardAsk(null),
-            },
-          ]}
-        />
-
-        {/* 下侧边栏：地址栏 + 导航按钮（被左右侧栏夹住）
-         *  AI 标签页隐藏地址栏：AI 模块作为独立全屏对话应用，不需要 URL 导航
-         *  GenOffice 编辑器/主页标签同样隐藏：编辑器自带工具条与保存流程，
-         *  主页为内部页面，伪地址均无导航意义 */}
-        {!isAiTab && !isGenOfficeTab && !isGenOfficeHomeTab && (
-          <div
-            className="flex shrink-0 items-center gap-1.5 border-t border-border bg-surface px-2"
-            style={{ height: BOTTOM_HEIGHT }}
-          >
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 shrink-0 p-0"
-              onClick={() => void handleGoBack()}
-              disabled={!activeTab?.canGoBack || isInternalPage}
-              aria-label="后退"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 shrink-0 p-0"
-              onClick={() => void handleGoForward()}
-              disabled={!activeTab?.canGoForward || isInternalPage}
-              aria-label="前进"
-            >
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 shrink-0 p-0"
-              onClick={() => void handleReload()}
-              disabled={!activeTabId || isInternalPage}
-              aria-label="刷新"
-            >
-              <RotateCw className={cn('h-4 w-4', activeTab?.loading && 'animate-spin')} />
-            </Button>
-
-            <Omnibox
-              currentUrl={activeTab?.url ?? ''}
-              loading={activeTab?.loading ?? false}
-              securityState={getSecurityState(activeTab?.url ?? '')}
-              suggestions={suggestions}
-              onNavigate={(url) => void handleNavigate(url)}
-              onSuggestionQuery={(q) => void handleSuggestionQuery(q)}
-              bookmarkSaved={bookmarkSaved}
-              bookmarkable={!isInternalPage && !!activeTab?.url && isBookmarkable(activeTab.url)}
-              onBookmarkToggle={() => void handleSaveBookmark()}
-              onSummarize={() => void handleSummarize()}
-              summarizeDisabled={
-                summaryRunning || !activeTab?.url || !/^https?:\/\//i.test(activeTab.url)
-              }
-              onScreenshot={() => void handleScreenshot()}
-              screenshotDisabled={!activeTabId}
-              onTranslate={() => void handleTranslate()}
-              translateActive={translateActive}
-              translateDisabled={!activeTab?.url || !/^https?:\/\//i.test(activeTab.url)}
-              searchEngine={searchEngine}
-            />
-
-            {bookmarkToast && (
-              <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border">
-                {bookmarkToast}
-              </div>
-            )}
-
-            {summaryToast && (
-              <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border flex items-center gap-1.5">
-                {summaryRunning && <RotateCw className="h-3 w-3 animate-spin" />}
-                <span>{summaryToast}</span>
-              </div>
-            )}
-
-            {/* DeepSeek Harness 启动中的持久提示（启动完成前不自动消失） */}
-            {dshStarting && (
-              <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border flex items-center gap-1.5">
-                <RotateCw className="h-3 w-3 animate-spin" />
-                <span>正在启动 DeepSeek Harness…</span>
-              </div>
-            )}
-
-            {/* 划词翻译结果卡（M24 dev.81）：右键菜单触发，主进程翻译后经事件回传；
-                定位用右键菜单同款窗口相对坐标（已含 BrowserView 偏移补偿），防溢出夹边 */}
-            {selectionCard && (
-              <div
-                className="fixed z-50 max-w-md rounded-lg border border-border bg-surface p-3 shadow-dropdown"
-                style={{
-                  left: Math.max(8, Math.min(selectionCard.x, window.innerWidth - 420)),
-                  top: Math.min(selectionCard.y + 12, window.innerHeight - 180),
-                }}
-              >
-                <div className="mb-1.5 flex items-start justify-between gap-3">
-                  <div
-                    className="min-w-0 flex-1 truncate text-xs text-text-secondary"
-                    title={selectionCard.source}
-                  >
-                    {selectionCard.source}
-                  </div>
-                  <button
-                    type="button"
-                    className="shrink-0 text-text-secondary hover:text-text"
-                    onClick={() => setSelectionCard(null)}
-                    aria-label="关闭划词翻译"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="whitespace-pre-wrap text-sm leading-relaxed text-text">
-                  {selectionCard.error ?? selectionCard.result}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </main>
-
-      {/* === 右侧栏 === */}
-      {/* 折叠态下悬停展开，鼠标离开带过冲弹性回弹；展开/收起使用不同缓动以体现"力度"。
-       *  拖拽调节中（resizingRight）禁用宽度 transition，保证跟手。 */}
-      <aside
+      <div
+        data-app-window-bg="true"
+        // 窗口统一底色：以标题栏同色令牌 --color-titlebar 为顶部基调，向下渐变到
+        // surface；左右侧栏/内容区/地址栏均透明，让同一层渐变贯穿整个窗口，消除各区域
+        // 独立背景造成的竖向色带。顶部只在中段叠一层极淡品牌色，边缘仍保持标题栏同色。
         className={cn(
-          'relative flex shrink-0 flex-col border-l border-border bg-surface-secondary',
-          resizingRight
-            ? ''
-            : rightRetracting
-              ? 'transition-[width] duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)]'
-              : 'transition-[width] duration-150 ease-out',
+          'flex h-full w-full flex-col overflow-hidden bg-titlebar',
+          useCustomChrome && 'app-window-shell',
         )}
-        style={{ width: rightWidth }}
-        onMouseEnter={handleRightMouseEnter}
-        onMouseLeave={handleRightMouseLeave}
-        onDoubleClick={handleRightDoubleClick}
-        onPointerDown={windowDrag.startDrag}
-        onPointerMove={windowDrag.moveDrag}
-        onPointerUp={windowDrag.endDrag}
-        onPointerCancel={windowDrag.endDrag}
-        aria-label="右侧边栏"
+        style={{
+          backgroundImage:
+            'radial-gradient(ellipse 92% 42% at 50% 18%, color-mix(in srgb, var(--color-primary) 8%, transparent) 0%, transparent 72%), linear-gradient(180deg, var(--color-titlebar) 0%, color-mix(in srgb, var(--color-titlebar) 60%, var(--color-surface)) 26%, var(--color-surface) 66%, var(--color-surface-secondary) 100%)',
+        }}
       >
-        {/* 宽度调节手柄：展开态下渲染于栏左缘内侧（避免与 BrowserView 重叠），
-         *  鼠标移入手柄区域变横向调节光标，按住左右拖动调宽 */}
-        {effectiveRightExpanded && (
-          <div
-            className="absolute top-0 bottom-12 left-0 z-10 w-1.5 cursor-col-resize"
-            onPointerDown={handleRightResizeStart}
-            onPointerMove={handleRightResizeMove}
-            onPointerUp={handleRightResizeEnd}
-            onPointerCancel={handleRightResizeEnd}
-            aria-label="调节右侧栏宽度"
-            role="separator"
-          />
-        )}
-        {effectiveRightExpanded ? (
-          <>
-            {/* 视图标题：标签页 */}
-            <div className="flex shrink-0 border-b border-border">
-              <div className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium text-text">
-                <ListIcon className="h-3.5 w-3.5" />
-                标签页
+        {useCustomChrome && <AppTitleBar />}
+
+        {/* 主体三列：左/右侧栏夹住中区，整体位于自绘标题栏下方 */}
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          {/* === 左侧栏 ===
+           *  背景透明，透出窗口级统一渐变（顶部与 OS 原生标题栏同色）；
+           *  border-r 保留：这是"左侧边栏与网页区"之间的分割线
+           *  （网页区左上角圆角的夹角边之一）。 */}
+          <aside
+            className="flex shrink-0 flex-col border-r border-border bg-transparent transition-[width] duration-150"
+            style={{ width: leftWidth }}
+            onPointerDown={windowDrag.startDrag}
+            onPointerMove={windowDrag.moveDrag}
+            onPointerUp={windowDrag.endDrag}
+            onPointerCancel={windowDrag.endDrag}
+          >
+            {/* 顶部：折叠/展开按钮 */}
+            <button
+              className="flex h-11 w-full items-center justify-center text-text-secondary hover:bg-surface-secondary hover:text-text"
+              onClick={handleToggleLeft}
+              aria-label={leftExpanded ? '折叠左侧栏' : '展开左侧栏'}
+            >
+              {leftExpanded ? (
+                <PanelLeftClose className="h-4 w-4" />
+              ) : (
+                <PanelLeftOpen className="h-4 w-4" />
+              )}
+            </button>
+
+            {/* 中部：摘要文档目录树（数据空间入口）
+             *  左侧边栏折叠时不渲染（宽度不足）；展开时加载并显示本地摘要文档
+             *  点击文件节点在新标签页打开 HTML 文档 */}
+            <div className="flex-1 overflow-hidden">
+              {leftExpanded && (
+                <SummaryTreeView
+                  nodes={summaryTree}
+                  loading={summaryTreeLoading}
+                  onOpenDoc={handleOpenSummaryDoc}
+                />
+              )}
+            </div>
+
+            {/* 底部：DeepSeek Harness / pi / GenOffice 文档 / 邮箱 / 主页 / 主题切换 / 设置入口
+             *（GenOffice 入口打开模块主页：打开文件 / 格式说明 / 原生 AI 设置） */}
+            <div className="flex flex-col items-center gap-1 border-t border-border p-2">
+              {/* DeepSeek Harness 入口（用户指令：pi 按钮上方新增） */}
+              <button
+                className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+                onClick={() => void handleOpenDeepSeekHarness()}
+                aria-label="DeepSeek Harness"
+                title="DeepSeek Harness"
+              >
+                <img
+                  src="./dsh-icon.svg"
+                  alt=""
+                  draggable={false}
+                  className="h-5 w-5 rounded object-contain"
+                />
+              </button>
+              {/* pi 入口（与 GenOffice 文档入口互换位置，用户指令） */}
+              <button
+                className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+                onClick={() => void handleOpenAi()}
+                aria-label="AI 助手"
+                title="AI 助手"
+              >
+                {/* pi 模块入口图标（用户指定素材，public/pi-icon.png，白底深蓝 π 方形图标） */}
+                <img
+                  src="./pi-icon.png"
+                  alt=""
+                  draggable={false}
+                  className="h-5 w-5 rounded object-contain"
+                />
+              </button>
+              {/* GenOffice 文档入口（阶段 4.5，用户指令：由「打开文件」按钮改为
+               *  嵌入的 GenOffice 前端入口；打开文件动作收敛到主页/Ctrl+O/拖放） */}
+              <button
+                className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+                onClick={() => void handleOpenGenOfficeHome()}
+                aria-label="GenOffice 文档"
+                title="GenOffice 文档（Word / PDF / Markdown / HTML）"
+              >
+                <FileText className="h-4 w-4" />
+              </button>
+              <button
+                className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+                onClick={() => void handleOpenMail()}
+                aria-label="邮箱"
+                title="邮箱"
+              >
+                <MailIcon className="h-4 w-4" />
+              </button>
+              {/* 主页按钮（从地址栏移入，位于邮箱与主题之间，倒数第三） */}
+              <button
+                className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+                onClick={() => void handleGoHome()}
+                aria-label="主页"
+                title="主页"
+              >
+                <Home className="h-4 w-4" />
+              </button>
+              <button
+                className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+                onClick={toggleTheme}
+                aria-label="切换主题"
+                title="切换主题"
+              >
+                {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+              </button>
+              <button
+                className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+                onClick={() => void handleOpenSettings()}
+                aria-label="设置"
+                title="设置"
+              >
+                <SettingsIcon className="h-4 w-4" />
+              </button>
+            </div>
+          </aside>
+
+          {/* === 中间列：ContentArea + 下侧地址栏 === */}
+          <main className="flex flex-1 flex-col overflow-hidden">
+            {/* ContentArea
+             *  背景透明：透出窗口级统一渐变。本 div 位于网页 BrowserView 之下，
+             *  DPI 取整级缝隙处会透出此层，因此不能再使用独立 surface 色块；
+             *  内部页面（设置/主页/文件查看器）自带满幅背景，不受影响。 */}
+            <div ref={contentAreaRef} className="flex-1 overflow-hidden bg-transparent">
+              {/* 中区内部页缩放容器（Ctrl+滚轮）：仅缩放内容，侧栏/地址栏尺寸固定 */}
+              <div
+                className="h-full w-full"
+                style={
+                  contentZoom === 1
+                    ? undefined
+                    : {
+                        width: `${100 / contentZoom}%`,
+                        height: `${100 / contentZoom}%`,
+                        transform: `scale(${contentZoom})`,
+                        transformOrigin: 'top left',
+                      }
+                }
+              >
+                {
+                  isSettingsTab ? (
+                    /* 设置页：React 组件渲染；key 随 ?tab= 深链变化重挂载以定位选项卡 */
+                    <SettingsPage
+                      key={settingsInitialTab ?? 'settings'}
+                      initialTab={settingsInitialTab}
+                    />
+                  ) : isAiTab ? (
+                    /* AI 页：pi 网页版启动器（阶段 1，docs/pi-web-评估.md）——pi 对话迁移至
+                     * 独立系统 Node 子进程的 pi-web-ui 网页,本页仅作入口（启动/停止/打开）。
+                     * 旧对话视图 AiChatView 保留于 @urchin/ai-extension,回退时恢复渲染即可。 */
+                    <PiWebLauncherView
+                      autoStart
+                      onOpenUrl={(url) => void handleOpenPiWebUrl(url)}
+                    />
+                  ) : isMailTab ? (
+                    /* M25 邮箱模块：IMAP 收信 + 邮件阅读（ADR-010）。
+                     * 引擎在主进程（imapflow），UI 在渲染进程，IPC 走 zod 契约。 */
+                    <MailView />
+                  ) : isGenOfficeHomeTab && !isGenOfficeTab ? (
+                    /* GenOffice 文档主页保底（阶段 4.6）：正常情况下主进程以
+                     *  GenOffice shell Home 视图承载（viewKind=genoffice，React 留空）；
+                     *  仅当 shell 产物缺失时回落本 React 页面（浏览器标签） */
+                    <GenOfficeHome onOpenFile={() => void handleOpenFilePicker()} />
+                  ) : isNewTab || tabs.length === 0 ? (
+                    /* 主页：React 组件渲染（内嵌，无法自由更换）。
+                     * 关闭最后一个标签后 activeTab 为空，此时同样回落到主页 */
+                    <NewTabPage onNavigate={(url) => void handleNavigate(url)} />
+                  ) : isWorkspacesTab ? (
+                    /* 工作区总览页（urchin://workspaces，参考 ego-lite Space 卡片设计）：
+                     * 卡片网格展示全部工作区 + 各工作区网页缩略图；点卡切换并关闭本页
+                     * 注：即使目标 == 当前工作区（例如总览页本身归属当前工作区），
+                     * 也需主动激活其最近激活标签，避免关闭总览页后主进程回落到任意 tab */
+                    <WorkspaceOverviewPage
+                      items={workspaceOverviewItems}
+                      currentWorkspaceId={currentWorkspaceId}
+                      onSwitch={(workspaceId) => {
+                        void (async () => {
+                          // 排除总览页自身：总览 tab 归属当前工作区，若将其作为「最近激活标签」
+                          // 激活后再关闭，会导致主进程移除 active tab 时自动激活到任意剩余 tab
+                          const list = tabs.filter(
+                            (t) =>
+                              (t.workspaceId ?? DEFAULT_WORKSPACE_ID) === workspaceId &&
+                              !t.url.startsWith('urchin://workspaces'),
+                          );
+                          const last = lastActiveByWorkspaceRef.current[workspaceId];
+                          const target = list.find((t) => t.id === last) ?? list[0];
+                          setCurrentWorkspaceId(workspaceId);
+                          if (target) {
+                            // 先激活目标标签（总览页变为 inactive），再关闭总览页；
+                            // 否则关闭 active 的总览页会让主进程激活任意剩余 tab
+                            if (target.id !== activeTabId) await doSelectTab(target.id);
+                          } else {
+                            // 空工作区：新建主页标签（目标工作区）
+                            const windowId = await getCurrentWindowId();
+                            await window.urchin.invoke('tab.create', {
+                              windowId,
+                              url: 'urchin://newtab',
+                              active: true,
+                              workspaceId,
+                            });
+                          }
+                          // 此刻总览页已非 active，安全关闭
+                          if (activeTabId != null) handleCloseTab(activeTabId);
+                        })();
+                      }}
+                      onCreate={async (name, color) => {
+                        const ws = await handleCreateWorkspace(name, color);
+                        // 创建后切到新工作区并关闭总览页
+                        if (ws) {
+                          setCurrentWorkspaceId(ws.id);
+                          if (activeTabId != null) handleCloseTab(activeTabId);
+                        }
+                      }}
+                    />
+                  ) : isFileViewerTab ? (
+                    /* 本地文件查看器/文件夹浏览器：React 组件渲染（urchin://file-viewer），
+                     * ?path= 查看文件（媒体/PDF/图片内嵌 + 同类型连续切换），?dir= 浏览文件夹。
+                     * onNavigate 走 handleNavigate：同标签导航（上/下一个、进入子目录）不堆标签 */
+                    <FileViewer
+                      url={activeTab?.url ?? ''}
+                      onNavigate={(u) => void handleNavigate(u)}
+                      tabId={activeTabId ?? undefined}
+                      onToast={showEditorToast}
+                    />
+                  ) : null /* 普通网页：由 Electron BrowserView 渲染，React 仅留空 */
+                }
               </div>
             </div>
 
-            {/* 标签列表：凸起悬浮感（卡片浮于底色之上，带阴影 + 微光边框 + 顶部高光） */}
-            <div className="flex-1 overflow-hidden flex flex-col">
-              <div className="flex-1 overflow-y-auto p-2">
-                {tabs.length === 0 && (
-                  <p className="px-2 py-4 text-center text-xs text-text-secondary">暂无标签页</p>
-                )}
-                {tabs.map((tab) => (
-                  <div
-                    key={tab.id}
-                    data-tab-card
-                    draggable={false}
-                    onPointerDown={(e) => handleTabPointerDown(e, tab)}
-                    onPointerMove={handleTabPointerMove}
-                    onPointerUp={handleTabPointerEnd}
-                    onPointerCancel={handleTabPointerEnd}
-                    className={cn(
-                      // 凸起悬浮感：圆角卡片 + 投影 + 细边框 + 顶部高光线；
-                      // 激活态更亮（主色投影 + 高对比文字）
-                      'group relative mb-1.5 flex cursor-default items-center gap-2 rounded-lg border px-2.5 py-2 text-sm shadow-sm',
-                      'border-border/60 bg-surface',
-                      'before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:rounded-full before:bg-white/70',
-                      tab.id === activeTabId
-                        ? 'border-primary/40 bg-surface text-text shadow-[0_2px_8px_-2px_rgba(37,99,235,0.35)]'
-                        : 'text-text-secondary shadow-[0_1px_4px_-1px_rgba(0,0,0,0.25)] hover:bg-surface-secondary hover:text-text',
-                    )}
-                    onClick={() => void handleSelectTab(tab.id)}
-                    onDoubleClick={() => void handleCloseTab(tab.id)}
-                  >
-                    {/* 图标铺满标签高度：36px 与折叠态一致，卡片高度随内容撑开约 52px，
-                     *  items-center 垂直居中，object-contain 保持比例不变形 */}
-                    <TabFavicon tab={tab} className="h-9 w-9" />
-                    <span className="flex-1 truncate">{tab.title || tab.url || '新标签页'}</span>
-                    {/* GenOffice 编辑器未保存修改标记（阶段 2） */}
-                    {tab.dirty && (
-                      <span
-                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
-                        title="有未保存的修改"
-                        aria-label="有未保存的修改"
-                      />
-                    )}
-                    <button
-                      className="shrink-0 rounded p-0.5 opacity-0 hover:bg-error/10 group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleCloseTab(tab.id);
-                      }}
-                      aria-label="关闭标签"
-                    >
-                      <X className="h-3 w-3 text-error" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              {/* 新建标签：高度与底部地址栏一致（BOTTOM_HEIGHT=48），底边对齐 */}
+            {/* 编辑守卫确认弹窗（关闭/切换标签时目标涉及脏编辑会话） */}
+            <ConfirmDialog
+              open={editorGuardAsk !== null}
+              title={editorGuardAsk?.kind === 'close' ? '关闭前保存更改？' : '切换前保存更改？'}
+              message="当前文档有未保存的修改。（保存写入原文件；失败可改用查看器右上角「另存为」）"
+              onDismiss={() => setEditorGuardAsk(null)}
+              actions={[
+                {
+                  label: editorGuardAsk?.kind === 'close' ? '保存并关闭' : '保存并切换',
+                  variant: 'primary',
+                  autoFocus: true,
+                  onClick: () => {
+                    void (async () => {
+                      const s = getEditGuardSession();
+                      if (!s || !editorGuardAsk) {
+                        setEditorGuardAsk(null);
+                        return;
+                      }
+                      const ok = await s.save();
+                      setEditorGuardAsk(null);
+                      if (ok) editorGuardAsk.run();
+                    })();
+                  },
+                },
+                {
+                  label: '不保存',
+                  variant: 'danger',
+                  onClick: () => {
+                    void (async () => {
+                      const s = getEditGuardSession();
+                      const ask = editorGuardAsk;
+                      setEditorGuardAsk(null);
+                      if (s && ask) await s.discard();
+                      if (ask) ask.run();
+                    })();
+                  },
+                },
+                {
+                  label: '取消',
+                  onClick: () => setEditorGuardAsk(null),
+                },
+              ]}
+            />
+
+            {/* 下侧边栏：整条地址栏/状态栏（导航 + 地址输入 + 功能按钮，被左右侧栏夹住）
+             *  整条栏收窄为中间栏宽度的 3/5 并居中（两端各留 1/5），四角圆角；
+             *  底色随主题切换（--color-address-bar），与窗口渐变自然衔接；
+             *  AI 标签页隐藏地址栏：AI 模块作为独立全屏对话应用，不需要 URL 导航
+             *  GenOffice 编辑器/主页标签同样隐藏：编辑器自带工具条与保存流程，
+             *  主页为内部页面，伪地址均无导航意义 */}
+            {!isAiTab && !isGenOfficeTab && !isGenOfficeHomeTab && (
               <div
-                className="flex shrink-0 items-center border-t border-border px-2"
+                className="flex shrink-0 items-center justify-center"
                 style={{ height: BOTTOM_HEIGHT }}
               >
-                <button
-                  className="flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-sm text-text-secondary hover:bg-surface hover:text-text"
-                  onClick={() => void handleNewTab()}
-                  aria-label="新建标签"
-                >
-                  <Plus className="h-4 w-4" />
-                  新建标签
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-          // 折叠状态：竖向显示所有标签页的图标（仅图标不展示名称），点击图标切换标签；
-          // 无标签时留空（底部"展开"按钮仍可用）
-          <div className="flex flex-1 flex-col items-center gap-0.5 overflow-y-auto py-2">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                draggable={false}
-                onPointerDown={(e) => handleTabPointerDown(e, tab)}
-                onPointerMove={handleTabPointerMove}
-                onPointerUp={handleTabPointerEnd}
-                onPointerCancel={handleTabPointerEnd}
-                className={cn(
-                  // 折叠态图标：方形小圆角（区别于展开态卡片的圆角更大），激活态带主色描边。
-                  // 尺寸 40px = 折叠栏宽 44px - 左右各留 2px 边界空隙
-                  'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md border bg-surface shadow-sm',
-                  'border-border/60 before:pointer-events-none before:absolute before:inset-x-1 before:top-0 before:h-px before:rounded-full before:bg-white/70',
-                  tab.id === activeTabId
-                    ? 'border-primary/50 text-text shadow-[0_2px_6px_-1px_rgba(37,99,235,0.4)]'
-                    : 'text-text-secondary hover:bg-surface-secondary hover:text-text',
-                )}
-                onClick={() => void handleSelectTab(tab.id)}
-                onDoubleClick={() => void handleCloseTab(tab.id)}
-                aria-label={`切换到标签 ${tab.title || tab.url || '新标签页'}`}
-                title={tab.title || tab.url || '新标签页'}
-              >
-                <TabFavicon tab={tab} className="h-9 w-9" />
-                {/* GenOffice 编辑器未保存修改标记（折叠态角标） */}
-                {tab.dirty && (
-                  <span
-                    className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary"
-                    aria-label="有未保存的修改"
+                {/* 浮动地址栏本体：3/5 宽 + 圆角；高度 40px，上下各留 4px 呼吸空间 */}
+                <div className="flex h-10 w-3/5 min-w-0 items-center gap-1.5 rounded-lg border border-border/60 bg-[var(--color-address-bar)] px-2 shadow-sm">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 shrink-0 p-0"
+                    onClick={() => void handleGoBack()}
+                    disabled={!activeTab?.canGoBack || isInternalPage}
+                    aria-label="后退"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 shrink-0 p-0"
+                    onClick={() => void handleGoForward()}
+                    disabled={!activeTab?.canGoForward || isInternalPage}
+                    aria-label="前进"
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 shrink-0 p-0"
+                    onClick={() => void handleReload()}
+                    disabled={!activeTabId || isInternalPage}
+                    aria-label="刷新"
+                  >
+                    <RotateCw className={cn('h-4 w-4', activeTab?.loading && 'animate-spin')} />
+                  </Button>
+
+                  <Omnibox
+                    currentUrl={activeTab?.url ?? ''}
+                    loading={activeTab?.loading ?? false}
+                    securityState={getSecurityState(activeTab?.url ?? '')}
+                    suggestions={suggestions}
+                    onNavigate={(url) => void handleNavigate(url)}
+                    onSuggestionQuery={(q) => void handleSuggestionQuery(q)}
+                    bookmarkSaved={bookmarkSaved}
+                    bookmarkable={
+                      !isInternalPage && !!activeTab?.url && isBookmarkable(activeTab.url)
+                    }
+                    onBookmarkToggle={() => void handleSaveBookmark()}
+                    onSummarize={() => void handleSummarize()}
+                    summarizeDisabled={
+                      summaryRunning || !activeTab?.url || !/^https?:\/\//i.test(activeTab.url)
+                    }
+                    onScreenshot={() => void handleScreenshot()}
+                    screenshotDisabled={!activeTabId}
+                    onTranslate={() => void handleTranslate()}
+                    translateActive={translateActive}
+                    translateDisabled={!activeTab?.url || !/^https?:\/\//i.test(activeTab.url)}
+                    searchEngine={searchEngine}
                   />
+                </div>
+
+                {bookmarkToast && (
+                  <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border">
+                    {bookmarkToast}
+                  </div>
                 )}
-              </button>
-            ))}
-          </div>
+
+                {summaryToast && (
+                  <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border flex items-center gap-1.5">
+                    {summaryRunning && <RotateCw className="h-3 w-3 animate-spin" />}
+                    <span>{summaryToast}</span>
+                  </div>
+                )}
+
+                {/* DeepSeek Harness 启动中的持久提示（启动完成前不自动消失） */}
+                {dshStarting && (
+                  <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border flex items-center gap-1.5">
+                    <RotateCw className="h-3 w-3 animate-spin" />
+                    <span>正在启动 DeepSeek Harness…</span>
+                  </div>
+                )}
+
+                {/* 划词翻译结果卡（M24 dev.81）：右键菜单触发，主进程翻译后经事件回传；
+                定位用右键菜单同款窗口相对坐标（已含 BrowserView 偏移补偿），防溢出夹边 */}
+                {selectionCard && (
+                  <div
+                    className="fixed z-50 max-w-md rounded-lg border border-border bg-surface p-3 shadow-dropdown"
+                    style={{
+                      left: Math.max(8, Math.min(selectionCard.x, window.innerWidth - 420)),
+                      top: Math.min(selectionCard.y + 12, window.innerHeight - 180),
+                    }}
+                  >
+                    <div className="mb-1.5 flex items-start justify-between gap-3">
+                      <div
+                        className="min-w-0 flex-1 truncate text-xs text-text-secondary"
+                        title={selectionCard.source}
+                      >
+                        {selectionCard.source}
+                      </div>
+                      <button
+                        type="button"
+                        className="shrink-0 text-text-secondary hover:text-text"
+                        onClick={() => setSelectionCard(null)}
+                        aria-label="关闭划词翻译"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="whitespace-pre-wrap text-sm leading-relaxed text-text">
+                      {selectionCard.error ?? selectionCard.result}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </main>
+
+          {/* === 右侧栏 === */}
+          {/* 折叠态下悬停展开，鼠标离开带过冲弹性回弹；展开/收起使用不同缓动以体现"力度"。
+           *  拖拽调节中（resizingRight）禁用宽度 transition，保证跟手。 */}
+          <aside
+            className={cn(
+              'relative flex shrink-0 flex-col border-l border-border bg-transparent',
+              resizingRight
+                ? ''
+                : rightRetracting
+                  ? 'transition-[width] duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)]'
+                  : 'transition-[width] duration-150 ease-out',
+            )}
+            style={{ width: rightWidth }}
+            onMouseEnter={handleRightMouseEnter}
+            onMouseLeave={handleRightMouseLeave}
+            onDoubleClick={handleRightDoubleClick}
+            onPointerDown={windowDrag.startDrag}
+            onPointerMove={windowDrag.moveDrag}
+            onPointerUp={windowDrag.endDrag}
+            onPointerCancel={windowDrag.endDrag}
+            aria-label="右侧边栏"
+          >
+            {/* 宽度调节手柄：展开态下渲染于栏左缘内侧（避免与 BrowserView 重叠），
+             *  鼠标移入手柄区域变横向调节光标，按住左右拖动调宽 */}
+            {effectiveRightExpanded && (
+              <div
+                className="absolute top-0 bottom-12 left-0 z-10 w-1.5 cursor-col-resize"
+                onPointerDown={handleRightResizeStart}
+                onPointerMove={handleRightResizeMove}
+                onPointerUp={handleRightResizeEnd}
+                onPointerCancel={handleRightResizeEnd}
+                aria-label="调节右侧栏宽度"
+                role="separator"
+              />
+            )}
+            {effectiveRightExpanded ? (
+              <>
+                {/* 工作区选项卡条（TP7）：替换原「标签页」标题位 */}
+                <WorkspaceBar
+                  workspaces={workspaces}
+                  currentWorkspaceId={currentWorkspaceId}
+                  onSelect={handleSwitchWorkspace}
+                  onCreate={(name, color) => handleCreateAndSwitchWorkspace(name, color)}
+                  onContextMenu={(e, workspace) => {
+                    e.preventDefault();
+                    setWorkspaceManagerTarget(workspace);
+                  }}
+                />
+
+                {/* 标签列表：凸起悬浮感（卡片浮于底色之上，带阴影 + 微光边框 + 顶部高光） */}
+                <div className="flex-1 overflow-hidden flex flex-col">
+                  <div
+                    ref={expandedTabListRef}
+                    className="flex-1 select-none overflow-y-auto p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  >
+                    {visibleTabs.length === 0 && (
+                      <p className="px-2 py-4 text-center text-xs text-text-secondary">
+                        暂无标签页
+                      </p>
+                    )}
+                    {visibleTabs.map((tab) => (
+                      <div
+                        key={tab.id}
+                        data-tab-card
+                        draggable={false}
+                        onPointerDown={(e) => handleTabPointerDown(e, tab)}
+                        onPointerMove={handleTabPointerMove}
+                        onPointerUp={handleTabPointerEnd}
+                        onPointerCancel={handleTabPointerEnd}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setTabCardMenu({
+                            x: e.clientX,
+                            y: e.clientY,
+                            tab: {
+                              id: tab.id,
+                              url: tab.url,
+                              title: tab.title || tab.url || '新标签页',
+                              workspaceId: tab.workspaceId ?? DEFAULT_WORKSPACE_ID,
+                            },
+                          });
+                        }}
+                        className={cn(
+                          // 凸起悬浮感：圆角卡片 + 投影 + 细边框 + 顶部高光线；
+                          // 激活态更亮（主色投影 + 高对比文字）
+                          'group relative mb-1.5 flex cursor-default items-center gap-2 rounded-lg border px-2.5 py-2 text-sm shadow-sm',
+                          'border-border/60 bg-surface',
+                          'before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:rounded-full before:bg-white/70',
+                          tab.id === activeTabId
+                            ? 'border-primary/40 bg-surface text-text shadow-[0_2px_8px_-2px_rgba(37,99,235,0.35)]'
+                            : 'text-text-secondary shadow-[0_1px_4px_-1px_rgba(0,0,0,0.25)] hover:bg-surface-secondary hover:text-text',
+                        )}
+                        onClick={() => void handleSelectTab(tab.id)}
+                        onDoubleClick={() => void handleCloseTab(tab.id)}
+                      >
+                        {/* 图标铺满标签高度：36px 与折叠态一致，卡片高度随内容撑开约 52px，
+                         *  items-center 垂直居中，object-contain 保持比例不变形 */}
+                        <TabFavicon tab={tab} className="h-9 w-9" />
+                        <span className="flex-1 truncate">
+                          {tab.title || tab.url || '新标签页'}
+                        </span>
+                        {/* GenOffice 编辑器未保存修改标记（阶段 2） */}
+                        {tab.dirty && (
+                          <span
+                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+                            title="有未保存的修改"
+                            aria-label="有未保存的修改"
+                          />
+                        )}
+                        <button
+                          className="shrink-0 rounded p-0.5 opacity-0 hover:bg-error/10 group-hover:opacity-100"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleCloseTab(tab.id);
+                          }}
+                          aria-label="关闭标签"
+                        >
+                          <X className="h-3 w-3 text-error" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {/* 新建标签：高度与底部地址栏一致（BOTTOM_HEIGHT=48），底边对齐 */}
+                  <div
+                    className="flex shrink-0 items-center border-t border-border px-2"
+                    style={{ height: BOTTOM_HEIGHT }}
+                  >
+                    <button
+                      className="flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-sm text-text-secondary hover:bg-surface hover:text-text"
+                      onClick={() => void handleNewTab()}
+                      aria-label="新建标签"
+                    >
+                      <Plus className="h-4 w-4" />
+                      新建标签
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              // 折叠状态：顶部单工作区图标（滚轮切换）+ 当前工作区的标签图标。
+              // 悬停工作区图标时抑制侧栏自动展开，滚轮切换不被打断。
+              <div className="flex flex-1 flex-col items-center overflow-hidden pb-2">
+                {/* 工作区图标固定在最顶部（无上方留白，用户指令 2026-10-23） */}
+                <WorkspaceSwitcher
+                  workspace={workspaces.find((w) => w.id === currentWorkspaceId)}
+                  mode={workspaceSwitcherMode}
+                  onCycle={handleCycleWorkspace}
+                  onClick={
+                    workspaceSwitcherMode === 'cards' ? handleOpenWorkspacesPage : handleToggleRight
+                  }
+                  onPointerEnter={handleWorkspaceAvatarEnter}
+                  onPointerLeave={handleWorkspaceAvatarLeave}
+                />
+                <div
+                  ref={collapsedTabListRef}
+                  className="mt-1 flex w-full flex-1 select-none flex-col items-center gap-0.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                >
+                  {visibleTabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      draggable={false}
+                      onPointerDown={(e) => handleTabPointerDown(e, tab)}
+                      onPointerMove={handleTabPointerMove}
+                      onPointerUp={handleTabPointerEnd}
+                      onPointerCancel={handleTabPointerEnd}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setTabCardMenu({
+                          x: e.clientX,
+                          y: e.clientY,
+                          tab: {
+                            id: tab.id,
+                            url: tab.url,
+                            title: tab.title || tab.url || '新标签页',
+                            workspaceId: tab.workspaceId ?? DEFAULT_WORKSPACE_ID,
+                          },
+                        });
+                      }}
+                      className={cn(
+                        // 折叠态图标：方形小圆角（区别于展开态卡片的圆角更大），激活态带主色描边。
+                        // 尺寸 40px = 折叠栏宽 44px - 左右各留 2px 边界空隙
+                        'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md border bg-surface shadow-sm',
+                        'border-border/60 before:pointer-events-none before:absolute before:inset-x-1 before:top-0 before:h-px before:rounded-full before:bg-white/70',
+                        tab.id === activeTabId
+                          ? 'border-primary/50 text-text shadow-[0_2px_6px_-1px_rgba(37,99,235,0.4)]'
+                          : 'text-text-secondary hover:bg-surface-secondary hover:text-text',
+                      )}
+                      onClick={() => void handleSelectTab(tab.id)}
+                      onDoubleClick={() => void handleCloseTab(tab.id)}
+                      aria-label={`切换到标签 ${tab.title || tab.url || '新标签页'}`}
+                      title={tab.title || tab.url || '新标签页'}
+                    >
+                      <TabFavicon tab={tab} className="h-9 w-9" />
+                      {/* GenOffice 编辑器未保存修改标记（折叠态角标） */}
+                      {tab.dirty && (
+                        <span
+                          className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary"
+                          aria-label="有未保存的修改"
+                        />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 底部折叠/展开按钮已移除（2026-08-14）：改为双击右侧边栏空白处展开/折叠，
+             *  由 aside 的 onDoubleClick 处理；与悬停自动展开互斥（设置开关控制）。 */}
+          </aside>
+        </div>
+
+        {/* 标签卡片右键菜单（TP7）：在另一工作区打开当前页 / 新工作区 / 关闭标签 */}
+        {tabCardMenu && (
+          <TabCardContextMenu
+            x={tabCardMenu.x}
+            y={tabCardMenu.y}
+            tab={tabCardMenu.tab}
+            workspaces={workspaces}
+            onClose={() => setTabCardMenu(null)}
+            onOpenInWorkspace={(workspaceId, tab) => void handleOpenInWorkspace(workspaceId, tab)}
+            onOpenInNewWorkspace={(tab) => void handleOpenInNewWorkspace(tab)}
+            onCloseTab={(tabId) => handleCloseTab(tabId)}
+          />
         )}
 
-        {/* 底部折叠/展开按钮已移除（2026-08-14）：改为双击右侧边栏空白处展开/折叠，
-         *  由 aside 的 onDoubleClick 处理；与悬停自动展开互斥（设置开关控制）。 */}
-      </aside>
+        {/* 工作区管理对话框（右键工作区选项卡触发，TP7） */}
+        {workspaceManagerTarget && (
+          <WorkspaceManagerDialog
+            workspace={workspaceManagerTarget}
+            onClose={() => setWorkspaceManagerTarget(null)}
+            onSave={(id, patch) => handleUpdateWorkspace(id, patch)}
+            onClearData={(id) => handleClearWorkspaceData(id)}
+            onRemove={(id) => handleRemoveWorkspace(id)}
+          />
+        )}
 
-      {/* pi 设置对话框：由 AiChatView 中区 header 的齿轮按钮触发 */}
-      <PiSettingsDialog open={showPiSettings} onClose={() => setShowPiSettings(false)} />
+        {/* pi 设置对话框：由 AiChatView 中区 header 的齿轮按钮触发 */}
+        <PiSettingsDialog open={showPiSettings} onClose={() => setShowPiSettings(false)} />
+      </div>
     </div>
   );
 }

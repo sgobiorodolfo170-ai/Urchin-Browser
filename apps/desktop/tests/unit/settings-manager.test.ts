@@ -87,13 +87,14 @@ describe('SettingsManager', () => {
 
     const entries = mgr.getAll();
 
-    // 默认 24 项（language/searchEngine/downloadsPath/data.directory/blockTrackers/doNotTrack/blockAds/links.openInNewTab/
+    // 默认 25 项（language/searchEngine/downloadsPath/data.directory/blockTrackers/doNotTrack/blockAds/links.openInNewTab/
     //   ai.model/ai.apiKey/ai.providerId/ai.baseUrl/ai.providerProfiles/
     //   summary.model/summary.apiKey/summary.providerId/summary.baseUrl/
     //   debug.sidebarHoverDelay/ui.rightSidebarAutoExpand/home.frequentSites/
     //   window.bounds 窗口几何记忆，主进程内部状态/
-    //   translate.targetLang/translate.engine/translate.autoTranslate 网页翻译 dev.79） + 自定义 1 项
-    expect(entries).toHaveLength(25);
+    //   translate.targetLang/translate.engine/translate.autoTranslate 网页翻译 dev.79/
+    //   ui.workspaceSwitcherMode 折叠态工作区切换模式 TP7） + 自定义 1 项
+    expect(entries).toHaveLength(26);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');

@@ -19,6 +19,7 @@
 import type {
   BrowserViewFactory,
   CreateTabOptions,
+  FaviconResolver,
   Tab,
   TabEvent,
   TabEventListener,
@@ -28,6 +29,7 @@ import type {
   WindowOpenHandlerResponse,
 } from './types';
 import { buildAdBlockCss } from './ad-block-css';
+import { DEFAULT_WORKSPACE_ID } from '@urchin/ipc-contract';
 
 /** 默认 URL */
 // 默认占位页：主页（urchin://newtab）。
@@ -108,6 +110,18 @@ export class TabManager {
    */
   private piIconPinner?: (sourceUrl: string) => string | undefined;
 
+  /**
+   * favicon 解析器（由外部注入）：使用标签所属工作区 session 下载并缓存，
+   * 返回 urchin://favicon/<hash>。未注入时退化为直接使用页面首个图标地址。
+   */
+  private faviconResolver?: FaviconResolver;
+
+  /**
+   * 每个 tab 的图标解析序号：导航或新 favicon 事件递增，
+   * 异步下载完成后丢弃过期结果，防止旧页面图标覆盖新页面。
+   */
+  private readonly faviconSequences = new Map<number, number>();
+
   /** 广告浮窗屏蔽开关（DB1 决策：默认开启，由设置 blockAds 控制） */
   private adBlockEnabled = true;
 
@@ -132,6 +146,15 @@ export class TabManager {
    */
   setPiIconPinner(resolver: (sourceUrl: string) => string | undefined): void {
     this.piIconPinner = resolver;
+  }
+
+  /**
+   * 注入 favicon 解析器（主进程缓存）。
+   *
+   * @param resolver 按页面候选地址下载/缓存，返回协议 URL；失败返回 undefined
+   */
+  setFaviconResolver(resolver: FaviconResolver): void {
+    this.faviconResolver = resolver;
   }
 
   /**
@@ -174,7 +197,9 @@ export class TabManager {
     // 阶段 2：GenOffice 编辑器标签携带预构建 WebContentsView（调用方创建），
     // 其余走 BrowserView 工厂（保持原路径与单测注入语义）。
     const viewKind = opts.viewKind ?? 'browser';
-    const view = opts.view ?? this.factory();
+    // TP7：解析工作区（未传则继承窗口活动标签的工作区，无活动标签 → 默认工作区）
+    const workspaceId = opts.workspaceId ?? this.resolveWorkspaceForWindow(opts.windowId);
+    const view = opts.view ?? this.factory(workspaceId);
     const webContents = view.webContents;
 
     const url = opts.url ?? DEFAULT_URL;
@@ -198,6 +223,7 @@ export class TabManager {
       canGoForward: false,
       crashed: false,
       indexInWindow,
+      workspaceId,
       htmlFullscreen: false,
       viewKind,
       genofficeKind: opts.genofficeKind,
@@ -265,6 +291,7 @@ export class TabManager {
 
     // 从集合移除
     this.tabs.delete(tabId);
+    this.faviconSequences.delete(tabId);
     this.windowTabs.get(tab.windowId)?.delete(tabId);
 
     // 先发 removed 再发 activated（2026-08-14 修复）：
@@ -455,14 +482,19 @@ export class TabManager {
         }
 
         if (tab.viewKind === 'genoffice') {
-          this.create({ windowId: tab.windowId, url, active: true });
+          this.create({ windowId: tab.windowId, url, active: true, workspaceId: tab.workspaceId });
           return { action: 'deny' };
         }
 
         const behavior = this.linkBehaviorResolver?.(url) ?? 'current';
         if (behavior === 'new-tab') {
-          // 在新标签页打开
-          const created = this.create({ windowId: tab.windowId, url, active: true });
+          // 在新标签页打开（继承来源标签的工作区，保证同一账号上下文）
+          const created = this.create({
+            windowId: tab.windowId,
+            url,
+            active: true,
+            workspaceId: tab.workspaceId,
+          });
           // dev.48：pi 模块内打开的网页，右侧栏图标钉定为 π 品牌图标
           //（来源 tab 即 pi 页时，解析器返回钉定图标 URL）
           const pinnedIcon = this.piIconPinner?.(tab.url);
@@ -539,6 +571,20 @@ export class TabManager {
       }
     });
 
+    // 主框架导航开始：清空旧页面图标并作废旧解析任务。
+    // 若不清空，新页面没有 favicon 时标签会残留上一站点图标（用户可见错配）。
+    wc.on('did-start-navigation', (...args: unknown[]) => {
+      const isInPlace = args[2];
+      const isMainFrame = args[3];
+      if (isInPlace === true || isMainFrame === false || tab.piIconPinned) return;
+
+      this.faviconSequences.set(tab.id, (this.faviconSequences.get(tab.id) ?? 0) + 1);
+      if (tab.favicon !== undefined) {
+        tab.favicon = undefined;
+        this.emit('updated', this.toSnapshot(tab));
+      }
+    });
+
     wc.on('did-navigate', (...args: unknown[]) => {
       const url = args[1];
       // 阶段 2：genoffice 标签的 URL 是稳定伪地址（编辑器页面在 genoffice-app://
@@ -563,10 +609,46 @@ export class TabManager {
     wc.on('page-favicon-updated', (...args: unknown[]) => {
       const favicons = args[1];
       // dev.48：钉定图标的 tab（pi 模块打开的网页）不被页面真实 favicon 覆盖
-      if (Array.isArray(favicons) && typeof favicons[0] === 'string' && !tab.piIconPinned) {
-        tab.favicon = favicons[0];
+      if (tab.piIconPinned) return;
+
+      const candidates = Array.isArray(favicons)
+        ? favicons.filter((item): item is string => typeof item === 'string')
+        : [];
+
+      // 未注入解析器（单测/旧路径）：保留直接透传首个候选的历史行为。
+      if (!this.faviconResolver) {
+        if (candidates[0]) {
+          tab.favicon = candidates[0];
+          this.emit('updated', this.toSnapshot(tab));
+        }
+        return;
       }
-      this.emit('updated', this.toSnapshot(tab));
+
+      const sequence = (this.faviconSequences.get(tab.id) ?? 0) + 1;
+      this.faviconSequences.set(tab.id, sequence);
+
+      void this.faviconResolver({
+        pageUrl: tab.url,
+        candidates,
+        workspaceId: tab.workspaceId,
+      })
+        .then((favicon) => {
+          // 标签已关闭/复用、导航已发生或已有更新事件 → 丢弃过期结果
+          if (this.tabs.get(tab.id) !== tab) return;
+          if (this.faviconSequences.get(tab.id) !== sequence) return;
+          if (tab.piIconPinned || tab.favicon === favicon) return;
+          tab.favicon = favicon;
+          this.emit('updated', this.toSnapshot(tab));
+        })
+        .catch((err: unknown) => {
+          if (this.tabs.get(tab.id) !== tab) return;
+          if (this.faviconSequences.get(tab.id) !== sequence) return;
+          console.error(`[tab ${tab.id}] favicon resolve failed:`, err);
+          if (tab.favicon !== undefined) {
+            tab.favicon = undefined;
+            this.emit('updated', this.toSnapshot(tab));
+          }
+        });
     });
 
     wc.on('render-process-gone', () => {
@@ -621,6 +703,19 @@ export class TabManager {
     }
   }
 
+  /**
+   * 解析「未显式指定工作区」的建标签请求应归属的工作区（TP7）：
+   * 继承窗口当前活动标签的工作区；无活动标签（如首开标签）→ 默认工作区。
+   */
+  private resolveWorkspaceForWindow(windowId: number): string {
+    const activeId = this.activeTabPerWindow.get(windowId);
+    if (activeId !== undefined) {
+      const active = this.tabs.get(activeId);
+      if (active) return active.workspaceId;
+    }
+    return DEFAULT_WORKSPACE_ID;
+  }
+
   /** Tab → TabSnapshot（剔除不可序列化字段）。 */
   private toSnapshot(tab: Tab): TabSnapshot {
     return {
@@ -635,6 +730,7 @@ export class TabManager {
       canGoForward: tab.canGoForward,
       crashed: tab.crashed,
       indexInWindow: tab.indexInWindow,
+      workspaceId: tab.workspaceId,
       viewKind: tab.viewKind,
       dirty: tab.dirty,
     };

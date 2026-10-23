@@ -43,6 +43,8 @@ describe('registerHandler', () => {
           // 阶段 2：TabSnapshot 新增字段（schema default 会补齐，类型需显式）
           viewKind: 'browser' as const,
           dirty: false,
+          // TP7：工作区字段（schema default 会补齐，类型需显式）
+          workspaceId: 'default',
         },
       }),
     );

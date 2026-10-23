@@ -220,7 +220,7 @@ describe('view-integration', () => {
 
       expect(window.browserWindow.setBrowserView).toHaveBeenCalledWith(tab.view);
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        expect.objectContaining({ x: 44, width: 800 - 88, height: 600 - 48 }),
+        expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 96 }),
       );
       expect(window.browserWindow.webContents.send).toHaveBeenCalledWith(
         'tab:event',
@@ -287,7 +287,7 @@ describe('view-integration', () => {
       fireTab('updated', { ...tab });
 
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        expect.objectContaining({ width: 800 - 88, height: 600 - 48 }),
+        expect.objectContaining({ y: 40, width: 800 - 104, height: 600 - 96 }),
       );
     });
 
@@ -530,10 +530,10 @@ describe('HTML5 fullscreen (内嵌视频全屏覆盖 UI 栏)', () => {
     tab.view.setBounds.mockClear();
     tab.htmlFullscreen = false;
     fireTab('updated', tab);
-    // 恢复常规布局（含左右侧栏内缩）
-      expect(tab.view.setBounds).toHaveBeenCalledWith(
-        expect.objectContaining({ x: 44, width: 800 - 88, height: 600 - 48 }),
-      );
+    // 恢复常规布局（含 8px 外框、32px 标题栏、左右侧栏与底部地址栏内缩）
+    expect(tab.view.setBounds).toHaveBeenCalledWith(
+      expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 96 }),
+    );
   });
 
   describe('GenOffice 编辑器视图挂载（阶段 2）', () => {
@@ -547,8 +547,8 @@ describe('HTML5 fullscreen (内嵌视频全屏覆盖 UI 栏)', () => {
       expect(window.browserWindow.setBrowserView).toHaveBeenCalledWith(null);
       expect(window.browserWindow.contentView.addChildView).toHaveBeenCalledWith(tab.view);
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        // GenOffice 标签地址栏隐藏，视图覆盖全部高度（不减 bottomHeight 48）
-        expect.objectContaining({ x: 44, width: 800 - 88, height: 600 }),
+        // GenOffice 标签地址栏隐藏，视图覆盖内容区全部高度（仍扣外框与标题栏）
+        expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 48 }),
       );
     });
 
@@ -590,8 +590,8 @@ describe('HTML5 fullscreen (内嵌视频全屏覆盖 UI 栏)', () => {
       fireTab('created', tab);
 
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        // GenOffice 标签地址栏隐藏，视图覆盖全部高度（不减 bottomHeight 48）
-        expect.objectContaining({ x: 44, width: 800 - 88, height: 600 }),
+        // GenOffice 标签地址栏隐藏，视图覆盖内容区全部高度（仍扣外框与标题栏）
+        expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 48 }),
       );
       expect(tab.view.setBounds).not.toHaveBeenCalledWith({
         x: 0,

@@ -260,6 +260,7 @@ describe('getBookmarkPanelScript（面板交互，jsdom）', () => {
               type: 'bookmark',
               title: 'Example',
               url: 'https://example.com/A',
+              favicon: 'urchin://favicon/abc',
               parentId: null,
               position: 0,
               createdAt: 1,
@@ -313,6 +314,22 @@ describe('getBookmarkPanelScript（面板交互，jsdom）', () => {
     expect(deletes[0]!.req).toEqual({ id: 'bm-1' });
     // 星标点击不得误触"打开网址"（tab.loadUrl）
     expect(calls.some((c) => c.ch === 'tab.loadUrl')).toBe(false);
+  });
+
+  it('should render cached favicon and show fallback when image fails', async () => {
+    setupPanel();
+    await vi.waitFor(() => expect(document.querySelectorAll('.item .star')).toHaveLength(2));
+
+    const img = document.querySelector<HTMLImageElement>('#content img.favicon');
+    expect(img?.getAttribute('src')).toBe('urchin://favicon/abc');
+    expect(img?.getAttribute('alt')).toBe('');
+
+    const fallback = img?.nextElementSibling as HTMLElement | null;
+    expect(fallback?.classList.contains('favicon-fallback')).toBe(true);
+    img!.dispatchEvent(new Event('error'));
+
+    expect(img!.style.display).toBe('none');
+    expect(fallback!.style.display).toBe('inline');
   });
 
   it('should not start pointer drag on star (capture would hijack star click)', async () => {

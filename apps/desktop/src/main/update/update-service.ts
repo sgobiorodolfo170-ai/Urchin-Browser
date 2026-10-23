@@ -1,15 +1,19 @@
 /**
- * M20 Update Service（dev.114 提前落地）· 应用自动更新主进程服务
+ * M20 Update Service（dev.114 提前落地，dev.115 双通道治理）· 应用自动更新主进程服务
  *
  * 依据：用户指令「设置页：更新按钮接入发布版更新路径。检测到有新版本时，
  * 可以点击更新按钮更新项目」（2026-10-19）· 02-架构设计 §1 进程模型
- * （更新检查属主进程职责）
+ * （更新检查属主进程职责）· ADR-012 发布通道与版本号治理
  *
  * 设计理由（AGENTS.md §七 三级注释）：
- * - 更新源 = GitHub Releases dev 预发布通道：electron-builder 打包时把
- *   dev.yml 更新清单（版本号 + 安装包 sha512）随 release 上传，
- *   electron-updater 以 semver 比较 app.getVersion()（package-win.mjs 从
- *   CHANGELOG 盖章 0.1.0-dev.NNN）判断有无新版本。仓库 PUBLIC，无需 token。
+ * - 双通道：dev 预发布版本（X.Y.Z-dev.NNN）走 dev 通道 + dev.yml；正式版走
+ *   latest 通道 + latest.yml。通道由 app.getVersion() 的版本形态派生，不依赖
+ *   安装包内 app-update.yml 的静态值，避免打包通道与运行时判断漂移。
+ * - dev → stable 迁移：electron-updater 6.8.9 的 GitHubProvider 在 channel=dev
+ *   时只匹配 dev tag，不会选中 stable。因此 dev 版本先查 dev，无更新时再切
+ *   latest 查 stable；首个 stable 发布前 /releases/latest 404 静默视为最新。
+ * - 防降级：electron-updater 设置 channel 会自动把 allowDowngrade 置 true；
+ *   每次切通道后显式设回 false，防止 0.3.0-dev.x 被降级到 0.2.0 stable。
  * - 懒加载：electron-updater 及其依赖只在第一次检查更新时 dynamic import，
  *   不给启动路径增加任何开销（与 dev.113 启动优化结论一致）。
  * - 手动确认制：autoDownload=false（检查时不偷偷下载 363MB 安装包），下载与
@@ -36,16 +40,46 @@ export const UPDATE_EVENT_CHANNEL = 'update:event';
 
 /**
  * 更新通道名。
- * 0.1.0-dev.NNN 的预发布段 "dev" → electron-builder 生成 dev.yml，
- * electron-updater 的 channel 必须同为 "dev" 才能选到该清单。
+ * - dev：X.Y.Z-dev.NNN 的预发布段 → electron-builder 生成 dev.yml；
+ * - latest：正式版 → electron-builder 生成 latest.yml。
  */
-export const UPDATE_CHANNEL = 'dev';
+export const DEV_CHANNEL = 'dev';
+export const STABLE_CHANNEL = 'latest';
 
 /** electron-updater UpdateInfo 的结构子集（只取 UI 要展示的字段）。 */
 export interface UpdaterUpdateInfo {
   version: string;
   releaseName?: string | null;
   releaseNotes?: string | null;
+}
+
+/** electron-updater UpdateCheckResult 的结构子集（isUpdateAvailable 是判定真源）。 */
+export interface UpdaterCheckResult {
+  isUpdateAvailable: boolean;
+  updateInfo: UpdaterUpdateInfo;
+}
+
+/** 版本对应的通道配置。 */
+export interface UpdateChannelInfo {
+  channel: string;
+  allowPrerelease: boolean;
+}
+
+/**
+ * 从当前版本派生更新通道。
+ * 预发布段首段即通道（dev.115 → dev；beta.1 → beta）；正式版 → latest。
+ * 不读取 app-update.yml：运行时的通道语义以实际安装版本为准。
+ */
+export function resolveUpdateChannel(version: string): UpdateChannelInfo {
+  const match = /^\d+\.\d+\.\d+(?:-([0-9A-Za-z.-]+))?/.exec(version);
+  const prerelease = match?.[1];
+  if (!prerelease) {
+    return { channel: STABLE_CHANNEL, allowPrerelease: false };
+  }
+  return {
+    channel: prerelease.split('.')[0] ?? DEV_CHANNEL,
+    allowPrerelease: true,
+  };
 }
 
 /**
@@ -56,8 +90,9 @@ export interface UpdaterHandle {
   autoDownload: boolean;
   autoInstallOnAppQuit: boolean;
   allowPrerelease: boolean;
+  allowDowngrade: boolean;
   channel: string | null;
-  checkForUpdates(): Promise<{ updateInfo: UpdaterUpdateInfo } | null>;
+  checkForUpdates(): Promise<UpdaterCheckResult | null>;
   downloadUpdate(): Promise<unknown>;
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
   on(event: string, listener: (...args: unknown[]) => void): unknown;
@@ -120,6 +155,9 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
 
   let updater: UpdaterHandle | null = null;
   let updaterPromise: Promise<UpdaterHandle> | null = null;
+  // 两段检查期间 dev/stable 切换是预期行为；抑制 electron-updater 的 error
+  // 事件，避免「dev 无更新 → stable 404」在 UI 上闪一次错误。
+  let suppressErrorEvent = false;
 
   function snapshot(): UpdateState {
     return {
@@ -152,7 +190,18 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
     return snap;
   }
 
-  /** 懒初始化更新器：配置手动确认制 + 通道 + 事件桥（只执行一次）。 */
+  /**
+   * 应用通道配置。
+   * 顺序不可交换：channel setter 会把 allowDowngrade 置 true，
+   * 必须最后显式设回 false（防止 dev → stable 迁移时反向降级）。
+   */
+  function applyChannel(target: UpdaterHandle, info: UpdateChannelInfo): void {
+    target.allowPrerelease = info.allowPrerelease;
+    target.channel = info.channel;
+    target.allowDowngrade = false;
+  }
+
+  /** 懒初始化更新器：配置手动确认制 + 事件桥（只执行一次）。 */
   async function ensureUpdater(): Promise<UpdaterHandle> {
     if (updater) return updater;
     updaterPromise ??= (async () => {
@@ -161,10 +210,6 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
       // 手动确认制：检查不自动下载；已下载则退出时自动安装（不白费流量）。
       created.autoDownload = false;
       created.autoInstallOnAppQuit = true;
-      // dev 预发布通道：app 版本含预发布段时 electron-updater 默认
-      // allowPrerelease=true，这里显式固定（防止版本形态变化后行为漂移）。
-      created.allowPrerelease = true;
-      created.channel = UPDATE_CHANNEL;
 
       created.on('download-progress', (p) => {
         const raw = p as Partial<UpdateProgress> | undefined;
@@ -180,6 +225,12 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
         if (status === 'downloading') setStatus('downloaded');
       });
       created.on('error', (e) => {
+        // 两段检查的失败由 check() 的 Promise 路径统一处理；事件只作兜底，
+        // 避免 dev→stable 的回退尝试在 UI 上闪错误。
+        if (suppressErrorEvent) {
+          log.info('updater error event suppressed during check', { error: toMessage(e) });
+          return;
+        }
         // 仅当有操作在进行中才落 error 态；check/download 的失败也有
         // Promise 拒绝路径（各自 catch 处理），此处兜底异步事件。
         if (status === 'checking' || status === 'downloading') {
@@ -191,8 +242,10 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
       });
 
       updater = created;
+      const channelInfo = resolveUpdateChannel(options.currentVersion);
       log.info('updater ready', {
-        channel: UPDATE_CHANNEL,
+        channel: channelInfo.channel,
+        allowPrerelease: channelInfo.allowPrerelease,
         currentVersion: options.currentVersion,
       });
       return created;
@@ -218,9 +271,40 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
     return (async () => {
       try {
         const u = await ensureUpdater();
-        const result = await u.checkForUpdates();
+        const currentChannel = resolveUpdateChannel(options.currentVersion);
+        let result: UpdaterCheckResult | null = null;
+
+        // dev→stable 的两段检查是预期流程，抑制期间的 error 事件；
+        // download 等后续操作不受影响（此时 suppressErrorEvent 已复位）。
+        suppressErrorEvent = true;
+        try {
+          applyChannel(u, currentChannel);
+          log.info('check channel', {
+            channel: currentChannel.channel,
+            allowPrerelease: currentChannel.allowPrerelease,
+          });
+          result = await u.checkForUpdates();
+
+          if (!result?.isUpdateAvailable && currentChannel.allowPrerelease) {
+            // dev 已确认无更新：再查 stable。允许 dev 用户迁移到正式版；
+            // 首个 stable 发布前 /releases/latest 404，静默视为「暂无 stable」。
+            log.info('no dev update; fallback to stable channel');
+            applyChannel(u, { channel: STABLE_CHANNEL, allowPrerelease: false });
+            try {
+              result = await u.checkForUpdates();
+            } catch (stableError) {
+              log.info('stable channel unavailable; treat as up-to-date', {
+                error: toMessage(stableError),
+              });
+              result = null;
+            }
+          }
+        } finally {
+          suppressErrorEvent = false;
+        }
+
         checkedAt = new Date().toISOString();
-        if (result == null) {
+        if (!result?.isUpdateAvailable) {
           // 无更新：清掉上一轮的新版本信息
           latestVersion = undefined;
           releaseName = undefined;

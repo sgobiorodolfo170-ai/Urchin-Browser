@@ -100,6 +100,8 @@ export interface TabSnapshot {
   readonly canGoForward: boolean;
   readonly crashed: boolean;
   readonly indexInWindow: number;
+  /** 所属工作区（TP7，可选：会话隔离标识） */
+  readonly workspaceId?: string;
 }
 
 /** Tab 事件 */

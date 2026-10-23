@@ -154,6 +154,16 @@ const GENERAL_FIELDS: readonly SettingField[] = [
     ],
   },
   {
+    key: 'ui.workspaceSwitcherMode',
+    label: '折叠态工作区切换',
+    desc: '右侧栏折叠时切换工作区的方式：滚轮循环切换（默认）或点击图标打开工作区总览页（卡片 + 网页快照，参考 ego-lite Space 设计）；展开态选项条不受影响',
+    type: 'select',
+    options: [
+      { value: 'wheel', label: '滚轮循环切换' },
+      { value: 'cards', label: '点击卡片' },
+    ],
+  },
+  {
     key: 'translate.targetLang',
     label: '网页翻译目标语言',
     desc: '整页翻译与划词翻译的目标语言（默认简体中文）',
@@ -236,7 +246,10 @@ const DEFAULTS: Record<string, unknown> = {
   downloadsPath: '',
   blockTrackers: true,
   doNotTrack: true,
+  blockAds: true,
   'links.openInNewTab': false,
+  'ui.rightSidebarAutoExpand': false,
+  'ui.workspaceSwitcherMode': 'wheel',
   'summary.model': 'gpt-4o-mini',
   'summary.apiKey': '',
   'summary.providerId': '',
@@ -847,6 +860,13 @@ function formatCheckedAt(iso?: string): string {
 }
 
 /** 状态 → 一句话描述（错误优先展示具体原因）。 */
+function describeUpdateChannel(currentVersion?: string): string {
+  if (!currentVersion) return '…';
+  return /^\d+\.\d+\.\d+-/.test(currentVersion)
+    ? 'dev（GitHub Releases 预发布）'
+    : 'latest（GitHub Releases 正式版）';
+}
+
 function describeUpdateStatus(state: UpdateStateView | null, actionError: string | null): string {
   switch (state?.status ?? 'idle') {
     case 'disabled':
@@ -927,7 +947,7 @@ function UpdateTab() {
           <div className="text-xs text-text-secondary">当前版本</div>
           <div className="mt-1 text-lg font-medium">v{state?.currentVersion ?? '…'}</div>
           <div className="mt-1 text-xs text-text-secondary">
-            更新通道：dev（GitHub Releases 预发布）
+            更新通道：{describeUpdateChannel(state?.currentVersion)}
           </div>
         </div>
 

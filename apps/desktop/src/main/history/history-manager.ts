@@ -99,9 +99,10 @@ export class HistoryManager {
    *
    * @param url 访问的 URL
    * @param title 页面标题（可选）
+   * @param favicon 已缓存图标（可选；未到达时后续 setFavicon 补齐）
    * @returns 记录后的 HistoryEntry
    */
-  record(url: string, title?: string): HistoryEntry {
+  record(url: string, title?: string, favicon?: string): HistoryEntry {
     this.ensureLoaded();
     const existingId = this.urlIndex.get(url);
     if (existingId !== undefined) {
@@ -112,6 +113,7 @@ export class HistoryManager {
           id: existing.id,
           url: existing.url,
           title: title ?? existing.title,
+          ...((favicon ?? existing.favicon) ? { favicon: favicon ?? existing.favicon } : {}),
           visitedAt: Date.now(),
           visitCount: existing.visitCount + 1,
         };
@@ -128,6 +130,7 @@ export class HistoryManager {
       id,
       url,
       title: title ?? '',
+      ...(favicon ? { favicon } : {}),
       visitedAt: Date.now(),
       visitCount: 1,
     };
@@ -136,6 +139,29 @@ export class HistoryManager {
     this.persistence?.upsert(entry);
     this.emit('recorded', entry);
     return entry;
+  }
+
+  /**
+   * 为已存在的历史记录补齐图标。
+   *
+   * 图标通常在页面加载完成后才上报，此时 record() 已经写入了条目；
+   * 此方法只更新 favicon，不改 visitedAt / visitCount，避免回填图标被误计为一次访问。
+   *
+   * @param url 历史记录 URL（精确匹配）
+   * @param favicon 已缓存图标
+   * @returns 是否实际更新
+   */
+  setFavicon(url: string, favicon: string): boolean {
+    this.ensureLoaded();
+    const id = this.urlIndex.get(url);
+    if (id === undefined) return false;
+    const existing = this.entries.get(id);
+    if (!existing || existing.favicon === favicon) return false;
+
+    const updated: HistoryEntry = { ...existing, favicon };
+    this.entries.set(id, updated);
+    this.persistence?.upsert(updated);
+    return true;
   }
 
   /**

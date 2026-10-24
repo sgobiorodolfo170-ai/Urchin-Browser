@@ -20,9 +20,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus,
   X,
-  ArrowLeft,
-  ArrowRight,
-  RotateCw,
   Moon,
   Sun,
   Settings as SettingsIcon,
@@ -36,9 +33,7 @@ import {
   ChevronDown,
   Mail as MailIcon,
 } from 'lucide-react';
-import { Button } from './components/ui/button';
 import { AppTitleBar } from './components/app-titlebar';
-import { Omnibox } from './omnibox/omnibox';
 // 回退提示：旧对话视图 AiChatView(@urchin/ai-extension)在阶段 1 启动器切换时移出渲染树,
 // 恢复时重新 import 并在 isAiTab 分支渲染即可（配套:const host = useMemo(() => createHostFromUrchin(), [])）
 import { PiWebLauncherView } from './pi-web/launcher-view';
@@ -430,6 +425,8 @@ function useWindowDrag() {
   const moveDrag = useCallback((e: React.PointerEvent) => {
     const st = dragStateRef.current;
     if (!st) return;
+    // 仅处理由当前元素发起的拖拽：避免事件冒泡到外框时重复触发 moveDrag（如侧栏拖拽冒泡）
+    if (st.captureEl && st.captureEl !== (e.currentTarget as HTMLElement | null)) return;
     // 未超阈值：视为点击/双击，不拖窗
     if (!st.started) {
       const dist = Math.hypot(e.screenX - st.lastX, e.screenY - st.lastY);
@@ -2062,6 +2059,10 @@ export function App() {
   // 按住侧边栏空白处拖动窗口（左/右两侧栏共用）
   const windowDrag = useWindowDrag();
 
+  // 左右侧栏 DOM 引用：用于在宽度过渡期间读取实际 offsetWidth，同步 BrowserView bounds
+  const leftAsideRef = useRef<HTMLElement>(null);
+  const rightAsideRef = useRef<HTMLElement>(null);
+
   // 主页跳转（主页按钮）：新建标签打开主页，绝不把当前网站标签原地变成主页
   // （原地跳转会毁掉被顶下去的网站标签——此前"变新标签页"bug 的根因）。
   // 当前已是最新主页（urchin://newtab）时不重复创建，避免堆叠主页标签。
@@ -2084,11 +2085,66 @@ export function App() {
   // 其他平台保留原生标题栏，渲染层不叠加外框/标题栏，避免双重窗口装饰。
   const useCustomChrome = window.urchin.platform === 'win32';
 
+  // 侧栏宽度过渡同步：侧栏展开/折叠/悬停时有 CSS width transition（150/300ms），
+  // 而 notifyLayout 在切换瞬间发送目标宽度，BrowserView 瞬间跳到目标宽度，
+  // 过渡期侧栏仍较宽 → 网页盖住侧栏。此处用 rAF 循环读取实际宽度并同步主进程，
+  // 使 BrowserView bounds 跟随动画宽度，消除覆盖。过渡结束后停止。
+  useEffect(() => {
+    if (!useCustomChrome) return;
+    let raf = 0;
+    let lastLeft = -1;
+    let lastRight = -1;
+    let stableCount = 0;
+    const sync = (): void => {
+      const leftEl = leftAsideRef.current;
+      const rightEl = rightAsideRef.current;
+      const left = leftEl
+        ? Math.round(leftEl.offsetWidth)
+        : leftExpanded
+          ? LEFT_EXPANDED
+          : LEFT_COLLAPSED;
+      const right = rightEl
+        ? Math.round(rightEl.offsetWidth)
+        : rightExpanded || rightHovered
+          ? rightExpandedWidth
+          : RIGHT_COLLAPSED;
+      if (left !== lastLeft || right !== lastRight) {
+        lastLeft = left;
+        lastRight = right;
+        stableCount = 0;
+        void notifyLayout(left, right);
+      } else {
+        stableCount += 1;
+      }
+      // 连续 6 帧宽度不变（约 100ms）或总时长超 450ms 后停止
+      if (stableCount < 6) {
+        raf = requestAnimationFrame(sync);
+      }
+    };
+    raf = requestAnimationFrame(sync);
+    const stop = window.setTimeout(() => cancelAnimationFrame(raf), 450);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(stop);
+    };
+  }, [
+    leftExpanded,
+    rightExpanded,
+    rightHovered,
+    rightRetracting,
+    rightExpandedWidth,
+    notifyLayout,
+    useCustomChrome,
+  ]);
+
   // ── 底部悬浮状态栏：状态同步 + 动作分发 ──
   // 状态栏为独立透明子窗口（main/status-bar/status-bar-overlay.ts），主渲染进程
   // 仍是 tab/建议/书签/toast/主题 的单一真源；此处组装快照并同步给主进程转发。
   const statusBarState = useMemo<StatusBarState>(() => {
-    const statusBarVisible = !isInternalPage && activeTabId !== null; // 外部网页用悬浮层；内部页/无标签用内嵌栏
+    // 除 AI 外所有页面（含 GenOffice）用悬浮地址栏；GenOffice 前进后退控制项目内导航
+    const statusBarVisible = !isAiTab;
+    // 导航禁用页面（设置/邮件/主页/工作区/文件查看器）：后退/前进/刷新无意义
+    const isNavDisabledPage = isInternalPage && !isGenOfficeTab && !isGenOfficeHomeTab;
     // toast 优先级：DeepSeek Harness 启动 > 摘要/截图/翻译 > 书签
     const toast = dshStarting
       ? { text: '正在启动 DeepSeek Harness…', spinning: true }
@@ -2102,11 +2158,11 @@ export function App() {
       url: activeTab?.url ?? '',
       loading: activeTab?.loading ?? false,
       securityState: getSecurityState(activeTab?.url ?? ''),
-      canGoBack: !isInternalPage && !!activeTab?.canGoBack,
-      canGoForward: !isInternalPage && !!activeTab?.canGoForward,
-      reloadDisabled: !activeTabId || isInternalPage,
+      canGoBack: !isNavDisabledPage && !!activeTab?.canGoBack,
+      canGoForward: !isNavDisabledPage && !!activeTab?.canGoForward,
+      reloadDisabled: !activeTabId || isNavDisabledPage,
       bookmarkSaved,
-      bookmarkable: !isInternalPage && !!activeTab?.url && isBookmarkable(activeTab.url),
+      bookmarkable: !isNavDisabledPage && !!activeTab?.url && isBookmarkable(activeTab.url),
       summarizeDisabled: summaryRunning || !activeTab?.url || !/^https?:\/\//i.test(activeTab.url),
       screenshotDisabled: !activeTabId,
       translateActive,
@@ -2115,9 +2171,14 @@ export function App() {
       suggestions: suggestions.map((s) => ({ ...s })),
       toast,
       theme,
+      collapsed: false, // 折叠态由主进程管理，App 恒发 false
     };
   }, [
+    isAiTab,
+    isGenOfficeTab,
+    isGenOfficeHomeTab,
     isInternalPage,
+    isNavDisabledPage,
     activeTab?.url,
     activeTab?.loading,
     activeTab?.canGoBack,
@@ -2196,6 +2257,16 @@ export function App() {
         'h-screen w-screen overflow-hidden',
         useCustomChrome ? 'app-window-frame' : 'bg-titlebar',
       )}
+      // 外框（8px #F6F2F0）长按拖动窗口：仅当点到外框本身（e.target===currentTarget）时启动，
+      // 避免与标题栏/侧栏/内容交互冲突。
+      onPointerDown={(e) => {
+        if (useCustomChrome && e.target === e.currentTarget) {
+          windowDrag.startDrag(e);
+        }
+      }}
+      onPointerMove={windowDrag.moveDrag}
+      onPointerUp={windowDrag.endDrag}
+      onPointerCancel={windowDrag.endDrag}
       // 拖放本地文件到窗口：直接按类型在新标签页打开（audio/video/pdf 原生渲染，文本走查看器）
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
@@ -2228,6 +2299,7 @@ export function App() {
            *  border-r 保留：这是"左侧边栏与网页区"之间的分割线
            *  （网页区左上角圆角的夹角边之一）。 */}
           <aside
+            ref={leftAsideRef}
             className="flex shrink-0 flex-col border-r border-border bg-transparent transition-[width] duration-150"
             style={{ width: leftWidth }}
             onPointerDown={windowDrag.startDrag}
@@ -2531,98 +2603,13 @@ export function App() {
                 </div>
               </div>
             )}
-            {/* 内部页（设置/邮件/主页/工作区/文件查看器）仍用内嵌地址栏：无 BrowserView 遮挡，
-             * React 层可直接渲染；外部网页改用悬浮状态栏子窗口（见 main/status-bar）。
-             * AI/GenOffice 编辑器/GenOffice 主页仍隐藏地址栏。 */}
-            {isInternalPage && !isAiTab && !isGenOfficeTab && !isGenOfficeHomeTab && (
-              <div
-                className="flex shrink-0 items-center justify-center"
-                style={{ height: BOTTOM_HEIGHT }}
-              >
-                <div className="flex h-10 w-3/5 min-w-0 items-center gap-1.5 rounded-lg border border-border/60 bg-[var(--color-address-bar)] px-2 shadow-sm">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 shrink-0 p-0"
-                    onClick={() => void handleGoBack()}
-                    disabled={!activeTab?.canGoBack || isInternalPage}
-                    aria-label="后退"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 shrink-0 p-0"
-                    onClick={() => void handleGoForward()}
-                    disabled={!activeTab?.canGoForward || isInternalPage}
-                    aria-label="前进"
-                  >
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 shrink-0 p-0"
-                    onClick={() => void handleReload()}
-                    disabled={!activeTabId || isInternalPage}
-                    aria-label="刷新"
-                  >
-                    <RotateCw className={cn('h-4 w-4', activeTab?.loading && 'animate-spin')} />
-                  </Button>
-
-                  <Omnibox
-                    currentUrl={activeTab?.url ?? ''}
-                    loading={activeTab?.loading ?? false}
-                    securityState={getSecurityState(activeTab?.url ?? '')}
-                    suggestions={suggestions}
-                    onNavigate={(url) => void handleNavigate(url)}
-                    onSuggestionQuery={(q) => void handleSuggestionQuery(q)}
-                    bookmarkSaved={bookmarkSaved}
-                    bookmarkable={
-                      !isInternalPage && !!activeTab?.url && isBookmarkable(activeTab.url)
-                    }
-                    onBookmarkToggle={() => void handleSaveBookmark()}
-                    onSummarize={() => void handleSummarize()}
-                    summarizeDisabled={
-                      summaryRunning || !activeTab?.url || !/^https?:\/\//i.test(activeTab.url)
-                    }
-                    onScreenshot={() => void handleScreenshot()}
-                    screenshotDisabled={!activeTabId}
-                    onTranslate={() => void handleTranslate()}
-                    translateActive={translateActive}
-                    translateDisabled={!activeTab?.url || !/^https?:\/\//i.test(activeTab.url)}
-                    searchEngine={searchEngine}
-                  />
-                </div>
-
-                {bookmarkToast && (
-                  <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border">
-                    {bookmarkToast}
-                  </div>
-                )}
-
-                {summaryToast && (
-                  <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border flex items-center gap-1.5">
-                    {summaryRunning && <RotateCw className="h-3 w-3 animate-spin" />}
-                    <span>{summaryToast}</span>
-                  </div>
-                )}
-
-                {dshStarting && (
-                  <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border flex items-center gap-1.5">
-                    <RotateCw className="h-3 w-3 animate-spin" />
-                    <span>正在启动 DeepSeek Harness…</span>
-                  </div>
-                )}
-              </div>
-            )}
           </main>
 
           {/* === 右侧栏 === */}
           {/* 折叠态下悬停展开，鼠标离开带过冲弹性回弹；展开/收起使用不同缓动以体现"力度"。
            *  拖拽调节中（resizingRight）禁用宽度 transition，保证跟手。 */}
           <aside
+            ref={rightAsideRef}
             className={cn(
               'relative flex shrink-0 flex-col border-l border-border bg-transparent',
               resizingRight

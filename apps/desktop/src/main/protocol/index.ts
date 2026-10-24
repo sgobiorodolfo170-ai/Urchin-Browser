@@ -14,7 +14,8 @@ import { protocol } from 'electron';
 import type { CustomScheme, Session } from 'electron';
 import { createReadStream, readFileSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, join } from 'node:path';
+import { app } from 'electron';
 import { createLogger } from '@urchin/logger';
 import { getBookmarkPanelHtml } from '../panel/bookmark-panel';
 import { getCaptureOverlayHtml } from '../screenshots/capture-overlay-html';
@@ -441,6 +442,21 @@ export function registerUrchinProtocol(
               "default-src 'none'; img-src http: https: data:; style-src 'unsafe-inline' http: https:; font-src http: https: data:; media-src http: https: data:",
           },
         });
+      }
+
+      if (host === 'app-icon') {
+        // 应用主图标（build/icon.png），供悬浮球等 UI 加载。
+        const iconPath = join(app.getAppPath(), 'build', 'icon.png');
+        try {
+          const data = readFileSync(iconPath);
+          return new Response(data, {
+            status: 200,
+            headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-cache' },
+          });
+        } catch (err) {
+          log.warn('app-icon read failed', { error: String(err) });
+          return new Response('icon not found', { status: 404 });
+        }
       }
 
       if (host === 'panel') {

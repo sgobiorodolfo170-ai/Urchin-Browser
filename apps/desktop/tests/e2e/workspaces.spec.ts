@@ -131,12 +131,12 @@ async function navigateAndWait(
   path: string,
 ): Promise<void> {
   const omniboxPage = await getOmniboxPage(electronApp, window);
-  const omniboxInput = omniboxPage.getByLabel('地址栏');
+  const omniboxInput = omniboxPage.getByRole('textbox', { name: '地址栏' });
   await omniboxInput.fill(`${base}${path}`);
   await omniboxInput.press('Enter');
   // 导航完成后地址栏在悬浮状态栏（外部页）
   const statusBar = await getStatusBarPage(electronApp);
-  await expect(statusBar.getByLabel('地址栏')).toHaveValue(
+  await expect(statusBar.getByRole('textbox', { name: '地址栏' })).toHaveValue(
     new RegExp(`${base.replace('.', '\\.')}${path.replace('?', '\\?').replace('=', '\\=')}`),
     {
       timeout: 15_000,

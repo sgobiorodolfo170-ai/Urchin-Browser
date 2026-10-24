@@ -105,13 +105,13 @@ test.describe('v0.1 关键路径', () => {
 
     // 在地址栏输入 URL 并提交（内部页地址栏在主窗口；导航到外部页后状态栏悬浮层出现）
     const omniboxPage = await getOmniboxPage(electronApp, window);
-    const omniboxInput = omniboxPage.getByLabel('地址栏');
+    const omniboxInput = omniboxPage.getByRole('textbox', { name: '地址栏' });
     await omniboxInput.fill('https://example.com');
     await omniboxInput.press('Enter');
 
     // 验证地址栏更新为新 URL（导航完成后悬浮层地址栏显示新 URL）
     const statusBar = await getStatusBarPage(electronApp);
-    await expect(statusBar.getByLabel('地址栏')).toHaveValue(/example\.com/, {
+    await expect(statusBar.getByRole('textbox', { name: '地址栏' })).toHaveValue(/example\.com/, {
       timeout: 15_000,
     });
 

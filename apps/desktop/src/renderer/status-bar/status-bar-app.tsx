@@ -31,6 +31,7 @@ const DEFAULT_STATE: StatusBarState = {
   suggestions: [],
   toast: null,
   theme: 'light',
+  collapsed: false,
 };
 
 export function StatusBarRoot() {
@@ -73,7 +74,13 @@ export function StatusBarRoot() {
 
   const suggestionsOpen = focused && state.suggestions.length > 0;
   const toast = suggestionsOpen ? null : state.toast;
-  const panelHeight = suggestionsOpen ? SUGGESTIONS_PANEL_HEIGHT : toast ? TOAST_PANEL_HEIGHT : 0;
+  const panelHeight = state.collapsed
+    ? 0
+    : suggestionsOpen
+      ? SUGGESTIONS_PANEL_HEIGHT
+      : toast
+        ? TOAST_PANEL_HEIGHT
+        : 0;
 
   // 上报额外面板高度，主进程据此调整窗口高度（向上展开）
   useEffect(() => {

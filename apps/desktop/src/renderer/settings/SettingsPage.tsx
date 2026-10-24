@@ -81,7 +81,7 @@ interface SettingsEntry {
 }
 
 /** 选项卡定义 */
-type TabKey = 'general' | 'ai' | 'privacy' | 'update' | 'files' | 'about' | 'debug';
+type TabKey = 'general' | 'ops' | 'ai' | 'data' | 'privacy' | 'files' | 'about' | 'debug';
 
 interface TabDef {
   readonly key: TabKey;
@@ -90,9 +90,10 @@ interface TabDef {
 
 const TABS: readonly TabDef[] = [
   { key: 'general', label: '通用' },
+  { key: 'ops', label: '操作' },
   { key: 'ai', label: 'AI 助手' },
+  { key: 'data', label: '数据' },
   { key: 'privacy', label: '隐私与安全' },
-  { key: 'update', label: '更新' },
   { key: 'files', label: '默认应用' },
   { key: 'about', label: '关于' },
   { key: 'debug', label: '调试' },
@@ -126,42 +127,10 @@ const GENERAL_FIELDS: readonly SettingField[] = [
     ],
   },
   {
-    key: 'data.directory',
-    label: '数据存储位置',
-    desc: '书签、历史、设置、截图、摘要、下载、网页保存的根目录（留空使用默认位置）。修改后重启生效；pi 对话数据与设置固定存于 userData/pi，不随此目录变动',
-    type: 'directory',
-  },
-  {
-    key: 'downloadsPath',
-    label: '下载位置',
-    desc: '下载保存目录（留空 = 每次下载询问保存位置，确认时可设为默认）',
-    type: 'directory',
-  },
-  {
     key: 'links.openInNewTab',
     label: '在新标签页打开链接',
     desc: '点击网页内链接时在新标签页打开（关闭则在当前标签页打开）',
     type: 'toggle',
-  },
-  {
-    key: 'ui.rightSidebarAutoExpand',
-    label: '右侧边栏展开方式',
-    desc: '切换展开方式：双击展开（默认）/ 悬停自动展开。开启=悬停自动展开，关闭=双击展开',
-    type: 'select',
-    options: [
-      { value: 'false', label: '双击展开' },
-      { value: 'true', label: '悬停自动展开' },
-    ],
-  },
-  {
-    key: 'ui.workspaceSwitcherMode',
-    label: '折叠态工作区切换',
-    desc: '右侧栏折叠时切换工作区的方式：滚轮循环切换（默认）或点击图标打开工作区总览页（卡片 + 网页快照，参考 ego-lite Space 设计）；展开态选项条不受影响',
-    type: 'select',
-    options: [
-      { value: 'wheel', label: '滚轮循环切换' },
-      { value: 'cards', label: '点击卡片' },
-    ],
   },
   {
     key: 'translate.targetLang',
@@ -197,6 +166,44 @@ const GENERAL_FIELDS: readonly SettingField[] = [
     label: '自动翻译外语页面',
     desc: '开启后打开外语网页时自动翻译为目标语言（默认关闭）。隐私提示：翻译时页面文本将发送至所选翻译服务（微软/谷歌）；关闭时仅在手动点击翻译后发送',
     type: 'toggle',
+  },
+];
+
+const OPS_FIELDS: readonly SettingField[] = [
+  {
+    key: 'ui.rightSidebarAutoExpand',
+    label: '右侧边栏展开方式',
+    desc: '切换展开方式：双击展开（默认）/ 悬停自动展开。开启=悬停自动展开，关闭=双击展开',
+    type: 'select',
+    options: [
+      { value: 'false', label: '双击展开' },
+      { value: 'true', label: '悬停自动展开' },
+    ],
+  },
+  {
+    key: 'ui.workspaceSwitcherMode',
+    label: '折叠态工作区切换',
+    desc: '右侧栏折叠时切换工作区的方式：滚轮循环切换（默认）或点击图标打开工作区总览页（卡片 + 网页快照，参考 ego-lite Space 设计）；展开态选项条不受影响',
+    type: 'select',
+    options: [
+      { value: 'wheel', label: '滚轮循环切换' },
+      { value: 'cards', label: '点击卡片' },
+    ],
+  },
+];
+
+const DATA_FIELDS: readonly SettingField[] = [
+  {
+    key: 'data.directory',
+    label: '数据存储位置',
+    desc: '书签、历史、设置、截图、摘要、下载、网页保存的根目录（留空使用默认位置）。修改后重启生效；pi 对话数据与设置固定存于 userData/pi，不随此目录变动',
+    type: 'directory',
+  },
+  {
+    key: 'downloadsPath',
+    label: '下载位置',
+    desc: '下载保存目录（留空 = 每次下载询问保存位置，确认时可设为默认）',
+    type: 'directory',
   },
 ];
 
@@ -256,6 +263,8 @@ const DEFAULTS: Record<string, unknown> = {
   'summary.baseUrl': '',
   'ai.providerProfiles': [],
   'debug.sidebarHoverDelay': 300,
+  'ui.statusBall.sensitivityVertical': 1,
+  'ui.statusBall.sensitivityHorizontal': 1,
   'translate.targetLang': 'zh-CN',
   'translate.engine': 'auto',
   'translate.autoTranslate': false,
@@ -525,6 +534,7 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
               onChange={updateField}
             />
           )}
+          {activeTab === 'ops' && <OpsTab entries={entries} onChange={updateField} />}
           {activeTab === 'ai' && (
             <SettingsSection
               title="AI 助手"
@@ -532,6 +542,14 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
               entries={entries}
               onChange={updateField}
               profileApi={profileApi}
+            />
+          )}
+          {activeTab === 'data' && (
+            <SettingsSection
+              title="数据"
+              fields={DATA_FIELDS}
+              entries={entries}
+              onChange={updateField}
             />
           )}
           {activeTab === 'privacy' && (
@@ -542,7 +560,6 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
               onChange={updateField}
             />
           )}
-          {activeTab === 'update' && <UpdateTab />}
           {activeTab === 'files' && <FilesTab onToast={showToast} />}
           {activeTab === 'about' && <AboutTab />}
           {activeTab === 'debug' && <DebugTab entries={entries} onChange={updateField} />}
@@ -890,7 +907,108 @@ function describeUpdateStatus(state: UpdateStateView | null, actionError: string
   }
 }
 
-function UpdateTab() {
+/**
+ * 「操作」选项卡：侧栏/工作区/悬浮球设置。
+ */
+function OpsTab({
+  entries,
+  onChange,
+}: {
+  readonly entries: Record<string, unknown>;
+  readonly onChange: (key: string, value: unknown) => void;
+}) {
+  const sensVRaw = entries['ui.statusBall.sensitivityVertical'];
+  const ballSensV = typeof sensVRaw === 'number' && Number.isFinite(sensVRaw) ? sensVRaw : 1;
+  const sensHRaw = entries['ui.statusBall.sensitivityHorizontal'];
+  const ballSensH = typeof sensHRaw === 'number' && Number.isFinite(sensHRaw) ? sensHRaw : 1;
+
+  return (
+    <section>
+      <h1 className="mb-4 text-2xl font-semibold">操作</h1>
+      <SettingsSection
+        title="侧栏与工作区"
+        fields={OPS_FIELDS}
+        entries={entries}
+        onChange={onChange}
+      />
+
+      {/* 地址栏悬浮球滚动灵敏度设置 */}
+      <div className="mt-6 rounded-md border border-border bg-surface-secondary px-4 py-3">
+        <div className="text-sm font-medium">地址栏悬浮球滚动灵敏度</div>
+        <div className="mt-0.5 text-xs text-text-secondary">
+          按住悬浮球拖动滚动网页时的位移倍率（上下/左右独立可调；0.1–5.0，默认
+          1.0）。拖到限位后继续按住，网页仍会持续滚动直到松手。
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex items-center gap-3">
+            <span className="w-10 text-xs text-text-secondary">上下</span>
+            <input
+              type="range"
+              min={0.1}
+              max={5}
+              step={0.1}
+              className="flex-1"
+              value={ballSensV}
+              onChange={(e) => {
+                const n = Number.parseFloat(e.target.value);
+                if (Number.isFinite(n)) {
+                  onChange('ui.statusBall.sensitivityVertical', Math.max(0.1, Math.min(5, n)));
+                }
+              }}
+            />
+            <input
+              type="number"
+              min={0.1}
+              max={5}
+              step={0.1}
+              className="h-8 w-16 rounded-md border border-border bg-surface px-2 text-sm text-text outline-none focus:border-primary"
+              value={ballSensV}
+              onChange={(e) => {
+                const n = Number.parseFloat(e.target.value);
+                if (Number.isFinite(n)) {
+                  onChange('ui.statusBall.sensitivityVertical', Math.max(0.1, Math.min(5, n)));
+                }
+              }}
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="w-10 text-xs text-text-secondary">左右</span>
+            <input
+              type="range"
+              min={0.1}
+              max={5}
+              step={0.1}
+              className="flex-1"
+              value={ballSensH}
+              onChange={(e) => {
+                const n = Number.parseFloat(e.target.value);
+                if (Number.isFinite(n)) {
+                  onChange('ui.statusBall.sensitivityHorizontal', Math.max(0.1, Math.min(5, n)));
+                }
+              }}
+            />
+            <input
+              type="number"
+              min={0.1}
+              max={5}
+              step={0.1}
+              className="h-8 w-16 rounded-md border border-border bg-surface px-2 text-sm text-text outline-none focus:border-primary"
+              value={ballSensH}
+              onChange={(e) => {
+                const n = Number.parseFloat(e.target.value);
+                if (Number.isFinite(n)) {
+                  onChange('ui.statusBall.sensitivityHorizontal', Math.max(0.1, Math.min(5, n)));
+                }
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function UpdateSection() {
   const [state, setState] = useState<UpdateStateView | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -940,97 +1058,95 @@ function UpdateTab() {
   const progress = state?.progress ?? { percent: 0, transferred: 0, total: 0, bytesPerSecond: 0 };
 
   return (
-    <section>
-      <h1 className="mb-6 text-2xl font-semibold">更新</h1>
-      <div className="space-y-4">
-        <div className="rounded-md border border-border bg-surface-secondary px-4 py-3">
-          <div className="text-xs text-text-secondary">当前版本</div>
-          <div className="mt-1 text-lg font-medium">v{state?.currentVersion ?? '…'}</div>
-          <div className="mt-1 text-xs text-text-secondary">
-            更新通道：{describeUpdateChannel(state?.currentVersion)}
-          </div>
+    <div className="rounded-md border border-border px-4 py-3">
+      <div className="mb-3 text-sm font-medium">更新检查</div>
+      <div className="rounded-md border border-border bg-surface-secondary px-4 py-3">
+        <div className="text-xs text-text-secondary">当前版本</div>
+        <div className="mt-1 text-lg font-medium">v{state?.currentVersion ?? '…'}</div>
+        <div className="mt-1 text-xs text-text-secondary">
+          更新通道：{describeUpdateChannel(state?.currentVersion)}
         </div>
+      </div>
 
-        <div className="rounded-md border border-border px-4 py-3">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <div className="font-medium">检查更新</div>
-              <div className="mt-0.5 text-xs text-text-secondary">
-                {describeUpdateStatus(state, actionError)}（上次检查：
-                {formatCheckedAt(state?.checkedAt)}）
-              </div>
-              {errorText && <div className="mt-1 text-xs text-error">{errorText}</div>}
+      <div className="rounded-md border border-border px-4 py-3">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="font-medium">检查更新</div>
+            <div className="mt-0.5 text-xs text-text-secondary">
+              {describeUpdateStatus(state, actionError)}（上次检查：
+              {formatCheckedAt(state?.checkedAt)}）
             </div>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => run('update.check')}
-              disabled={busy || status === 'disabled'}
-            >
-              {status === 'checking' ? '检查中…' : '立即检查'}
+            {errorText && <div className="mt-1 text-xs text-error">{errorText}</div>}
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => run('update.check')}
+            disabled={busy || status === 'disabled'}
+          >
+            {status === 'checking' ? '检查中…' : '立即检查'}
+          </Button>
+        </div>
+      </div>
+
+      {status === 'available' && (
+        <div className="rounded-md border border-border px-4 py-3">
+          <div className="font-medium">发现新版本 v{state?.latestVersion ?? ''}</div>
+          {state?.releaseName && (
+            <div className="mt-0.5 text-xs text-text-secondary">{state.releaseName}</div>
+          )}
+          {state?.releaseNotes && (
+            <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-surface-secondary p-2 text-xs text-text-secondary">
+              {state.releaseNotes}
+            </pre>
+          )}
+          <div className="mt-3 flex justify-end">
+            <Button variant="primary" size="sm" onClick={() => run('update.download')}>
+              下载并更新
             </Button>
           </div>
         </div>
+      )}
 
-        {status === 'available' && (
-          <div className="rounded-md border border-border px-4 py-3">
-            <div className="font-medium">发现新版本 v{state?.latestVersion ?? ''}</div>
-            {state?.releaseName && (
-              <div className="mt-0.5 text-xs text-text-secondary">{state.releaseName}</div>
-            )}
-            {state?.releaseNotes && (
-              <pre className="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-surface-secondary p-2 text-xs text-text-secondary">
-                {state.releaseNotes}
-              </pre>
-            )}
-            <div className="mt-3 flex justify-end">
-              <Button variant="primary" size="sm" onClick={() => run('update.download')}>
-                下载并更新
-              </Button>
-            </div>
+      {status === 'downloading' && (
+        <div className="rounded-md border border-border px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div className="font-medium">正在下载 v{state?.latestVersion ?? ''}</div>
+            <div className="text-xs text-text-secondary">{Math.floor(progress.percent)}%</div>
           </div>
-        )}
-
-        {status === 'downloading' && (
-          <div className="rounded-md border border-border px-4 py-3">
-            <div className="flex items-center justify-between">
-              <div className="font-medium">正在下载 v{state?.latestVersion ?? ''}</div>
-              <div className="text-xs text-text-secondary">{Math.floor(progress.percent)}%</div>
-            </div>
+          <div
+            className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-secondary"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.floor(progress.percent)}
+          >
             <div
-              className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-secondary"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.floor(progress.percent)}
-            >
-              <div
-                className="h-full rounded-full bg-primary transition-[width] duration-200"
-                style={{ width: `${Math.min(100, progress.percent)}%` }}
-              />
-            </div>
-            <div className="mt-1.5 text-xs text-text-secondary">
-              {formatBytes(progress.transferred)} / {formatBytes(progress.total)} ·{' '}
-              {formatBytes(progress.bytesPerSecond)}/s
-            </div>
+              className="h-full rounded-full bg-primary transition-[width] duration-200"
+              style={{ width: `${Math.min(100, progress.percent)}%` }}
+            />
           </div>
-        )}
+          <div className="mt-1.5 text-xs text-text-secondary">
+            {formatBytes(progress.transferred)} / {formatBytes(progress.total)} ·{' '}
+            {formatBytes(progress.bytesPerSecond)}/s
+          </div>
+        </div>
+      )}
 
-        {status === 'downloaded' && (
-          <div className="rounded-md border border-border px-4 py-3">
-            <div className="font-medium">v{state?.latestVersion ?? ''} 已就绪</div>
-            <div className="mt-0.5 text-xs text-text-secondary">
-              点击「重启并安装」立即更新；直接退出应用也会自动完成安装。
-            </div>
-            <div className="mt-3 flex justify-end">
-              <Button variant="primary" size="sm" onClick={() => run('update.install')}>
-                重启并安装
-              </Button>
-            </div>
+      {status === 'downloaded' && (
+        <div className="rounded-md border border-border px-4 py-3">
+          <div className="font-medium">v{state?.latestVersion ?? ''} 已就绪</div>
+          <div className="mt-0.5 text-xs text-text-secondary">
+            点击「重启并安装」立即更新；直接退出应用也会自动完成安装。
           </div>
-        )}
-      </div>
-    </section>
+          <div className="mt-3 flex justify-end">
+            <Button variant="primary" size="sm" onClick={() => run('update.install')}>
+              重启并安装
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1076,6 +1192,9 @@ function AboutTab() {
             一款基于 Electron + Chromium 的 AI 浏览器，集成多 Provider AI 助手与隐私保护。
           </div>
         </div>
+
+        {/* 更新检查（原「更新」选项卡内容移入此处） */}
+        <UpdateSection />
 
         <div className="rounded-md border border-border px-4 py-3">
           <div className="mb-2 text-sm font-medium">运行时信息</div>

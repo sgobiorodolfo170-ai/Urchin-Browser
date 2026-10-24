@@ -50,7 +50,7 @@ test('新建标签后旧标签保持原状态且置顶新标签', async () => {
 
   // 1. 地址栏导航 example.com（当前标签内导航；内部页地址栏在主窗口）
   const omniboxPage = await getOmniboxPage(electronApp, window);
-  const omniboxInput = omniboxPage.getByLabel('地址栏');
+  const omniboxInput = omniboxPage.getByRole('textbox', { name: '地址栏' });
   await omniboxInput.fill('https://example.com');
   await omniboxInput.press('Enter');
   await expect(window.getByText('Example Domain')).toBeVisible({ timeout: 15_000 });

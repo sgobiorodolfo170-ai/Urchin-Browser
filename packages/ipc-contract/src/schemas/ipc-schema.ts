@@ -644,6 +644,8 @@ export const statusBarStateSchema = z.object({
   suggestions: z.array(statusBarSuggestionSchema).max(20),
   toast: statusBarToastSchema.nullable(),
   theme: z.enum(['light', 'dark']),
+  /** 地址栏是否折叠为悬浮球（由主进程管理，同步给悬浮层） */
+  collapsed: z.boolean(),
 });
 export type StatusBarState = z.infer<typeof statusBarStateSchema>;
 
@@ -678,10 +680,57 @@ export type UiStatusBarActionRes = z.infer<typeof uiStatusBarActionResSchema>;
 export const uiStatusBarSetExpandedReqSchema = z.object({
   /** 悬浮层内容在卡片之上额外需要的高度（建议/提示），0 表示仅基础卡片区 */
   panelHeight: z.number().min(0).max(640),
+  /** 地址栏是否折叠为悬浮球：折叠时窗口缩为球大小，展开时恢复整条地址栏 */
+  collapsed: z.boolean().default(false),
 });
 export type UiStatusBarSetExpandedReq = z.infer<typeof uiStatusBarSetExpandedReqSchema>;
 export const uiStatusBarSetExpandedResSchema = z.object({ ok: z.literal(true) });
 export type UiStatusBarSetExpandedRes = z.infer<typeof uiStatusBarSetExpandedResSchema>;
+
+/**
+ * ui.statusbar.collapse：折叠/展开地址栏（折叠按钮或悬浮球点击调用）。
+ * 主进程据此切换地址栏窗口可见性与悬浮球状态，并同步给悬浮层。
+ */
+export const uiStatusBarCollapseReqSchema = z.object({
+  collapsed: z.boolean(),
+});
+export type UiStatusBarCollapseReq = z.infer<typeof uiStatusBarCollapseReqSchema>;
+export const uiStatusBarCollapseResSchema = z.object({ ok: z.literal(true) });
+export type UiStatusBarCollapseRes = z.infer<typeof uiStatusBarCollapseResSchema>;
+
+/**
+ * ui.statusbar.ball.scroll：悬浮球拖动滚动网页（悬浮球 → 主进程 → 活跃 tab webContents）。
+ */
+export const uiStatusBarBallScrollReqSchema = z.object({
+  /** X 位移（px，正值向右） */
+  dx: z.number(),
+  /** Y 位移（px，正值向下） */
+  dy: z.number(),
+});
+export type UiStatusBarBallScrollReq = z.infer<typeof uiStatusBarBallScrollReqSchema>;
+export const uiStatusBarBallScrollResSchema = z.object({ ok: z.literal(true) });
+export type UiStatusBarBallScrollRes = z.infer<typeof uiStatusBarBallScrollResSchema>;
+
+/**
+ * ui.statusbar.ball.move：悬浮球右键拖动改变位置（悬浮球 → 主进程移动窗口）。
+ */
+export const uiStatusBarBallMoveReqSchema = z.object({
+  /** X 位移（px，正值向右） */
+  dx: z.number(),
+  /** Y 位移（px，正值向下） */
+  dy: z.number(),
+});
+export type UiStatusBarBallMoveReq = z.infer<typeof uiStatusBarBallMoveReqSchema>;
+export const uiStatusBarBallMoveResSchema = z.object({ ok: z.literal(true) });
+export type UiStatusBarBallMoveRes = z.infer<typeof uiStatusBarBallMoveResSchema>;
+
+/**
+ * ui.statusbar.ball.click：悬浮球点击（切换折叠/展开）。主进程根据当前折叠态切换。
+ */
+export const uiStatusBarBallClickReqSchema = z.object({}).default({});
+export type UiStatusBarBallClickReq = z.infer<typeof uiStatusBarBallClickReqSchema>;
+export const uiStatusBarBallClickResSchema = z.object({ ok: z.literal(true) });
+export type UiStatusBarBallClickRes = z.infer<typeof uiStatusBarBallClickResSchema>;
 
 // ============================================================================
 // 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）
@@ -2102,6 +2151,19 @@ export const ipcSchema = {
   'ui.statusbar.setExpanded': {
     req: uiStatusBarSetExpandedReqSchema,
     res: uiStatusBarSetExpandedResSchema,
+  },
+  'ui.statusbar.collapse': { req: uiStatusBarCollapseReqSchema, res: uiStatusBarCollapseResSchema },
+  'ui.statusbar.ball.scroll': {
+    req: uiStatusBarBallScrollReqSchema,
+    res: uiStatusBarBallScrollResSchema,
+  },
+  'ui.statusbar.ball.click': {
+    req: uiStatusBarBallClickReqSchema,
+    res: uiStatusBarBallClickResSchema,
+  },
+  'ui.statusbar.ball.move': {
+    req: uiStatusBarBallMoveReqSchema,
+    res: uiStatusBarBallMoveResSchema,
   },
   'download.list': { req: downloadListReqSchema, res: downloadListResSchema },
   'download.cancel': { req: downloadCancelReqSchema, res: downloadCancelResSchema },

@@ -157,11 +157,11 @@ test.describe('网页翻译', () => {
     try {
       // 导航到本地 fixture 页（内部页地址栏在主窗口；导航到外部页后悬浮状态栏出现）
       const omniboxPage = await getOmniboxPage(electronApp, window);
-      const omniboxInput = omniboxPage.getByLabel('地址栏');
+      const omniboxInput = omniboxPage.getByRole('textbox', { name: '地址栏' });
       await omniboxInput.fill(`http://127.0.0.1:${port}/fixture`);
       await omniboxInput.press('Enter');
       const statusBar = await getStatusBarPage(electronApp);
-      await expect(statusBar.getByLabel('地址栏')).toHaveValue(
+      await expect(statusBar.getByRole('textbox', { name: '地址栏' })).toHaveValue(
         new RegExp(`127\\.0\\.0\\.1:${port}`),
         {
           timeout: 15_000,

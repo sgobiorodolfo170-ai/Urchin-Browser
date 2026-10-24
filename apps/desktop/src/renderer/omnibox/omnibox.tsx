@@ -69,6 +69,11 @@ export interface OmniboxProps {
   readonly searchEngine?: string;
   /** 焦点变化透传（悬浮层据此展开/收起建议面板高度） */
   readonly onFocusChange?: (focused: boolean) => void;
+  /**
+   * 翻译按钮外部渲染：为 true 时 Omnibox 不渲染翻译按钮，
+   * 由调用方在导航按钮区（刷新后）自行渲染，以便按需排版。
+   */
+  readonly translateExternal?: boolean;
 }
 
 /** 安全状态图标。 */
@@ -101,6 +106,7 @@ export function Omnibox({
   translateDisabled = false,
   searchEngine,
   onFocusChange,
+  translateExternal = false,
 }: OmniboxProps) {
   const [input, setInput] = useState(currentUrl);
   const [isFocused, setIsFocused] = useState(false);
@@ -266,20 +272,23 @@ export function Omnibox({
         <Sparkles className="h-4 w-4" />
       </button>
 
-      {/* 翻译按钮（M24 dev.81）：未激活→整页翻译，激活→恢复原文；激活态高亮 */}
-      <button
-        type="button"
-        className={cn(
-          'flex shrink-0 items-center justify-center rounded-md p-1.5 hover:bg-surface-secondary disabled:opacity-40 disabled:hover:bg-transparent',
-          translateActive ? 'text-primary' : 'text-text-secondary hover:text-text',
-        )}
-        onClick={() => onTranslate?.()}
-        disabled={translateDisabled || !onTranslate}
-        aria-label={translateActive ? '恢复原文' : '翻译网页'}
-        title={translateActive ? '恢复原文' : '翻译网页'}
-      >
-        <Languages className="h-4 w-4" />
-      </button>
+      {/* 翻译按钮（M24 dev.81）：未激活→整页翻译，激活→恢复原文；激活态高亮。
+       * translateExternal=true 时由调用方在导航区渲染，此处跳过。 */}
+      {!translateExternal && (
+        <button
+          type="button"
+          className={cn(
+            'flex shrink-0 items-center justify-center rounded-md p-1.5 hover:bg-surface-secondary disabled:opacity-40 disabled:hover:bg-transparent',
+            translateActive ? 'text-primary' : 'text-text-secondary hover:text-text',
+          )}
+          onClick={() => onTranslate?.()}
+          disabled={translateDisabled || !onTranslate}
+          aria-label={translateActive ? '恢复原文' : '翻译网页'}
+          title={translateActive ? '恢复原文' : '翻译网页'}
+        >
+          <Languages className="h-4 w-4" />
+        </button>
+      )}
 
       {/* 加载进度条（OM8 决策） */}
       {loading && (

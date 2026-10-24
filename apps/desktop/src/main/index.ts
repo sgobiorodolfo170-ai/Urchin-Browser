@@ -99,6 +99,7 @@ import {
   DEFAULT_STATUS_BAR_STATE,
   type StatusBarHostWindow,
 } from './status-bar/status-bar-overlay';
+import { StatusBarBall, type StatusBarBallHostWindow } from './status-bar/status-bar-ball';
 import {
   resolveDataLocation,
   setDataLocation,
@@ -504,6 +505,42 @@ function sendToMainWindow(channel: string, payload: unknown): void {
 }
 
 /**
+ * 下发悬浮球配置（主题 + 上下/左右灵敏度）给球窗口。
+ * 灵敏度从 settingsManager 读取，设置变更或状态同步时调用。
+ */
+function sendBallConfig(): void {
+  if (!statusBarBall) return;
+  const v = settingsManager.get('ui.statusBall.sensitivityVertical');
+  const h = settingsManager.get('ui.statusBall.sensitivityHorizontal');
+  const theme = (settingsManager.get('theme') as 'light' | 'dark' | undefined) ?? 'light';
+  const sensitivityVertical =
+    typeof v === 'number' && Number.isFinite(v) ? Math.max(0.1, Math.min(5, v)) : 1;
+  const sensitivityHorizontal =
+    typeof h === 'number' && Number.isFinite(h) ? Math.max(0.1, Math.min(5, h)) : 1;
+  statusBarBall.sendConfig({ theme, sensitivityVertical, sensitivityHorizontal });
+}
+
+/**
+ * 滚动活跃网页（悬浮球拖动调用）。
+ * dx/dy 为像素位移，正值向右/向下。在页面上下文执行 window.scrollBy。
+ */
+function scrollActivePage(dx: number, dy: number): void {
+  if (dx === 0 && dy === 0) return;
+  try {
+    const entry = windowManager.getAllWindows()[0];
+    if (!entry) return;
+    const active = tabManager.query({ windowId: entry.id }).find((t) => t.active);
+    const tab = active ? tabManager.getTab(active.id) : undefined;
+    const wc = tab?.webContents as unknown as Electron.WebContents | undefined;
+    wc?.executeJavaScript?.(`window.scrollBy(${Math.round(dx)}, ${Math.round(dy)});`, true).catch(
+      () => undefined,
+    );
+  } catch (err) {
+    log.warn('scroll active page failed', { error: String(err) });
+  }
+}
+
+/**
  * 把键盘焦点还回活跃网页（状态栏导航/Escape 后调用）。
  *
  * 状态栏是独立 BrowserWindow，导航后若不显式聚焦，键盘焦点会留在悬浮层，
@@ -529,6 +566,8 @@ function focusActivePage(): void {
 let bookmarkPanel: BookmarkPanel | null = null;
 /** 底部悬浮状态栏（独立透明子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
 let statusBarOverlay: StatusBarOverlay | null = null;
+/** 悬浮球（独立透明子窗口，网页区右侧）。在 whenReady 内初始化。 */
+let statusBarBall: StatusBarBall | null = null;
 /**
  * AI IPC handlers 的 dispose 句柄（由 registerAiHandlers 返回）。
  * 进程退出时调用 dispose()，abort 所有活跃 chat/agent 流，
@@ -1039,6 +1078,7 @@ function registerIpcHandlers(): void {
     // 布局变化（如右侧栏宽度拖拽调节）时，悬浮面板与状态栏跟随重新定位
     bookmarkPanel?.refreshPosition();
     statusBarOverlay?.refreshPosition();
+    statusBarBall?.refreshPosition();
     log.info('layout state updated', {
       leftWidth: newState.leftWidth,
       rightWidth: newState.rightWidth,
@@ -1094,6 +1134,8 @@ function registerIpcHandlers(): void {
   // UI 域 handler：状态栏状态同步（主渲染 → 主进程，缓存并转发给悬浮层）
   registerHandler(ipcMain, 'ui.statusbar.sync', (req) => {
     statusBarOverlay?.handleSync(req);
+    // 主题 + 灵敏度同步给球（球在所有页面常驻，可见性由主进程独立管理）
+    sendBallConfig();
     return { ok: true as const };
   });
 
@@ -1105,6 +1147,30 @@ function registerIpcHandlers(): void {
   // UI 域 handler：悬浮层上报建议/提示展开高度（悬浮层 → 主进程，重定位窗口）
   registerHandler(ipcMain, 'ui.statusbar.setExpanded', (req) => {
     statusBarOverlay?.setExpanded(req.panelHeight);
+    return { ok: true as const };
+  });
+
+  // UI 域 handler：折叠/展开地址栏（折叠按钮调用）
+  registerHandler(ipcMain, 'ui.statusbar.collapse', (req) => {
+    statusBarOverlay?.setCollapsed(req.collapsed);
+    return { ok: true as const };
+  });
+
+  // UI 域 handler：悬浮球拖动滚动网页
+  registerHandler(ipcMain, 'ui.statusbar.ball.scroll', (req) => {
+    scrollActivePage(req.dx, req.dy);
+    return { ok: true as const };
+  });
+
+  // UI 域 handler：悬浮球右键拖动改变位置
+  registerHandler(ipcMain, 'ui.statusbar.ball.move', (req) => {
+    statusBarBall?.moveBy(req.dx, req.dy);
+    return { ok: true as const };
+  });
+
+  // UI 域 handler：悬浮球点击切换折叠/展开
+  registerHandler(ipcMain, 'ui.statusbar.ball.click', () => {
+    statusBarOverlay?.toggleCollapsed();
     return { ok: true as const };
   });
 
@@ -2043,18 +2109,57 @@ void app.whenReady().then(() => {
         // 此回调保留为扩展点，当前无需额外处理。
         void action;
       },
+      getBallY: () => statusBarBall?.getY() ?? null,
     });
     // 悬浮层懒创建：在主渲染同步状态 visible=true（外部网页）时由 applyVisibility 创建。
+
+    // 悬浮球：独立透明子窗口，位于网页区右侧；点击切换折叠，拖动滚动网页。
+    statusBarBall = new StatusBarBall({
+      getParentWindow: () =>
+        (windowManager.getWindow(mainWindow.id)?.browserWindow ??
+          null) as unknown as StatusBarBallHostWindow | null,
+      preloadPath: join(__dirname, '..', 'preload', 'index.js'),
+      onLoad: async (win) => {
+        const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
+        if (isDev) {
+          const base = process.env.URCHIN_RENDERER_URL ?? 'http://localhost:5173';
+          const u = new URL(base);
+          u.searchParams.set('view', 'statusbar-ball');
+          await win.loadURL(u.toString());
+        } else {
+          await win.loadFile(join(__dirname, '..', 'renderer', 'index.html'), {
+            query: { view: 'statusbar-ball' },
+          });
+        }
+      },
+      onToggleCollapse: () => statusBarOverlay?.toggleCollapsed(),
+      onScroll: (dx, dy) => scrollActivePage(dx, dy),
+      onPositionChanged: () => statusBarOverlay?.refreshPosition(),
+      getBarBounds: () => statusBarOverlay?.getBounds() ?? null,
+    });
+    // 悬浮球在所有页面常驻（仅全屏/最小化隐藏），启动即创建显示
+    statusBarBall.setVisible(true);
+    // 初始下发配置 + 监听灵敏度设置变化
+    sendBallConfig();
+    settingsManager.on('changed', (key: string) => {
+      if (key.startsWith('ui.statusBall.')) {
+        sendBallConfig();
+      }
+    });
 
     // HTML5 全屏抑制悬浮状态栏：内嵌视频全屏时隐藏地址栏（同 view-integration 撑满）
     tabManager.on('updated', (snapshot) => {
       if (!snapshot.active) return;
       const tab = tabManager.getTab(snapshot.id);
-      statusBarOverlay?.setHtmlFullscreen(tab?.htmlFullscreen ?? false);
+      const fs = tab?.htmlFullscreen ?? false;
+      statusBarOverlay?.setHtmlFullscreen(fs);
+      statusBarBall?.setSuppressed(fs);
     });
     tabManager.on('activated', (snapshot) => {
       const tab = tabManager.getTab(snapshot.id);
-      statusBarOverlay?.setHtmlFullscreen(tab?.htmlFullscreen ?? false);
+      const fs = tab?.htmlFullscreen ?? false;
+      statusBarOverlay?.setHtmlFullscreen(fs);
+      statusBarBall?.setSuppressed(fs);
     });
 
     markStartup('main:deferred-end');
@@ -2223,6 +2328,14 @@ async function performCleanup(): Promise<void> {
         log.error('Failed to dispose status bar overlay on quit', { error: String(e) });
       }
       statusBarOverlay = null;
+    }
+    if (statusBarBall) {
+      try {
+        statusBarBall.destroy();
+      } catch (e) {
+        log.error('Failed to dispose status bar ball on quit', { error: String(e) });
+      }
+      statusBarBall = null;
     }
 
     // 4.7 移除 pi 页目录选择器注入的 created/did-finish-load 监听（dev.44）

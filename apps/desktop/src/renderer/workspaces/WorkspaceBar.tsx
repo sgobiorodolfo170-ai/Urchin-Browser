@@ -1,13 +1,12 @@
 /**
  * 工作区选项卡条（TP7）：右侧栏展开态标题位。
- * 每个选项卡 = 首字头像 + 工作区名；右键弹出管理工作区菜单；末尾「+」快速创建。
+ * 每个选项卡 = 纯色方形色块（不显示文字/首字，仅以颜色区分）；右键弹出管理工作区菜单；末尾「+」快速创建。
  */
 import { useState } from 'react';
 import { Plus, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import type { Workspace, WorkspaceColor } from './types';
 import { WORKSPACE_COLORS, WORKSPACE_COLOR_KEYS } from './workspace-colors';
-import { WorkspaceAvatar } from './WorkspaceAvatar';
 
 export interface WorkspaceBarProps {
   readonly workspaces: readonly Workspace[];
@@ -48,6 +47,7 @@ export function WorkspaceBar({
             <button
               key={ws.id}
               type="button"
+              aria-label={ws.name}
               title={`${ws.name}${active ? '（当前工作区）' : ''} — 右键管理`}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -55,29 +55,13 @@ export function WorkspaceBar({
               }}
               onClick={() => onSelect(ws.id)}
               className={cn(
-                'relative flex shrink-0 items-center gap-1.5 rounded-md border border-transparent px-2 py-1.5 text-xs transition-colors',
+                'h-7 w-7 shrink-0 rounded-md transition-all',
+                colorInfo.avatar,
                 active
-                  ? 'bg-surface text-text shadow-sm'
-                  : 'text-text-secondary hover:bg-surface-secondary hover:text-text',
+                  ? 'ring-2 ring-primary ring-offset-1 ring-offset-surface-secondary'
+                  : 'opacity-70 hover:opacity-100',
               )}
-            >
-              <WorkspaceAvatar workspace={ws} />
-              <span className="max-w-[84px] truncate">{ws.name}</span>
-              {/* 当前工作区在名称下加一条主题色底线，弱化「选项卡」与「标签卡片」区分 */}
-              {active && (
-                <span
-                  className={cn(
-                    'absolute bottom-0 left-1/2 h-0.5 w-6 -translate-x-1/2 rounded-full',
-                    colorInfo.avatar,
-                  )}
-                />
-              )}
-              {active && (
-                <span aria-hidden className={cn('ml-0.5', colorInfo.activeText)}>
-                  <Check className="h-3 w-3" />
-                </span>
-              )}
-            </button>
+            />
           );
         })}
       </div>

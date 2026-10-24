@@ -48,6 +48,12 @@ const DEFAULT_BOTTOM_HEIGHT = 48;
 const USE_CUSTOM_CHROME = process.platform === 'win32';
 export const WINDOW_FRAME_WIDTH = USE_CUSTOM_CHROME ? 8 : 0;
 export const WINDOW_TITLEBAR_HEIGHT = USE_CUSTOM_CHROME ? 32 : 0;
+/**
+ * 窗口外壳底部内阴影预留高度（px）。
+ * 网页底部留此空隙，露出 .app-window-shell::after 底部内高光/暗边（3D 效果），
+ * 避免网页铺到底时遮盖窗口底部外壳阴影。
+ */
+export const SHELL_BOTTOM_INSET = 6;
 
 /** 由渲染进程 React 组件渲染的内部 URL 前缀（不显示 BrowserView）。
  *  阶段2 解耦：settings 和 ai 都作为 React 渲染的内部页面；newtab 主页同为 React 渲染；
@@ -110,9 +116,10 @@ const layoutState: LayoutState = {
  * 内容区 = 窗口减去四周外框（frame）与顶部自绘标题栏；再按左右侧栏宽度扣除中间网页区域。
  * 不再减去底部状态栏高度：状态栏改为独立透明子窗口悬浮于网页之上，
  * 网页内容可铺到窗口底部，状态栏不再占用布局高度。
+ * 底部额外留 SHELL_BOTTOM_INSET 空隙，露出窗口外壳底部内阴影（3D 效果）。
  * x = frame + leftWidth, y = frame + titlebar,
  * width = windowWidth - 2*frame - leftWidth - rightWidth,
- * height = windowHeight - 2*frame - titlebar。
+ * height = windowHeight - 2*frame - titlebar - SHELL_BOTTOM_INSET。
  */
 function computeViewBounds(windowBounds: { width: number; height: number }): {
   x: number;
@@ -121,7 +128,7 @@ function computeViewBounds(windowBounds: { width: number; height: number }): {
   height: number;
 } {
   const horizontalInset = WINDOW_FRAME_WIDTH * 2;
-  const verticalInset = WINDOW_FRAME_WIDTH * 2 + WINDOW_TITLEBAR_HEIGHT;
+  const verticalInset = WINDOW_FRAME_WIDTH * 2 + WINDOW_TITLEBAR_HEIGHT + SHELL_BOTTOM_INSET;
   return {
     x: WINDOW_FRAME_WIDTH + layoutState.leftWidth,
     y: WINDOW_FRAME_WIDTH + WINDOW_TITLEBAR_HEIGHT,
@@ -290,12 +297,12 @@ export function installTabViewIntegration(
     const contentBounds = managed.browserWindow.getContentBounds();
     const bounds = computeViewBounds(contentBounds);
     // GenOffice 标签页地址栏在 React 层隐藏（App.tsx !isGenOfficeTab 条件），
-    // 视图需覆盖内容区全部高度。computeViewBounds 现已不再扣除底部状态栏高度，
-    // GenOffice 与普通网页一致铺到底部；此分支保留以明示语义并防御未来回归。
+    // 视图需覆盖内容区全部高度。computeViewBounds 已扣除底部外壳阴影，
+    // GenOffice 与普通网页一致铺到底部外壳阴影上方；此分支保留以明示语义并防御回归。
     if (tab.viewKind === 'genoffice') {
       bounds.height = Math.max(
         0,
-        contentBounds.height - WINDOW_FRAME_WIDTH * 2 - WINDOW_TITLEBAR_HEIGHT,
+        contentBounds.height - WINDOW_FRAME_WIDTH * 2 - WINDOW_TITLEBAR_HEIGHT - SHELL_BOTTOM_INSET,
       );
     }
     // 防御性检查：确保 bounds 宽高不为零，否则网页不可见

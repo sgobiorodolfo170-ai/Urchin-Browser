@@ -54,6 +54,7 @@ export const DEFAULT_STATUS_BAR_STATE: StatusBarState = {
   suggestions: [],
   toast: null,
   theme: 'light',
+  collapsed: false,
 };
 
 /** 宿主主窗口最小依赖接口（真实 BrowserWindow 与 mock 均满足） */
@@ -80,6 +81,8 @@ export interface StatusBarOverlayOptions {
   onLoad: (win: BrowserWindow) => Promise<void>;
   /** 悬浮层用户动作转发（主进程转发给主渲染进程并处理焦点等） */
   onAction: (action: StatusBarAction) => void;
+  /** 读取悬浮球当前 Y（供地址栏与球保持同一行；null 则用默认底部对齐） */
+  getBallY?: () => number | null;
   /** BrowserWindow 工厂（测试注入 mock，生产默认 new BrowserWindow） */
   createWindow?: (opts: Electron.BrowserWindowConstructorOptions) => BrowserWindow;
 }
@@ -91,9 +94,10 @@ export type StatusBarAction = UiStatusBarActionReq;
 export type { StatusBarState, StatusBarToast };
 
 /**
- * 计算悬浮层窗口的 bounds（屏幕坐标）。
+ * 计算悬浮地址栏窗口的 bounds（屏幕坐标）。
  *
  * 导出供单测直接验证几何，不依赖 BrowserWindow。
+ * 悬浮球由独立的 StatusBarBall 管理几何。
  */
 export function computeStatusBarBounds(params: {
   contentBounds: { x: number; y: number; width: number; height: number };
@@ -125,6 +129,7 @@ export class StatusBarOverlay {
   private win: BrowserWindow | null = null;
   private state: StatusBarState = { ...DEFAULT_STATUS_BAR_STATE };
   private panelHeight = 0;
+  private collapsed = false;
   private htmlFullscreen = false;
   private parentClosing = false;
   private parentListenersAttached = false;
@@ -153,11 +158,36 @@ export class StatusBarOverlay {
     this.reposition();
   }
 
+  /** 折叠/展开地址栏（IPC ui.statusbar.collapse / ball.click） */
+  setCollapsed(collapsed: boolean): void {
+    if (this.collapsed === collapsed) return;
+    this.collapsed = collapsed;
+    this.applyVisibility();
+    this.sendState();
+  }
+
+  /** 切换折叠/展开（悬浮球点击） */
+  toggleCollapsed(): void {
+    this.setCollapsed(!this.collapsed);
+  }
+
+  /** 当前折叠态（供悬浮球点击切换） */
+  get isCollapsed(): boolean {
+    return this.collapsed;
+  }
+
   /** HTML5 全屏抑制（主进程 tab 事件调用） */
   setHtmlFullscreen(suppressed: boolean): void {
     if (this.htmlFullscreen === suppressed) return;
     this.htmlFullscreen = suppressed;
     this.applyVisibility();
+  }
+
+  /** 获取地址栏窗口当前 bounds（供悬浮球防重叠；不可见时返回 null） */
+  getBounds(): { x: number; y: number; width: number; height: number } | null {
+    const win = this.win;
+    if (!win || win.isDestroyed() || !win.isVisible()) return null;
+    return win.getBounds();
   }
 
   /** 布局变化后刷新位置（侧栏宽度拖拽 / 窗口尺寸变化） */
@@ -285,8 +315,13 @@ export class StatusBarOverlay {
     const parent = this.options.getParentWindow();
     const parentVisible = parent ? parent.isVisible() : false;
     const parentMinimized = parent?.isMinimized?.() ?? false;
+    // 外部网页可见且未折叠时显示地址栏；折叠时由悬浮球显示，地址栏隐藏。
     const shouldShow =
-      this.state.visible && !this.htmlFullscreen && parentVisible && !parentMinimized;
+      this.state.visible &&
+      !this.htmlFullscreen &&
+      !this.collapsed &&
+      parentVisible &&
+      !parentMinimized;
     this.shouldShow = shouldShow;
     if (shouldShow) {
       // 懒创建：仅首次进入外部网页时创建悬浮层，之后常驻（隐藏而非销毁），
@@ -298,7 +333,7 @@ export class StatusBarOverlay {
       }
       this.reposition();
     } else if (this.win && !this.win.isDestroyed()) {
-      // 内部页/AI/全屏时隐藏，不销毁（perf 场景仅打开内部页，悬浮层从未创建，无额外内存）
+      // 内部页/AI/全屏/折叠时隐藏，不销毁（perf 场景仅打开内部页，悬浮层从未创建，无额外内存）
       if (this.win.isVisible()) {
         this.win.hide();
       }
@@ -318,6 +353,15 @@ export class StatusBarOverlay {
       bottomHeight: layout.bottomHeight,
       panelHeight: this.panelHeight,
     });
+    // 若悬浮球位置改变，地址栏与球保持同一行：以球中心对齐卡片中心。
+    const ballY = this.options.getBallY?.() ?? null;
+    if (ballY !== null) {
+      const BALL_SIZE = 40 + 6 * 2; // BALL_SIZE + BALL_PAD
+      const ballCenterY = ballY + BALL_SIZE / 2;
+      // 卡片中心在窗口内的偏移：overlayHeight - 下阴影边距 - 卡片半高
+      const cardCenterOffset = bounds.height - SHADOW_PAD - CARD_HEIGHT / 2;
+      bounds.y = Math.round(ballCenterY - cardCenterOffset);
+    }
     win.setBounds(bounds);
   }
 
@@ -326,7 +370,8 @@ export class StatusBarOverlay {
     if (!win || win.isDestroyed()) return;
     // 页面仍在加载时跳过，待 did-finish-load 统一下发，避免 renderer 尚未注册监听
     if (win.webContents.isLoadingMainFrame()) return;
-    win.webContents.send('ui.statusbar.state', this.state);
+    // 折叠态由主进程管理，覆盖同步给悬浮层
+    win.webContents.send('ui.statusbar.state', { ...this.state, collapsed: this.collapsed });
   }
 
   private attachParentListeners(parent: StatusBarHostWindow): void {

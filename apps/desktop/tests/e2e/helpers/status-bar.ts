@@ -19,7 +19,7 @@ export async function getOmniboxPage(
   const overlay = electronApp.windows().find((p) => p.url().includes('view=statusbar'));
   if (overlay) {
     // 仅当悬浮层可见（外部页）时用其地址栏；内部页悬浮层隐藏，地址栏在主窗口
-    const input = overlay.getByLabel('地址栏');
+    const input = overlay.getByRole('textbox', { name: '地址栏' });
     if (await input.isVisible().catch(() => false)) {
       return overlay;
     }

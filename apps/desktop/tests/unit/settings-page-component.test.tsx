@@ -91,7 +91,7 @@ describe('SettingsPage', () => {
     expect(screen.getByText('重置默认')).toBeTruthy();
   });
 
-  it('should switch tabs and render AI / privacy / update / about / debug content', async () => {
+  it('should switch tabs and render AI / privacy / about / debug content', async () => {
     mockLoadSuccess();
     render(<SettingsPage />);
     await waitFor(() => expect(screen.getAllByText('通用').length).toBeGreaterThan(0));
@@ -109,16 +109,13 @@ describe('SettingsPage', () => {
     expect(screen.getByText('拦截追踪器')).toBeTruthy();
     expect(screen.getByText('请勿追踪')).toBeTruthy();
 
-    // 更新
-    clickTab('更新');
-    expect(screen.getByText('当前版本')).toBeTruthy();
+    // 关于（原「更新」内容已移入）
+    clickTab('关于');
+    expect(screen.getByText('Urchin Browser')).toBeTruthy();
+    expect(screen.getByText('更新检查')).toBeTruthy();
     // 版本来自主进程 update.getState（真实 app.getVersion()）
     await waitFor(() => expect(screen.getByText('v0.1.0-dev.113')).toBeTruthy());
     expect(screen.getByText('立即检查')).toBeTruthy();
-
-    // 关于
-    clickTab('关于');
-    expect(screen.getByText('Urchin Browser')).toBeTruthy();
     expect(screen.getByText('运行时信息')).toBeTruthy();
     expect(screen.getByText('32.0.0')).toBeTruthy();
 
@@ -214,7 +211,8 @@ describe('SettingsPage', () => {
     render(<SettingsPage />);
     await waitFor(() => expect(screen.getAllByText('通用').length).toBeGreaterThan(0));
 
-    // 通用选项卡 directory 字段顺序：data.directory[0] / downloadsPath[1]，浏览按钮同序。
+    // 数据选项卡 directory 字段顺序：data.directory[0] / downloadsPath[1]，浏览按钮同序。
+    clickTab('数据');
     // 下载位置字段（第二个）的「浏览」按钮
     const browseButtons = screen.getAllByText('浏览');
     fireEvent.click(browseButtons[1]!);
@@ -240,7 +238,8 @@ describe('SettingsPage', () => {
     render(<SettingsPage />);
     await waitFor(() => expect(screen.getAllByText('通用').length).toBeGreaterThan(0));
 
-    // 数据存储位置字段（第一个 directory 字段）的「浏览」按钮
+    // 数据选项卡：数据存储位置字段（第一个 directory 字段）的「浏览」按钮
+    clickTab('数据');
     const browseButtons = screen.getAllByText('浏览');
     fireEvent.click(browseButtons[0]!);
 

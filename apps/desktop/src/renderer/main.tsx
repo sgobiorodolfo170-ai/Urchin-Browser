@@ -24,7 +24,9 @@ if (!rootEl) {
   throw new Error('Root element #root not found');
 }
 
-const isStatusBarView = new URLSearchParams(location.search).get('view') === 'statusbar';
+const view = new URLSearchParams(location.search).get('view');
+const isStatusBarView = view === 'statusbar';
+const isBallView = view === 'statusbar-ball';
 
 void (isStatusBarView
   ? import('./status-bar/status-bar-app').then(({ StatusBarRoot }) =>
@@ -34,14 +36,19 @@ void (isStatusBarView
         </StrictMode>,
       ),
     )
-  : import('./App').then(({ App }) =>
-      import('./theme/theme-provider').then(({ ThemeProvider }) =>
-        createRoot(rootEl).render(
-          <StrictMode>
-            <ThemeProvider>
-              <App />
-            </ThemeProvider>
-          </StrictMode>,
+  : isBallView
+    ? import('./status-bar/status-bar-ball').then((mod) => {
+        // status-bar-ball.tsx 自挂载（动态导入副作用）
+        void mod;
+      })
+    : import('./App').then(({ App }) =>
+        import('./theme/theme-provider').then(({ ThemeProvider }) =>
+          createRoot(rootEl).render(
+            <StrictMode>
+              <ThemeProvider>
+                <App />
+              </ThemeProvider>
+            </StrictMode>,
+          ),
         ),
-      ),
-    ));
+      ));

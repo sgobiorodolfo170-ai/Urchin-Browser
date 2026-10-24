@@ -27,7 +27,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { getStatusBarPage } from './helpers/status-bar';
+import { getOmniboxPage, getStatusBarPage } from './helpers/status-bar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -123,17 +123,20 @@ async function expandRightSidebar(window: Page): Promise<void> {
     .waitFor({ state: 'visible', timeout: 15_000 });
 }
 
-/** 在地址栏导航并等待输入框 URL 变化（地址栏位于独立悬浮状态栏子窗口）。 */
+/** 在地址栏导航并等待输入框 URL 变化（内部页地址栏在主窗口；外部页在悬浮状态栏）。 */
 async function navigateAndWait(
   electronApp: ElectronApplication,
+  window: Page,
   base: string,
   path: string,
 ): Promise<void> {
-  const statusBar = await getStatusBarPage(electronApp);
-  const omniboxInput = statusBar.getByLabel('地址栏');
+  const omniboxPage = await getOmniboxPage(electronApp, window);
+  const omniboxInput = omniboxPage.getByLabel('地址栏');
   await omniboxInput.fill(`${base}${path}`);
   await omniboxInput.press('Enter');
-  await expect(omniboxInput).toHaveValue(
+  // 导航完成后地址栏在悬浮状态栏（外部页）
+  const statusBar = await getStatusBarPage(electronApp);
+  await expect(statusBar.getByLabel('地址栏')).toHaveValue(
     new RegExp(`${base.replace('.', '\\.')}${path.replace('?', '\\?').replace('=', '\\=')}`),
     {
       timeout: 15_000,
@@ -161,10 +164,10 @@ test.describe('工作区（TP7）', () => {
       });
 
       // ── 在工作区A 登录 alice ──
-      await navigateAndWait(electronApp, base, '/login?name=alice');
+      await navigateAndWait(electronApp, window, base, '/login?name=alice');
       await expect(window.getByText('sess:alice').first()).toBeVisible({ timeout: 20_000 });
       // 验证 /whoami 在同一会话看到 alice（Cookie 已写入分区）
-      await navigateAndWait(electronApp, base, '/whoami');
+      await navigateAndWait(electronApp, window, base, '/whoami');
       await expect(window.getByText('sess:alice').first()).toBeVisible({ timeout: 20_000 });
 
       // ── 切回默认工作区：默认分区无 alice Cookie → 登录 bob ──
@@ -172,7 +175,7 @@ test.describe('工作区（TP7）', () => {
         .getByRole('button', { name: /默认工作区/ })
         .first()
         .click();
-      await navigateAndWait(electronApp, base, '/login?name=bob');
+      await navigateAndWait(electronApp, window, base, '/login?name=bob');
       await expect(window.getByText('sess:bob').first()).toBeVisible({ timeout: 20_000 });
 
       // ── 切回工作区A：恢复 alice 会话（最近激活标签），bob 不可见 ──

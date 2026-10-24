@@ -22,7 +22,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { getStatusBarPage } from './helpers/status-bar';
+import { getOmniboxPage, getStatusBarPage } from './helpers/status-bar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -103,14 +103,17 @@ test.describe('v0.1 关键路径', () => {
       timeout: 15_000,
     });
 
-    // 在地址栏输入 URL 并提交（地址栏位于独立悬浮状态栏子窗口）
-    const statusBar = await getStatusBarPage(electronApp);
-    const omniboxInput = statusBar.getByLabel('地址栏');
+    // 在地址栏输入 URL 并提交（内部页地址栏在主窗口；导航到外部页后状态栏悬浮层出现）
+    const omniboxPage = await getOmniboxPage(electronApp, window);
+    const omniboxInput = omniboxPage.getByLabel('地址栏');
     await omniboxInput.fill('https://example.com');
     await omniboxInput.press('Enter');
 
-    // 验证地址栏更新为新 URL（等待导航完成）
-    await expect(omniboxInput).toHaveValue(/example\.com/, { timeout: 15_000 });
+    // 验证地址栏更新为新 URL（导航完成后悬浮层地址栏显示新 URL）
+    const statusBar = await getStatusBarPage(electronApp);
+    await expect(statusBar.getByLabel('地址栏')).toHaveValue(/example\.com/, {
+      timeout: 15_000,
+    });
 
     await electronApp.close();
   });

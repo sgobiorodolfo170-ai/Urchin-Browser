@@ -6,6 +6,27 @@
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 
+/**
+ * 获取当前可操作的地址栏所在页面。
+ *
+ * 状态栏悬浮层仅在外部网页时创建；内部页（newtab/settings 等）地址栏在主窗口。
+ * 导航前若已在外部页则用悬浮层，否则用主窗口（内部页地址栏）。
+ */
+export async function getOmniboxPage(
+  electronApp: ElectronApplication,
+  window: Page,
+): Promise<Page> {
+  const overlay = electronApp.windows().find((p) => p.url().includes('view=statusbar'));
+  if (overlay) {
+    // 仅当悬浮层可见（外部页）时用其地址栏；内部页悬浮层隐藏，地址栏在主窗口
+    const input = overlay.getByLabel('地址栏');
+    if (await input.isVisible().catch(() => false)) {
+      return overlay;
+    }
+  }
+  return window;
+}
+
 export async function getStatusBarPage(
   electronApp: ElectronApplication,
   timeout = 15_000,

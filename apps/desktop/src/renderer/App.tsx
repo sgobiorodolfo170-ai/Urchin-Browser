@@ -20,6 +20,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus,
   X,
+  ArrowLeft,
+  ArrowRight,
+  RotateCw,
   Moon,
   Sun,
   Settings as SettingsIcon,
@@ -33,7 +36,9 @@ import {
   ChevronDown,
   Mail as MailIcon,
 } from 'lucide-react';
+import { Button } from './components/ui/button';
 import { AppTitleBar } from './components/app-titlebar';
+import { Omnibox } from './omnibox/omnibox';
 // 回退提示：旧对话视图 AiChatView(@urchin/ai-extension)在阶段 1 启动器切换时移出渲染树,
 // 恢复时重新 import 并在 isAiTab 分支渲染即可（配套:const host = useMemo(() => createHostFromUrchin(), [])）
 import { PiWebLauncherView } from './pi-web/launcher-view';
@@ -2083,7 +2088,7 @@ export function App() {
   // 状态栏为独立透明子窗口（main/status-bar/status-bar-overlay.ts），主渲染进程
   // 仍是 tab/建议/书签/toast/主题 的单一真源；此处组装快照并同步给主进程转发。
   const statusBarState = useMemo<StatusBarState>(() => {
-    const statusBarVisible = !isAiTab && !isGenOfficeTab && !isGenOfficeHomeTab;
+    const statusBarVisible = !isInternalPage && activeTabId !== null; // 外部网页用悬浮层；内部页/无标签用内嵌栏
     // toast 优先级：DeepSeek Harness 启动 > 摘要/截图/翻译 > 书签
     const toast = dshStarting
       ? { text: '正在启动 DeepSeek Harness…', spinning: true }
@@ -2112,9 +2117,6 @@ export function App() {
       theme,
     };
   }, [
-    isAiTab,
-    isGenOfficeTab,
-    isGenOfficeHomeTab,
     isInternalPage,
     activeTab?.url,
     activeTab?.loading,
@@ -2527,6 +2529,92 @@ export function App() {
                 <div className="whitespace-pre-wrap text-sm leading-relaxed text-text">
                   {selectionCard.error ?? selectionCard.result}
                 </div>
+              </div>
+            )}
+            {/* 内部页（设置/邮件/主页/工作区/文件查看器）仍用内嵌地址栏：无 BrowserView 遮挡，
+             * React 层可直接渲染；外部网页改用悬浮状态栏子窗口（见 main/status-bar）。
+             * AI/GenOffice 编辑器/GenOffice 主页仍隐藏地址栏。 */}
+            {isInternalPage && !isAiTab && !isGenOfficeTab && !isGenOfficeHomeTab && (
+              <div
+                className="flex shrink-0 items-center justify-center"
+                style={{ height: BOTTOM_HEIGHT }}
+              >
+                <div className="flex h-10 w-3/5 min-w-0 items-center gap-1.5 rounded-lg border border-border/60 bg-[var(--color-address-bar)] px-2 shadow-sm">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 shrink-0 p-0"
+                    onClick={() => void handleGoBack()}
+                    disabled={!activeTab?.canGoBack || isInternalPage}
+                    aria-label="后退"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 shrink-0 p-0"
+                    onClick={() => void handleGoForward()}
+                    disabled={!activeTab?.canGoForward || isInternalPage}
+                    aria-label="前进"
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 shrink-0 p-0"
+                    onClick={() => void handleReload()}
+                    disabled={!activeTabId || isInternalPage}
+                    aria-label="刷新"
+                  >
+                    <RotateCw className={cn('h-4 w-4', activeTab?.loading && 'animate-spin')} />
+                  </Button>
+
+                  <Omnibox
+                    currentUrl={activeTab?.url ?? ''}
+                    loading={activeTab?.loading ?? false}
+                    securityState={getSecurityState(activeTab?.url ?? '')}
+                    suggestions={suggestions}
+                    onNavigate={(url) => void handleNavigate(url)}
+                    onSuggestionQuery={(q) => void handleSuggestionQuery(q)}
+                    bookmarkSaved={bookmarkSaved}
+                    bookmarkable={
+                      !isInternalPage && !!activeTab?.url && isBookmarkable(activeTab.url)
+                    }
+                    onBookmarkToggle={() => void handleSaveBookmark()}
+                    onSummarize={() => void handleSummarize()}
+                    summarizeDisabled={
+                      summaryRunning || !activeTab?.url || !/^https?:\/\//i.test(activeTab.url)
+                    }
+                    onScreenshot={() => void handleScreenshot()}
+                    screenshotDisabled={!activeTabId}
+                    onTranslate={() => void handleTranslate()}
+                    translateActive={translateActive}
+                    translateDisabled={!activeTab?.url || !/^https?:\/\//i.test(activeTab.url)}
+                    searchEngine={searchEngine}
+                  />
+                </div>
+
+                {bookmarkToast && (
+                  <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border">
+                    {bookmarkToast}
+                  </div>
+                )}
+
+                {summaryToast && (
+                  <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border flex items-center gap-1.5">
+                    {summaryRunning && <RotateCw className="h-3 w-3 animate-spin" />}
+                    <span>{summaryToast}</span>
+                  </div>
+                )}
+
+                {dshStarting && (
+                  <div className="absolute bottom-14 left-1/2 z-50 -translate-x-1/2 rounded-md bg-surface-secondary px-3 py-1.5 text-xs text-text shadow-md border border-border flex items-center gap-1.5">
+                    <RotateCw className="h-3 w-3 animate-spin" />
+                    <span>正在启动 DeepSeek Harness…</span>
+                  </div>
+                )}
               </div>
             )}
           </main>

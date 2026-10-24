@@ -128,6 +128,7 @@ export class StatusBarOverlay {
   private htmlFullscreen = false;
   private parentClosing = false;
   private parentListenersAttached = false;
+  private shouldShow = false;
   private readonly options: StatusBarOverlayOptions;
 
   constructor(options: StatusBarOverlayOptions) {
@@ -172,6 +173,9 @@ export class StatusBarOverlay {
   /** 创建并加载悬浮层窗口（幂等） */
   open(): void {
     if (this.isOpen) return;
+    // 重置关闭标志（销毁后重建时）
+    this.parentClosing = false;
+    this.parentListenersAttached = false;
     const parent = this.options.getParentWindow();
     if (!parent) {
       log.warn('status bar: parent window not available');
@@ -250,6 +254,14 @@ export class StatusBarOverlay {
       this.sendState();
     });
 
+    // 透明窗口建议 ready-to-show 后显示，避免首帧白闪/合成未就绪
+    win.once('ready-to-show', () => {
+      if (this.shouldShow && !win.isDestroyed()) {
+        win.showInactive();
+        this.reposition();
+      }
+    });
+
     void this.options.onLoad(win).catch((e) => {
       log.error('status bar: failed to load page', { error: String(e) });
     });
@@ -270,20 +282,26 @@ export class StatusBarOverlay {
   // ── 内部 ───────────────────────────────────────────────
 
   private applyVisibility(): void {
-    const win = this.win;
-    if (!win || win.isDestroyed()) return;
     const parent = this.options.getParentWindow();
     const parentVisible = parent ? parent.isVisible() : false;
     const parentMinimized = parent?.isMinimized?.() ?? false;
     const shouldShow =
       this.state.visible && !this.htmlFullscreen && parentVisible && !parentMinimized;
-    if (shouldShow && !win.isVisible()) {
-      win.showInactive();
-    } else if (!shouldShow && win.isVisible()) {
-      win.hide();
-    }
+    this.shouldShow = shouldShow;
     if (shouldShow) {
+      // 懒创建：仅首次进入外部网页时创建悬浮层，之后常驻（隐藏而非销毁），
+      // 避免外部/内部页切换时反复重建导致页面失效与闪烁。
+      if (!this.isOpen) {
+        this.open();
+      } else if (this.win && !this.win.isDestroyed() && !this.win.isVisible()) {
+        this.win.showInactive();
+      }
       this.reposition();
+    } else if (this.win && !this.win.isDestroyed()) {
+      // 内部页/AI/全屏时隐藏，不销毁（perf 场景仅打开内部页，悬浮层从未创建，无额外内存）
+      if (this.win.isVisible()) {
+        this.win.hide();
+      }
     }
   }
 

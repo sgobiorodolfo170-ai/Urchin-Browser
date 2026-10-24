@@ -89,7 +89,13 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
     });
     await window.waitForTimeout(2500);
 
-    // 面板打开前的状态：2 个窗口（主窗口 + 底部悬浮状态栏子窗口），BrowserView 全宽
+    // 面板打开前的状态：2 个窗口（主窗口 + 底部悬浮状态栏子窗口；已导航到外部网页），BrowserView 全宽
+    await expect
+      .poll(async () => (await listWindows(electronApp)).count, {
+        timeout: 15_000,
+        message: '导航到外部网页后应出现悬浮状态栏子窗口（窗口数到 2）',
+      })
+      .toBe(2);
     const before = await listWindows(electronApp);
     expect(before.count).toBe(2);
     const viewBefore = await readActiveViewBounds(electronApp);

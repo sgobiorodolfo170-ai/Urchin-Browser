@@ -22,7 +22,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { getStatusBarPage } from './helpers/status-bar';
+import { getOmniboxPage, getStatusBarPage } from './helpers/status-bar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -139,7 +139,8 @@ async function launchApp(
 /** 读取首个 BrowserView 的页面正文（翻译替换发生在页面世界，UI 只见 toast/按钮态） */
 function getBrowserViewText(electronApp: ElectronApplication): Promise<string> {
   return electronApp.evaluate(({ BrowserWindow }) => {
-    const win = BrowserWindow.getAllWindows()[0];
+    // 状态栏悬浮层是独立 BrowserWindow 但无 BrowserView；取挂载了 BrowserView 的主窗口
+    const win = BrowserWindow.getAllWindows().find((w) => w.getBrowserViews().length > 0);
     const view = win?.getBrowserViews()[0];
     if (!view) return Promise.resolve('');
     return view.webContents.executeJavaScript('document.body ? document.body.innerText : ""');
@@ -149,19 +150,23 @@ function getBrowserViewText(electronApp: ElectronApplication): Promise<string> {
 test.describe('网页翻译', () => {
   test('should translate the page and restore the original text via omnibox button', async () => {
     const { server, port } = await startFakeTranslateServer();
-    const { electronApp } = await launchApp({
+    const { electronApp, window } = await launchApp({
       URCHIN_TRANSLATE_TEST_BASE: `http://127.0.0.1:${port}`,
     });
 
     try {
-      // 导航到本地 fixture 页（地址栏位于独立悬浮状态栏子窗口）
-      const statusBar = await getStatusBarPage(electronApp);
-      const omniboxInput = statusBar.getByLabel('地址栏');
+      // 导航到本地 fixture 页（内部页地址栏在主窗口；导航到外部页后悬浮状态栏出现）
+      const omniboxPage = await getOmniboxPage(electronApp, window);
+      const omniboxInput = omniboxPage.getByLabel('地址栏');
       await omniboxInput.fill(`http://127.0.0.1:${port}/fixture`);
       await omniboxInput.press('Enter');
-      await expect(omniboxInput).toHaveValue(new RegExp(`127\\.0\\.0\\.1:${port}`), {
-        timeout: 15_000,
-      });
+      const statusBar = await getStatusBarPage(electronApp);
+      await expect(statusBar.getByLabel('地址栏')).toHaveValue(
+        new RegExp(`127\\.0\\.0\\.1:${port}`),
+        {
+          timeout: 15_000,
+        },
+      );
 
       // 等 fixture 页面真正加载完成（正文可见）再触发翻译，排除加载竞态
       await expect

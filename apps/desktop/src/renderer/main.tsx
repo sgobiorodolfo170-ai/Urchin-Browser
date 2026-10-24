@@ -5,14 +5,13 @@
  * v0.1 W2-D1：挂载 React + ThemeProvider + 全局样式
  *
  * 2026-10-23：底部状态栏改为独立透明子窗口悬浮于网页之上。该子窗口加载同一
- * index.html 并附加 ?view=statusbar 查询参数，此处按参数分支挂载 StatusBarRoot
- * （不跑完整 App，状态由主渲染进程经 IPC 同步）。
+ * index.html 并附加 ?view=statusbar 查询参数，此处按参数动态导入对应入口：
+ * - 主窗口：动态导入 App（含完整功能模块，按需拆分 chunk）
+ * - 状态栏子窗口：仅动态导入 StatusBarRoot（轻量 chunk，不加载 App/pi/AI 等，
+ *   显著降低悬浮层渲染进程内存占用）
  */
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { App } from './App';
-import { StatusBarRoot } from './status-bar/status-bar-app';
-import { ThemeProvider } from './theme/theme-provider';
 import { initRuntimeErrorLog } from './lib/runtime-error-log';
 import './styles/globals.css';
 
@@ -27,14 +26,22 @@ if (!rootEl) {
 
 const isStatusBarView = new URLSearchParams(location.search).get('view') === 'statusbar';
 
-createRoot(rootEl).render(
-  <StrictMode>
-    {isStatusBarView ? (
-      <StatusBarRoot />
-    ) : (
-      <ThemeProvider>
-        <App />
-      </ThemeProvider>
-    )}
-  </StrictMode>,
-);
+void (isStatusBarView
+  ? import('./status-bar/status-bar-app').then(({ StatusBarRoot }) =>
+      createRoot(rootEl).render(
+        <StrictMode>
+          <StatusBarRoot />
+        </StrictMode>,
+      ),
+    )
+  : import('./App').then(({ App }) =>
+      import('./theme/theme-provider').then(({ ThemeProvider }) =>
+        createRoot(rootEl).render(
+          <StrictMode>
+            <ThemeProvider>
+              <App />
+            </ThemeProvider>
+          </StrictMode>,
+        ),
+      ),
+    ));

@@ -12,7 +12,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { getStatusBarPage } from './helpers/status-bar';
+import { getOmniboxPage } from './helpers/status-bar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -48,12 +48,12 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
 test('新建标签后旧标签保持原状态且置顶新标签', async () => {
   const { electronApp, window } = await launchApp();
 
-  // 1. 地址栏导航 example.com（当前标签内导航；地址栏位于独立悬浮状态栏子窗口）
-  const statusBar = await getStatusBarPage(electronApp);
-  const omniboxInput = statusBar.getByLabel('地址栏');
+  // 1. 地址栏导航 example.com（当前标签内导航；内部页地址栏在主窗口）
+  const omniboxPage = await getOmniboxPage(electronApp, window);
+  const omniboxInput = omniboxPage.getByLabel('地址栏');
   await omniboxInput.fill('https://example.com');
   await omniboxInput.press('Enter');
-  await expect(omniboxInput).toHaveValue(/example\.com/, { timeout: 15_000 });
+  await expect(window.getByText('Example Domain')).toBeVisible({ timeout: 15_000 });
 
   // 等待右侧栏标签显示页面标题
   await expect(window.getByText('Example Domain')).toBeVisible({ timeout: 15_000 });

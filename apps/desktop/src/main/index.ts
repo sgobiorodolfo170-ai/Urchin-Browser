@@ -2044,7 +2044,7 @@ void app.whenReady().then(() => {
         void action;
       },
     });
-    statusBarOverlay.open();
+    // 悬浮层懒创建：在主渲染同步状态 visible=true（外部网页）时由 applyVisibility 创建。
 
     // HTML5 全屏抑制悬浮状态栏：内嵌视频全屏时隐藏地址栏（同 view-integration 撑满）
     tabManager.on('updated', (snapshot) => {

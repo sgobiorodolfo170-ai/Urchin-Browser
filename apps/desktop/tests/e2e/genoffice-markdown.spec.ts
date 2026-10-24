@@ -335,8 +335,10 @@ test.describe('GenOffice Markdown 编辑器（阶段 2 融合）', () => {
     // 可见性断言（回归 2026-09-21 白屏）：shell Home 视图必须有真实 bounds
     // （此前 urchin://genoffice-home 被当作 React 内部页置零 → 挂载但不可见）
     const bounds = await electronApp.evaluate(({ BrowserWindow }) => {
-      // 状态栏悬浮层是独立 BrowserWindow；取挂载了 BrowserView 的主窗口
-      const win = BrowserWindow.getAllWindows().find((w) => w.getBrowserViews().length > 0);
+      // 主窗口：排除底部悬浮状态栏子窗口（?view=statusbar）
+      const win = BrowserWindow.getAllWindows().find(
+        (w) => !w.webContents?.getURL?.()?.includes('view=statusbar'),
+      );
       const views = (win?.contentView?.children ?? []) as unknown as {
         webContents?: { getURL(): string };
         getBounds?(): { width: number; height: number };

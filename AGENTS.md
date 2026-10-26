@@ -532,7 +532,7 @@ adapted_for: Urchin-Browser
 >
 > 2026-10-27 已连修三道墙：① `pnpm/action-setup` 与 `packageManager` 版本双写；② lockfile 与 `apps/desktop/package.json` 不一致（dsh 0.2.1-rc.2）；③ `vendor/pi/packages/tui` 被排除出 workspace 导致构建解析不到 `marked`。修复后 CI 已能跑到最后一步。
 >
-> **仍未通过**：`pnpm e2e` 7 通过 / 7 失败（首次在 CI 环境暴露，属历史遗留而非新引入）。E2E 绿之前，「CI 全绿方可合并」仍是目标而非事实——本行必须随状态更新，不得沿用旧结论。
+> **仍未通过**：`pnpm e2e` 首轮 7 通过 / 7 失败（首次在 CI 环境暴露，属历史遗留而非新引入）。2026-10-27 逐条修复后为 **14 通过 / 1 失败**，仅剩 `pi-web-launcher` 的目录选择链路：pi-web-ui 0.110 已把工作目录选择改为页内 `div.cwd-picker` 对话框，而注入桥 `src/main/pi-web/dir-picker.ts` 仍按老的 `input.status-cwd-input` 查找输入框 → 选择永不生效（`switched:false`，其余三项断言均通过）。E2E 绿之前，「CI 全绿方可合并」仍是目标而非事实——本行必须随状态更新，不得沿用旧结论。
 
 ### 3. 与人工评审的区别
 

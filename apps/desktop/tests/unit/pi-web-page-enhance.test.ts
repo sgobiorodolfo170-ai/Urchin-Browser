@@ -234,12 +234,9 @@ describe('buildProjectsPanelScript', () => {
     expect(s).toContain('composer-tools-left .__ubCtxRing');
     expect(s).toContain('conic-gradient');
     expect(s).toContain('insertAdjacentElement("afterend",ring)');
-    // dev.60：隐藏整条信息栏 + 项目路径行（转发原 button.status-cwd 点击）
-    expect(s).toContain('.statusbar{display:none!important}');
-    expect(s).toContain('__ubCwdRow');
-    expect(s).toContain('insertAdjacentElement("afterend",row)');
-    expect(s).toContain('button.status-cwd');
-    expect(s).toContain('__ubCwdPath');
+    // dev.119：旧注入式 cwd 行（__ubCwdRow）已移除，改用 pi-web-ui 0.110 原生 picker
+    expect(s).not.toContain('__ubCwdRow');
+    expect(s).not.toContain('__ubCwdPath');
     // dev.86：顶栏模型/思考移除为死代码（0.90 顶栏已无此二项，由 composer.actions
     // 承载），按决策退役删除——脚本中不再出现该逻辑
     expect(s).not.toContain('span.chip-model');

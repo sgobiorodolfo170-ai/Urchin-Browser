@@ -280,16 +280,13 @@ export function buildProjectsPanelScript(): string {
     '@media (prefers-color-scheme: dark){.inputbar .composer-tools-left .btn.attach-img{' +
     "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Cpath d='M12 5v14M5 12h14' stroke='%23f3f4f6' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E\")!important}}" +
     // dev.59：上下文用量圆环（随 statusbar 数据着色）。
-    // dev.60：隐藏整条信息栏（statusbar）；新增 .__ubCwdRow——项目路径移入
-    //          输入框下方（点击转发原 button.status-cwd 弹原生目录选择器）。
+    // dev.60：隐藏整条信息栏（statusbar）。dev.119：移除旧注入式 cwd 行（.__ubCwdRow），
+    //          改用 pi-web-ui 0.110 原生目录选择器（React Portal 弹层）。
     '.__ubCtxRing{width:20px;height:20px;border-radius:50%;margin-left:8px;flex-shrink:0;align-self:center;' +
     'position:relative;display:inline-flex;align-items:center;justify-content:center;' +
     '-webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px));' +
     'mask:radial-gradient(farthest-side,transparent calc(100% - 4px),#000 calc(100% - 3px))}' +
     '.statusbar{display:none!important}' +
-    '.__ubCwdRow{display:flex;align-items:center;gap:6px;max-width:860px;margin:6px auto 0;' +
-    'font-size:12.5px;color:var(--text-dim);cursor:pointer;padding:2px 12px;user-select:none}' +
-    '.__ubCwdRow:hover{color:var(--accent)}' +
     // dev.87（用户指令）：取消「未检测到 pi agent 配置」弹窗（官方 PiSetupModal，
     // setupTitle）。0.90 起 piConfigured=模型运行时是否有可用模型（不再看 auth.json，
     // dev.43 占位对旧引导有效、对本弹窗无效）；该弹窗还含「自动安装 pi agent」
@@ -460,46 +457,20 @@ export function buildProjectsPanelScript(): string {
     'var txt=(ctx.textContent||"").replace(/\\u4e0a\\u4e0b\\u6587|Context/g,"").trim();' +
     'ring.title=txt?("\\u4e0a\\u4e0b\\u6587 "+pct+"% · "+txt):("\\u4e0a\\u4e0b\\u6587 "+pct+"%");' +
     '}' +
-    // dev.60：项目路径移入工具条下方——注入 .__ubCwdRow（显示路径+转发点击原 button.status-cwd）
-    'function ensureCwdRow(){' +
-    'var bar=document.querySelector(".inputbar");if(!bar)return;' +
-    'if(bar.querySelector(".__ubCwdRow"))return;' +
-    'var row=document.createElement("div");row.className="__ubCwdRow";' +
-    'row.title="\\u70b9\\u51fb\\u9009\\u62e9\\u9879\\u76ee\\u76ee\\u5f55";' +
-    // 路径文本本身已含 📁 图标（源 button.status-cwd 自带），不再额外加图标
-    'var path=document.createElement("span");path.className="__ubCwdPath";' +
-    'row.appendChild(path);' +
-    'row.addEventListener("click",function(ev){' +
-    'ev.preventDefault();ev.stopPropagation();' +
-    'var orig=document.querySelector("button.status-cwd");' +
-    'if(orig)orig.click();' +
-    '});' +
-    'var box=bar.querySelector(".inputbox");' +
-    'if(box)box.insertAdjacentElement("afterend",row);else bar.appendChild(row);' +
-    '}' +
-    'function updateCwdRow(){' +
-    'var row=document.querySelector(".inputbar .__ubCwdRow");' +
-    'if(!row){ensureCwdRow();row=document.querySelector(".inputbar .__ubCwdRow");}' +
-    'if(!row)return;' +
-    'var src=document.querySelector("button.status-cwd");' +
-    'var txt=src?(src.textContent||"").trim():"";' +
-    'var el=row.querySelector(".__ubCwdPath");' +
-    'if(el)el.textContent=txt||"(\\u9009\\u62e9\\u9879\\u76ee\\u76ee\\u5f55)";' +
-    '}' +
-    'setInterval(function(){ensureCtxRing();updateCtxRing();ensureCwdRow();updateCwdRow();},1500);' +
+    'setInterval(function(){ensureCtxRing();updateCtxRing();},1500);' +
     'var timer = null;' +
     'function schedule(){' +
     'if (timer) return;' +
     'timer = setTimeout(function(){ timer = null; enhance(); suppressCwdNotices(); }, 80);' +
     '}' +
     'new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });' +
-    'enhance(); suppressCwdNotices(); ensureCtxRing(); updateCtxRing(); ensureCwdRow(); updateCwdRow();' +
+    'enhance(); suppressCwdNotices(); ensureCtxRing(); updateCtxRing();' +
     '})();'
   );
 }
 
 /**
- * 安装 pi 页增强注入（镜像 zoom/dir-picker 的生命周期模式）。
+ * 安装 pi 页增强注入（镜像 zoom 的生命周期模式）。
  *
  * 对每个网页 tab 的 webContents（created + 存量补装）did-finish-load 后
  * 注入主题跟随 + 面板脚本（幂等标志防叠加；脚本按 DOM 守卫，非 pi 页零影响）。

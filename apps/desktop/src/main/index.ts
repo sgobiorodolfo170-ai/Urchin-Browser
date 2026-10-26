@@ -61,7 +61,6 @@ import type { ProviderConfigStore } from './ai';
 import {
   createPiWebLauncher,
   registerPiWebHandlers,
-  installCwdPickerControl,
   installPiWebPageEnhance,
   pushPiTheme,
   type PiWebLauncher,
@@ -448,8 +447,6 @@ let tabViewIntegration: TabViewIntegrationHandle | null = null;
 let disposeContextMenu: (() => void) | null = null;
 /** Ctrl+滚轮缩放卸载句柄（installZoomControl 返回）。退出时移除 created 监听。 */
 let disposeZoomControl: (() => void) | null = null;
-/** pi 页目录选择器注入卸载句柄（dev.44，installCwdPickerControl 返回）。 */
-let disposeCwdPicker: (() => void) | null = null;
 /** pi 页体验增强注入卸载句柄（dev.45，installPiWebPageEnhance 返回）。 */
 let disposePiEnhance: (() => void) | null = null;
 /** 网页翻译管理器卸载句柄（dev.80，M24：停轮询/移除导航钩子/清状态）。 */
@@ -1577,17 +1574,6 @@ void app.whenReady().then(() => {
       const tab = active ? tabManager.getTab(active.id) : undefined;
       if (tab) applyZoomByDelta(tab.webContents, delta);
     },
-    // dev.44：pi 页右下角「📁 项目路径」点击 → 原生 Windows 目录选择器
-    // （页面注入脚本 fetch urchin://pi-pick-dir 触发；取消返回 null 页面无操作）
-    onPickDirectory: async () => {
-      const result = await dialog.showOpenDialog({
-        title: '选择 pi 项目目录',
-        buttonLabel: '选择此目录',
-        properties: ['openDirectory', 'createDirectory'],
-      });
-      if (result.canceled || result.filePaths.length === 0) return null;
-      return result.filePaths[0] ?? null;
-    },
     // dev.45：pi 品牌图标（π）——favicon 重定向目标（urchin://pi-icon）。
     // dev 与打包态同路径：dist/renderer/pi-icon.png（asar 内可直读）。
     piIconPath: join(app.getAppPath(), 'dist', 'renderer', 'pi-icon.png'),
@@ -2077,13 +2063,10 @@ void app.whenReady().then(() => {
     // 调试开关（临时排查用）：URCHIN_DISABLE_PIWEB_PICKER=1 /
     // URCHIN_DISABLE_PIWEB_ENHANCE=1 分别跳过两处注入，用于隔离
     // 「注入脚本导致 pi 页 renderer 卡死」类问题。
-    if (process.env.URCHIN_DISABLE_PIWEB_PICKER !== '1') {
-      disposeCwdPicker = installCwdPickerControl(tabManager);
-    }
-
+    // dev.45：pi 页体验增强注入——主题默认亮色 + 最近项目删除按钮 + 路径提示
+    // 抑制（同样按 DOM 守卫仅 pi 页生效；详见 pi-web/page-enhance.ts 头注释）
+    // 调试开关（临时排查用）：URCHIN_DISABLE_PIWEB_ENHANCE=1 跳过注入。
     if (process.env.URCHIN_DISABLE_PIWEB_ENHANCE !== '1') {
-      // dev.45：pi 页体验增强注入——主题默认亮色 + 最近项目删除按钮 + 路径提示
-      // 抑制（同样按 DOM 守卫仅 pi 页生效；详见 pi-web/page-enhance.ts 头注释）
       disposePiEnhance = installPiWebPageEnhance(tabManager);
     }
 
@@ -2475,17 +2458,7 @@ async function performCleanup(): Promise<void> {
       statusBarBall = null;
     }
 
-    // 4.7 移除 pi 页目录选择器注入的 created/did-finish-load 监听（dev.44）
-    if (disposeCwdPicker) {
-      try {
-        disposeCwdPicker();
-      } catch (e) {
-        log.error('Failed to dispose cwd picker on quit', { error: String(e) });
-      }
-      disposeCwdPicker = null;
-    }
-
-    // 4.8 移除 pi 页体验增强注入的监听（dev.45；webRequest 随 session 销毁释放）
+    // 4.7 移除 pi 页体验增强注入的监听（dev.45；webRequest 随 session 销毁释放）
     if (disposePiEnhance) {
       try {
         disposePiEnhance();

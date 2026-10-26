@@ -3,7 +3,7 @@
  *
  * 依据：02-架构设计 §1 进程模型 / 04-模块全景 M1
  *
- * 设计理由（agents.md §七.2）：
+ * 设计理由（AGENTS.md §七.2）：
  * BrowserWindowLike 接口将 WindowManager 与 Electron BrowserWindow 解耦，
  * 使 WindowManager 的核心逻辑（ID 分配 / 集合管理 / 事件分发）可在单测中
  * 用 mock 验证，无需启动真实 Electron 实例。

@@ -12,7 +12,7 @@
  * - 文件元数据与目录列表经 IPC（file.stat / file.dir）
  * - 媒体/PDF/图片内容经 urchin://file-resource 协议流式加载（主进程 Range 支持）
  *
- * 安全（agents.md §六 跨进程边界 + XSS 防御）：
+ * 安全（AGENTS.md §六 跨进程边界 + XSS 防御）：
  * - 所有 IPC 入参/出参经 zod 校验（window.urchin.invoke 封装层自动执行）
  * - Markdown 渲染禁用 raw HTML（自定义 renderer 丢弃 <html> token），
  *   链接 href 仅放行 http/https/mailto/#，其余降级为纯文本

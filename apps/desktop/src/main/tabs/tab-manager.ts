@@ -10,7 +10,7 @@
  * 5. 事件分发（created / updated / removed / activated / crashed）
  * 6. webContents 生命周期事件绑定（§3）
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点「Single Source of Truth」）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点「Single Source of Truth」）：
  * - 主进程是 tab 状态的唯一权威源，渲染进程 store 只是镜像
  * - webContents/view 永远不离开主进程，渲染层通过 tabId + IPC 操作
  * - 通过 BrowserViewFactory 依赖注入，使核心逻辑可在单测中用 mock 验证
@@ -464,7 +464,7 @@ export class TabManager {
    * 绑定 webContents 生命周期事件。
    * 依据：契约 D §3
    *
-   * 设计理由（agents.md §七.2）：
+   * 设计理由（AGENTS.md §七.2）：
    * webContents 事件映射到 Tab 状态变更，保证状态与实际加载同步。
    */
   private bindWebContentsEvents(tab: Tab): void {

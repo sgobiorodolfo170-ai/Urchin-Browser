@@ -53,7 +53,7 @@ function collectFiles() {
     }
   };
   walk(join(repoRoot, 'docs'));
-  for (const name of ['agents.md', 'README.md', 'RELEASE_NOTES.md', 'CHANGELOG.md']) {
+  for (const name of ['AGENTS.md', 'README.md', 'RELEASE_NOTES.md', 'CHANGELOG.md']) {
     try {
       statSync(join(repoRoot, name));
       out.push(join(repoRoot, name));

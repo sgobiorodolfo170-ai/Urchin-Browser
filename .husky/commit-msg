@@ -1,4 +1,4 @@
 # Commit-msg hook（SC9 决策）
 # 1) 校验提交信息结构化（Conventional Commits）
-# 2) 校验追溯信息（agents.md §五.5：Model / Trigger / Loop）
+# 2) 校验追溯信息（AGENTS.md §五.5：Model / Trigger / Loop）
 pnpm commitlint --edit "$1" && node scripts/check-commit-trace.mjs "$1"

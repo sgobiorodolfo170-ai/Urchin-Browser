@@ -39,7 +39,7 @@ function generateSessionId(): string {
  * @param moduleName 模块名（如 'tab-manager' / 'ipc-server' / 'orchestrator'）
  * @param sink 日志输出函数（默认 console，生产环境可替换为文件 sink）
  *
- * 设计理由（agents.md §七.2）：
+ * 设计理由（AGENTS.md §七.2）：
  * 不直接用 console.log 是因为需要结构化字段（level/module/sessionId）
  * 与隐私过滤（凭据/页面内容）。Logger 把「格式化 + 过滤 + 输出」收口一处。
  */

@@ -5,7 +5,7 @@
  * 主进程 `webContents.send(channel, payload)` 推送，渲染进程经 preload
  * `window.urchin.on(channel, cb)` 订阅。
  *
- * 设计理由（agents.md §七.2）：把事件通道名与 payload 类型收口在共享包内，
+ * 设计理由（AGENTS.md §七.2）：把事件通道名与 payload 类型收口在共享包内，
  * 主进程与渲染层共用同一常量与类型，消除既有「主进程导出常量、渲染层硬编码
  * 字符串」的字面量漂移风险。事件 payload 不走 ipcSchema（send-only，无
  * req/res 双向校验），主进程推送前按 IP6 一致性应做一次 zod parse；

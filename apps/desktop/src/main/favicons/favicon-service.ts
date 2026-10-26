@@ -7,7 +7,7 @@
  * 3. 校验响应体确为受支持的位图格式，限制超时与大小
  * 4. 以源 URL 的 SHA-256 为文件名落盘缓存，供 urchin://favicon/<hash> 协议读取
  *
- * 设计理由（agents.md §七.2 + 安全边界）：
+ * 设计理由（AGENTS.md §七.2 + 安全边界）：
  * - 渲染层直接加载远程 favicon 会落入默认 session，工作区 Cookie 不生效；
  *   主进程按 tab.workspaceId 解析 session，网络请求与标签真实上下文一致。
  * - 缓存 URL 只暴露哈希，不把源站点 URL 写进 DOM / 书签 / 历史。

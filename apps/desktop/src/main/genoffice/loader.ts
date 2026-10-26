@@ -5,7 +5,7 @@
  * CommonJS require 方式加载（不进 Urchin 自身打包——React 18/19、Tiptap 2/3
  * 等依赖树完全隔离），并把宿主缺失的 GenOffice 应用级通道补齐。
  *
- * 设计理由（agents.md §六 跨进程边界）：
+ * 设计理由（AGENTS.md §六 跨进程边界）：
  * - 嵌入包是自包含 CJS（仅 electron/node 内置外部依赖），加载失败必须降级：
  *   返回 null → 宿主回落到 Urchin 内置查看器，绝不阻塞浏览器启动。
  * - 仅暴露加载所需最小接口类型（不 import vendor 类型，保持构建边界干净）。

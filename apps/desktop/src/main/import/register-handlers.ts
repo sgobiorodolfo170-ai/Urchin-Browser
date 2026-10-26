@@ -5,7 +5,7 @@
  * 注册 import.detectBrowsers / import.bookmarksFromFile /
  *      import.bookmarksFromBrowser IPC handler。
  *
- * 设计理由（agents.md §七.2 + §六 可测试性）：
+ * 设计理由（AGENTS.md §七.2 + §六 可测试性）：
  * - IPC handler 只做协议适配，业务逻辑委托给解析器/导入器
  * - 入参出参由 registerHandler 自动 zod 校验
  * - 全部 I/O 经依赖注入（fs / dialog / better-sqlite3 工厂）便于单测 mock：

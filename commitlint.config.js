@@ -1,10 +1,10 @@
 // commitlint 配置
-// 依据：agents.md §五 结构化提交信息 / 03-技术栈 §2 (SC9)
+// 依据：AGENTS.md §五 结构化提交信息 / 03-技术栈 §2 (SC9)
 // 类型：feat / fix / refactor / test / docs / chore / perf / style / build / ci
 export default {
   extends: ['@commitlint/config-conventional'],
   rules: {
-    // type 枚举与 agents.md §五 对齐
+    // type 枚举与 AGENTS.md §五 对齐
     'type-enum': [
       2,
       'always',

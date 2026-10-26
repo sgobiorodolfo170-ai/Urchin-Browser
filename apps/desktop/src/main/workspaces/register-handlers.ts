@@ -6,7 +6,7 @@
  * 注册 workspace.list / workspace.create / workspace.update /
  *      workspace.remove / workspace.clearData IPC handler。
  *
- * 设计理由（agents.md §七.2 + §六「Single Source of Truth」）：
+ * 设计理由（AGENTS.md §七.2 + §六「Single Source of Truth」）：
  * - handler 只做协议适配，业务逻辑委托 WorkspaceRegistry / WorkspaceSessionManager
  * - 删除/清空工作区前必须确认该工作区无打开标签（防止清掉正在写入的会话）
  * - 变更后广播 'workspace:changed'，多窗口渲染层统一刷新

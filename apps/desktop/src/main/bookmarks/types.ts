@@ -3,7 +3,7 @@
  *
  * 依据：契约 B §3.1 bookmark.* 通道 / 04-模块全景 M5
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点「可序列化 / Single Source of Truth」）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点「可序列化 / Single Source of Truth」）：
  * - id / type / createdAt 设为 readonly，保证创建后不可变的核心字段稳定
  * - parentId / url / title / position 可变，支持后续重排与重命名
  * - BookmarkEvent / BookmarkEventListener 提供 EventEmitter 模式的类型化事件分发

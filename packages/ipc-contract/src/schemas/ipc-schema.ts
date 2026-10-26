@@ -4,7 +4,7 @@
  * 依据：契约 B §3 ipcSchema
  * 命名规则：`<域>.<动作>`，例如 `tab.create` / `tab.close`。
  * 每个调用含 req（入参）与 res（出参）双向 zod 校验，
- * 防 AI 协作 schema 漂移（agents.md §六 项目特化审查点）。
+ * 防 AI 协作 schema 漂移（AGENTS.md §六 项目特化审查点）。
  */
 import { z } from 'zod';
 

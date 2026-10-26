@@ -8,7 +8,7 @@
  * 2. trackWindowState：监听窗口 resize/move/maximize/unmaximize/close，
  *    防抖落盘，下次启动由主进程入口恢复
  *
- * 设计理由（agents.md §七.2）：
+ * 设计理由（AGENTS.md §七.2）：
  * - 持久化复用 SettingsManager（主库 SQLite settings 表 KV），不新建存储通道
  * - 经最小依赖接口（TrackedWindow / settings get/set / getDisplays 注入）解耦
  *   Electron 与 SettingsManager，纯单测可覆盖，无需 mock electron

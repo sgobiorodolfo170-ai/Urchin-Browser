@@ -9,7 +9,7 @@
  *    <数据目录>/screenshots/<时间戳>.png → 打开所在文件夹 → 返回 { path }
  * 5. 取消 / Esc / 窗口关闭 → 销毁并清缓存
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点）：
  * - Electron 中 BrowserView 永远渲染在主窗口 webContents 之上，选区层无法用
  *   React 浮层实现，必须独立覆盖窗口（bookmark-panel 同模式）
  * - 覆盖窗口透明（transparent:true）：仅选区/遮罩可见，其余透出真实屏幕内容

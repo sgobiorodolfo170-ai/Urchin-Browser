@@ -3,7 +3,7 @@
  *
  * 依据：契约 G §3 / 实施规划 §6。
  * 职责：attach('1.3') / sendCommand / 消息事件路由 / detach 事件归一。
- * 设计理由（agents.md §七.2 + §六 进程隔离）：将 Electron debugger API
+ * 设计理由（AGENTS.md §七.2 + §六 进程隔离）：将 Electron debugger API
  * 抽象为 DebuggerLike 接口，使 DevtoolsManager 核心逻辑可在单测中用 mock
  * 验证（不依赖真实 Electron），与 TabManager/TranslateManager 的依赖注入
  * 惯例一致。

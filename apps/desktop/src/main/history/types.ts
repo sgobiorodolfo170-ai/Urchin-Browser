@@ -3,7 +3,7 @@
  *
  * 依据：契约 B §3.1 history.* 通道 / 04-模块全景 M6
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点「可序列化」）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点「可序列化」）：
  * - HistoryEntry 含可变字段（title / visitCount），记录访问后需就地更新
  * - id / url / visitedAt 设为 readonly，保证创建后不可变的核心字段稳定
  * - HistoryEvent / HistoryEventListener 提供 EventEmitter 模式的类型化事件分发

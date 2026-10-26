@@ -4,7 +4,7 @@
  * 职责：把解析出的 ImportTreeNode 树写入 BookmarkManager，
  * 根目录建「导入自 <来源> (<YYYY-MM-DD>)」文件夹，完整保留原目录结构。
  *
- * 设计理由（agents.md §七.2 + §六 Single Source of Truth）：
+ * 设计理由（AGENTS.md §七.2 + §六 Single Source of Truth）：
  * - 主进程是书签状态唯一权威源；导入直接调 BookmarkManager.create（持久化 + 广播）
  * - 独立文件夹保留结构（用户决策）：导入全部新建，不去重，可整夹删除回退
  * - 跳过空标题书签与非法 url（url 必须含协议），计入 skipped 计数

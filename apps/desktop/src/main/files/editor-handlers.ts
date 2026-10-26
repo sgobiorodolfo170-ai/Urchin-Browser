@@ -3,14 +3,14 @@
  *
  * 职责：编辑会话的自动临时保存（防崩溃丢失）——editor.saveDraft / editor.cleanupDraft。
  *
- * 设计理由（agents.md §六 跨进程边界 + 安全）：
+ * 设计理由（AGENTS.md §六 跨进程边界 + 安全）：
  * - 草稿键（key）由渲染层从原文件绝对路径哈希生成——原路径不出本机；
  *   主进程以 key 拼接 editor-drafts 目录内路径，schema 层白名单校验
  *   （仅字母/数字/连字符），无路径入参、无目录遍历面
  * - 草稿生命周期：编辑中防抖写入 → 保存完成/放弃更改/关闭确认后清理；
  *   应用启动时 sweepDrafts 清扫上一会话残留（v1 草稿仅会话内防丢，
  *   不做崩溃恢复 UI）
- * - 隐私（agents.md §六）：日志只记 key 与字节数，不记内容
+ * - 隐私（AGENTS.md §六）：日志只记 key 与字节数，不记内容
  */
 import type { IpcMain } from 'electron';
 import { join } from 'node:path';

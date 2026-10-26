@@ -10,7 +10,7 @@
  * 5. list/clear/evaluate RPC 业务逻辑
  * 6. 自动清理：tab removed、webContents destroyed、debugger 被抢占、app quit
  *
- * 设计理由（agents.md §七.2 + §六 进程隔离/隐私）：
+ * 设计理由（AGENTS.md §七.2 + §六 进程隔离/隐私）：
  * - 依赖注入 tabManager（取 webContents）+ notify（事件推送回调），核心逻辑可单测
  * - URL/标题/控制台文本/请求头不进 INFO 日志（隐私审查点），仅记录计数与状态
  * - 状态机：detached | attached | unavailable（attach 同步，无 attaching 瞬态）

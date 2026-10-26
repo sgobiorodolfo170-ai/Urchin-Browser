@@ -6,7 +6,7 @@
  * 注册 download.list / download.cancel / download.pause /
  *      download.resume / download.clear / download.showInFolder IPC handler。
  *
- * 设计理由（agents.md §七.2）：
+ * 设计理由（AGENTS.md §七.2）：
  * - IPC handler 只做协议适配，业务逻辑委托给 DownloadManager
  * - 入参出参由 registerHandler 自动 zod 校验，handler 只关心纯逻辑
  * - download.showInFolder 经依赖注入 shell.showItemInFolder（便于单测 mock）

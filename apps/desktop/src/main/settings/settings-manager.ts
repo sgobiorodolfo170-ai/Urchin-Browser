@@ -9,7 +9,7 @@
  * 4. 事件分发（changed）
  * 5. 持久化到 StorageLayer（设置变更时自动写入 SQLite）
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点「Single Source of Truth」）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点「Single Source of Truth」）：
  * - 主进程是设置状态的唯一权威源，渲染层 store 只是镜像
  * - 全部方法同步执行（内存操作），持久化通过 StorageLayer 写入 SQLite
  * - value 为 unknown 类型，承载异构配置值

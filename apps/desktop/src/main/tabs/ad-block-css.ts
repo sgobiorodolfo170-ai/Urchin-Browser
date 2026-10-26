@@ -7,7 +7,7 @@
  * - 业界通用的广告容器类名（精确匹配 .advert / .adsense / .ad-container 等）
  * - 弹窗遮罩层（.ad-modal / .popup-ad / .ad-overlay 等）
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点）：
  * - 纯函数便于单测与后续扩展规则集；仅隐藏不拦截请求（保守，避免误杀正常脚本）
  * - 不涉及透明 BrowserView / 合成，与「严禁透明 + clip-path」教训无关（隐藏元素不触发合成）
  *

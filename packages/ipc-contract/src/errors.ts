@@ -49,7 +49,7 @@ export interface IpcErrorPayload {
 /**
  * IpcError：在 Main 端抛出后由包装器捕获并序列化为 IpcErrorPayload。
  *
- * 设计理由（agents.md §七.2「说明为什么」）：
+ * 设计理由（AGENTS.md §七.2「说明为什么」）：
  * 不直接复用原生 Error 是因为跨进程序列化时 stack 会丢失；
  * 显式 code 让渲染层能按错误码分支处理（toast / 重试 / 静默）。
  */

@@ -154,7 +154,7 @@ function isTrustedReferer(referer: string): boolean {
 /**
  * 服务本地文件（file-resource host）。
  *
- * 安全（agents.md §六 隐私）：
+ * 安全（AGENTS.md §六 隐私）：
  * - 来源经 isTrustedReferer 白名单校验（urchin:// / localhost / file:// 放行，
  *   远程网页拒绝）——urchin: 已配 corsEnabled，不校验 = 任意网页可跨源盗读本地文件
  * - 路径来自 encodeURIComponent 编码后的绝对路径，不支持相对路径/目录遍历

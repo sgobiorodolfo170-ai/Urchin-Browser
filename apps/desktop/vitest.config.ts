@@ -37,7 +37,7 @@ export default defineConfig({
         'src/renderer/main.tsx',
       ],
       /**
-       * 覆盖率门禁（agents.md §八.2 / docs/03-技术栈 §4）
+       * 覆盖率门禁（AGENTS.md §八.2 / docs/03-技术栈 §4）
        *
        * 门槛取 v0.2 阶梯值 ≥65%。没有 thresholds 时 `--coverage` 只出报告、
        * 低于门槛也退出码 0，等于「门禁」名存实亡——此处补上后才真正阻断。
@@ -57,7 +57,7 @@ export default defineConfig({
         functions: 65,
         branches: 65,
         /**
-         * 分层门槛（agents.md §八.2 分层目标的项目化，2026-10-27 接入）
+         * 分层门槛（AGENTS.md §八.2 分层目标的项目化，2026-10-27 接入）
          *
          * 核心业务模块 Tab Manager（M2）阶梯要求 v0.2 ≥75%。全量收集（120 个测试
          * 文件）时实测 lines 90.02% / branch 77.23% / funcs 87.75%，故行/语句/函数

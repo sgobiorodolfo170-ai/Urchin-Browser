@@ -9,7 +9,7 @@
  * 4. 事件分发（created / deleted）
  * 5. 持久化到 SQLite（bookmarks 表）
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点「Single Source of Truth」）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点「Single Source of Truth」）：
  * - 主进程是书签状态的唯一权威源，渲染层 store 只是镜像
  * - 内存操作为主，变更时同步写入 SQLite 持久化
  * - id / type / createdAt 为 readonly，创建后不可变

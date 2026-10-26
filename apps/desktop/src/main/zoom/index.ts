@@ -12,7 +12,7 @@
  * 用户指令 2026-10-23：浏览器 chrome（左/右侧栏、地址栏）尺寸固定，不随 Ctrl+滚轮
  * 缩放。因此主窗口不再注入缩放脚本；缩放只作用于中区网页 BrowserView。
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点「进程隔离」）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点「进程隔离」）：
  * - 修复根因（2026-08-18 用户反馈「未实现」）：第一版用 before-input-event 拦截滚轮，
  *   但 Electron 32 该事件只在键盘事件（PreHandleKeyboardEvent）时发射，滚轮永远不触发，
  *   功能完全不生效。v2 改为渲染进程 wheel 事件（有 deltaY/ctrlKey），再经

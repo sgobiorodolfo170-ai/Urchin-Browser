@@ -61,7 +61,7 @@ export interface RegisteredHandler {
  * @param handler 业务处理函数
  * @param opts 可选：超时覆盖
  *
- * 设计理由（agents.md §七.2）：
+ * 设计理由（AGENTS.md §七.2）：
  * 不直接用 ipcMain.handle 是因为原生 API 无类型、无校验、无超时、
  * 异常会以原生 Error 形式跨进程序列化丢失语义。
  * 本包装器把「校验→超时→异常装箱」收敛为一处，业务 handler 只关心纯逻辑。

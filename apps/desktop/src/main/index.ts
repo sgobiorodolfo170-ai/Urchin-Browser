@@ -276,7 +276,7 @@ installEventLoopWatchdog();
 /**
  * 全局 WindowManager 实例（M1）。
  *
- * 设计理由（agents.md §七.2）：
+ * 设计理由（AGENTS.md §七.2）：
  * 单例管理所有窗口，保证 windowId 分配的全局唯一性。
  * 通过工厂函数注入，使核心逻辑可测试。
  */
@@ -285,7 +285,7 @@ const windowManager = new WindowManager(createBrowserWindow);
 /**
  * 全局 TabManager 实例（M2）。
  *
- * 设计理由（契约 D §2 / agents.md §七.2）：
+ * 设计理由（契约 D §2 / AGENTS.md §七.2）：
  * 单例管理所有 tab，保证 tabId 分配的全局唯一性。
  * 主进程是 Single Source of Truth，渲染层 store 只是镜像。
  * 通过工厂函数注入，使核心逻辑可测试。

@@ -3,7 +3,7 @@
  *
  * 依据：契约 B §3.1 settings.* 通道 / 04-模块全景 M7
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点「可序列化 / Single Source of Truth」）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点「可序列化 / Single Source of Truth」）：
  * - key 设为 readonly，保证条目创建后键名不可变
  * - value 为 unknown，承载异构配置（字符串、布尔、数字、对象等）
  * - SettingsEvent / SettingsEventListener 提供 EventEmitter 模式的类型化事件分发

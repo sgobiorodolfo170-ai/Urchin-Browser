@@ -7,7 +7,7 @@
  * 2. create / update / remove / list / get
  * 3. 持久化到 Settings（workspaces.registry 键，非敏感元数据）
  *
- * 设计理由（agents.md §七.2 + §六「Single Source of Truth」）：
+ * 设计理由（AGENTS.md §七.2 + §六「Single Source of Truth」）：
  * - 元数据与 Cookie/存储解耦：Cookie 由 Chromium 分区自动落盘
  *   （<sessionData>/Partitions），本注册表只保存名字/颜色等非敏感元数据，
  *   不把凭据写进 SQLite

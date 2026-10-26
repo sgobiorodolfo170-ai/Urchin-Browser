@@ -10,7 +10,7 @@
  *       根 root（parent=0, id=1）的子节点为 menu/toolbar/unfiled/tags/mobile（guid 固定）
  *     moz_places(id, url)
  *
- * 设计理由（agents.md §六 可测试性 + §七.2）：
+ * 设计理由（AGENTS.md §六 可测试性 + §七.2）：
  * - detect：纯 I/O（existsSync + readFileSync INI），DI 注入 fs 便于单测
  * - buildFirefoxTreeFromRows：纯函数，输入行集输出 ImportTreeNode，便于单测
  * - readPlacesSqlite：I/O（复制临时文件 + better-sqlite3 readonly），避开运行锁

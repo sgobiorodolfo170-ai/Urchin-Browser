@@ -6,7 +6,7 @@
  *     Local State        — JSON，profile.info_cache 含 profile 名
  *     <Profile>\Bookmarks — JSON，roots.{bookmark_bar,other,synced}.children 树
  *
- * 设计理由（agents.md §六 可测试性 + §七.2）：
+ * 设计理由（AGENTS.md §六 可测试性 + §七.2）：
  * - detect：纯 I/O（existsSync + readFileSync + JSON.parse），DI 注入 fs 便于单测
  * - parseBookmarksJson：纯函数，输入 JSON 对象输出 ImportTreeNode，便于单测
  * - 解析器容忍字段缺失（synced/other 可不存在）

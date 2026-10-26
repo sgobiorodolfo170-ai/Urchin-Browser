@@ -8,7 +8,7 @@
  * 3. 动作全部在主进程执行——复制/粘贴经 webContents.copy()/paste()
  *    （Chromium 编辑命令），保存网页走 dialog + webContents.savePage('HTMLComplete')
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点「进程隔离」）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点「进程隔离」）：
  * - 原生菜单方案与 Chrome 一致：菜单由主进程弹出，网页上下文（选中文本/焦点可粘贴）
  *   由 Electron context-menu 事件参数（editFlags / isEditable）提供，渲染进程零改动
  * - 不使用 preload 注入 JS 实现右键菜单——固化教训：BrowserView 注入 preload 会阻塞

@@ -6,7 +6,7 @@
  * 注册 history.record / history.search / history.list /
  *      history.delete / history.clear IPC handler。
  *
- * 设计理由（agents.md §七.2）：
+ * 设计理由（AGENTS.md §七.2）：
  * - IPC handler 只做协议适配，业务逻辑委托给 HistoryManager
  * - 入参出参由 registerHandler 自动 zod 校验，handler 只关心纯逻辑
  */

@@ -9,7 +9,7 @@
  * 4. 校验 name/version 非空
  * 5. 校验 permissions 为已知权限列表
  *
- * 设计理由（agents.md §七.2）：
+ * 设计理由（AGENTS.md §七.2）：
  * 纯函数，无副作用，便于单元测试。
  */
 

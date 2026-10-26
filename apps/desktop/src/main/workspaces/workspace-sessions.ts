@@ -10,7 +10,7 @@
  * 2. 对分区 session 幂等安装会话级配置（urchin:// 协议处理器、下载挂钩等）
  * 3. clearData：清空 Cookie/存储/缓存/HTTP 认证缓存
  *
- * 设计理由（agents.md §六「进程隔离」）：
+ * 设计理由（AGENTS.md §六「进程隔离」）：
  * - 渲染层只传工作区 id，partition 字符串由本类解析，杜绝越权指定任意分区
  * - 配置回调由 index.ts 注入（依赖下载管理器等实例），本类不直接依赖具体模块
  * - WeakSet 幂等：同一 session 只配置一次，避免重复注册监听

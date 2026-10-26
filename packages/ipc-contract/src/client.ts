@@ -21,7 +21,7 @@ export interface IpcRendererLike {
  *
  * @param ipcRenderer Electron 的 ipcRenderer 实例或 mock
  *
- * 设计理由（agents.md §七.2）：
+ * 设计理由（AGENTS.md §七.2）：
  * 直接用 ipcRenderer.invoke 会失去类型与校验，AI 协作时易漂移。
  * typedInvoke 把「类型约束 + 双向校验 + 错误解包」收口在一处，
  * 业务调用方只看到强类型 promise，无需关心 zod。

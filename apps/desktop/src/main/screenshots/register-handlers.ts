@@ -11,7 +11,7 @@
  * - ai.screenshot（pi）：desktopCapturer 截整个屏幕，base64 返回给 AI
  * - screenshot.*（本文件）：整屏截图 + 用户框选 + 裁剪落盘到用户数据目录（DD1 决策）
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点）：
  * - 覆盖窗口是独立 BrowserWindow（frame:false + transparent + alwaysOnTop），
  *   其渲染进程经 urchin://capture-overlay 页内 window.urchin.invoke 调本域通道
  * - CaptureOverlay 单例由调用方注入（index.ts 持有），handler 仅做转发

@@ -5,7 +5,7 @@
  * 职责：对每个网页 tab 的 webContents 与主窗口 webContents 挂 before-input-event，
  * 命中 F12 → preventDefault() + sendToMainWindow('devtools:toggle')。
  *
- * 设计理由（agents.md §七.2）：F12 在页面聚焦时由 BrowserView 的 webContents
+ * 设计理由（AGENTS.md §七.2）：F12 在页面聚焦时由 BrowserView 的 webContents
  * 接收，主窗口聚焦时由主窗口 webContents 接收；两处都挂才能覆盖所有焦点场景。
  * 安装/卸载复用 installZoomControl 的 created 监听 + 存量补挂 + dispose 模式。
  *

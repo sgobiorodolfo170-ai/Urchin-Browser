@@ -8,7 +8,7 @@
  * 3. 暴露 on 订阅单向事件推送
  * 4. 暴露 onMessagePort 订阅 MessagePort 下发（W4 AI 流式对话用）
  *
- * 设计理由（agents.md §七.2 + 项目特化审查点）：
+ * 设计理由（AGENTS.md §七.2 + 项目特化审查点）：
  * 不暴露 ipcRenderer 全量 API 是因为渲染层拿到 ipcRenderer 可绕过校验。
  * 仅暴露 typedInvoke 把「类型约束 + zod 校验 + 错误解包」收口在 preload。
  * MessagePort 通过 webContents.postMessage 的 transferList 下发，

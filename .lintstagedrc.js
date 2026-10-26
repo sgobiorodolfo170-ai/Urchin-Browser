@@ -1,5 +1,5 @@
 // lint-staged 配置
-// 依据：agents.md §九 全流程卡点（提交时卡点）/ 03-技术栈 §2 (SC8)
+// 依据：AGENTS.md §九 全流程卡点（提交时卡点）/ 03-技术栈 §2 (SC8)
 // 顺序：ESLint → Prettier → 相关单测
 //
 // 注意：eslint.config.js 的 ignores 排除了 **/*.config.{js,ts} 和 .lintstagedrc.js。

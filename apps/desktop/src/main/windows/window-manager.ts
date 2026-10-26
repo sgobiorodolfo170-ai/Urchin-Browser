@@ -9,7 +9,7 @@
  * 4. 监听 BrowserWindow 'closed' 事件自动清理集合
  * 5. 分发 window-created / window-closed 事件
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点）：
  * - 通过 BrowserWindowFactory 依赖注入，使核心逻辑可在单测中用 mock 验证
  * - windowId 单调递增且独立于 Electron 内部 id，保证重启后语义一致
  * - 窗口关闭自动清理，防止内存泄漏与僵尸引用

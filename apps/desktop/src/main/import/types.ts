@@ -3,7 +3,7 @@
  *
  * 依据：ipc-schema Import 域 / 04-模块全景（非编号能力登记）
  *
- * 设计理由（agents.md §七.2）：
+ * 设计理由（AGENTS.md §七.2）：
  * - 导入树节点（ImportTreeNode）与 BookmarkManager.create 对齐：
  *   有 url → 书签；无 url → 文件夹（children 递归）
  * - 解析器输出纯数据树，不直接调 BookmarkManager；导入写入由 import-bookmarks.ts 收口

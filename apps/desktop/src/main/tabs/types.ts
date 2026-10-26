@@ -3,7 +3,7 @@
  *
  * 依据：契约 D §2 / 02-架构设计 §1 进程模型 / 04-模块全景 M2
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点「可序列化」）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点「可序列化」）：
  * - Tab 含不可序列化的 webContents/view，仅存在于主进程
  * - TabSnapshot 是可序列化快照，用于跨进程传输与渲染层 store 镜像
  * - BrowserViewLike / WebContentsLike 接口将 TabManager 与 Electron 解耦，使核心逻辑可单测

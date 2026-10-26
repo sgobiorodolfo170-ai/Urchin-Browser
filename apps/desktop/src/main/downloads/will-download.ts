@@ -8,7 +8,7 @@
  *       确认后询问「是否设为默认下载路径」（勾选 → 写入 downloadsPath 设置）
  * 2. 下载进度/状态同步到 DownloadManager（收藏夹面板「下载」页展示用）
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点）：
  * - 默认 session 挂 will-download 即覆盖默认工作区所有网页下载；
  *   自定义工作区（TP7 持久化分区）需逐 session 安装（installWillDownloadForSession），
  *   否则账号分区内的下载走 Chromium 默认行为（无 UI 弹窗）

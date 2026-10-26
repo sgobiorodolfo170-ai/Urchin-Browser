@@ -61,7 +61,7 @@ function main() {
   console.error('  Trigger: <触发指令摘要>');
   console.error('  Loop: <Loop 迭代轮次>');
   console.error(
-    '\n依据：agents.md §五.5（可追溯性）；如需紧急绕过可用 git commit --no-verify，但须在后续提交补齐说明。\n',
+    '\n依据：AGENTS.md §五.5（可追溯性）；如需紧急绕过可用 git commit --no-verify，但须在后续提交补齐说明。\n',
   );
   process.exit(1);
 }

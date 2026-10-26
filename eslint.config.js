@@ -1,5 +1,5 @@
 // ESLint 9 Flat Config
-// 依据：agents.md §九 质量护栏 / 03-技术栈 §2 (SC7)
+// 依据：AGENTS.md §九 质量护栏 / 03-技术栈 §2 (SC7)
 // 工具：ESLint 9 + typescript-eslint + eslint-plugin-react(-hooks) + eslint-config-prettier
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';

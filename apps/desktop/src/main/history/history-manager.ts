@@ -9,7 +9,7 @@
  * 4. 事件分发（recorded / deleted / cleared）
  * 5. 持久化到 SQLite（history 表）
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点「Single Source of Truth」）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点「Single Source of Truth」）：
  * - 主进程是历史状态的唯一权威源，渲染层 store 只是镜像
  * - 内存操作为主，变更时同步写入 SQLite 持久化
  * - visitedAt 为 readonly，更新访问时间通过创建新对象替换实现（不可变优先）

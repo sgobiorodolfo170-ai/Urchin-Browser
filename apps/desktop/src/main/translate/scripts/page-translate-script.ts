@@ -7,7 +7,7 @@
  *    返回主进程，故节点引用必须留在页面侧，主进程只拿纯文本段）
  * 2. build*Call：主进程经 webContents.executeJavaScript 调用运行时各方法的代码串
  *
- * 设计理由（agents.md §七.2）：
+ * 设计理由（AGENTS.md §七.2）：
  * - 用「类型化自包含函数 + Function.prototype.toString()」而非字符串模板（区别于
  *   zoom/ad-block-css）：本运行时逻辑复杂（TreeWalker 过滤/增量采集/恢复一致性），
  *   以真实 TS 函数编写可获得类型检查，jsdom 单测 eval 同一序列化结果（同源执行），

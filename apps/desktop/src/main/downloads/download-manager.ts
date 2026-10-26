@@ -7,7 +7,7 @@
  * 2. create / update / get / list / cancel / pause / resume / clear / getCount 方法
  * 3. 事件分发（created / updated / completed / cancelled / removed）
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点「Single Source of Truth」）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点「Single Source of Truth」）：
  * - 主进程是下载状态的唯一权威源，渲染层 store 只是镜像
  * - 全部方法同步执行（内存操作），持久化由后续 wave 叠加
  * - id / startTime 为 readonly，创建后不可变；其余字段可变

@@ -6,7 +6,7 @@
  * 业务逻辑全部委托 DevtoolsManager。tab 不存在 → NOT_FOUND，
  * 其余按 manager 返回形状透传。
  *
- * 设计理由（agents.md §七.2）：handler 只关心 zod 校验后的纯协议适配，
+ * 设计理由（AGENTS.md §七.2）：handler 只关心 zod 校验后的纯协议适配，
  * 与 tabs/register-handlers.ts / translate/register-handlers.ts 一致。
  */
 import type { IpcMain } from 'electron';

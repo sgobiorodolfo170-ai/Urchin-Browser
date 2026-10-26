@@ -6,7 +6,7 @@
  * 1. 创建 Electron BrowserWindow，配置 M18 安全边界
  * 2. 根据开发/生产模式加载渲染进程入口
  *
- * 设计理由（agents.md §七.2 + §六 项目特化审查点「进程隔离」）：
+ * 设计理由（AGENTS.md §七.2 + §六 项目特化审查点「进程隔离」）：
  * v0.1 即开 sandbox + contextIsolation + preload，从第一天建立安全基线。
  * webSecurity:true 防止渲染进程直接访问 file:// 协议绕过 preload。
  * nodeIntegration:false 确保渲染进程无 Node.js 能力。

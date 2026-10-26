@@ -42,6 +42,8 @@ import { SettingsPage } from './settings/SettingsPage';
 import { NewTabPage } from './home/NewTabPage';
 import { GenOfficeHome } from './home/GenOfficeHome';
 import { FileViewer } from './files/FileViewer';
+import { DevToolsPanel } from './devtools/DevToolsPanel';
+import { DEVTOOLS_TOGGLE_CHANNEL } from '@urchin/ipc-contract';
 import { ConfirmDialog } from './components/ui/confirm-dialog';
 import { getEditGuardSession, closeNeedsGuard, switchNeedsGuard } from './lib/edit-guard';
 import { useDragScroll } from './lib/use-drag-scroll';
@@ -491,6 +493,10 @@ export function App() {
   const contentAreaRef = useRef<HTMLDivElement | null>(null);
   /** 中区内部页缩放倍率（Ctrl+滚轮；网页标签由主进程单独缩放 BrowserView）。 */
   const [contentZoom, setContentZoom] = useState(1);
+  /** M15 DevTools 检视列开关（F12 / 侧栏按钮触发 devtools:toggle）。 */
+  const [devtoolsOpen, setDevtoolsOpen] = useState(false);
+  /** 检视列宽度（0 = 折叠；拖宽时同步主进程 BrowserView bounds）。 */
+  const [devtoolsWidth, setDevtoolsWidth] = useState(360);
   /** 展开态标签列表滚动容器（隐藏滚动条；长按左键上下拖动平移）。 */
   const expandedTabListRef = useDragScroll<HTMLDivElement>();
   /** 折叠态标签图标列表滚动容器（同上）。 */
@@ -516,6 +522,10 @@ export function App() {
 
   /** 每工作区最近一次激活的标签（切回该工作区时恢复）。 */
   const lastActiveByWorkspaceRef = useRef<Record<string, number>>({});
+  /** 标签持久化（TP4）：退出时保存的标签，按工作区分组。非默认工作区的标签在此懒恢复。 */
+  const savedTabsByWorkspaceRef = useRef<
+    Record<string, { url: string; title: string; active: boolean }[]>
+  >({});
   /** 折叠态工作区切换器悬停标记：悬停期间抑制侧栏自动展开（滚轮切换不被打断）。 */
   const workspaceAvatarHoverRef = useRef(false);
   /** 标签卡片右键菜单状态。 */
@@ -639,6 +649,19 @@ export function App() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleOpenFilePicker]);
+
+  // M15 DevTools F12 toggle 订阅（主进程 before-input-event 拦截 F12 → 推送 devtools:toggle）。
+  // 渲染层为面板开合唯一状态源；列宽随开合同步主进程 BrowserView bounds。
+  useEffect(() => {
+    const off = window.urchin.on(DEVTOOLS_TOGGLE_CHANNEL, () => {
+      setDevtoolsOpen((prev) => {
+        const next = !prev;
+        setDevtoolsWidth(next ? 360 : 0);
+        return next;
+      });
+    });
+    return off;
+  }, []);
 
   /**
    * 一键提取当前网页内容并保存到本地（AI 助手）。
@@ -821,6 +844,30 @@ export function App() {
   useEffect(() => {
     void refreshWorkspaces();
   }, [refreshWorkspaces]);
+
+  // TP4：启动时读取保存的标签快照（非默认工作区部分），用于切换到该工作区时懒恢复。
+  // 默认工作区的标签由主进程在启动时直接恢复，不在此处理。
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = (await window.urchin.invoke('settings.get', { key: 'session.lastTabs' })) as {
+          value: unknown;
+        };
+        const saved = Array.isArray(res?.value)
+          ? (res.value as { url: string; title: string; workspaceId: string; active: boolean }[])
+          : [];
+        const byWs: Record<string, { url: string; title: string; active: boolean }[]> = {};
+        for (const tab of saved) {
+          const wsId = tab.workspaceId ?? DEFAULT_WORKSPACE_ID;
+          if (wsId === DEFAULT_WORKSPACE_ID) continue;
+          (byWs[wsId] ??= []).push({ url: tab.url, title: tab.title, active: tab.active });
+        }
+        savedTabsByWorkspaceRef.current = byWs;
+      } catch (e) {
+        console.error('Failed to load saved tabs for lazy restore:', e);
+      }
+    })();
+  }, []);
 
   // TP7：工作区变更广播（其他窗口创建/删除/改名/清空后本窗口同步刷新）。
   useEffect(() => {
@@ -1556,17 +1603,21 @@ export function App() {
   }, []);
 
   // 通知主进程布局变化
-  const notifyLayout = useCallback(async (left: number, right: number) => {
-    try {
-      await window.urchin.invoke('ui.layout.setState', {
-        leftWidth: left,
-        rightWidth: right,
-        bottomHeight: BOTTOM_HEIGHT,
-      });
-    } catch (e) {
-      console.error('Failed to update layout:', e);
-    }
-  }, []);
+  const notifyLayout = useCallback(
+    async (left: number, right: number, dtw?: number) => {
+      try {
+        await window.urchin.invoke('ui.layout.setState', {
+          leftWidth: left,
+          rightWidth: right,
+          bottomHeight: BOTTOM_HEIGHT,
+          devtoolsWidth: dtw ?? devtoolsWidth,
+        });
+      } catch (e) {
+        console.error('Failed to update layout:', e);
+      }
+    },
+    [devtoolsWidth],
+  );
 
   const handleToggleLeft = useCallback(() => {
     const next = !leftExpanded;
@@ -1574,6 +1625,7 @@ export function App() {
     void notifyLayout(
       next ? LEFT_EXPANDED : LEFT_COLLAPSED,
       rightExpanded ? rightExpandedWidth : RIGHT_COLLAPSED,
+      devtoolsOpen ? devtoolsWidth : 0,
     );
   }, [leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout]);
 
@@ -1586,8 +1638,9 @@ export function App() {
     void notifyLayout(
       leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED,
       next ? rightExpandedWidth : RIGHT_COLLAPSED,
+      devtoolsOpen ? devtoolsWidth : 0,
     );
-  }, [leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout]);
+  }, [leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout, devtoolsOpen, devtoolsWidth]);
 
   // 双击右侧边栏空白处：展开/折叠切换（替代已移除的底部折叠/展开按钮）
   // 与悬停自动展开/自动折叠互斥（右侧栏自动展开开关控制后者）
@@ -1618,7 +1671,11 @@ export function App() {
       setRightRetracting(false);
       // 用拖拽后的实际宽度（而非固定 RIGHT_EXPANDED），否则主进程 BrowserView
       // 布局宽度与栏显示宽度不一致 → 网页滚动条与分割线间出现空白
-      void notifyLayout(leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED, rightExpandedWidth);
+      void notifyLayout(
+        leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED,
+        rightExpandedWidth,
+        devtoolsOpen ? devtoolsWidth : 0,
+      );
     };
     if (sidebarHoverDelay <= 0) {
       doExpand();
@@ -1648,7 +1705,11 @@ export function App() {
     if (rightExpanded || !rightHovered) return;
     setRightRetracting(true);
     setRightHovered(false);
-    void notifyLayout(leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED, RIGHT_COLLAPSED);
+    void notifyLayout(
+      leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED,
+      RIGHT_COLLAPSED,
+      devtoolsOpen ? devtoolsWidth : 0,
+    );
     // 回弹动画结束后清除标记（300ms 对应回弹时长）
     window.setTimeout(() => setRightRetracting(false), 320);
   }, [rightExpanded, rightHovered, leftExpanded, notifyLayout]);
@@ -1680,7 +1741,11 @@ export function App() {
         Math.max(RIGHT_MIN, drag.startWidth + (drag.startX - e.clientX)),
       );
       setRightExpandedWidth(next);
-      void notifyLayout(leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED, next);
+      void notifyLayout(
+        leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED,
+        next,
+        devtoolsOpen ? devtoolsWidth : 0,
+      );
     },
     [leftExpanded, notifyLayout],
   );
@@ -1728,8 +1793,8 @@ export function App() {
     }
   }, []);
 
-  // toggle 收藏：已收藏则删除，未收藏则创建。
-  // 修复：此前 handleSaveBookmark 只创建不删除，再次点击不会移除收藏。
+  // toggle 收藏：已收藏则删除，未收藏则弹出收藏夹面板选择文件夹保存（dev.120）。
+  // 未收藏分支不再直接 bookmark.create 到根级——改由面板 picker 模式让用户选目标文件夹。
   const handleSaveBookmark = useCallback(async () => {
     if (!activeTab?.url || !isBookmarkable(activeTab.url)) return;
     try {
@@ -1739,25 +1804,19 @@ export function App() {
         setBookmarkSaved(false);
         setCurrentBookmarkId(null);
         setBookmarkToast('已从书签移除');
+        setTimeout(() => setBookmarkToast(null), 2000);
+        void refreshBookmarkSaved(activeTab.url);
       } else {
-        // 未收藏 → 创建
-        await window.urchin.invoke('bookmark.create', {
-          url: activeTab.url,
-          title: activeTab.title || activeTab.url,
-          type: 'bookmark',
-        });
-        setBookmarkSaved(true);
-        setBookmarkToast('已添加到书签');
+        // 未收藏 → 弹出收藏夹面板（picker 模式）选文件夹保存
+        await window.urchin.invoke('ui.panel.saveBookmarkPicker', {});
+        // 实际保存由面板内完成；bookmark:changed 广播后 refreshBookmarkSaved 会刷新星标
       }
-      setTimeout(() => setBookmarkToast(null), 2000);
-      // 刷新收藏状态（当前 URL 的亮/灭）
-      void refreshBookmarkSaved(activeTab.url);
     } catch (e) {
       console.error('Failed to toggle bookmark:', e);
       setBookmarkToast('书签操作失败');
       setTimeout(() => setBookmarkToast(null), 2000);
     }
-  }, [activeTab?.url, activeTab?.title, bookmarkSaved, currentBookmarkId, refreshBookmarkSaved]);
+  }, [activeTab?.url, bookmarkSaved, currentBookmarkId, refreshBookmarkSaved]);
 
   // URL 变化时重新检查收藏状态（修复：此前仅 setBookmarkSaved(false) 未查询实际状态）
   useEffect(() => {
@@ -1779,6 +1838,12 @@ export function App() {
   // 右侧栏有效展开：固定展开 OR 折叠态下的悬停预览
   const effectiveRightExpanded = rightExpanded || rightHovered;
   const rightWidth = effectiveRightExpanded ? rightExpandedWidth : RIGHT_COLLAPSED;
+
+  // M15 DevTools 检视列开合/宽度变化 → 同步主进程 BrowserView bounds（扣减右侧区域）。
+  // 放在此处确保 leftWidth/rightWidth 已定义；devtoolsOpen=false 传 0（折叠）。
+  useEffect(() => {
+    void notifyLayout(leftWidth, rightWidth, devtoolsOpen ? devtoolsWidth : 0);
+  }, [devtoolsOpen, devtoolsWidth, leftWidth, rightWidth, notifyLayout]);
 
   // 中区内容判断
   // 注意：urchin://settings / urchin://ai 会被 Electron URL 规范化为带末尾斜杠，
@@ -1875,7 +1940,35 @@ export function App() {
         if (target.id !== activeTabId) void doSelectTab(target.id);
         return;
       }
-      // 空工作区：自动新建主页标签（TP7 确认行为）
+      // 空工作区：先检查是否有保存的标签可懒恢复（TP4）
+      const saved = savedTabsByWorkspaceRef.current[workspaceId];
+      if (saved && saved.length > 0) {
+        // 只恢复一次：从 ref 中删除
+        delete savedTabsByWorkspaceRef.current[workspaceId];
+        void (async () => {
+          try {
+            const windowId = await getCurrentWindowId();
+            let activeId: number | undefined;
+            for (const tab of saved) {
+              const res = (await window.urchin.invoke('tab.create', {
+                windowId,
+                url: tab.url,
+                workspaceId,
+                active: false,
+              })) as { tab: { id: number } };
+              if (tab.active) activeId = res.tab.id;
+            }
+            // 激活上次活跃的标签（或第一个创建的——TabManager 首个自动激活）
+            if (activeId) {
+              await window.urchin.invoke('tab.setActive', { tabId: activeId });
+            }
+          } catch (e) {
+            console.error('Failed to restore saved tabs in workspace:', e);
+          }
+        })();
+        return;
+      }
+      // 无保存标签：自动新建主页标签（TP7 确认行为）
       void (async () => {
         try {
           const windowId = await getCurrentWindowId();
@@ -1918,7 +2011,10 @@ export function App() {
     (dir: 1 | -1) => {
       if (workspaces.length === 0) return;
       const idx = workspaces.findIndex((w) => w.id === currentWorkspaceId);
-      const next = workspaces[(idx + dir + workspaces.length) % workspaces.length];
+      const nextIdx = idx + dir;
+      // 不循环：到第一个/最后一个后继续滚动不再切换
+      if (nextIdx < 0 || nextIdx >= workspaces.length) return;
+      const next = workspaces[nextIdx];
       if (next) handleSwitchWorkspace(next.id);
     },
     [workspaces, currentWorkspaceId, handleSwitchWorkspace],
@@ -1961,9 +2057,11 @@ export function App() {
     async (id: string) => {
       await window.urchin.invoke('workspace.remove', { id });
       await refreshWorkspaces();
-      if (currentWorkspaceId === id) setCurrentWorkspaceId(DEFAULT_WORKSPACE_ID);
+      // 删除当前工作区后：切到默认工作区并激活/新建标签（仅 setCurrentWorkspaceId
+      // 会导致 activeTabId 为 null、中区无内容渲染的降级状态）
+      if (currentWorkspaceId === id) handleSwitchWorkspace(DEFAULT_WORKSPACE_ID);
     },
-    [refreshWorkspaces, currentWorkspaceId],
+    [refreshWorkspaces, currentWorkspaceId, handleSwitchWorkspace],
   );
 
   const handleClearWorkspaceData = useCallback(
@@ -2021,12 +2119,31 @@ export function App() {
 
   // ── 折叠态工作区总览页（cards 模式，参考 ego-lite Space 卡片设计）──
 
-  /** 打开工作区总览页：先抓当前工作区整窗快照，再新建 urchin://workspaces 标签。 */
+  /**
+   * 折叠态 cards 模式：点击工作区图标 = 切换总览页（toggle）。
+   * - 总览页正激活 → 关闭它（再次点击关闭）
+   * - 总览页已存在但非激活 → 激活它（不另开新标签）
+   * - 不存在 → 新建总览页标签
+   */
   const handleOpenWorkspacesPage = useCallback(() => {
-    // 已在总览页：不重复开页（否则快照会把总览页自身截进去）
-    if (isWorkspacesTab) return;
+    // 1. 总览页正激活 → 关闭（toggle off）
+    if (isWorkspacesTab && activeTabId != null) {
+      void doCloseTab(activeTabId);
+      return;
+    }
+    // 2. 总览页已存在但非激活 → 激活（不另开新标签）；仅搜索当前工作区的总览标签，
+    //    避免跨工作区激活旧总览导致用户被切回另一工作区
+    const existingOverview = tabs.find(
+      (t) =>
+        t.url?.startsWith('urchin://workspaces') &&
+        (t.workspaceId ?? DEFAULT_WORKSPACE_ID) === currentWorkspaceId,
+    );
+    if (existingOverview) {
+      void doSelectTab(existingOverview.id);
+      return;
+    }
+    // 3. 不存在 → 新建
     void (async () => {
-      // 必须先抓图：总览页一旦打开，内容区就是总览页本身
       await captureWorkspaceSnapshot(currentWorkspaceId);
       try {
         await window.urchin.invoke('tab.create', {
@@ -2039,7 +2156,15 @@ export function App() {
         console.error('Failed to open workspaces page:', e);
       }
     })();
-  }, [currentWorkspaceId, isWorkspacesTab, captureWorkspaceSnapshot]);
+  }, [
+    isWorkspacesTab,
+    activeTabId,
+    tabs,
+    doCloseTab,
+    doSelectTab,
+    currentWorkspaceId,
+    captureWorkspaceSnapshot,
+  ]);
 
   /** 总览页数据：每工作区一张卡片 + 已采集的整窗快照（无快照时组件渲染占位）。 */
   const workspaceOverviewItems: readonly WorkspaceOverviewItem[] = useMemo(
@@ -2112,7 +2237,7 @@ export function App() {
         lastLeft = left;
         lastRight = right;
         stableCount = 0;
-        void notifyLayout(left, right);
+        void notifyLayout(left, right, devtoolsOpen ? devtoolsWidth : 0);
       } else {
         stableCount += 1;
       }
@@ -2178,7 +2303,6 @@ export function App() {
     isGenOfficeTab,
     isGenOfficeHomeTab,
     isInternalPage,
-    isNavDisabledPage,
     activeTab?.url,
     activeTab?.loading,
     activeTab?.canGoBack,
@@ -2605,6 +2729,21 @@ export function App() {
             )}
           </main>
 
+          {/* M15 DevTools 检视列（F12 开关；右侧栏左侧的第三列） */}
+          {devtoolsOpen && (
+            <DevToolsPanel
+              activeTabId={activeTabId ?? null}
+              activeTabTitle={activeTab?.title ?? activeTab?.url ?? ''}
+              activeTabInspectable={
+                !!activeTab &&
+                !activeTab.url?.startsWith('urchin://') &&
+                activeTab.viewKind !== 'genoffice'
+              }
+              onWidthChange={setDevtoolsWidth}
+              width={devtoolsWidth}
+            />
+          )}
+
           {/* === 右侧栏 === */}
           {/* 折叠态下悬停展开，鼠标离开带过冲弹性回弹；展开/收起使用不同缓动以体现"力度"。
            *  拖拽调节中（resizingRight）禁用宽度 transition，保证跟手。 */}
@@ -2648,6 +2787,7 @@ export function App() {
                   workspaces={workspaces}
                   currentWorkspaceId={currentWorkspaceId}
                   onSelect={handleSwitchWorkspace}
+                  onCycle={handleCycleWorkspace}
                   onCreate={(name, color) => handleCreateAndSwitchWorkspace(name, color)}
                   onContextMenu={(e, workspace) => {
                     e.preventDefault();

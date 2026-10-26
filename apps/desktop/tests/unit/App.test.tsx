@@ -551,6 +551,7 @@ describe('App (Browser Shell)', () => {
       if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
       if (channel === 'settings.get') return Promise.resolve({ value: 300 });
       if (channel === 'bookmark.create') return Promise.resolve({ ok: true });
+      if (channel === 'ui.panel.saveBookmarkPicker') return Promise.resolve({ ok: true });
       return Promise.resolve({});
     });
 
@@ -558,22 +559,13 @@ describe('App (Browser Shell)', () => {
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
 
     // 悬浮层点击书签按钮 → ui.statusbar.action bookmark-toggle
+    // dev.120：未收藏时不再直接 bookmark.create，改为弹出收藏夹面板 picker 模式选文件夹保存
     act(() => getStatusBarActionHandler()({ type: 'bookmark-toggle' }));
-    await waitFor(() =>
-      expect(mockInvoke).toHaveBeenCalledWith('bookmark.create', {
-        url: 'https://example.com',
-        title: 'Example',
-        type: 'bookmark',
-      }),
-    );
-    // toast 经 ui.statusbar.sync 同步给悬浮层（不再在主窗口渲染）
-    await waitFor(() =>
-      expect(mockInvoke).toHaveBeenCalledWith(
-        'ui.statusbar.sync',
-        expect.objectContaining({
-          toast: expect.objectContaining({ text: '已添加到书签' }) as object,
-        }),
-      ),
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('ui.panel.saveBookmarkPicker', {}));
+    // 不应直接 create（保存由面板内完成）
+    expect(mockInvoke).not.toHaveBeenCalledWith(
+      'bookmark.create',
+      expect.objectContaining({ url: 'https://example.com' }),
     );
   });
 

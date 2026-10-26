@@ -205,7 +205,7 @@ function NewWorkspaceCard({
         className="flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-border bg-black/[0.14] text-text-secondary transition-all duration-150 hover:-translate-y-1.5 hover:border-primary/50 hover:bg-black/20 hover:text-text dark:bg-black/30 dark:hover:bg-black/40"
         aria-label="新建工作区"
       >
-        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-secondary">
+        <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-surface-secondary">
           <Plus className="h-5 w-5" />
         </span>
       </button>
@@ -243,7 +243,7 @@ function NewWorkspaceCard({
                   aria-label={`颜色 ${key}`}
                   onClick={() => setColor(key)}
                   className={cn(
-                    'flex h-5 w-5 items-center justify-center rounded-full transition-transform',
+                    'flex h-5 w-5 items-center justify-center rounded-md transition-transform',
                     WORKSPACE_COLORS[key].avatar,
                     color === key
                       ? 'scale-110 ring-2 ring-primary/60'

@@ -9,6 +9,14 @@ import {
   urlSchema,
   tabCreateReqSchema,
   tabSnapshotSchema,
+  devtoolsAttachReqSchema,
+  devtoolsEvaluateReqSchema,
+  devtoolsNetworkListResSchema,
+  devtoolsConsoleListResSchema,
+  uiLayoutSetStateReqSchema,
+  DEVTOOLS_EVENT_CHANNEL,
+  DEVTOOLS_TOGGLE_CHANNEL,
+  DEVTOOLS_EVALUATE_MAX_BYTES,
 } from '../src/index';
 
 describe('tabIdSchema', () => {
@@ -143,5 +151,157 @@ describe('ipcSchema', () => {
       expect(typeof schema.req.parse).toBe('function');
       expect(typeof schema.res.parse).toBe('function');
     }
+  });
+
+  it('should contain M15 devtools channels', () => {
+    const channels = Object.keys(ipcSchema);
+    expect(channels).toContain('devtools.attach');
+    expect(channels).toContain('devtools.detach');
+    expect(channels).toContain('devtools.status');
+    expect(channels).toContain('devtools.network.list');
+    expect(channels).toContain('devtools.network.clear');
+    expect(channels).toContain('devtools.console.list');
+    expect(channels).toContain('devtools.console.clear');
+    expect(channels).toContain('devtools.evaluate');
+  });
+});
+
+describe('devtoolsAttachReqSchema', () => {
+  it('should accept positive tabId', () => {
+    expect(devtoolsAttachReqSchema.parse({ tabId: 1 })).toEqual({ tabId: 1 });
+  });
+
+  it('should reject missing tabId', () => {
+    expect(() => devtoolsAttachReqSchema.parse({})).toThrow();
+  });
+
+  it('should reject non-positive tabId', () => {
+    expect(() => devtoolsAttachReqSchema.parse({ tabId: 0 })).toThrow();
+    expect(() => devtoolsAttachReqSchema.parse({ tabId: -1 })).toThrow();
+  });
+});
+
+describe('devtoolsEvaluateReqSchema', () => {
+  it('should accept expression within byte limit', () => {
+    const result = devtoolsEvaluateReqSchema.parse({ tabId: 1, expression: '1 + 1' });
+    expect(result.expression).toBe('1 + 1');
+    expect(result.awaitPromise).toBeUndefined();
+  });
+
+  it('should accept awaitPromise flag', () => {
+    const result = devtoolsEvaluateReqSchema.parse({
+      tabId: 1,
+      expression: 'fetch("/x")',
+      awaitPromise: true,
+    });
+    expect(result.awaitPromise).toBe(true);
+  });
+
+  it('should reject empty expression', () => {
+    expect(() => devtoolsEvaluateReqSchema.parse({ tabId: 1, expression: '' })).toThrow();
+  });
+
+  it('should reject expression exceeding byte limit', () => {
+    const tooLong = 'a'.repeat(DEVTOOLS_EVALUATE_MAX_BYTES + 1);
+    expect(() => devtoolsEvaluateReqSchema.parse({ tabId: 1, expression: tooLong })).toThrow();
+  });
+});
+
+describe('devtools list response schemas', () => {
+  it('devtoolsNetworkListResSchema should accept empty entries (no-session case)', () => {
+    const result = devtoolsNetworkListResSchema.parse({ entries: [], dropped: 0 });
+    expect(result.entries).toEqual([]);
+    expect(result.dropped).toBe(0);
+  });
+
+  it('devtoolsConsoleListResSchema should accept empty entries', () => {
+    const result = devtoolsConsoleListResSchema.parse({ entries: [], dropped: 0 });
+    expect(result.entries).toEqual([]);
+  });
+
+  it('devtoolsNetworkListResSchema should accept a full entry', () => {
+    const result = devtoolsNetworkListResSchema.parse({
+      entries: [
+        {
+          seq: 0,
+          requestId: '1',
+          url: 'https://example.com',
+          method: 'GET',
+          status: 200,
+          size: 1024,
+          startedAt: 1000,
+          finishedAt: 1500,
+          durationMs: 500,
+          responseHeaders: { 'content-type': 'text/html' },
+        },
+      ],
+      dropped: 0,
+    });
+    expect(result.entries[0]?.status).toBe(200);
+  });
+
+  it('devtoolsConsoleListResSchema should reject stackTrace over 10 frames', () => {
+    // schema 校验层拒绝超限；主进程 manager 在采集时已截断到 ≤10 帧（见实施规划 §6.2）
+    const frames = Array.from({ length: 12 }, (_, i) => ({ functionName: `f${i}` }));
+    expect(() =>
+      devtoolsConsoleListResSchema.parse({
+        entries: [
+          {
+            seq: 0,
+            level: 'error',
+            text: 'boom',
+            source: 'exception',
+            timestamp: 1,
+            stackTrace: frames,
+          },
+        ],
+        dropped: 0,
+      }),
+    ).toThrow();
+  });
+
+  it('devtoolsConsoleListResSchema should accept 10 frames', () => {
+    const frames = Array.from({ length: 10 }, (_, i) => ({ functionName: `f${i}` }));
+    const result = devtoolsConsoleListResSchema.parse({
+      entries: [
+        {
+          seq: 0,
+          level: 'error',
+          text: 'boom',
+          source: 'exception',
+          timestamp: 1,
+          stackTrace: frames,
+        },
+      ],
+      dropped: 0,
+    });
+    expect(result.entries[0]?.stackTrace?.length).toBe(10);
+  });
+});
+
+describe('uiLayoutSetStateReqSchema (devtoolsWidth 增补)', () => {
+  it('should accept devtoolsWidth within range', () => {
+    const result = uiLayoutSetStateReqSchema.parse({ devtoolsWidth: 360 });
+    expect(result.devtoolsWidth).toBe(360);
+  });
+
+  it('should treat devtoolsWidth as optional (backward compat)', () => {
+    const result = uiLayoutSetStateReqSchema.parse({ leftWidth: 48 });
+    expect(result.devtoolsWidth).toBeUndefined();
+  });
+
+  it('should reject devtoolsWidth over 900', () => {
+    expect(() => uiLayoutSetStateReqSchema.parse({ devtoolsWidth: 901 })).toThrow();
+  });
+
+  it('should reject negative devtoolsWidth', () => {
+    expect(() => uiLayoutSetStateReqSchema.parse({ devtoolsWidth: -1 })).toThrow();
+  });
+});
+
+describe('devtools event channel constants', () => {
+  it('should export stable channel names', () => {
+    expect(DEVTOOLS_EVENT_CHANNEL).toBe('devtools:event');
+    expect(DEVTOOLS_TOGGLE_CHANNEL).toBe('devtools:toggle');
   });
 });

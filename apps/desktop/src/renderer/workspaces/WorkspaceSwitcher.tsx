@@ -2,11 +2,15 @@
  * 工作区折叠态切换器（TP7）：折叠栏顶部单工作区首字图标。
  *
  * 两种模式（由设置 ui.workspaceSwitcherMode 决定，参考 ego-lite Space 卡片设计）：
- * - 'wheel'：鼠标停放在图标上滚动滚轮 = 循环切换工作区（默认，原行为）
+ * - 'wheel'：鼠标停放在图标上滚动滚轮 = 切换工作区（默认，非循环）
  * - 'cards'：点击图标 = 打开工作区总览页（urchin://workspaces，卡片网格 + 网页缩略图），
  *   Cards 模式滚轮不拦截
  * 两种模式均保留悬停抑制侧栏自动展开（由父级处理）。
+ *
+ * wheel 模式使用原生非被动 wheel 监听（addEventListener { passive: false }）：
+ * React onWheel 在 17+ 为 passive，preventDefault 无效并产生 console 警告。
  */
+import { useEffect, useRef } from 'react';
 import { cn } from '../lib/utils';
 import type { Workspace } from './types';
 import { WORKSPACE_COLORS, workspaceInitial } from './workspace-colors';
@@ -35,8 +39,24 @@ export function WorkspaceSwitcher({
   onPointerLeave,
 }: WorkspaceSwitcherProps): React.JSX.Element {
   const cardsMode = mode === 'cards';
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  // 原生非被动 wheel 监听（仅 wheel 模式）：确保 preventDefault 生效
+  useEffect(() => {
+    if (cardsMode) return;
+    const el = btnRef.current;
+    if (!el) return;
+    const handleWheel = (e: WheelEvent): void => {
+      e.preventDefault();
+      onCycle(e.deltaY > 0 ? 1 : -1);
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [cardsMode, onCycle]);
+
   return (
     <button
+      ref={btnRef}
       type="button"
       className={cn(
         'group relative flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-md border shadow-sm',
@@ -53,17 +73,11 @@ export function WorkspaceSwitcher({
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
       onClick={onClick}
-      onWheel={(e) => {
-        // cards 模式滚轮不拦截（不循环切换，让侧栏标签列表正常滚动）
-        if (cardsMode) return;
-        e.preventDefault();
-        onCycle(e.deltaY > 0 ? 1 : -1);
-      }}
     >
       {workspace ? (
         <span
           className={cn(
-            'flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold text-white',
+            'flex h-8 w-8 items-center justify-center rounded-md text-sm font-semibold text-white',
             WORKSPACE_COLORS[workspace.color]?.avatar ?? 'bg-gray-500',
           )}
         >
@@ -74,10 +88,7 @@ export function WorkspaceSwitcher({
       )}
       {/* 多工作区提示点：图标右下角的小色点 */}
       {workspace && (
-        <span
-          className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-primary/70"
-          aria-hidden
-        />
+        <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-md bg-primary/70" aria-hidden />
       )}
     </button>
   );

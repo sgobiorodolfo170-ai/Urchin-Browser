@@ -294,6 +294,121 @@ describe('getBookmarkPanelScript（面板交互，jsdom）', () => {
     document.body.innerHTML = '';
   });
 
+  // ===== picker 模式（dev.120：星标按钮未收藏时选文件夹保存） =====
+
+  /** 以 ?mode=picker 加载面板脚本：mock 一个含子文件夹的书签集 + picker 上下文。 */
+  function setupPanelPicker() {
+    document.body.innerHTML = `
+      <div class="tabs">
+        <div class="tab active" data-tab="bookmarks">收藏夹</div>
+        <div class="tab" data-tab="history">历史记录</div>
+        <div class="tab" data-tab="downloads">下载列表</div>
+      </div>
+      <div class="content" id="content"><div class="empty">加载中…</div></div>
+    `;
+    // 脚本在 eval 时一次性读取 location.search 判定 pickerMode
+    const origSearch = window.location.search;
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, search: '?mode=picker' },
+      configurable: true,
+    });
+
+    const calls: { ch: string; req: Record<string, unknown> }[] = [];
+    const invokeMock = vi.fn((ch: string, req: Record<string, unknown>): Promise<unknown> => {
+      calls.push({ ch, req });
+      if (ch === 'bookmark.list') {
+        return Promise.resolve({
+          bookmarks: [
+            {
+              id: 'f-1',
+              type: 'folder',
+              title: '工作',
+              parentId: null,
+              position: 0,
+              createdAt: 1,
+              updatedAt: 1,
+            },
+            {
+              id: 'bm-1',
+              type: 'bookmark',
+              title: 'Example',
+              url: 'https://example.com/A',
+              parentId: null,
+              position: 1,
+              createdAt: 1,
+              updatedAt: 1,
+            },
+          ],
+        });
+      }
+      if (ch === 'ui.panel.getPickerContext') {
+        return Promise.resolve({ url: 'https://current.example.com/', title: 'Current Page' });
+      }
+      if (ch === 'bookmark.create') return Promise.resolve({ ok: true });
+      if (ch === 'ui.panel.close') return Promise.resolve({ ok: true });
+      return Promise.resolve({});
+    });
+    (window as unknown as { urchin: { invoke: (...a: unknown[]) => Promise<unknown> } }).urchin = {
+      invoke: invokeMock as unknown as (...a: unknown[]) => Promise<unknown>,
+    };
+    window.eval(getBookmarkPanelScript());
+    // 还原 location（避免污染后续测试）
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, search: origSearch },
+      configurable: true,
+    });
+    return { calls };
+  }
+
+  it('picker 模式：渲染保存底栏 + 文件夹行「保存到此处」按钮', async () => {
+    setupPanelPicker();
+    await vi.waitFor(() => expect(document.querySelector('.picker-footer')).toBeTruthy());
+
+    // 底栏「保存到：根目录」+ 保存/取消按钮
+    expect(document.querySelector('.picker-target')?.textContent).toContain('根目录');
+    expect(document.querySelector('[data-act="save-here"]')).toBeTruthy();
+    expect(document.querySelector('[data-act="picker-cancel"]')).toBeTruthy();
+    // 文件夹行有「保存到此处」按钮（data-act=save-into）
+    expect(document.querySelector('.folder-item [data-act="save-into"]')).toBeTruthy();
+  });
+
+  it('picker 模式：点「保存」底栏按钮 → bookmark.create 存入当前文件夹(根) + 关闭面板', async () => {
+    const { calls } = setupPanelPicker();
+    await vi.waitFor(() => expect(document.querySelector('[data-act="save-here"]')).toBeTruthy());
+
+    const saveHereBtn = document.querySelector<HTMLElement>('[data-act="save-here"]');
+    saveHereBtn?.click();
+
+    await vi.waitFor(() => {
+      expect(calls.some((c) => c.ch === 'bookmark.create')).toBe(true);
+    });
+    const create = calls.find((c) => c.ch === 'bookmark.create')!;
+    expect(create.req).toEqual({
+      url: 'https://current.example.com/',
+      title: 'Current Page',
+      parentId: null,
+      type: 'bookmark',
+    });
+    expect(calls.some((c) => c.ch === 'ui.panel.close')).toBe(true);
+  });
+
+  it('picker 模式：点文件夹行「保存到此处」→ bookmark.create parentId=该文件夹 id', async () => {
+    const { calls } = setupPanelPicker();
+    await vi.waitFor(() =>
+      expect(document.querySelector('.folder-item [data-act="save-into"]')).toBeTruthy(),
+    );
+
+    const saveIntoBtn = document.querySelector<HTMLElement>('.folder-item [data-act="save-into"]');
+    saveIntoBtn?.click();
+
+    await vi.waitFor(() => {
+      expect(calls.some((c) => c.ch === 'bookmark.create')).toBe(true);
+    });
+    const create = calls.find((c) => c.ch === 'bookmark.create')!;
+    expect(create.req.parentId).toBe('f-1');
+    expect(create.req.url).toBe('https://current.example.com/');
+  });
+
   it('should delete bookmark when star clicked, not open the url', async () => {
     const { calls } = setupPanel();
     // 等待首次 bookmark.list 渲染完成

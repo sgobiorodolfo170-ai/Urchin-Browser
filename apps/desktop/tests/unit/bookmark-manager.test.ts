@@ -328,4 +328,66 @@ describe('BookmarkManager', () => {
 
     expect(created.position).toBe(1);
   });
+
+  // ===== update 测试（dev.119：重命名 / 改 URL） =====
+
+  it('update: renames bookmark title and emits updated event', () => {
+    const mgr = new BookmarkManager();
+    const created = mgr.create({ title: 'Old', url: 'https://example.com' });
+    const listener = vi.fn();
+    mgr.on('updated', listener);
+
+    const updated = mgr.update(created.id, { title: 'New' });
+
+    expect(updated.title).toBe('New');
+    expect(updated.url).toBe('https://example.com');
+    expect(updated.id).toBe(created.id);
+    expect(updated.createdAt).toBe(created.createdAt);
+    expect(updated.updatedAt).toBeGreaterThanOrEqual(created.updatedAt);
+    expect(listener).toHaveBeenCalledWith(updated);
+  });
+
+  it('update: changes bookmark url', () => {
+    const mgr = new BookmarkManager();
+    const created = mgr.create({ title: 'X', url: 'https://old.example.com' });
+
+    const updated = mgr.update(created.id, { url: 'https://new.example.com' });
+
+    expect(updated.url).toBe('https://new.example.com');
+    expect(updated.title).toBe('X');
+  });
+
+  it('update: renames folder', () => {
+    const mgr = new BookmarkManager();
+    const folder = mgr.create({ title: 'Folder', type: 'folder' });
+
+    const updated = mgr.update(folder.id, { title: 'Renamed' });
+
+    expect(updated.title).toBe('Renamed');
+    expect(updated.type).toBe('folder');
+  });
+
+  it('update: throws when setting url on a folder', () => {
+    const mgr = new BookmarkManager();
+    const folder = mgr.create({ title: 'Folder', type: 'folder' });
+
+    expect(() => mgr.update(folder.id, { url: 'https://example.com' })).toThrow(/url/);
+  });
+
+  it('update: throws when node not found', () => {
+    const mgr = new BookmarkManager();
+    expect(() => mgr.update('nonexistent', { title: 'x' })).toThrow(/not found/i);
+  });
+
+  it('update: empty patch returns existing node without emitting', () => {
+    const mgr = new BookmarkManager();
+    const created = mgr.create({ title: 'A', url: 'https://a.example.com' });
+    const listener = vi.fn();
+    mgr.on('updated', listener);
+
+    const result = mgr.update(created.id, {});
+
+    expect(result).toEqual(created);
+    expect(listener).not.toHaveBeenCalled();
+  });
 });

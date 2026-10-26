@@ -70,12 +70,20 @@ export interface BookmarkSearchOptions {
 
 /**
  * 书签事件类型。
+ * - 'updated'：传入更新后的节点（重命名 / 改 URL；收藏夹面板与主窗口星标同步）
  */
-export type BookmarkEvent = 'created' | 'deleted';
+export type BookmarkEvent = 'created' | 'deleted' | 'updated';
 
 /**
  * 书签事件监听器。
  * - 'created'：传入新建的节点
  * - 'deleted'：传入被删除的节点（文件夹级联删除时每个节点各触发一次）
+ * - 'updated'：传入更新后的节点
  */
 export type BookmarkEventListener = (bookmark: Bookmark) => void;
+
+/**
+ * 更新书签节点的可变字段集合（重命名 / 改 URL）。
+ * id / type / createdAt / position / parentId 均不可经此修改。
+ */
+export type BookmarkUpdatePatch = Partial<Pick<Bookmark, 'title' | 'url'>>;

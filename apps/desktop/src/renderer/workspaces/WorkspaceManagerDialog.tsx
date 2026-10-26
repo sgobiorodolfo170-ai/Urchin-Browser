@@ -92,7 +92,7 @@ export function WorkspaceManagerDialog({
         <div className="mb-3 flex items-center gap-2">
           <span
             className={cn(
-              'flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold text-white',
+              'flex h-7 w-7 items-center justify-center rounded-md text-sm font-semibold text-white',
               WORKSPACE_COLORS[workspace.color].avatar,
             )}
           >
@@ -118,7 +118,7 @@ export function WorkspaceManagerDialog({
               aria-label={`颜色 ${c}`}
               onClick={() => setColor(c)}
               className={cn(
-                'flex h-6 w-6 items-center justify-center rounded-full transition-transform',
+                'flex h-6 w-6 items-center justify-center rounded-md transition-transform',
                 WORKSPACE_COLORS[c].avatar,
                 color === c ? 'scale-110 ring-2 ring-primary/60' : 'opacity-80 hover:opacity-100',
               )}

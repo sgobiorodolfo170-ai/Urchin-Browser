@@ -100,6 +100,11 @@ export interface LayoutState {
   bottomHeight: number;
   /** 临时隐藏 BrowserView（如收藏夹面板弹出时） */
   browserViewHidden: boolean;
+  /**
+   * M15 DevTools 检视列宽度（0 = 折叠/未打开）。v0.2 一期新增。
+   * computeViewBounds 据此在右侧栏左侧再扣减一块水平区域给检视列，
+   * 使 BrowserView 让出空间，React 第三列渲染其上。 */
+  devtoolsWidth: number;
 }
 
 /** 全局布局状态（v0.1 单窗口，简化为全局） */
@@ -108,6 +113,7 @@ const layoutState: LayoutState = {
   rightWidth: DEFAULT_RIGHT_WIDTH,
   bottomHeight: DEFAULT_BOTTOM_HEIGHT,
   browserViewHidden: false,
+  devtoolsWidth: 0,
 };
 
 /**
@@ -134,7 +140,11 @@ function computeViewBounds(windowBounds: { width: number; height: number }): {
     y: WINDOW_FRAME_WIDTH + WINDOW_TITLEBAR_HEIGHT,
     width: Math.max(
       0,
-      windowBounds.width - horizontalInset - layoutState.leftWidth - layoutState.rightWidth,
+      windowBounds.width -
+        horizontalInset -
+        layoutState.leftWidth -
+        layoutState.rightWidth -
+        layoutState.devtoolsWidth,
     ),
     height: Math.max(0, windowBounds.height - verticalInset),
   };
@@ -158,11 +168,13 @@ export function setLayoutState(next: {
   bottomHeight?: number;
   contentHidden?: boolean;
   browserViewHidden?: boolean;
+  devtoolsWidth?: number;
 }): LayoutState & { contentHidden: boolean } {
   if (next.leftWidth !== undefined) layoutState.leftWidth = next.leftWidth;
   if (next.rightWidth !== undefined) layoutState.rightWidth = next.rightWidth;
   if (next.bottomHeight !== undefined) layoutState.bottomHeight = next.bottomHeight;
   if (next.browserViewHidden !== undefined) layoutState.browserViewHidden = next.browserViewHidden;
+  if (next.devtoolsWidth !== undefined) layoutState.devtoolsWidth = next.devtoolsWidth;
   // contentHidden 已废弃：AI 模块改为独立标签页，不再需要全局隐藏 BrowserView。
   // 保留字段仅为了 ipc-schema 向后兼容，实际值固定为 false。
   return { ...layoutState, contentHidden: false };

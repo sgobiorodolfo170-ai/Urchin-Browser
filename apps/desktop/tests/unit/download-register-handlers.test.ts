@@ -49,6 +49,7 @@ function createMockDownloadManager() {
     pause: vi.fn(),
     resume: vi.fn(),
     clear: vi.fn(),
+    get: vi.fn(),
   };
 }
 
@@ -129,5 +130,35 @@ describe('registerDownloadHandlers', () => {
 
     expect(manager.clear).toHaveBeenCalledWith('d1');
     expect(result).toEqual({ ok: true, deleted: 5 });
+  });
+
+  it('download.showInFolder should look up item and call shell.showItemInFolder', async () => {
+    const ipcMain = createMockIpcMain();
+    const manager = createMockDownloadManager();
+    manager.get.mockReturnValue({ id: 'd1', savePath: 'C:\\dl\\file.pdf', state: 'completed' });
+    const showItemInFolder = vi.fn();
+
+    registerDownloadHandlers(ipcMain as never, manager as never, { showItemInFolder });
+
+    const result = (await ipcMain.invoke('download.showInFolder', { id: 'd1' })) as {
+      ok: boolean;
+      id: string;
+    };
+
+    expect(manager.get).toHaveBeenCalledWith('d1');
+    expect(showItemInFolder).toHaveBeenCalledWith('C:\\dl\\file.pdf');
+    expect(result).toEqual({ ok: true, id: 'd1' });
+  });
+
+  it('download.showInFolder should throw when item not found', async () => {
+    const ipcMain = createMockIpcMain();
+    const manager = createMockDownloadManager();
+    manager.get.mockReturnValue(undefined);
+    const showItemInFolder = vi.fn();
+
+    registerDownloadHandlers(ipcMain as never, manager as never, { showItemInFolder });
+
+    await expect(ipcMain.invoke('download.showInFolder', { id: 'missing' })).rejects.toThrow();
+    expect(showItemInFolder).not.toHaveBeenCalled();
   });
 });

@@ -8,3 +8,4 @@ export * from './schemas/index';
 export * from './errors';
 export * from './server';
 export * from './client';
+export * from './events';

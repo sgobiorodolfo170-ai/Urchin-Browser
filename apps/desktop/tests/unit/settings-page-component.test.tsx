@@ -3,7 +3,7 @@
  *
  * 覆盖：
  * 1. 挂载时加载设置 + Provider 列表
- * 2. 选项卡切换（通用 / AI 助手 / 隐私 / 更新 / 关于 / 调试）
+ * 2. 选项卡切换（通用 / 操作 / AI 助手 / 隐私 / 关于）
  * 3. 字段修改触发 800ms debounce 自动保存（settings.set + 事件广播 + toast）
  * 4. 重置默认（confirm 确认后写入 DEFAULTS）
  * 5. 加载失败错误分支
@@ -91,7 +91,7 @@ describe('SettingsPage', () => {
     expect(screen.getByText('重置默认')).toBeTruthy();
   });
 
-  it('should switch tabs and render AI / privacy / about / debug content', async () => {
+  it('should switch tabs and render AI / privacy / about / ops content', async () => {
     mockLoadSuccess();
     render(<SettingsPage />);
     await waitFor(() => expect(screen.getAllByText('通用').length).toBeGreaterThan(0));
@@ -119,10 +119,10 @@ describe('SettingsPage', () => {
     expect(screen.getByText('运行时信息')).toBeTruthy();
     expect(screen.getByText('32.0.0')).toBeTruthy();
 
-    // 调试
-    clickTab('调试');
-    expect(screen.getByText('DEV')).toBeTruthy();
-    expect(screen.getByText('配色方案')).toBeTruthy();
+    // 操作选项卡：右侧边栏展开方式 + 悬停展开延迟（由调试选项卡迁入）
+    clickTab('操作');
+    expect(screen.getByText('右侧边栏展开方式')).toBeTruthy();
+    expect(screen.getByText('右侧边栏悬停展开延迟')).toBeTruthy();
   });
 
   it('should auto-save field change after debounce (800ms)', async () => {

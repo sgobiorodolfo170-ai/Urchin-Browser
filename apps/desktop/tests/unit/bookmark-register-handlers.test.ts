@@ -47,6 +47,7 @@ function createMockBookmarkManager() {
     create: vi.fn(),
     list: vi.fn(),
     search: vi.fn(),
+    update: vi.fn(),
     delete: vi.fn(),
   };
 }
@@ -168,5 +169,33 @@ describe('registerBookmarkHandlers', () => {
 
     expect(manager.delete).toHaveBeenCalledWith('b1');
     expect(result).toEqual({ ok: true, id: 'b1' });
+  });
+
+  it('bookmark.update should forward title patch and return updated bookmark', async () => {
+    const ipcMain = createMockIpcMain();
+    const manager = createMockBookmarkManager();
+    const updated = { id: 'b1', title: 'New', type: 'bookmark' };
+    manager.update.mockReturnValue(updated);
+
+    registerBookmarkHandlers(ipcMain as never, manager as never);
+
+    const result = (await ipcMain.invoke('bookmark.update', { id: 'b1', title: 'New' })) as {
+      bookmark: typeof updated;
+    };
+
+    expect(manager.update).toHaveBeenCalledWith('b1', { title: 'New' });
+    expect(result.bookmark).toBe(updated);
+  });
+
+  it('bookmark.update should forward url patch without title', async () => {
+    const ipcMain = createMockIpcMain();
+    const manager = createMockBookmarkManager();
+    manager.update.mockReturnValue({ id: 'b1' });
+
+    registerBookmarkHandlers(ipcMain as never, manager as never);
+
+    await ipcMain.invoke('bookmark.update', { id: 'b1', url: 'https://new.example.com' });
+
+    expect(manager.update).toHaveBeenCalledWith('b1', { url: 'https://new.example.com' });
   });
 });

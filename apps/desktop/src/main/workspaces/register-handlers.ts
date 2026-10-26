@@ -60,9 +60,11 @@ export function registerWorkspaceHandlers(ipcMain: IpcMain, deps: WorkspaceHandl
   });
 
   // workspace.remove：删除工作区（默认工作区由 registry 拒绝）
-  registerHandler(ipcMain, 'workspace.remove', (req) => {
+  // 先清除分区数据（Cookie/存储/缓存），再删元数据——确保 UI 承诺的"清除"真正落地
+  registerHandler(ipcMain, 'workspace.remove', async (req) => {
     log.info('workspace.remove', { id: req.id });
     assertNoOpenTabs(deps.tabManager, req.id, '删除');
+    await deps.sessions.clearData(req.id);
     deps.registry.remove(req.id);
     deps.broadcastChanged();
     return { ok: true as const };

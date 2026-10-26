@@ -78,6 +78,18 @@ export function registerBookmarkHandlers(
     return { bookmarks };
   });
 
+  // bookmark.update：重命名书签 / 文件夹（或改书签 URL；文件夹带 url 时由 manager 抛错）
+  registerHandler(ipcMain, 'bookmark.update', (req) => {
+    log.info('bookmark.update', { id: req.id, title: req.title, url: req.url });
+
+    const bookmark = bookmarkManager.update(req.id, {
+      ...(req.title !== undefined ? { title: req.title } : {}),
+      ...(req.url !== undefined ? { url: req.url } : {}),
+    });
+
+    return { bookmark };
+  });
+
   // bookmark.delete：删除书签 / 文件夹（级联）
   registerHandler(ipcMain, 'bookmark.delete', (req) => {
     log.info('bookmark.delete', { id: req.id });

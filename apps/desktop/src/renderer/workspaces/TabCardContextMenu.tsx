@@ -86,7 +86,7 @@ export function TabCardContextMenu({
             >
               <span
                 className={cn(
-                  'flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold text-white',
+                  'flex h-4 w-4 shrink-0 items-center justify-center rounded-md text-[9px] font-semibold text-white',
                   w.color === 'blue' && 'bg-blue-500',
                   w.color === 'green' && 'bg-emerald-500',
                   w.color === 'amber' && 'bg-amber-500',

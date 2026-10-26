@@ -488,6 +488,24 @@ export const bookmarkDeleteResSchema = z.object({
 });
 export type BookmarkDeleteRes = z.infer<typeof bookmarkDeleteResSchema>;
 
+// bookmark.update：重命名书签 / 文件夹（或修改书签 URL；文件夹不可携带 url）。
+// title 与 url 至少提供一项（空 patch 无意义且易掩盖调用方 bug）。
+export const bookmarkUpdateReqSchema = z
+  .object({
+    id: z.string().min(1),
+    title: titleSchema.optional(),
+    url: urlSchema.optional(),
+  })
+  .refine((req) => req.title !== undefined || req.url !== undefined, {
+    message: 'title 与 url 至少提供一项',
+  });
+export type BookmarkUpdateReq = z.infer<typeof bookmarkUpdateReqSchema>;
+
+export const bookmarkUpdateResSchema = z.object({
+  bookmark: bookmarkSchema,
+});
+export type BookmarkUpdateRes = z.infer<typeof bookmarkUpdateResSchema>;
+
 // ============================================================================
 // M7 Settings
 // ============================================================================
@@ -546,6 +564,9 @@ export const uiLayoutSetStateReqSchema = z.object({
   /** 临时隐藏 BrowserView（如收藏夹面板弹出时），避免 BrowserView 遮挡 React 渲染的弹出层。
    *  Electron BrowserView 始终渲染在主窗口 webContents 之上，不隐藏则弹出层被遮挡且不可点击。 */
   browserViewHidden: z.boolean().optional(),
+  /** M15 DevTools 检视列宽度（0 = 折叠/未打开）。主进程据此扣减 BrowserView bounds 的水平区域。
+   *  v0.2 一期新增（向後兼容的加法字段）。 */
+  devtoolsWidth: z.number().int().min(0).max(900).optional(),
 });
 export type UiLayoutSetStateReq = z.infer<typeof uiLayoutSetStateReqSchema>;
 
@@ -555,6 +576,7 @@ export const uiLayoutSetStateResSchema = z.object({
   bottomHeight: z.number().int(),
   contentHidden: z.boolean(),
   browserViewHidden: z.boolean(),
+  devtoolsWidth: z.number().int(),
 });
 export type UiLayoutSetStateRes = z.infer<typeof uiLayoutSetStateResSchema>;
 
@@ -753,6 +775,43 @@ export const uiPanelToggleResSchema = z.object({
 });
 export type UiPanelToggleRes = z.infer<typeof uiPanelToggleResSchema>;
 
+/**
+ * ui.panel.saveBookmarkPicker：以「保存书签到所选文件夹」模式打开收藏夹面板。
+ *
+ * dev.120：星标按钮（未收藏时）不再直接 bookmark.create，改为打开面板让用户选文件夹。
+ * 主进程解析活动标签 url/title 存为 pickerContext，面板加载 ?mode=picker 后经
+ * ui.panel.getPickerContext 拉取上下文渲染选择器。
+ */
+export const uiPanelSaveBookmarkPickerReqSchema = z.object({}).default({});
+export type UiPanelSaveBookmarkPickerReq = z.infer<typeof uiPanelSaveBookmarkPickerReqSchema>;
+
+export const uiPanelSaveBookmarkPickerResSchema = z.object({
+  ok: z.literal(true),
+  /** 未在 http/https 页面调用时为 'not-bookmarkable'（星标本就禁用，防御式校验） */
+  reason: z.enum(['not-bookmarkable']).optional(),
+});
+export type UiPanelSaveBookmarkPickerRes = z.infer<typeof uiPanelSaveBookmarkPickerResSchema>;
+
+/** ui.panel.getPickerContext：面板 picker 模式加载时拉取待存页面 url/title。 */
+export const uiPanelGetPickerContextReqSchema = z.object({}).default({});
+export type UiPanelGetPickerContextReq = z.infer<typeof uiPanelGetPickerContextReqSchema>;
+
+export const uiPanelGetPickerContextResSchema = z.object({
+  /** 非 picker 模式或无活动网页时为 null */
+  url: z.string().nullable(),
+  title: z.string().nullable(),
+});
+export type UiPanelGetPickerContextRes = z.infer<typeof uiPanelGetPickerContextResSchema>;
+
+/** ui.panel.close：picker 保存成功后面板主动关闭（面板窗口无法直接关 BrowserWindow）。 */
+export const uiPanelCloseReqSchema = z.object({}).default({});
+export type UiPanelCloseReq = z.infer<typeof uiPanelCloseReqSchema>;
+
+export const uiPanelCloseResSchema = z.object({
+  ok: z.literal(true),
+});
+export type UiPanelCloseRes = z.infer<typeof uiPanelCloseResSchema>;
+
 // ============================================================================
 // M23 Download Manager
 // ============================================================================
@@ -835,8 +894,96 @@ export const downloadClearResSchema = z.object({
 });
 export type DownloadClearRes = z.infer<typeof downloadClearResSchema>;
 
+/** download.showInFolder：在系统文件管理器中定位该下载文件（等效「在文件夹中显示」）。
+ *  仅 completed 状态提供按钮（面板侧控制），主进程按 id 查 savePath 调用 shell。 */
+export const downloadShowInFolderReqSchema = z.object({
+  id: downloadIdSchema,
+});
+export type DownloadShowInFolderReq = z.infer<typeof downloadShowInFolderReqSchema>;
+
+export const downloadShowInFolderResSchema = z.object({
+  ok: z.literal(true),
+  id: downloadIdSchema,
+});
+export type DownloadShowInFolderRes = z.infer<typeof downloadShowInFolderResSchema>;
+
 // ============================================================================
 // Dialog 域（原生对话框：目录选择器）
+// ============================================================================
+
+// ============================================================================
+// Import 域（D：从其他浏览器导入收藏夹 / dev.119）
+// ============================================================================
+
+/** 可检测的浏览器种类（HTML 文件导入不走 ImportedBrowser，单独走 bookmarksFromFile）。 */
+export const browserKindSchema = z.enum(['chrome', 'edge', 'firefox']);
+export type BrowserKind = z.infer<typeof browserKindSchema>;
+
+/** 已检测到的浏览器 profile（供设置页「检测本机浏览器」列表展示与按 id 导入）。 */
+export const importedBrowserSchema = z.object({
+  /** 稳定 id：`<kind>:<profileDir>`（profileDir 绝对路径唯一） */
+  id: z.string().min(1),
+  kind: browserKindSchema,
+  /** 显示名（Google Chrome / Microsoft Edge / Mozilla Firefox） */
+  displayName: z.string().min(1),
+  /** profile 名（Default / Profile 1 / profiles.ini Name） */
+  profileName: z.string().min(1),
+  /** profile 绝对路径 */
+  profileDir: z.string().min(1),
+  /** 收藏夹数据来源格式（决定解析路径） */
+  bookmarksSource: z.enum(['chromium-json', 'firefox-places']),
+});
+export type ImportedBrowser = z.infer<typeof importedBrowserSchema>;
+
+/** 导入结果摘要（成功导入时返回；canceled=true 时 summary=null）。 */
+export const importSummarySchema = z.object({
+  /** 新建文件夹数（含根文件夹） */
+  folders: z.number().int().nonnegative(),
+  /** 新建书签数 */
+  bookmarks: z.number().int().nonnegative(),
+  /** 跳过条目数（空标题/非法 url） */
+  skipped: z.number().int().nonnegative(),
+  /** 在 Urchin 内创建的根文件夹 id（便于面板跳转定位） */
+  rootFolderId: z.string().min(1),
+  /** 根文件夹标题（如「导入自 Chrome (2026-10-25)」） */
+  rootFolderTitle: z.string().min(1),
+});
+export type ImportSummary = z.infer<typeof importSummarySchema>;
+
+// import.detectBrowsers：扫描本机 Chrome/Edge/Firefox 用户目录，返回可导入 profile 列表
+export const importDetectBrowsersReqSchema = z.object({}).default({});
+export type ImportDetectBrowsersReq = z.infer<typeof importDetectBrowsersReqSchema>;
+
+export const importDetectBrowsersResSchema = z.object({
+  browsers: z.array(importedBrowserSchema),
+});
+export type ImportDetectBrowsersRes = z.infer<typeof importDetectBrowsersResSchema>;
+
+// import.bookmarksFromFile：弹出文件选择器（html/htm）→ 解析 → 导入
+export const importBookmarksFromFileReqSchema = z.object({}).default({});
+export type ImportBookmarksFromFileReq = z.infer<typeof importBookmarksFromFileReqSchema>;
+
+export const importBookmarksFromFileResSchema = z.object({
+  /** 用户在对话框取消时为 true */
+  canceled: z.boolean().default(false),
+  summary: importSummarySchema.nullable(),
+});
+export type ImportBookmarksFromFileRes = z.infer<typeof importBookmarksFromFileResSchema>;
+
+// import.bookmarksFromBrowser：按 detect 返回的 id 导入指定浏览器 profile 的收藏夹
+export const importBookmarksFromBrowserReqSchema = z.object({
+  id: z.string().min(1),
+});
+export type ImportBookmarksFromBrowserReq = z.infer<typeof importBookmarksFromBrowserReqSchema>;
+
+export const importBookmarksFromBrowserResSchema = z.object({
+  canceled: z.boolean().default(false),
+  summary: importSummarySchema.nullable(),
+});
+export type ImportBookmarksFromBrowserRes = z.infer<typeof importBookmarksFromBrowserResSchema>;
+
+// ============================================================================
+// Dialog 域（原生对话框：目录选择器）—— 原位置
 // ============================================================================
 
 export const dialogSelectDirectoryReqSchema = z.object({
@@ -2084,6 +2231,177 @@ export const updateInstallResSchema = z.object({ ok: z.literal(true) });
 export type UpdateInstallRes = z.infer<typeof updateInstallResSchema>;
 
 // ============================================================================
+// DevTools 域（M15 一期 · CDP 采集检视面板）
+// ============================================================================
+// 依据：docs/开发者工具增强一期实施规划.md §5、契约 G。
+// 8 个 RPC 通道 + 2 个单向事件通道（devtools:event / devtools:toggle，
+// 事件常量见 events.ts）。本期不开放原始 cdp.send 透传，能力集限定
+// Network/Console 采集 + Runtime.evaluate（DT10）。
+
+/** M15 检视会话状态：attached=正在采集；detached=已停止；unavailable=不可检视 */
+export const devtoolsStateSchema = z.enum(['detached', 'attached', 'unavailable']);
+export type DevtoolsState = z.infer<typeof devtoolsStateSchema>;
+
+/** unavailable 原因：internal-page=urchin://内部页；genoffice-tab=编辑器视图；
+ *  already-attached=Electron debugger 已被占用；target-closed=webContents 已销毁 */
+export const devtoolsUnavailableReasonSchema = z.enum([
+  'internal-page',
+  'genoffice-tab',
+  'already-attached',
+  'target-closed',
+]);
+export type DevtoolsUnavailableReason = z.infer<typeof devtoolsUnavailableReasonSchema>;
+
+/** 检视目标标识（DT12：会话绑定 tabId，面板头部显示标题） */
+export const devtoolsTargetSchema = z.object({
+  tabId: tabIdSchema,
+  title: z.string(),
+});
+export type DevtoolsTarget = z.infer<typeof devtoolsTargetSchema>;
+
+// --- devtools.attach（开始检视；幂等——已 attached 直接返回当前状态） ---
+
+export const devtoolsAttachReqSchema = z.object({ tabId: tabIdSchema });
+export type DevtoolsAttachReq = z.infer<typeof devtoolsAttachReqSchema>;
+
+export const devtoolsAttachResSchema = z.object({
+  state: devtoolsStateSchema,
+  reason: devtoolsUnavailableReasonSchema.optional(),
+  target: devtoolsTargetSchema.optional(),
+});
+export type DevtoolsAttachRes = z.infer<typeof devtoolsAttachResSchema>;
+
+// --- devtools.detach（停止检视；flush 尾批后 detach） ---
+
+export const devtoolsDetachReqSchema = z.object({ tabId: tabIdSchema });
+export type DevtoolsDetachReq = z.infer<typeof devtoolsDetachReqSchema>;
+
+export const devtoolsDetachResSchema = z.object({ ok: z.literal(true) });
+export type DevtoolsDetachRes = z.infer<typeof devtoolsDetachResSchema>;
+
+// --- devtools.status（状态查询） ---
+
+export const devtoolsStatusReqSchema = z.object({ tabId: tabIdSchema });
+export type DevtoolsStatusReq = z.infer<typeof devtoolsStatusReqSchema>;
+
+export const devtoolsStatusResSchema = z.object({
+  state: devtoolsStateSchema,
+  reason: devtoolsUnavailableReasonSchema.optional(),
+  target: devtoolsTargetSchema.optional(),
+});
+export type DevtoolsStatusRes = z.infer<typeof devtoolsStatusResSchema>;
+
+/** 网络请求条目（CDP Network 域聚合后的最终态；同一 requestId 的多次状态演进合并） */
+export const networkEntrySchema = z.object({
+  /** 会话内单调递增序号（条目创建时分配；用于渲染层排序与批内去重） */
+  seq: z.number().int().nonnegative(),
+  requestId: z.string(),
+  url: z.string(),
+  method: z.string(),
+  status: z.number().int().optional(),
+  mimeType: z.string().optional(),
+  resourceType: z.string().optional(),
+  size: z.number().int().nonnegative().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+  startedAt: z.number().int().nonnegative(),
+  finishedAt: z.number().int().nonnegative().optional(),
+  errorText: z.string().optional(),
+  /** 响应头（已剔除 Set-Cookie，累计 ≤16KB 截断后置 headersTruncated） */
+  responseHeaders: z.record(z.string(), z.string()).optional(),
+  headersTruncated: z.boolean().optional(),
+});
+export type NetworkEntry = z.infer<typeof networkEntrySchema>;
+
+/** 控制台条目（console-api / exception / network 等多来源） */
+export const consoleEntrySchema = z.object({
+  seq: z.number().int().nonnegative(),
+  level: z.enum(['error', 'warning', 'info', 'log', 'debug']),
+  text: z.string(),
+  source: z.enum(['console-api', 'exception', 'network', 'other']),
+  url: z.string().optional(),
+  lineNumber: z.number().int().nonnegative().optional(),
+  timestamp: z.number().int().nonnegative(),
+  stackTrace: z
+    .array(
+      z.object({
+        functionName: z.string().optional(),
+        url: z.string().optional(),
+        lineNumber: z.number().int().nonnegative().optional(),
+        columnNumber: z.number().int().nonnegative().optional(),
+      }),
+    )
+    .max(10)
+    .optional(),
+});
+export type ConsoleEntry = z.infer<typeof consoleEntrySchema>;
+
+// --- devtools.network.list（全量快照；无会话返回空数组，不报错） ---
+
+export const devtoolsNetworkListReqSchema = z.object({ tabId: tabIdSchema });
+export type DevtoolsNetworkListReq = z.infer<typeof devtoolsNetworkListReqSchema>;
+
+export const devtoolsNetworkListResSchema = z.object({
+  entries: z.array(networkEntrySchema),
+  /** 会话内累计被环形缓冲淘汰的条目数 */
+  dropped: z.number().int().nonnegative(),
+});
+export type DevtoolsNetworkListRes = z.infer<typeof devtoolsNetworkListResSchema>;
+
+// --- devtools.network.clear ---
+
+export const devtoolsNetworkClearReqSchema = z.object({ tabId: tabIdSchema });
+export type DevtoolsNetworkClearReq = z.infer<typeof devtoolsNetworkClearReqSchema>;
+
+export const devtoolsNetworkClearResSchema = z.object({ ok: z.literal(true) });
+export type DevtoolsNetworkClearRes = z.infer<typeof devtoolsNetworkClearResSchema>;
+
+// --- devtools.console.list ---
+
+export const devtoolsConsoleListReqSchema = z.object({ tabId: tabIdSchema });
+export type DevtoolsConsoleListReq = z.infer<typeof devtoolsConsoleListReqSchema>;
+
+export const devtoolsConsoleListResSchema = z.object({
+  entries: z.array(consoleEntrySchema),
+  dropped: z.number().int().nonnegative(),
+});
+export type DevtoolsConsoleListRes = z.infer<typeof devtoolsConsoleListResSchema>;
+
+// --- devtools.console.clear ---
+
+export const devtoolsConsoleClearReqSchema = z.object({ tabId: tabIdSchema });
+export type DevtoolsConsoleClearReq = z.infer<typeof devtoolsConsoleClearReqSchema>;
+
+export const devtoolsConsoleClearResSchema = z.object({ ok: z.literal(true) });
+export type DevtoolsConsoleClearRes = z.infer<typeof devtoolsConsoleClearResSchema>;
+
+// --- devtools.evaluate（Runtime.evaluate，returnByValue） ---
+
+/** 表达式上限 8KB（防 IPC 滥用） */
+export const DEVTOOLS_EVALUATE_MAX_BYTES = 8192;
+/** 返回值序列化截断上限 256KB（防巨型对象阻塞 IPC） */
+export const DEVTOOLS_EVALUATE_RESULT_MAX_BYTES = 256 * 1024;
+
+export const devtoolsEvaluateReqSchema = z.object({
+  tabId: tabIdSchema,
+  expression: z.string().min(1).max(DEVTOOLS_EVALUATE_MAX_BYTES),
+  awaitPromise: z.boolean().optional(),
+});
+export type DevtoolsEvaluateReq = z.infer<typeof devtoolsEvaluateReqSchema>;
+
+export const devtoolsEvaluateResSchema = z.object({
+  ok: z.boolean(),
+  /** 成功时 returnByValue 的结果（已 JSON 序列化截断） */
+  result: z.unknown().optional(),
+  /** 失败时异常描述 */
+  exception: z.string().optional(),
+  /** 基础设施错误（attach 丢失、tab 不存在等） */
+  error: z.string().optional(),
+  /** 结果被截断 */
+  truncated: z.boolean().optional(),
+});
+export type DevtoolsEvaluateRes = z.infer<typeof devtoolsEvaluateResSchema>;
+
+// ============================================================================
 // IPC Schema 总表
 // ============================================================================
 
@@ -2134,12 +2452,22 @@ export const ipcSchema = {
   'bookmark.create': { req: bookmarkCreateReqSchema, res: bookmarkCreateResSchema },
   'bookmark.list': { req: bookmarkListReqSchema, res: bookmarkListResSchema },
   'bookmark.search': { req: bookmarkSearchReqSchema, res: bookmarkSearchResSchema },
+  'bookmark.update': { req: bookmarkUpdateReqSchema, res: bookmarkUpdateResSchema },
   'bookmark.delete': { req: bookmarkDeleteReqSchema, res: bookmarkDeleteResSchema },
   'settings.get': { req: settingsGetReqSchema, res: settingsGetResSchema },
   'settings.set': { req: settingsSetReqSchema, res: settingsSetResSchema },
   'settings.getAll': { req: settingsGetAllReqSchema, res: settingsGetAllResSchema },
   'ui.layout.setState': { req: uiLayoutSetStateReqSchema, res: uiLayoutSetStateResSchema },
   'ui.panel.toggle': { req: uiPanelToggleReqSchema, res: uiPanelToggleResSchema },
+  'ui.panel.saveBookmarkPicker': {
+    req: uiPanelSaveBookmarkPickerReqSchema,
+    res: uiPanelSaveBookmarkPickerResSchema,
+  },
+  'ui.panel.getPickerContext': {
+    req: uiPanelGetPickerContextReqSchema,
+    res: uiPanelGetPickerContextResSchema,
+  },
+  'ui.panel.close': { req: uiPanelCloseReqSchema, res: uiPanelCloseResSchema },
   'ui.theme.set': { req: uiThemeSetReqSchema, res: uiThemeSetResSchema },
   'ui.window.dragBy': { req: uiWindowDragByReqSchema, res: uiWindowDragByResSchema },
   'ui.statusbar.sync': { req: uiStatusBarSyncReqSchema, res: uiStatusBarSyncResSchema },
@@ -2170,6 +2498,23 @@ export const ipcSchema = {
   'download.pause': { req: downloadPauseReqSchema, res: downloadPauseResSchema },
   'download.resume': { req: downloadResumeReqSchema, res: downloadResumeResSchema },
   'download.clear': { req: downloadClearReqSchema, res: downloadClearResSchema },
+  'download.showInFolder': {
+    req: downloadShowInFolderReqSchema,
+    res: downloadShowInFolderResSchema,
+  },
+  // Import 域（dev.119）：从其他浏览器导入收藏夹
+  'import.detectBrowsers': {
+    req: importDetectBrowsersReqSchema,
+    res: importDetectBrowsersResSchema,
+  },
+  'import.bookmarksFromFile': {
+    req: importBookmarksFromFileReqSchema,
+    res: importBookmarksFromFileResSchema,
+  },
+  'import.bookmarksFromBrowser': {
+    req: importBookmarksFromBrowserReqSchema,
+    res: importBookmarksFromBrowserResSchema,
+  },
   'dialog.selectDirectory': {
     req: dialogSelectDirectoryReqSchema,
     res: dialogSelectDirectoryResSchema,
@@ -2262,6 +2607,22 @@ export const ipcSchema = {
   'update.check': { req: updateCheckReqSchema, res: updateCheckResSchema },
   'update.download': { req: updateDownloadReqSchema, res: updateDownloadResSchema },
   'update.install': { req: updateInstallReqSchema, res: updateInstallResSchema },
+  // DevTools 域（M15 一期 · CDP 采集检视面板）：见 events.ts 的事件通道
+  // devtools:event / devtools:toggle。本期不开放原始 cdp.send（DT10）。
+  'devtools.attach': { req: devtoolsAttachReqSchema, res: devtoolsAttachResSchema },
+  'devtools.detach': { req: devtoolsDetachReqSchema, res: devtoolsDetachResSchema },
+  'devtools.status': { req: devtoolsStatusReqSchema, res: devtoolsStatusResSchema },
+  'devtools.network.list': { req: devtoolsNetworkListReqSchema, res: devtoolsNetworkListResSchema },
+  'devtools.network.clear': {
+    req: devtoolsNetworkClearReqSchema,
+    res: devtoolsNetworkClearResSchema,
+  },
+  'devtools.console.list': { req: devtoolsConsoleListReqSchema, res: devtoolsConsoleListResSchema },
+  'devtools.console.clear': {
+    req: devtoolsConsoleClearReqSchema,
+    res: devtoolsConsoleClearResSchema,
+  },
+  'devtools.evaluate': { req: devtoolsEvaluateReqSchema, res: devtoolsEvaluateResSchema },
 } as const;
 
 /** IPC schema 的类型推导工具：取 channel 名联合。 */

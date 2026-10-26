@@ -94,7 +94,7 @@ describe('SettingsManager', () => {
     //   window.bounds 窗口几何记忆，主进程内部状态/
     //   translate.targetLang/translate.engine/translate.autoTranslate 网页翻译 dev.79/
     //   ui.workspaceSwitcherMode 折叠态工作区切换模式 TP7） + 自定义 1 项
-    expect(entries).toHaveLength(26);
+    expect(entries).toHaveLength(27);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');

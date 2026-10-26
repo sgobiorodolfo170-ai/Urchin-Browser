@@ -21,6 +21,7 @@ import type {
   BookmarkEvent,
   BookmarkEventListener,
   BookmarkType,
+  BookmarkUpdatePatch,
 } from './types';
 
 /** 默认搜索结果上限。 */
@@ -113,6 +114,46 @@ export class BookmarkManager {
     this.persistence?.upsert(bookmark);
     this.emit('created', bookmark);
     return bookmark;
+  }
+
+  /**
+   * 更新书签节点（重命名 / 改 URL）。
+   *
+   * 设计理由（收藏夹面板文件夹管理）：
+   * - 仅允许修改 title / url；id / type / parentId / position / createdAt 不可变，
+   *   保证树结构与排序不被 update 破坏
+   * - url 仅对 type='bookmark' 有意义：对文件夹传 url 视为校验错误抛出
+   * - patch 为空对象时直接返回原节点（幂等，不触发事件）
+   * - 触发 'updated' 事件（主进程订阅后广播 bookmark:changed，面板/星标同步）
+   *
+   * @param id 节点 ID
+   * @param patch 待更新字段（title / url，均可选但至少语义上允许空 patch）
+   * @returns 更新后的 Bookmark
+   * @throws 若节点不存在，或对文件夹传 url
+   */
+  update(id: string, patch: BookmarkUpdatePatch): Bookmark {
+    this.ensureLoaded();
+    const existing = this.entries.get(id);
+    if (!existing) {
+      throw new Error(`Bookmark not found: ${id}`);
+    }
+    if (existing.type === 'folder' && patch.url !== undefined) {
+      throw new Error('Cannot set url on a folder bookmark');
+    }
+    if (patch.title === undefined && patch.url === undefined) {
+      return existing;
+    }
+
+    const updated: Bookmark = {
+      ...existing,
+      ...(patch.title !== undefined ? { title: patch.title } : {}),
+      ...(patch.url !== undefined ? { url: patch.url } : {}),
+      updatedAt: Date.now(),
+    };
+    this.entries.set(id, updated);
+    this.persistence?.upsert(updated);
+    this.emit('updated', updated);
+    return updated;
   }
 
   /**

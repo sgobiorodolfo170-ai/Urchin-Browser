@@ -4,26 +4,27 @@
  * 设计：
  * - 左侧选项卡导航，右侧内容区
  * - 自动保存：字段变更后立即写入（debounce 800ms，与主流浏览器设置页对齐）
- * - 选项卡：通用 / AI 助手 / 隐私与安全 / 更新 / 关于 / 调试
+ * - 选项卡：通用 / 操作 / AI 助手 / 数据 / 隐私与安全 / 默认应用 / 关于
  *
  * 通过主窗口已有的 window.urchin.invoke('settings.*') 读写设置。
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
-import {
-  clearErrorLogs,
-  getErrorLogs,
-  subscribeErrorLogs,
-  type LogLevel,
-} from '../lib/runtime-error-log';
 
 // ───────────────── 类型定义 ─────────────────
 
 /** 单个设置字段类型 */
 type FieldType =
-  'select' | 'toggle' | 'text' | 'password' | 'provider-select' | 'provider-name' | 'directory';
+  | 'select'
+  | 'toggle'
+  | 'text'
+  | 'password'
+  | 'provider-select'
+  | 'provider-name'
+  | 'directory'
+  | 'number';
 
 interface SelectOption {
   readonly value: string;
@@ -36,6 +37,14 @@ interface SettingField {
   readonly desc?: string;
   readonly type: FieldType;
   readonly options?: readonly SelectOption[];
+  /** number 类型专用：最小值 */
+  readonly min?: number;
+  /** number 类型专用：最大值 */
+  readonly max?: number;
+  /** number 类型专用：步进 */
+  readonly step?: number;
+  /** number 类型专用：单位后缀（如 ms） */
+  readonly unit?: string;
 }
 
 /** 命名提供商配置（设置页保存的「提供商名 → 模型/Key/URL」） */
@@ -81,7 +90,7 @@ interface SettingsEntry {
 }
 
 /** 选项卡定义 */
-type TabKey = 'general' | 'ops' | 'ai' | 'data' | 'privacy' | 'files' | 'about' | 'debug';
+type TabKey = 'general' | 'ops' | 'ai' | 'data' | 'privacy' | 'files' | 'about';
 
 interface TabDef {
   readonly key: TabKey;
@@ -96,7 +105,6 @@ const TABS: readonly TabDef[] = [
   { key: 'privacy', label: '隐私与安全' },
   { key: 'files', label: '默认应用' },
   { key: 'about', label: '关于' },
-  { key: 'debug', label: '调试' },
 ];
 
 // ───────────────── 设置项分组（按选项卡组织） ─────────────────
@@ -130,6 +138,12 @@ const GENERAL_FIELDS: readonly SettingField[] = [
     key: 'links.openInNewTab',
     label: '在新标签页打开链接',
     desc: '点击网页内链接时在新标签页打开（关闭则在当前标签页打开）',
+    type: 'toggle',
+  },
+  {
+    key: 'startup.restoreTabs',
+    label: '启动时继续浏览上次打开的网页',
+    desc: '关闭浏览器时保存当前打开的标签页，下次启动时自动恢复默认工作区的标签；其他工作区的标签在切换到该工作区时自动恢复',
     type: 'toggle',
   },
   {
@@ -179,6 +193,16 @@ const OPS_FIELDS: readonly SettingField[] = [
       { value: 'false', label: '双击展开' },
       { value: 'true', label: '悬停自动展开' },
     ],
+  },
+  {
+    key: 'debug.sidebarHoverDelay',
+    label: '右侧边栏悬停展开延迟',
+    desc: '右侧栏折叠时，鼠标停留多久后自动展开（毫秒，0 = 立即展开，范围 0–3000）。仅在「展开方式=悬停自动展开」时生效',
+    type: 'number',
+    min: 0,
+    max: 3000,
+    step: 50,
+    unit: 'ms',
   },
   {
     key: 'ui.workspaceSwitcherMode',
@@ -268,6 +292,7 @@ const DEFAULTS: Record<string, unknown> = {
   'translate.targetLang': 'zh-CN',
   'translate.engine': 'auto',
   'translate.autoTranslate': false,
+  'startup.restoreTabs': true,
 };
 
 // ───────────────── 工具函数 ─────────────────
@@ -504,9 +529,6 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
             )}
           >
             {tab.label}
-            {tab.key === 'debug' && (
-              <span className="ml-1.5 rounded bg-warning/20 px-1 text-xs text-warning">DEV</span>
-            )}
           </button>
         ))}
         <div className="flex-1" />
@@ -527,12 +549,15 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-8 py-6 pb-16">
           {activeTab === 'general' && (
-            <SettingsSection
-              title="通用"
-              fields={GENERAL_FIELDS}
-              entries={entries}
-              onChange={updateField}
-            />
+            <>
+              <SettingsSection
+                title="通用"
+                fields={GENERAL_FIELDS}
+                entries={entries}
+                onChange={updateField}
+              />
+              <ImportBookmarksBlock onToast={showToast} />
+            </>
           )}
           {activeTab === 'ops' && <OpsTab entries={entries} onChange={updateField} />}
           {activeTab === 'ai' && (
@@ -562,7 +587,6 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
           )}
           {activeTab === 'files' && <FilesTab onToast={showToast} />}
           {activeTab === 'about' && <AboutTab />}
-          {activeTab === 'debug' && <DebugTab entries={entries} onChange={updateField} />}
         </div>
       </div>
 
@@ -730,6 +754,32 @@ function FieldControl({ field, value, onChange, profileApi }: FieldControlProps)
         >
           浏览
         </Button>
+      </div>
+    );
+  }
+
+  // number：数值输入框（带 min/max/step/单位后缀），用于延迟、灵敏度等数值型设置
+  if (field.type === 'number') {
+    const num = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+    const lo = field.min ?? -Infinity;
+    const hi = field.max ?? Infinity;
+    return (
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          min={field.min}
+          max={field.max}
+          step={field.step}
+          className="h-8 w-24 rounded-md border border-border bg-surface px-2 text-sm text-text outline-none focus:border-primary"
+          value={num}
+          onChange={(e) => {
+            const n = Number.parseFloat(e.target.value);
+            if (Number.isFinite(n)) {
+              onChange(Math.max(lo, Math.min(hi, n)));
+            }
+          }}
+        />
+        {field.unit && <span className="text-xs text-text-secondary">{field.unit}</span>}
       </div>
     );
   }
@@ -1244,6 +1294,164 @@ interface GroupStatus {
 }
 
 /**
+ * 「从其他浏览器导入收藏夹」区块（通用选项卡底部，dev.119）。
+ *
+ * 交互：
+ * - 「从书签 HTML 文件导入…」→ import.bookmarksFromFile（主进程弹文件选择器）
+ * - 「检测本机浏览器」→ import.detectBrowsers → 列表，每行「导入收藏夹」按钮
+ *   → import.bookmarksFromBrowser（按 id 导入指定 profile）
+ * - 结果 toast：「已导入 N 个书签、M 个文件夹（跳过 K）」；取消时 toast「已取消」
+ *
+ * 导入的书签放入收藏夹根目录下「导入自 <浏览器> (YYYY-MM-DD)」文件夹，
+ * 完整保留原目录结构，可整夹删除回退（详见 docs/数据导入评估.md）。
+ */
+function ImportBookmarksBlock({ onToast }: { readonly onToast: (msg: string) => void }) {
+  const [browsers, setBrowsers] = useState<ImportedBrowserInfo[]>([]);
+  const [detecting, setDetecting] = useState(false);
+  const [importing, setImporting] = useState<string | null>(null);
+  const [fileImporting, setFileImporting] = useState(false);
+
+  const handleDetect = useCallback(async () => {
+    setDetecting(true);
+    try {
+      const res = (await window.urchin.invoke('import.detectBrowsers', {})) as {
+        browsers: ImportedBrowserInfo[];
+      };
+      setBrowsers(res.browsers ?? []);
+      if ((res.browsers ?? []).length === 0) {
+        onToast('未检测到可导入的浏览器');
+      }
+    } catch (e) {
+      onToast('检测失败：' + String(e));
+    } finally {
+      setDetecting(false);
+    }
+  }, [onToast]);
+
+  const handleFromFile = useCallback(async () => {
+    setFileImporting(true);
+    try {
+      const res = (await window.urchin.invoke('import.bookmarksFromFile', {})) as {
+        canceled: boolean;
+        summary: ImportSummaryInfo | null;
+      };
+      if (res.canceled || !res.summary) {
+        onToast('已取消');
+        return;
+      }
+      onToast(summaryToast(res.summary));
+    } catch (e) {
+      onToast('导入失败：' + String(e));
+    } finally {
+      setFileImporting(false);
+    }
+  }, [onToast]);
+
+  const handleFromBrowser = useCallback(
+    async (id: string) => {
+      setImporting(id);
+      try {
+        const res = (await window.urchin.invoke('import.bookmarksFromBrowser', { id })) as {
+          canceled: boolean;
+          summary: ImportSummaryInfo | null;
+        };
+        if (res.canceled || !res.summary) {
+          onToast('已取消');
+          return;
+        }
+        onToast(summaryToast(res.summary));
+      } catch (e) {
+        onToast('导入失败：' + String(e));
+      } finally {
+        setImporting(null);
+      }
+    },
+    [onToast],
+  );
+
+  return (
+    <section className="mt-8">
+      <h2 className="mb-2 text-lg font-semibold">从其他浏览器导入</h2>
+      <p className="mb-4 text-sm text-text-secondary">
+        导入 Chrome / Edge / Firefox 的收藏夹，或从书签 HTML 文件导入。导入的书签会放入
+        收藏夹根目录下「导入自 &lt;浏览器&gt;
+        (&lt;日期&gt;)」文件夹，完整保留原目录结构，可整夹删除回退。
+      </p>
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={fileImporting}
+          onClick={() => void handleFromFile()}
+        >
+          {fileImporting ? '导入中…' : '从书签 HTML 文件导入…'}
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={detecting}
+          onClick={() => void handleDetect()}
+        >
+          {detecting ? '检测中…' : '检测本机浏览器'}
+        </Button>
+      </div>
+
+      {browsers.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {browsers.map((b) => {
+            const key = b.id;
+            return (
+              <div
+                key={key}
+                className="flex items-center justify-between rounded-md border border-border bg-surface-secondary px-4 py-2.5"
+              >
+                <div className="min-w-0">
+                  <div className="font-medium">{b.displayName}</div>
+                  <div className="mt-0.5 text-xs text-text-secondary">{b.profileName}</div>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={importing === b.id}
+                  onClick={() => void handleFromBrowser(b.id)}
+                >
+                  {importing === b.id ? '导入中…' : '导入收藏夹'}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** 已检测浏览器 profile 的最小结构（与 ipc-contract ImportedBrowser 对齐）。 */
+interface ImportedBrowserInfo {
+  readonly id: string;
+  readonly kind: 'chrome' | 'edge' | 'firefox';
+  readonly displayName: string;
+  readonly profileName: string;
+  readonly profileDir: string;
+  readonly bookmarksSource: 'chromium-json' | 'firefox-places';
+}
+
+/** 导入结果摘要（与 ipc-contract ImportSummary 对齐）。 */
+interface ImportSummaryInfo {
+  readonly folders: number;
+  readonly bookmarks: number;
+  readonly skipped: number;
+  readonly rootFolderId: string;
+  readonly rootFolderTitle: string;
+}
+
+/** 摘要 → toast 文案。 */
+function summaryToast(s: ImportSummaryInfo): string {
+  return `已导入 ${s.bookmarks} 个书签、${s.folders} 个文件夹${s.skipped > 0 ? `（跳过 ${s.skipped}）` : ''}`;
+}
+
+/**
  * 「默认应用」选项卡：把本浏览器注册为音视频/文档/图片的打开方式。
  *
  * 交互：每张卡片显示该组扩展名与注册状态；点「设为默认打开方式」→
@@ -1341,404 +1549,6 @@ function FilesTab({ onToast }: { readonly onToast: (msg: string) => void }) {
             </div>
           );
         })}
-    </section>
-  );
-}
-
-// ───────────────── 调试选项卡（开发阶段临时） ─────────────────
-
-/** 日志级别配色（与 store 的 LogLevel 对应；UNCAUGHT / REJECTION 与 ERROR 同为错误色） */
-const LOG_LEVEL_COLOR: Record<LogLevel, string> = {
-  ERROR: 'text-error',
-  WARN: 'text-warning',
-  UNCAUGHT: 'text-error',
-  REJECTION: 'text-error',
-};
-
-/** 配色变量定义（来自 tokens.css） */
-const COLOR_TOKENS = [
-  { varName: '--color-primary', label: '主色 Primary', default: '#2563eb' },
-  { varName: '--color-primary-hover', label: '主色 Hover', default: '#1d4ed8' },
-  { varName: '--color-accent', label: '强调色 Accent', default: '#8b5cf6' },
-  { varName: '--color-surface', label: '背景 Surface', default: '#ffffff' },
-  { varName: '--color-surface-secondary', label: '次背景 Surface-2', default: '#f8fafc' },
-  { varName: '--color-titlebar', label: '标题栏 Titlebar', default: '#ffffff' },
-  { varName: '--color-text', label: '文字 Text', default: '#0f172a' },
-  { varName: '--color-text-secondary', label: '次文字 Text-2', default: '#64748b' },
-  { varName: '--color-border', label: '边框 Border', default: '#e2e8f0' },
-  { varName: '--color-error', label: '错误 Error', default: '#ef4444' },
-  { varName: '--color-success', label: '成功 Success', default: '#22c55e' },
-  { varName: '--color-warning', label: '警告 Warning', default: '#f59e0b' },
-  { varName: '--color-info', label: '信息 Info', default: '#3b82f6' },
-] as const;
-
-/** 默认配色方案（用于重置） */
-const DEFAULT_COLOR_MAP: Record<string, string> = Object.fromEntries(
-  COLOR_TOKENS.map((t) => [t.varName, t.default]),
-);
-
-/** 配色方案持久化存储 key */
-const COLOR_SCHEMES_STORAGE_KEY = 'urchin.debug.colorSchemes';
-/** 当前激活方案名持久化 key */
-const ACTIVE_SCHEME_STORAGE_KEY = 'urchin.debug.activeColorScheme';
-
-/** 配色方案条目 */
-interface ColorScheme {
-  readonly name: string;
-  readonly colors: Record<string, string>;
-}
-
-/** 从 localStorage 加载已保存的配色方案列表 */
-function loadSchemes(): ColorScheme[] {
-  try {
-    const raw = localStorage.getItem(COLOR_SCHEMES_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (s): s is ColorScheme =>
-        typeof s === 'object' &&
-        s !== null &&
-        typeof (s as ColorScheme).name === 'string' &&
-        typeof (s as ColorScheme).colors === 'object',
-    );
-  } catch {
-    return [];
-  }
-}
-
-/** 持久化配色方案列表 */
-function saveSchemes(schemes: readonly ColorScheme[]): void {
-  try {
-    localStorage.setItem(COLOR_SCHEMES_STORAGE_KEY, JSON.stringify(schemes));
-  } catch {
-    // 忽略配额错误
-  }
-}
-
-function DebugTab({
-  entries,
-  onChange,
-}: {
-  readonly entries: Record<string, unknown>;
-  readonly onChange: (key: string, value: unknown) => void;
-}) {
-  // 运行报错日志来自渲染进程级 store（main.tsx 启动时已安装采集器），
-  // 这里只订阅展示；store 已按「级别 + 内容」去重计数，重复错误只记次数
-  const logs = useSyncExternalStore(subscribeErrorLogs, getErrorLogs);
-  const logBoxRef = useRef<HTMLDivElement>(null);
-  const [colors, setColors] = useState<Record<string, string>>(() => ({ ...DEFAULT_COLOR_MAP }));
-  const [schemes, setSchemes] = useState<ColorScheme[]>(() => loadSchemes());
-  const [activeScheme, setActiveScheme] = useState<string>(
-    () => localStorage.getItem(ACTIVE_SCHEME_STORAGE_KEY) ?? '',
-  );
-  const [newSchemeName, setNewSchemeName] = useState('');
-
-  // 右侧边栏悬停展开延迟（ms），从设置读取，默认 300
-  const hoverDelayRaw = entries['debug.sidebarHoverDelay'];
-  const hoverDelay =
-    typeof hoverDelayRaw === 'number' && Number.isFinite(hoverDelayRaw) ? hoverDelayRaw : 300;
-
-  // 日志自动滚动到底部
-  useEffect(() => {
-    if (logBoxRef.current) {
-      logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
-    }
-  }, [logs]);
-
-  // 初始化：读取当前 CSS 变量值（优先用已激活方案的值）
-  useEffect(() => {
-    if (activeScheme) {
-      const found = schemes.find((s) => s.name === activeScheme);
-      if (found) {
-        setColors({ ...DEFAULT_COLOR_MAP, ...found.colors });
-        for (const [k, v] of Object.entries(found.colors)) {
-          document.documentElement.style.setProperty(k, v);
-        }
-        return;
-      }
-    }
-    const root = getComputedStyle(document.documentElement);
-    setColors((prev) => {
-      const next = { ...prev };
-      for (const t of COLOR_TOKENS) {
-        const v = root.getPropertyValue(t.varName).trim();
-        if (v) next[t.varName] = v;
-      }
-      return next;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅初始化时执行
-  }, []);
-
-  const handleColorChange = useCallback(
-    (varName: string, value: string) => {
-      setColors((prev) => ({ ...prev, [varName]: value }));
-      document.documentElement.style.setProperty(varName, value);
-      // 手动改色后清除"激活方案"标记（当前状态已偏离方案）
-      if (activeScheme) {
-        setActiveScheme('');
-        localStorage.removeItem(ACTIVE_SCHEME_STORAGE_KEY);
-      }
-    },
-    [activeScheme],
-  );
-
-  const handleResetColors = useCallback(() => {
-    for (const t of COLOR_TOKENS) {
-      document.documentElement.style.removeProperty(t.varName);
-    }
-    setColors({ ...DEFAULT_COLOR_MAP });
-    setActiveScheme('');
-    localStorage.removeItem(ACTIVE_SCHEME_STORAGE_KEY);
-  }, []);
-
-  const handleClearLogs = useCallback(() => {
-    clearErrorLogs();
-  }, []);
-
-  // 保存当前配色为新方案（同名则覆盖）
-  const handleSaveScheme = useCallback(() => {
-    const name = newSchemeName.trim();
-    if (!name) return;
-    const next: ColorScheme = { name, colors: { ...colors } };
-    setSchemes((prev) => {
-      const filtered = prev.filter((s) => s.name !== name);
-      const updated = [...filtered, next];
-      saveSchemes(updated);
-      return updated;
-    });
-    setActiveScheme(name);
-    localStorage.setItem(ACTIVE_SCHEME_STORAGE_KEY, name);
-    setNewSchemeName('');
-  }, [colors, newSchemeName]);
-
-  // 应用某个已保存方案
-  const handleApplyScheme = useCallback(
-    (name: string) => {
-      const found = schemes.find((s) => s.name === name);
-      if (!found) return;
-      setColors({ ...DEFAULT_COLOR_MAP, ...found.colors });
-      for (const [k, v] of Object.entries(found.colors)) {
-        document.documentElement.style.setProperty(k, v);
-      }
-      setActiveScheme(name);
-      localStorage.setItem(ACTIVE_SCHEME_STORAGE_KEY, name);
-    },
-    [schemes],
-  );
-
-  // 删除某个方案
-  const handleDeleteScheme = useCallback(
-    (name: string) => {
-      setSchemes((prev) => {
-        const updated = prev.filter((s) => s.name !== name);
-        saveSchemes(updated);
-        return updated;
-      });
-      if (activeScheme === name) {
-        setActiveScheme('');
-        localStorage.removeItem(ACTIVE_SCHEME_STORAGE_KEY);
-      }
-    },
-    [activeScheme],
-  );
-
-  return (
-    <section>
-      <h1 className="mb-4 text-2xl font-semibold">
-        调试
-        <span className="ml-2 rounded bg-warning/20 px-1.5 py-0.5 align-middle text-xs text-warning">
-          开发阶段临时
-        </span>
-      </h1>
-
-      {/* 右侧边栏悬停展开延迟设置 */}
-      <div className="mb-6 rounded-md border border-border bg-surface-secondary px-4 py-3">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex-1">
-            <div className="text-sm font-medium">右侧边栏悬停展开延迟</div>
-            <div className="mt-0.5 text-xs text-text-secondary">
-              右侧栏折叠时，鼠标停留多久后自动展开（毫秒，0 = 立即展开，范围 0–3000）
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={0}
-              max={3000}
-              step={50}
-              className="h-8 w-24 rounded-md border border-border bg-surface px-2 text-sm text-text outline-none focus:border-primary"
-              value={hoverDelay}
-              onChange={(e) => {
-                const n = Number.parseInt(e.target.value, 10);
-                if (Number.isFinite(n)) {
-                  onChange('debug.sidebarHoverDelay', Math.max(0, Math.min(3000, n)));
-                }
-              }}
-            />
-            <span className="text-xs text-text-secondary">ms</span>
-          </div>
-        </div>
-      </div>
-
-      {/* 运行日志显示框 */}
-      <div className="mb-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="text-sm font-medium">运行报错日志</div>
-          <div className="text-xs text-text-secondary">
-            重复报错只计次数（共 {logs.reduce((sum, e) => sum + e.count, 0)} 条）·
-            带日期时间，本地持久保存
-          </div>
-        </div>
-        <Button variant="secondary" size="sm" onClick={handleClearLogs}>
-          清空
-        </Button>
-      </div>
-      <div
-        ref={logBoxRef}
-        className="h-48 overflow-y-auto rounded-md border border-border bg-surface-secondary p-3 font-mono text-xs leading-relaxed text-text"
-      >
-        {logs.length === 0 ? (
-          <div className="text-text-secondary">暂无日志输出</div>
-        ) : (
-          logs.map((log) => (
-            <div key={log.id} className="flex gap-2">
-              <span className={cn('shrink-0', LOG_LEVEL_COLOR[log.level])}>
-                [{log.time}] {log.level}
-              </span>
-              {log.count > 1 && (
-                <span className="shrink-0 rounded bg-text-secondary/15 px-1 text-text-secondary">
-                  ×{log.count}
-                </span>
-              )}
-              <span className="min-w-0 flex-1 whitespace-pre-wrap break-all">{log.message}</span>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* 分割线 */}
-      <hr className="my-6 border-border" />
-
-      {/* 配色方案管理 */}
-      <div className="mb-4 rounded-md border border-border bg-surface-secondary px-4 py-3">
-        <div className="mb-2 text-sm font-medium">配色方案</div>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* 已保存方案列表 */}
-          {schemes.length === 0 ? (
-            <span className="text-xs text-text-secondary">暂无已保存方案</span>
-          ) : (
-            schemes.map((s) => (
-              <div
-                key={s.name}
-                className={cn(
-                  'flex items-center gap-1 rounded-md border px-2 py-1 text-xs',
-                  activeScheme === s.name
-                    ? 'border-primary bg-primary/10 text-text'
-                    : 'border-border bg-surface text-text-secondary hover:text-text',
-                )}
-              >
-                <button
-                  type="button"
-                  className="flex items-center gap-1.5"
-                  onClick={() => handleApplyScheme(s.name)}
-                  title={`应用方案：${s.name}`}
-                >
-                  {/* 方案预览色块 */}
-                  <span className="flex">
-                    {Object.values(s.colors)
-                      .slice(0, 4)
-                      .map((c, i) => (
-                        <span
-                          key={i}
-                          className="h-3 w-3 rounded-full border border-white/40"
-                          style={{ marginLeft: i === 0 ? 0 : -4, backgroundColor: c }}
-                        />
-                      ))}
-                  </span>
-                  <span>{s.name}</span>
-                </button>
-                <button
-                  type="button"
-                  className="ml-1 text-text-secondary hover:text-error"
-                  onClick={() => handleDeleteScheme(s.name)}
-                  aria-label={`删除方案 ${s.name}`}
-                  title="删除"
-                >
-                  ×
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-        {/* 保存当前配色为新方案 */}
-        <div className="mt-3 flex items-center gap-2">
-          <input
-            type="text"
-            className="h-7 flex-1 rounded border border-border bg-surface px-2 text-xs outline-none focus:border-primary"
-            placeholder="方案名称（如 深色暖调 / 蓝绿主题）"
-            value={newSchemeName}
-            onChange={(e) => setNewSchemeName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSaveScheme();
-            }}
-          />
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleSaveScheme}
-            disabled={!newSchemeName.trim()}
-          >
-            保存当前为方案
-          </Button>
-        </div>
-        <p className="mt-2 text-[11px] text-text-secondary">
-          方案保存在 localStorage（仅当前用户本机）。手动改色后会自动取消激活态；点击方案即可切换。
-        </p>
-      </div>
-
-      {/* 配色调整面板 */}
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <div className="text-sm font-medium">前端组件配色调整</div>
-          <div className="mt-0.5 text-xs text-text-secondary">
-            实时修改 CSS 变量，影响当前窗口所有组件。重置后恢复默认。
-            {activeScheme && <span className="ml-2 text-primary">当前方案：{activeScheme}</span>}
-          </div>
-        </div>
-        <Button variant="secondary" size="sm" onClick={handleResetColors}>
-          重置配色
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        {COLOR_TOKENS.map((t) => (
-          <div
-            key={t.varName}
-            className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
-          >
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={colors[t.varName] ?? t.default}
-                onChange={(e) => handleColorChange(t.varName, e.target.value)}
-                className="h-7 w-9 cursor-pointer rounded border-0 bg-transparent p-0"
-                aria-label={`选择 ${t.label} 颜色`}
-              />
-              <div>
-                <div className="text-xs font-medium">{t.label}</div>
-                <div className="font-mono text-[10px] text-text-secondary">{t.varName}</div>
-              </div>
-            </div>
-            <input
-              type="text"
-              className="h-7 w-24 rounded border border-border bg-surface px-2 font-mono text-xs outline-none focus:border-primary"
-              value={colors[t.varName] ?? t.default}
-              onChange={(e) => handleColorChange(t.varName, e.target.value)}
-            />
-          </div>
-        ))}
-      </div>
     </section>
   );
 }

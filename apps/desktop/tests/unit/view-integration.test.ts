@@ -184,6 +184,7 @@ describe('view-integration', () => {
         rightWidth: 44,
         bottomHeight: 48,
         browserViewHidden: false,
+        devtoolsWidth: 0,
       });
     });
 
@@ -196,8 +197,17 @@ describe('view-integration', () => {
         bottomHeight: 100,
         browserViewHidden: false,
         contentHidden: false,
+        devtoolsWidth: 0,
       });
       expect(getLayoutState().leftWidth).toBe(200);
+    });
+
+    it('should accept devtoolsWidth (M15 一期新增)', () => {
+      const next = setLayoutState({ devtoolsWidth: 360 });
+      expect(next.devtoolsWidth).toBe(360);
+      expect(getLayoutState().devtoolsWidth).toBe(360);
+      // computeViewBounds 据此扣减（在几何测试中验证）
+      setLayoutState({ devtoolsWidth: 0 });
     });
 
     it('should ignore contentHidden and accept browserViewHidden', () => {

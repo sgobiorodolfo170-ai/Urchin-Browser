@@ -119,6 +119,9 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   // null = 尚无记录（首次启动/从未改动），恢复逻辑回退默认 1280x800。
   // 主进程内部状态，不暴露给设置页 UI。
   ['window.bounds', null],
+  // 标签持久化（TP4）：启动时恢复默认工作区上次打开的标签（默认 ON）。
+  // 其他工作区的标签始终保存，切换到该工作区时懒恢复。
+  ['startup.restoreTabs', true],
 ] as const;
 
 export class SettingsManager {

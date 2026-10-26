@@ -54,6 +54,7 @@ import { BookmarkManager, registerBookmarkHandlers, type BookmarkPersistence } f
 import { initStartupLog, markStartup } from './startup-log';
 import { SettingsManager, registerSettingsHandlers } from './settings';
 import { DownloadManager, registerDownloadHandlers } from './downloads';
+import { registerImportHandlers } from './import';
 import { registerAiHandlers } from './ai';
 import { registerAiInputHandlers } from './ai/input-handlers';
 import type { ProviderConfigStore } from './ai';
@@ -127,6 +128,8 @@ import { createMyMemoryEngine } from './translate/engines/mymemory';
 import type { HttpTransport } from './translate/engines/types';
 import { resolvePortableUserData } from './portable';
 import { createUpdateService, registerUpdateHandlers, UPDATE_EVENT_CHANNEL } from './update';
+import { DevtoolsManager, registerDevtoolsHandlers, installDevtoolsShortcuts } from './devtools';
+import { DEVTOOLS_EVENT_CHANNEL, DEVTOOLS_TOGGLE_CHANNEL } from '@urchin/ipc-contract';
 
 const log = createLogger('main');
 
@@ -453,6 +456,9 @@ let disposePiEnhance: (() => void) | null = null;
 let disposeTranslateManager: (() => void) | null = null;
 /** 网页翻译管理器引用（dev.81：右键菜单翻译动作与划词结果回传使用）。 */
 let translateManagerRef: TranslateManager | null = null;
+/** M15 DevTools 管理器卸载句柄（dev.121，CDP 会话清理 + F12 快捷键卸载）。 */
+let disposeDevtoolsManager: (() => void) | null = null;
+let disposeDevtoolsShortcuts: (() => void) | null = null;
 /** GenOffice 编辑器集成（阶段 2）：tab.create 分流 / tab.close 与窗口关闭守卫。 */
 let genofficeIntegration: GenOfficeIntegration | null = null;
 /** 已挂 GenOffice 整窗关闭守卫的窗口（防止重复挂接）。 */
@@ -564,6 +570,11 @@ function focusActivePage(): void {
 }
 /** 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
 let bookmarkPanel: BookmarkPanel | null = null;
+/**
+ * picker 模式待存页面上下文（星标按钮未收藏时 ui.panel.saveBookmarkPicker 写入，
+ * 面板加载 ?mode=picker 后经 ui.panel.getPickerContext 读取）。
+ */
+let bookmarkPickerContext: { url: string; title: string } | null = null;
 /** 底部悬浮状态栏（独立透明子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
 let statusBarOverlay: StatusBarOverlay | null = null;
 /** 悬浮球（独立透明子窗口，网页区右侧）。在 whenReady 内初始化。 */
@@ -781,6 +792,10 @@ function registerIpcHandlers(): void {
   // M23 download 域 handler
   registerDownloadHandlers(ipcMain, downloadManager);
 
+  // D 导入域 handler（dev.119）：从其他浏览器导入收藏夹
+  // （HTML 文件 + Chrome/Edge/Firefox profile 自动检测；解析器/检测器 DI 注入便于单测）
+  registerImportHandlers({ ipcMain, bookmarkManager });
+
   // M20 update 域 handler（dev.114 提前落地）：设置页更新按钮 → GitHub Releases
   // dev 预发布通道。electron-updater 懒加载（首次检查才 dynamic import，不拖
   // 启动），开发态整体 disabled；状态变化经 update:event 推送设置页。
@@ -838,6 +853,15 @@ function registerIpcHandlers(): void {
   registerTranslateHandlers({ ipcMain, translateManager, tabManager });
   disposeTranslateManager = () => translateManager.dispose();
   translateManagerRef = translateManager;
+
+  // M15 DevTools（dev.121，CDP 采集检视面板）：会话管理 + IPC handler。
+  // 事件推送复用 sendToMainWindow（devtools:event）；F12 toggle 走 devtools:toggle。
+  const devtoolsManager = new DevtoolsManager({
+    tabManager,
+    notify: (payload) => sendToMainWindow(DEVTOOLS_EVENT_CHANNEL, payload),
+  });
+  registerDevtoolsHandlers(ipcMain, devtoolsManager);
+  disposeDevtoolsManager = () => devtoolsManager.dispose();
 
   // 截图域 handler（地址栏截图按钮）：弹出整屏框选覆盖窗口，确认后裁剪保存到
   // <数据目录>/screenshots/。CaptureOverlay 单例持覆盖窗口与截图缓存。
@@ -1072,6 +1096,7 @@ function registerIpcHandlers(): void {
       bottomHeight: req.bottomHeight,
       contentHidden: req.contentHidden,
       browserViewHidden: req.browserViewHidden,
+      devtoolsWidth: req.devtoolsWidth,
     });
     // 立即刷新所有窗口的 BrowserView bounds
     tabViewIntegration?.refreshAllViewBounds();
@@ -1092,6 +1117,7 @@ function registerIpcHandlers(): void {
       bottomHeight: newState.bottomHeight,
       contentHidden: newState.contentHidden,
       browserViewHidden: newState.browserViewHidden,
+      devtoolsWidth: newState.devtoolsWidth,
     };
   });
 
@@ -1099,6 +1125,33 @@ function registerIpcHandlers(): void {
   registerHandler(ipcMain, 'ui.panel.toggle', () => {
     const open = bookmarkPanel?.toggle() ?? false;
     return { open };
+  });
+
+  // UI 域 handler：以 picker 模式打开面板（星标按钮未收藏时调用）。
+  // 解析活动标签 url/title 存上下文，面板加载 ?mode=picker 后渲染「选择文件夹保存」视图。
+  registerHandler(ipcMain, 'ui.panel.saveBookmarkPicker', () => {
+    const tabs = tabManager.query({});
+    const active = tabs.find((t) => t.active) ?? tabs[0];
+    const url = active?.url ?? '';
+    // 仅 http/https 可收藏（与渲染层 isBookmarkable 一致；星标本就禁用，此处防御式校验）
+    if (!/^https?:\/\//i.test(url)) {
+      return { ok: true as const, reason: 'not-bookmarkable' };
+    }
+    bookmarkPickerContext = { url, title: active?.title ?? url };
+    bookmarkPanel?.openPicker();
+    return { ok: true as const };
+  });
+
+  // UI 域 handler：面板 picker 模式加载时拉取待存页面上下文
+  registerHandler(ipcMain, 'ui.panel.getPickerContext', () => {
+    const ctx = bookmarkPickerContext;
+    return { url: ctx?.url ?? null, title: ctx?.title ?? null };
+  });
+
+  // UI 域 handler：关闭面板（picker 保存成功后面板主动调用，面板窗口无法直接关 BrowserWindow）
+  registerHandler(ipcMain, 'ui.panel.close', () => {
+    bookmarkPanel?.close();
+    return { ok: true as const };
   });
 
   // UI 域 handler：主题切换（渲染层 ThemeProvider 调用）。
@@ -1666,8 +1719,8 @@ void app.whenReady().then(() => {
   };
   bookmarkManager = new BookmarkManager(bookmarkPersistence);
 
-  // 书签变更广播（create/delete）：推送到所有窗口的渲染进程。
-  // 场景：收藏夹面板（独立子窗口）取消收藏后，主窗口地址栏星标需同步熄灭。
+  // 书签变更广播（create/update/delete）：推送到所有窗口的渲染进程。
+  // 场景：收藏夹面板（独立子窗口）取消收藏/重命名后，主窗口地址栏星标需同步熄灭。
   // 渲染进程监听 'bookmark:changed' 后按 url 重新查询当前页收藏状态。
   const broadcastBookmarkChanged = (bookmark: { url?: string | null }): void => {
     for (const managed of windowManager.getAllWindows()) {
@@ -1675,6 +1728,7 @@ void app.whenReady().then(() => {
     }
   };
   bookmarkManager.on('created', broadcastBookmarkChanged);
+  bookmarkManager.on('updated', broadcastBookmarkChanged);
   bookmarkManager.on('deleted', broadcastBookmarkChanged);
 
   // 初始化 HistoryManager，注入 SQLite 持久化适配器。
@@ -2010,6 +2064,13 @@ void app.whenReady().then(() => {
     // 仅网页 BrowserView（中区内容页）参与缩放。
     disposeZoomControl = installZoomControl(tabManager);
 
+    // M15 DevTools F12 快捷键（dev.121）：对每个网页 tab + 主窗口 webContents
+    // 挂 before-input-event，命中 F12 → preventDefault + 推送 devtools:toggle
+    // 到渲染层（面板开合唯一状态源）。安装/卸载复用 zoom 的 created + 存量补挂模式。
+    disposeDevtoolsShortcuts = installDevtoolsShortcuts(tabManager, mainWebContents, () =>
+      sendToMainWindow(DEVTOOLS_TOGGLE_CHANNEL, undefined),
+    );
+
     // dev.44：pi 页右下角「📁 项目路径」→ 原生目录选择器注入（脚本按 DOM 守卫，
     // 仅 pi-web-ui 页面的 status-cwd 生效；其他页面零影响）
     //
@@ -2174,9 +2235,37 @@ void app.whenReady().then(() => {
   });
 
   // 为主窗口创建初始 tab：默认打开主页占位标签（urchin://newtab）。
-  // 主页占位设计（2026-08-15）：打开网站时主页就地转为网站标签，避免空标签堆积。
-  // 后续标签栏持久化（v0.2 队列）将改为：无缓存 → 主页占位；有缓存 → 恢复标签。
-  tabManager.create({ windowId: mainWindow.id, url: 'urchin://newtab' });
+  // 标签持久化（TP4）：若 startup.restoreTabs 开启且 session.lastTabs 有默认工作区的保存标签，
+  // 则恢复这些标签（创建 + 激活上次活跃的）；否则创建单个主页占位。
+  // 其他工作区的标签不在此恢复——由渲染层在切换到该工作区时懒恢复。
+  {
+    const restoreDefault = settingsManager.get('startup.restoreTabs') === true;
+    const savedAll = settingsManager.get('session.lastTabs');
+    const savedTabs = Array.isArray(savedAll)
+      ? (savedAll as { url: string; title: string; workspaceId: string; active: boolean }[])
+      : [];
+    const defaultTabs = savedTabs.filter((t) => t.workspaceId === 'default');
+
+    let restored = false;
+    if (restoreDefault && defaultTabs.length > 0) {
+      let activeTabId: number | undefined;
+      for (const tab of defaultTabs) {
+        const created = tabManager.create({
+          windowId: mainWindow.id,
+          url: tab.url,
+          workspaceId: 'default',
+          active: false,
+        });
+        if (tab.active) activeTabId = created.id;
+      }
+      if (activeTabId) tabManager.setActive(activeTabId);
+      restored = true;
+      log.info('default workspace tabs restored', { count: defaultTabs.length });
+    }
+    if (!restored) {
+      tabManager.create({ windowId: mainWindow.id, url: 'urchin://newtab' });
+    }
+  }
   markStartup('main:first-tab');
 
   // Windows 文件关联启动：命令行带文件路径（双击关联文件打开浏览器）时，
@@ -2270,6 +2359,24 @@ async function performCleanup(): Promise<void> {
       dshLauncher = null;
     }
 
+    // 0.65 卸载 DevTools 管理器（CDP 会话清理）+ F12 快捷键监听——dev.121
+    if (disposeDevtoolsManager) {
+      try {
+        disposeDevtoolsManager();
+      } catch (e) {
+        log.error('Failed to dispose devtools manager on quit', { error: String(e) });
+      }
+      disposeDevtoolsManager = null;
+    }
+    if (disposeDevtoolsShortcuts) {
+      try {
+        disposeDevtoolsShortcuts();
+      } catch (e) {
+        log.error('Failed to dispose devtools shortcuts on quit', { error: String(e) });
+      }
+      disposeDevtoolsShortcuts = null;
+    }
+
     // 1. 清理 AI Provider 子进程（utility process）+ 定时器 + MessagePort
     if (orchestrator) {
       try {
@@ -2278,6 +2385,28 @@ async function performCleanup(): Promise<void> {
       } catch (e) {
         log.error('Failed to dispose orchestrator on quit', { error: String(e) });
       }
+    }
+
+    // 1.5. 标签持久化（TP4）：退出前保存全部工作区标签快照到 Settings。
+    //     始终保存（不受 startup.restoreTabs 开关影响——其他工作区懒恢复需要此数据）。
+    //     过滤掉总览页和 GenOffice 编辑器（瞬态视图/需预构建视图，不可恢复）。
+    try {
+      const tabSnapshots = tabManager
+        .query({})
+        .filter(
+          (t) =>
+            !t.url.startsWith('urchin://workspaces') && !t.url.startsWith('urchin://genoffice'),
+        )
+        .map((t) => ({
+          url: t.url,
+          title: t.title,
+          workspaceId: t.workspaceId,
+          active: t.active,
+        }));
+      settingsManager.set('session.lastTabs', tabSnapshots);
+      log.info('tab session persisted', { count: tabSnapshots.length });
+    } catch (e) {
+      log.error('Failed to persist tab session', { error: String(e) });
     }
 
     // 2. 显式销毁所有 tab 的 webContents（BrowserView webContents 不会随 window 自动回收）

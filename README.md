@@ -85,20 +85,20 @@ pnpm package:win
 
 ## 开发命令
 
-| 命令                   | 说明                            |
-| ---------------------- | ------------------------------- |
-| `pnpm dev`             | 开发模式（vite dev server）     |
-| `pnpm build`           | 构建 main / preload / renderer  |
-| `pnpm start`           | 生产模式启动已构建产物          |
-| `pnpm verify`          | typecheck + lint + 单测一键验证 |
-| `pnpm typecheck`       | 全工作区 TypeScript 类型检查    |
-| `pnpm lint`            | ESLint 检查                     |
-| `pnpm test`            | 全工作区单元测试                |
-| `pnpm test:coverage`   | 单元测试 + 覆盖率报告           |
-| `pnpm e2e`             | Playwright E2E 测试（关键路径） |
-| `pnpm genoffice:build` | 重建 GenOffice 编辑器嵌入产物   |
-| `pnpm package:win`     | 打包 Windows 安装包             |
-| `pnpm format`          | Prettier 格式化                 |
+| 命令                   | 说明                                                     |
+| ---------------------- | -------------------------------------------------------- |
+| `pnpm dev`             | 开发模式（vite dev server）                              |
+| `pnpm build`           | 构建 main / preload / renderer                           |
+| `pnpm start`           | 生产模式启动已构建产物                                   |
+| `pnpm verify`          | typecheck + lint + 覆盖率门禁（`test:coverage`）一键验证 |
+| `pnpm typecheck`       | 全工作区 TypeScript 类型检查                             |
+| `pnpm lint`            | ESLint 检查                                              |
+| `pnpm test`            | 全工作区单元测试                                         |
+| `pnpm test:coverage`   | 单元测试 + 覆盖率报告                                    |
+| `pnpm e2e`             | Playwright E2E 测试（关键路径）                          |
+| `pnpm genoffice:build` | 重建 GenOffice 编辑器嵌入产物                            |
+| `pnpm package:win`     | 打包 Windows 安装包                                      |
+| `pnpm format`          | Prettier 格式化                                          |
 
 ## 性能与质量指标
 

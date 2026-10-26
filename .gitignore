@@ -114,3 +114,6 @@ apps/desktop/v8-launch.log
 # AOCI agent host integration (machine-bound; do not commit)
 opencode.json
 opencode.json.backup.*
+
+# Agent 工作区：评估报告、记忆、临时产物——不纳入版本管理
+.workbuddy-ai/

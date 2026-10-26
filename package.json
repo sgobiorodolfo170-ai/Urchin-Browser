@@ -41,7 +41,7 @@
     "start": "pnpm --filter @urchin/desktop start",
     "build": "pnpm --filter @urchin/desktop build",
     "typecheck": "pnpm -r --filter \"@urchin/*\" typecheck",
-    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test:coverage && pnpm check:docs",
+    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test:coverage && pnpm check:docs && node scripts/mark-verify-ok.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

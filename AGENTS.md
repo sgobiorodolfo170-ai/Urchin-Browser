@@ -66,6 +66,7 @@ adapted_for: Urchin-Browser
 | 2026-10-27 | **§一 / §六 分工澄清**：明确「三步自审 = 提交前过滤，不构成验收」「独立验证 = 验收唯一依据」，消除两处互斥表述；新增 §〇.6 条款强制级别、§九.4 硬门禁清单                                                                                                                        | **是**（方法论层表述；未删除任何条款、未改三步顺序与三层结构、未削弱独立验证）                                          | **用户明确授权**（2026-10-27，整改第三批，§〇.4 第 5 步留痕）      |
 | 2026-10-27 | **第二轮整改**：止血 10 处（错命令/错卡点描述/E2E 基线/README 口径）；建立 [docs/事实登记表](docs/事实登记表.md) + `check:docs` 漂移门禁（G13/G15）；提交追溯门禁（G14）；分层覆盖率门槛（Tab Manager / Provider 契约）；§七 注释降级 SHOULD；§三 任务载体明确；§十一 补计数口径 | 部分（§七 降级、§十一 计数口径属条款语义调整，均在 §〇.3 允许的填充细化内；无条款删除）                                 | 用户指令「按规划整改」（2026-10-27）                               |
 | 2026-10-27 | **§五.3 版本自增改为引用 ADR-012**：删除 type→版本号映射（已被 ADR-012 dev 通道取代、且实际从未按此执行），改由 ADR-012 + `build-version.mjs` 单一真源定义；重写「依赖声明」说明断裂原因与根治方式                                                                               | **是**（规范层「版本号规则必须确定、可机器判定」的落点从本文件迁至 ADR-012；判定性由 `build-version.mjs` 保证，未降低） | **用户明确授权**（2026-10-27，规划 D-3，选择「改为引用 ADR-012」） |
+| 2026-10-27 | **§五.6 新增「自动推送（条件化）」**：允许 verify 全绿后自动 push 到跟踪分支，附 5 条前置条件（内容指纹已验证 / 无分叉 / 工作区干净 / 禁 force / 事后回报）+ 会话开工先 fetch；明确 push 属可逆操作、不适用 §一 不可逆审批，发布仍走 G12                                         | **是**（界定 §一「不可逆操作审批」的适用边界，新增一条流程层 MUST）                                                     | **用户明确授权**（2026-10-27，选择「采纳：条件化自动 push」）      |
 
 ---
 
@@ -75,7 +76,7 @@ adapted_for: Urchin-Browser
 
 **AI Agent 强制流程**：
 
-1. **每次代码修改完成后，必须自动执行** `pnpm verify`（= `typecheck` + `lint` + `format:check` + `test:coverage` + `check:docs`，**含格式、覆盖率、文档漂移三重门禁**），并在回复中附上结果摘要（通过/失败与关键数字）；失败必须先修复再继续。
+1. **每次代码修改完成后，必须自动执行** `pnpm verify`（= `typecheck` + `lint` + `format:check` + `test:coverage` + `check:docs`，结尾写入 verify 内容指纹供 pre-push 校验；**含格式、覆盖率、文档漂移三重门禁**），并在回复中附上结果摘要（通过/失败与关键数字）；失败必须先修复再继续。
 2. **涉及 UI / 交互 / 主进程行为变更**时，在 `pnpm verify` 通过后**追加** `pnpm e2e`（或对应 spec 单跑）验证真实 Electron 行为。
 3. **需要人工验收的改动**（界面、交互、视觉），在验证通过后**构建并启动应用**：`pnpm run build` 后执行 **`pnpm start`**（生产模式启动已构建产物，脱离本会话后台运行；直接 `electron .` 未带 `NODE_ENV=production` 会走 dev 分支连 vite dev server 导致白屏）。启动后在回复中说明如何操作。
 4. 涉及打包/资源/依赖变更时，额外跑 `pnpm package:win`（本机需 `ELECTRON_MIRROR` 与 `ELECTRON_BUILDER_BINARIES_MIRROR` 指向 npmmirror）。
@@ -323,9 +324,18 @@ adapted_for: Urchin-Browser
 5. **可追溯性**：每次提交必须在信息中标注——生成模型/版本、触发指令摘要或引用编号、相关 Loop 迭代轮次号。提交粒度为单次任务，禁止将多个 AI 生成批次合并为一个无追溯信息的单次提交。
    - **门禁（2026-10-27 接入）**：`.husky/commit-msg` 调用 `scripts/check-commit-trace.mjs`，提交信息缺 `Model:` / `Trigger:` / `Loop:` 三行即拒绝提交（merge / revert 提交豁免）。此前该条款是 0% 合规的不可判定 MUST——24 条历史提交无一包含，历史不回填，从本日起强制。
 
+6. **自动推送（条件化，2026-10-27 新增）**：任务完成且 `pnpm verify` 全绿后，**允许自动推送到当前跟踪分支**，但必须同时满足：
+   - ① 内容已通过 verify——`pnpm verify` 结尾会写入内容树指纹（`scripts/mark-verify-ok.mjs`），pre-push 钩子比对「待推送 HEAD 的 tree」是否等于该指纹；
+   - ② 推送前 `git fetch`，本地**不得落后**于上游（落后即分叉 → 停止，**不自动 rebase / merge**）；
+   - ③ 工作区必须干净（不允许把未提交状态混进推送批次）；
+   - ④ 禁止 `--force` / `--force-with-lease`（除人类明确要求）；由于 ② 已拦住分叉，force 在本流程中无正当触发场景；
+   - ⑤ 推送后回报：分支名、本次推送提交数、远端 HEAD sha。
+   - **性质界定**：push 属**可逆**操作（可 revert 回退，历史仍在），因此不适用 §一「不可逆操作审批」；但因其对外可见，仍受本条约束。**发布（GitHub Release / 安装包分发）不在此列**，仍走 §九.2 发布前人工门禁（G12）。
+   - **多会话前置（解决可见性根因）**：会话开工前先 `git fetch origin` + `git status -sb`；落后则先同步；领先且有未推送提交时，先确认这些提交是否属于当前任务上下文，避免重复实现同一件事。
+
 > ⚠ **依赖声明（2026-10-27 重写）**：本节的版本自增依赖第四节的版本号规则。原模板要求「改版本号规则时必须同步重定义本节的 type→版本号映射」——ADR-012（2026-10-20）引入 dev 通道时**没有**执行该重定义，映射因此失效（第二轮审计 P0-1 即此）。现改为：**映射不在本文件维护，真源为 ADR-012 + `scripts/build-version.mjs`**；今后调整版本规则只需改 ADR-012 与脚本，本文件不再同步——这正是「依赖声明」要防止的链条断裂，用单一真源根治，而不是再维护一份副本。
 
-**项目落地**：提交信息由 commitlint（`@commitlint/config-conventional`）在 commit-msg 强制校验；追溯字段由 `scripts/check-commit-trace.mjs` 强制（G14）；版本自增不再由本文件定义，见上条。
+**项目落地**：提交信息由 commitlint（`@commitlint/config-conventional`）在 commit-msg 强制校验；追溯字段由 `scripts/check-commit-trace.mjs` 强制（G14）；推送前置条件由 `.husky/pre-push` 调用 `scripts/check-before-push.mjs` 强制（G16）；版本自增不再由本文件定义，见上条。
 
 ---
 
@@ -528,25 +538,26 @@ adapted_for: Urchin-Browser
 
 按 §〇.6，MUST 条款必须有可执行卡点，否则不具备阻断力。本表是全文 MUST 的**唯一登记处**——表中没有的「必须」一律按 SHOULD 对待。
 
-| #   | 门禁                                                | 判定方式                                                 | 执行位置                   | 现状                   |
-| --- | --------------------------------------------------- | -------------------------------------------------------- | -------------------------- | ---------------------- |
-| G1  | 类型安全（strict + noUncheckedIndexedAccess）       | `pnpm typecheck`                                         | pre-push / CI              | ✅ 已接入              |
-| G2  | 代码规范（ESLint 0 error）                          | `pnpm lint`                                              | pre-commit（暂存文件）/ CI | ✅ 已接入              |
-| G3  | 格式一致（Prettier）                                | 暂存文件 `prettier --write`；全仓 `pnpm format:check`    | pre-commit + CI            | ✅ 2026-10-27 全仓接入 |
-| G4  | 单元 + 集成测试全绿                                 | `pnpm test:coverage` 用例通过                            | CI                         | ✅ 已接入              |
-| G5  | **覆盖率门禁**（v0.2 ≥65%）                         | `coverage.thresholds` 四维 65                            | CI + `pnpm verify`         | ✅ 2026-10-27 接入     |
-| G6  | E2E 关键路径                                        | `pnpm e2e`                                               | CI                         | ✅ 已接入              |
-| G7  | 提交信息结构化                                      | `commitlint`                                             | commit-msg hook            | ✅ 已接入              |
-| G8  | 跨进程契约 zod 双向校验                             | 代码评审 + 契约测试                                      | §六 第三步自审             | ⚠ 人判为主             |
-| G9  | 依赖引入审查（包名/版本/许可证/维护度）             | 人工核查 + `npm audit`                                   | 引入依赖时                 | ⚠ 人判为主             |
-| G10 | 不可逆操作人类确认                                  | 交互式确认                                               | 执行前                     | ⚠ 流程约束             |
-| G11 | 版本号基线前进（stable 递增）                       | `scripts/build-version.mjs` 门禁                         | `pnpm package:win`         | ✅ 已接入              |
-| G12 | 发布前人工确认                                      | 人工跑 e2e + 验签                                        | 发布                       | ⚠ 流程约束             |
-| G13 | **文档事实不漂移**（覆盖率阶梯 / 命令 / 卡点描述）  | `pnpm check:docs`（`scripts/check-doc-drift.mjs` R1-R3） | CI + `pnpm verify`         | ✅ 2026-10-27 接入     |
-| G14 | **提交追溯信息**（Model / Trigger / Loop）          | `scripts/check-commit-trace.mjs`                         | commit-msg hook            | ✅ 2026-10-27 接入     |
-| G15 | **CHANGELOG 版本行格式**（可被 build-version 解析） | `scripts/check-doc-drift.mjs` R4                         | CI + `pnpm verify`         | ✅ 2026-10-27 接入     |
+| #   | 门禁                                                 | 判定方式                                                 | 执行位置                   | 现状                   |
+| --- | ---------------------------------------------------- | -------------------------------------------------------- | -------------------------- | ---------------------- |
+| G1  | 类型安全（strict + noUncheckedIndexedAccess）        | `pnpm typecheck`                                         | pre-push / CI              | ✅ 已接入              |
+| G2  | 代码规范（ESLint 0 error）                           | `pnpm lint`                                              | pre-commit（暂存文件）/ CI | ✅ 已接入              |
+| G3  | 格式一致（Prettier）                                 | 暂存文件 `prettier --write`；全仓 `pnpm format:check`    | pre-commit + CI            | ✅ 2026-10-27 全仓接入 |
+| G4  | 单元 + 集成测试全绿                                  | `pnpm test:coverage` 用例通过                            | CI                         | ✅ 已接入              |
+| G5  | **覆盖率门禁**（v0.2 ≥65%）                          | `coverage.thresholds` 四维 65                            | CI + `pnpm verify`         | ✅ 2026-10-27 接入     |
+| G6  | E2E 关键路径                                         | `pnpm e2e`                                               | CI                         | ✅ 已接入              |
+| G7  | 提交信息结构化                                       | `commitlint`                                             | commit-msg hook            | ✅ 已接入              |
+| G8  | 跨进程契约 zod 双向校验                              | 代码评审 + 契约测试                                      | §六 第三步自审             | ⚠ 人判为主             |
+| G9  | 依赖引入审查（包名/版本/许可证/维护度）              | 人工核查 + `npm audit`                                   | 引入依赖时                 | ⚠ 人判为主             |
+| G10 | 不可逆操作人类确认                                   | 交互式确认                                               | 执行前                     | ⚠ 流程约束             |
+| G11 | 版本号基线前进（stable 递增）                        | `scripts/build-version.mjs` 门禁                         | `pnpm package:win`         | ✅ 已接入              |
+| G12 | 发布前人工确认                                       | 人工跑 e2e + 验签                                        | 发布                       | ⚠ 流程约束             |
+| G13 | **文档事实不漂移**（覆盖率阶梯 / 命令 / 卡点描述）   | `pnpm check:docs`（`scripts/check-doc-drift.mjs` R1-R3） | CI + `pnpm verify`         | ✅ 2026-10-27 接入     |
+| G14 | **提交追溯信息**（Model / Trigger / Loop）           | `scripts/check-commit-trace.mjs`                         | commit-msg hook            | ✅ 2026-10-27 接入     |
+| G15 | **CHANGELOG 版本行格式**（可被 build-version 解析）  | `scripts/check-doc-drift.mjs` R4                         | CI + `pnpm verify`         | ✅ 2026-10-27 接入     |
+| G16 | **推送前置条件**（内容已验证 / 无分叉 / 工作区干净） | `scripts/check-before-push.mjs`                          | pre-push hook              | ✅ 2026-10-27 接入     |
 
-> **登记规则**：新增 MUST 时先在此表补一行并写明判定命令；无法给出判定命令的，不得标 MUST。当前 15 条中 10 条完全自动化、3 条人判、2 条流程约束——人判项是后续自动化的候选池。
+> **登记规则**：新增 MUST 时先在此表补一行并写明判定命令；无法给出判定命令的，不得标 MUST。当前 16 条中 11 条完全自动化、3 条人判、2 条流程约束——人判项是后续自动化的候选池。
 
 ---
 
@@ -695,7 +706,7 @@ flowchart LR
 | Code Review       | 三步自审法（可按变更类型匹配轮次）       | 性能 → 逻辑架构 → 健壮性                                                        | ✓ 已适配（项目特化审查点 + 与 §一 的分工表）         |
 | 代码注释          | 三级注释记录设计理由                     | 必须级4条 + 推荐级4条，记 why 不记 what                                         | — 未修改                                             |
 | 测试覆盖          | 分层测试 + 动态覆盖率门槛                | 默认 ≥80%，验收即测试                                                           | ✓ 已适配（门槛阶梯化 + 门禁已接入，留痕见 §八.2）    |
-| 质量护栏          | 自动化检查关卡拦坏代码                   | 写时/提交时/PR/不可逆操作门禁/发布前 + **§九.4 硬门禁清单（15 条）**            | ✓ 已适配（工具链项目化）                             |
+| 质量护栏          | 自动化检查关卡拦坏代码                   | 写时/提交时/PR/不可逆操作门禁/发布前 + **§九.4 硬门禁清单（16 条）**            | ✓ 已适配（工具链项目化）                             |
 | Loop Engineering  | 循环体执行者从人交给 Agent               | 核心循环 + 五大杠杆 + Memory 在外                                               | — 未修改                                             |
 | Graph Engineering | 高阶实践：代码建模为可遍历图谱           | 中大型项目强制，小型可裁剪                                                      | ✗ 已裁剪（规模不适用，触发条件见 §十一）             |
 

@@ -41,7 +41,7 @@
     "start": "pnpm --filter @urchin/desktop start",
     "build": "pnpm --filter @urchin/desktop build",
     "typecheck": "pnpm -r --filter \"@urchin/*\" typecheck",
-    "verify": "pnpm typecheck \u0026\u0026 pnpm lint \u0026\u0026 pnpm test",
+    "verify": "pnpm typecheck \u0026\u0026 pnpm lint \u0026\u0026 pnpm test:coverage",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

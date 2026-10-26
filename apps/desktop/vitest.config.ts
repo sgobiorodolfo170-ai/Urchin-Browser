@@ -36,6 +36,23 @@ export default defineConfig({
         'src/preload/**',
         'src/renderer/main.tsx',
       ],
+      /**
+       * 覆盖率门禁（agents.md §八.2 / docs/03-技术栈 §4）
+       *
+       * 门槛取 v0.2 阶梯值 ≥65%。没有 thresholds 时 `--coverage` 只出报告、
+       * 低于门槛也退出码 0，等于「门禁」名存实亡——此处补上后才真正阻断。
+       *
+       * 基线实测（2026-10-27，v0.2.0 stable 收口后，119 测试文件 / 1393 用例全绿）：
+       * lines 66.79% / statements 66.79% / branches 79.36% / functions 75.89%
+       * 距 65% 门槛仅 1.79pp 余量——新代码请自带测试，否则门禁会先于评审拦下。
+       * 逐版本提升时只改这四个数字，并同步 docs/03-技术栈 §4（唯一真源）。
+       */
+      thresholds: {
+        lines: 65,
+        statements: 65,
+        functions: 65,
+        branches: 65,
+      },
     },
   },
   resolve: {

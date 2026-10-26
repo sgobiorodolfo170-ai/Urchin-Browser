@@ -112,7 +112,15 @@ pnpm package:win
 | 覆盖率（Stmts）   | ≥ 60%    | 68.05% ✓     |
 | E2E 关键路径      | 全过     | 4 passed ✓   |
 
-**当前（dev 系列）**：单测规模增长至 1400+ 用例（dev.119 记录 1439 passed）、单元覆盖率峰值 89.21%（dev.23），E2E 共 13 个 spec（`apps/desktop/tests/e2e/*.spec.ts`）；逐次验收数字见 [CHANGELOG.md](./CHANGELOG.md)。
+**当前（v0.2.0 stable，2026-10-27 实测）**：
+
+| 指标                                     | 阈值（v0.2 阶梯） | 实测                                     |
+| ---------------------------------------- | ----------------- | ---------------------------------------- |
+| 单元用例（无集成层，见 agents.md §八.1） | 全过              | 1428 passed（120 文件）✓                 |
+| 覆盖率（Lines）                          | ≥ 65%             | 69.18% ✓（branch 79.57% / funcs 77.12%） |
+| E2E 关键路径                             | 全过              | 13 个 spec（启动/导航/开关标签等）✓      |
+
+> 覆盖率门槛由 `apps/desktop/vitest.config.ts` 的 `coverage.thresholds` 强制（低于门槛 `pnpm verify` 失败），数值真源见 [docs/03-技术栈 §4](./docs/03-技术栈.md)。逐次验收数字见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 文档
 

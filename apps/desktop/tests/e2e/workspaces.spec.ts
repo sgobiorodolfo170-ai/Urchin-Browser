@@ -209,12 +209,18 @@ test.describe('工作区（TP7）', () => {
       await window.mouse.move(10, 10);
       const switcher = window.locator('[aria-label^="切换工作区"]').first();
       await expect(switcher).toBeVisible({ timeout: 15_000 });
-      // 向按钮派发 wheel（bubbles）触发折叠态滚轮循环切换。
+      // 向按钮派发 wheel（bubbles）触发折叠态滚轮切换。
       // 说明：不用 Playwright mouse.wheel——在 Electron/Windows 下经合成鼠标
       // 路由到按钮的 wheel 偶发不达；直接 dispatch 到元素可确定性验证
-      // onWheel→循环切换链路（鼠标已移开，折叠态保持稳定）。
+      // onWheel→切换链路（鼠标已移开，折叠态保持稳定）。
+      //
+      // ⚠ 方向必须是「向上」（deltaY < 0）：切换器按 `idx + dir` 非循环移动
+      // （到首/尾即停，见 App.handleCycleWorkspace）。当前在工作区A（列表末尾），
+      // 向下滚会越界返回、不发生切换；向上滚才回到默认工作区。
       await switcher.evaluate((el) => {
-        el.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true }));
+        el.dispatchEvent(
+          new WheelEvent('wheel', { deltaY: -120, bubbles: true, cancelable: true }),
+        );
       });
       // 先等待 switcher 反映当前工作区已切回默认（React 状态同步，比标签 title 快）
       await expect(switcher).toHaveAttribute('aria-label', /默认工作区/, { timeout: 15_000 });

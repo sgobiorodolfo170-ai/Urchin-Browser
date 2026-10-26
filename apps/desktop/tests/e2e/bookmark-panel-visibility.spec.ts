@@ -49,17 +49,33 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
   return { electronApp, window };
 }
 
-/** 列出所有 BrowserWindow 的尺寸与位置 */
-async function listWindows(
-  electronApp: ElectronApplication,
-): Promise<{ count: number; bounds: { x: number; y: number; width: number; height: number }[] }> {
+/** 列出所有 BrowserWindow 的尺寸、位置与 URL */
+async function listWindows(electronApp: ElectronApplication): Promise<{
+  count: number;
+  bounds: { x: number; y: number; width: number; height: number }[];
+  urls: string[];
+}> {
   return electronApp.evaluate(({ BrowserWindow }) => {
     const wins = BrowserWindow.getAllWindows();
     return {
       count: wins.length,
       bounds: wins.map((w) => w.getBounds()),
+      urls: wins.map((w) => w.webContents.getURL()),
     };
   });
+}
+
+/**
+ * 判定窗口是否为底部悬浮状态栏。
+ *
+ * ⚠ 不能用 includes('view=statusbar')：悬浮球是 `?view=statusbar-ball`，会误命中。
+ */
+function isStatusBarUrl(url: string): boolean {
+  try {
+    return new URL(url).searchParams.get('view') === 'statusbar';
+  } catch {
+    return false;
+  }
 }
 
 /** 读取主窗口活跃 BrowserView 的 bounds（验证网页未被隐藏/让出） */
@@ -89,15 +105,17 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
     });
     await window.waitForTimeout(2500);
 
-    // 面板打开前的状态：2 个窗口（主窗口 + 底部悬浮状态栏子窗口；已导航到外部网页），BrowserView 全宽
+    // 面板打开前的状态：主窗口 + 悬浮球 + 底部悬浮状态栏（dev.120 起悬浮球是
+    // 独立窗口，窗口总数恒为 3，不再随「是否外部页」变化）。
+    // 因此不用魔法数字断言总数，只断言「状态栏窗口存在」+ 记录基线供后续相对比较。
     await expect
-      .poll(async () => (await listWindows(electronApp)).count, {
+      .poll(async () => (await listWindows(electronApp)).urls.some(isStatusBarUrl), {
         timeout: 15_000,
-        message: '导航到外部网页后应出现悬浮状态栏子窗口（窗口数到 2）',
+        message: '应存在底部悬浮状态栏子窗口（?view=statusbar）',
       })
-      .toBe(2);
+      .toBe(true);
     const before = await listWindows(electronApp);
-    expect(before.count).toBe(2);
+    const baseCount = before.count;
     const viewBefore = await readActiveViewBounds(electronApp);
     expect(viewBefore).not.toBeNull();
 
@@ -123,7 +141,7 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
       console.log('[bookmark-panel-debug] windows =', JSON.stringify(during));
       throw e;
     }
-    expect(during.count).toBe(3); // 主窗口 + 状态栏 + 悬浮面板
+    expect(during.count).toBe(baseCount + 1); // 基线窗口 + 悬浮面板
 
     // 面板为右下角小窗：280×430
     const panelBounds = during.bounds.find((b) => b.width === 280 && b.height === 430);
@@ -198,15 +216,15 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
       main?.focus();
     });
     await window.waitForTimeout(800);
-    // 失焦关闭同为异步（blur → 主进程 close）：轮询回落到 2 个窗口（主窗口 + 状态栏）
+    // 失焦关闭同为异步（blur → 主进程 close）：轮询回落到基线窗口数
     await expect
       .poll(async () => (await listWindows(electronApp)).count, {
         timeout: 5_000,
-        message: '主窗口失焦后面板应自动关闭（窗口数回到 2）',
+        message: `主窗口失焦后面板应自动关闭（窗口数回到基线 ${baseCount}）`,
       })
-      .toBe(2);
+      .toBe(baseCount);
     const afterOutside = await listWindows(electronApp);
-    expect(afterOutside.count).toBe(2);
+    expect(afterOutside.count).toBe(baseCount);
   } finally {
     await electronApp.close();
   }

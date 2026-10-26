@@ -27,7 +27,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { resolve, dirname, join } from 'node:path';
+import { resolve, dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -235,8 +235,11 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
       switched?: boolean;
       error?: string;
     }
+    // 目录选择目标：用仓库根的真实路径（运行时推导），替代原先硬编码的
+    // 'G:/pj/pj--ing/111111/Urchin-Browser'——那条断言在 CI 等环境必然失败。
+    const pickDir = resolve(__dirname, '..', '..', '..').split(sep).join('/');
     const pickResult = await electronApp.evaluate(
-      async ({ webContents }, piUrl): Promise<PickResult> => {
+      async ({ webContents }, { piUrl, pickDir }): Promise<PickResult> => {
         const wc = webContents.getAllWebContents().find((w) => w.getURL().startsWith(piUrl));
         if (!wc) return { error: 'pi webContents not found' };
         // 注入脚本幂等标志存在 = 拦截已生效。
@@ -283,9 +286,7 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
         // 还原 fetch，避免影响后续链路
         await wc.executeJavaScript(`window.__ubFetchOrigRestore && window.__ubFetchOrigRestore()`);
 
-        await wc.executeJavaScript(
-          `window.__ubCwdPickerPick('G:/pj/pj--ing/111111/Urchin-Browser')`,
-        );
+        await wc.executeJavaScript(`window.__ubCwdPickerPick(${JSON.stringify(pickDir)})`);
         await new Promise((r) => setTimeout(r, 3000));
         const cwdText = (await wc.executeJavaScript(
           `document.querySelector('button.status-cwd, .status-cwd-wrap')?.textContent ?? ''`,
@@ -295,10 +296,15 @@ test.describe('pi 网页版启动器（整项目运行路径）', () => {
           clickIntercepted: !clickCheck.inputOpened,
           fetchedEndpoint: clickCheck.fetchLog.some((u) => u.includes('urchin://pi-pick-dir')),
           inputOpened: clickCheck.inputOpened,
-          switched: cwdText.includes('Urchin-Browser') && cwdText.includes('G:'),
+          // 断言显示的是所选目录（用末段匹配，避免硬编码盘符/绝对路径——
+          // 原实现写死 'G:/pj/...'，在 CI 等其它环境必然失败）
+          switched: (() => {
+            const base = pickDir.split('/').filter(Boolean).pop() ?? '';
+            return base !== '' && cwdText.includes(base);
+          })(),
         };
       },
-      url,
+      { piUrl: url, pickDir },
     );
     // dev.47：真实点击链路三重断言——拦截(不弹手输框) + fetch 命中协议端点 + 切换成功
     expect(pickResult).toMatchObject({

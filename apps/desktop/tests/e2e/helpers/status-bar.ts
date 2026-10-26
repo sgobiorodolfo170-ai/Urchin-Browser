@@ -7,18 +7,34 @@
 import type { ElectronApplication, Page } from '@playwright/test';
 
 /**
+ * 判定是否为「状态栏」窗口。
+ *
+ * ⚠ 不能用 `url.includes('view=statusbar')`：悬浮球的 URL 是
+ * `?view=statusbar-ball`，同样命中该子串，而 `windows().find()` 会先拿到球窗口
+ * （里面没有地址栏），导致回退到主窗口后超时——这是 2026-10-27 CI E2E
+ * 「导航到 URL / 关闭标签」等用例失败的根因。此处按查询参数精确比对。
+ */
+export function isStatusBarUrl(url: string): boolean {
+  try {
+    return new URL(url).searchParams.get('view') === 'statusbar';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * 获取当前可操作的地址栏所在页面。
  *
- * 状态栏悬浮层仅在外部网页时创建；内部页（newtab/settings 等）地址栏在主窗口。
- * 导航前若已在外部页则用悬浮层，否则用主窗口（内部页地址栏）。
+ * 地址栏只存在于状态栏窗口（dev.120 起底部地址栏改为悬浮子窗口），
+ * 主窗口不再渲染 Omnibox；因此本函数只负责在状态栏窗口就绪前等待，
+ * 找不到时返回主窗口并让调用方以超时暴露问题（不再静默回退）。
  */
 export async function getOmniboxPage(
   electronApp: ElectronApplication,
   window: Page,
 ): Promise<Page> {
-  const overlay = electronApp.windows().find((p) => p.url().includes('view=statusbar'));
+  const overlay = electronApp.windows().find((p) => isStatusBarUrl(p.url()));
   if (overlay) {
-    // 仅当悬浮层可见（外部页）时用其地址栏；内部页悬浮层隐藏，地址栏在主窗口
     const input = overlay.getByRole('textbox', { name: '地址栏' });
     if (await input.isVisible().catch(() => false)) {
       return overlay;
@@ -31,8 +47,7 @@ export async function getStatusBarPage(
   electronApp: ElectronApplication,
   timeout = 15_000,
 ): Promise<Page> {
-  const find = (): Page | undefined =>
-    electronApp.windows().find((p) => p.url().includes('view=statusbar'));
+  const find = (): Page | undefined => electronApp.windows().find((p) => isStatusBarUrl(p.url()));
   const existing = find();
   if (existing) {
     await existing.waitForLoadState('domcontentloaded');

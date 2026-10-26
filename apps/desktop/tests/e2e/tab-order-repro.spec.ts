@@ -66,7 +66,11 @@ test('新建标签后旧标签保持原状态且置顶新标签', async () => {
 
   // 3.5 新标签标题应最终同步为"新标签页"（而非 URL）——home 占位不加载
   // BrowserView，标题由 tab-manager 的默认标题提供（dev.88 修复）
-  await expect(window.getByText('新标签页')).toBeVisible({ timeout: 10_000 });
+  // 注意：'新标签页' 文本在标签栏与右侧栏各出现一次，必须限定作用域，
+  // 否则 getByText 会命中 2 个元素触发 Playwright strict mode 报错。
+  await expect(window.locator('[aria-label="右侧边栏"]').getByText('新标签页').first()).toBeVisible(
+    { timeout: 10_000 },
+  );
 
   // 4. 断言：两个标签的显示文本（标签标题 span：flex-1 truncate）
   const tabTitles = await window

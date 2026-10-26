@@ -155,15 +155,25 @@ test.describe('GenOffice Markdown 编辑器（阶段 2 融合）', () => {
     expect(aiSettings?.provider).toBeTruthy();
     expect(aiSettings?.hasProviders).toBe(true);
 
-    // 3. 编辑器标签隐藏底部悬浮状态栏（主窗口不再渲染后退按钮；状态栏子窗口应不可见）
+    // 3. 主窗口不再渲染自己的地址栏/后退按钮；底部悬浮状态栏仍可见。
+    //    ⚠ dev.120 起地址栏只存在于悬浮层，渲染层判定为 `visible = !isAiTab`
+    //    （仅 AI 标签隐藏）。因此编辑器标签下悬浮层**应当可见**——本条原断言
+    //    「编辑器标签隐藏悬浮状态栏」是 dev.120 之前的行为，已过期。
     await expect(window.getByRole('button', { name: '后退' })).toHaveCount(0);
     const statusBarVisible = await electronApp.evaluate(({ BrowserWindow }) => {
-      const win = BrowserWindow.getAllWindows().find((w) =>
-        w.webContents?.getURL?.()?.includes('view=statusbar'),
-      );
+      // 用精确查询参数判定：includes('view=statusbar') 会误命中悬浮球
+      // （?view=statusbar-ball），导致取到可见的球窗口而误判状态栏「可见」。
+      // 注意 evaluate 在主进程内执行，不能引用外部模块函数，故此处内联解析。
+      const win = BrowserWindow.getAllWindows().find((w) => {
+        try {
+          return new URL(w.webContents?.getURL?.() ?? '').searchParams.get('view') === 'statusbar';
+        } catch {
+          return false;
+        }
+      });
       return win ? win.isVisible() : false;
     });
-    expect(statusBarVisible).toBe(false);
+    expect(statusBarVisible).toBe(true);
 
     // 4. 编辑 → 脏状态（侧栏脏点数据源 TabSnapshot.dirty）
     await electronApp.evaluate(async ({ webContents }) => {

@@ -13,3 +13,6 @@ LICENSE
 release-*/
 vendor/
 
+
+# AOCI 工具托管状态（JSON 结构由 aoci 生成，不参与格式化）
+.aoci/

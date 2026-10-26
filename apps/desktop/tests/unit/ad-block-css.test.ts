@@ -21,10 +21,7 @@ import { buildAdBlockCss } from '../../src/main/tabs/ad-block-css';
  * 实现理由：用 CSS 选择器解析器会引入额外依赖；本函数足够覆盖
  * "某 class 是否被规则精确命中"这一核心语义，且测试可读性更好。
  */
-function matchesAdRule(
-  css: string,
-  token: { type: 'class' | 'id'; name: string },
-): boolean {
+function matchesAdRule(css: string, token: { type: 'class' | 'id'; name: string }): boolean {
   const prefix = token.type === 'class' ? '.' : '#';
   // 移除 CSS 注释 /* ... */——否则首个选择器前若有注释块会被一同捕获
   const noComments = css.replace(/\/\*[\s\S]*?\*\//g, '');

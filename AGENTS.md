@@ -75,7 +75,7 @@ adapted_for: Urchin-Browser
 
 **AI Agent 强制流程**：
 
-1. **每次代码修改完成后，必须自动执行** `pnpm verify`（= `typecheck` + `lint` + `test:coverage` + `check:docs`，**含覆盖率门禁与文档漂移检查**），并在回复中附上结果摘要（通过/失败与关键数字）；失败必须先修复再继续。
+1. **每次代码修改完成后，必须自动执行** `pnpm verify`（= `typecheck` + `lint` + `format:check` + `test:coverage` + `check:docs`，**含格式、覆盖率、文档漂移三重门禁**），并在回复中附上结果摘要（通过/失败与关键数字）；失败必须先修复再继续。
 2. **涉及 UI / 交互 / 主进程行为变更**时，在 `pnpm verify` 通过后**追加** `pnpm e2e`（或对应 spec 单跑）验证真实 Electron 行为。
 3. **需要人工验收的改动**（界面、交互、视觉），在验证通过后**构建并启动应用**：`pnpm run build` 后执行 **`pnpm start`**（生产模式启动已构建产物，脱离本会话后台运行；直接 `electron .` 未带 `NODE_ENV=production` 会走 dev 分支连 vite dev server 导致白屏）。启动后在回复中说明如何操作。
 4. 涉及打包/资源/依赖变更时，额外跑 `pnpm package:win`（本机需 `ELECTRON_MIRROR` 与 `ELECTRON_BUILDER_BINARIES_MIRROR` 指向 npmmirror）。
@@ -434,9 +434,11 @@ adapted_for: Urchin-Browser
 
 | 版本 | 门槛 | 实测（lines / branch / functions）       | 执行机制                                                                                                                          |
 | ---- | ---- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| v0.2 | ≥65% | 69.18% / 79.57% / 77.12%（apps/desktop） | `apps/desktop/vitest.config.ts` 的 `coverage.thresholds` 四维均设 65；`pnpm verify` 与 CI 的 `test:coverage` 低于门槛即退出码非 0 |
+| v0.2 | ≥65% | 69.03% / 79.57% / 77.12%（apps/desktop） | `apps/desktop/vitest.config.ts` 的 `coverage.thresholds` 四维均设 65；`pnpm verify` 与 CI 的 `test:coverage` 低于门槛即退出码非 0 |
 
-> 📉 **余量提示**：v0.2 实测仅高出门槛 1.79pp（66.79% vs 65%）。这意味着后续新增未覆盖代码会立刻触发门禁——这是预期行为（门禁本就该在缺口出现时先于评审拦住），但意味着 v0.3 提升到 70% 前需要先补测试，而不是直接改数字。
+> 📉 **余量提示**：v0.2 实测高出门槛 4.03pp（69.03% vs 65%，多次全量运行区间 69.03%~69.18%）。这意味着后续新增未覆盖代码会较快触发门禁——这是预期行为（门禁本就该在缺口出现时先于评审拦住），但意味着 v0.3 提升到 70% 前需要先补测试，而不是直接改数字。
+
+> 🔬 **采集完整性（2026-10-27 复测结论）**：`apps/desktop` 共 **120** 个测试文件。若某次运行只收集到 117~119 个（表现为整体覆盖率跌到 56~66%、tabs 跌到 67%），属**宿主文件系统限制导致个别测试文件加载失败**（伴随 `Unhandled Error`），不是代码退化。判断方法：看 `Test Files` 是否为 120。沙箱环境关闭后已连续复测稳定在 120。
 
 > ⚠ **门禁前提**：`vitest` 的 `coverage.thresholds` 未配置时，`--coverage` 只生成报告、**低于门槛仍返回 0**——「覆盖率门禁」会名存实亡。本节的门槛因此必须与 `vitest.config.ts` 的 `thresholds` 成对维护：改阶梯值时同步改配置，否则规范与执行再次脱钩。
 
@@ -526,23 +528,23 @@ adapted_for: Urchin-Browser
 
 按 §〇.6，MUST 条款必须有可执行卡点，否则不具备阻断力。本表是全文 MUST 的**唯一登记处**——表中没有的「必须」一律按 SHOULD 对待。
 
-| #   | 门禁                                                | 判定方式                                                 | 执行位置                   | 现状               |
-| --- | --------------------------------------------------- | -------------------------------------------------------- | -------------------------- | ------------------ |
-| G1  | 类型安全（strict + noUncheckedIndexedAccess）       | `pnpm typecheck`                                         | pre-push / CI              | ✅ 已接入          |
-| G2  | 代码规范（ESLint 0 error）                          | `pnpm lint`                                              | pre-commit（暂存文件）/ CI | ✅ 已接入          |
-| G3  | 格式一致（Prettier）                                | `prettier --write`                                       | pre-commit（暂存文件）     | ✅ 已接入          |
-| G4  | 单元 + 集成测试全绿                                 | `pnpm test:coverage` 用例通过                            | CI                         | ✅ 已接入          |
-| G5  | **覆盖率门禁**（v0.2 ≥65%）                         | `coverage.thresholds` 四维 65                            | CI + `pnpm verify`         | ✅ 2026-10-27 接入 |
-| G6  | E2E 关键路径                                        | `pnpm e2e`                                               | CI                         | ✅ 已接入          |
-| G7  | 提交信息结构化                                      | `commitlint`                                             | commit-msg hook            | ✅ 已接入          |
-| G8  | 跨进程契约 zod 双向校验                             | 代码评审 + 契约测试                                      | §六 第三步自审             | ⚠ 人判为主         |
-| G9  | 依赖引入审查（包名/版本/许可证/维护度）             | 人工核查 + `npm audit`                                   | 引入依赖时                 | ⚠ 人判为主         |
-| G10 | 不可逆操作人类确认                                  | 交互式确认                                               | 执行前                     | ⚠ 流程约束         |
-| G11 | 版本号基线前进（stable 递增）                       | `scripts/build-version.mjs` 门禁                         | `pnpm package:win`         | ✅ 已接入          |
-| G12 | 发布前人工确认                                      | 人工跑 e2e + 验签                                        | 发布                       | ⚠ 流程约束         |
-| G13 | **文档事实不漂移**（覆盖率阶梯 / 命令 / 卡点描述）  | `pnpm check:docs`（`scripts/check-doc-drift.mjs` R1-R3） | CI + `pnpm verify`         | ✅ 2026-10-27 接入 |
-| G14 | **提交追溯信息**（Model / Trigger / Loop）          | `scripts/check-commit-trace.mjs`                         | commit-msg hook            | ✅ 2026-10-27 接入 |
-| G15 | **CHANGELOG 版本行格式**（可被 build-version 解析） | `scripts/check-doc-drift.mjs` R4                         | CI + `pnpm verify`         | ✅ 2026-10-27 接入 |
+| #   | 门禁                                                | 判定方式                                                 | 执行位置                   | 现状                   |
+| --- | --------------------------------------------------- | -------------------------------------------------------- | -------------------------- | ---------------------- |
+| G1  | 类型安全（strict + noUncheckedIndexedAccess）       | `pnpm typecheck`                                         | pre-push / CI              | ✅ 已接入              |
+| G2  | 代码规范（ESLint 0 error）                          | `pnpm lint`                                              | pre-commit（暂存文件）/ CI | ✅ 已接入              |
+| G3  | 格式一致（Prettier）                                | 暂存文件 `prettier --write`；全仓 `pnpm format:check`    | pre-commit + CI            | ✅ 2026-10-27 全仓接入 |
+| G4  | 单元 + 集成测试全绿                                 | `pnpm test:coverage` 用例通过                            | CI                         | ✅ 已接入              |
+| G5  | **覆盖率门禁**（v0.2 ≥65%）                         | `coverage.thresholds` 四维 65                            | CI + `pnpm verify`         | ✅ 2026-10-27 接入     |
+| G6  | E2E 关键路径                                        | `pnpm e2e`                                               | CI                         | ✅ 已接入              |
+| G7  | 提交信息结构化                                      | `commitlint`                                             | commit-msg hook            | ✅ 已接入              |
+| G8  | 跨进程契约 zod 双向校验                             | 代码评审 + 契约测试                                      | §六 第三步自审             | ⚠ 人判为主             |
+| G9  | 依赖引入审查（包名/版本/许可证/维护度）             | 人工核查 + `npm audit`                                   | 引入依赖时                 | ⚠ 人判为主             |
+| G10 | 不可逆操作人类确认                                  | 交互式确认                                               | 执行前                     | ⚠ 流程约束             |
+| G11 | 版本号基线前进（stable 递增）                       | `scripts/build-version.mjs` 门禁                         | `pnpm package:win`         | ✅ 已接入              |
+| G12 | 发布前人工确认                                      | 人工跑 e2e + 验签                                        | 发布                       | ⚠ 流程约束             |
+| G13 | **文档事实不漂移**（覆盖率阶梯 / 命令 / 卡点描述）  | `pnpm check:docs`（`scripts/check-doc-drift.mjs` R1-R3） | CI + `pnpm verify`         | ✅ 2026-10-27 接入     |
+| G14 | **提交追溯信息**（Model / Trigger / Loop）          | `scripts/check-commit-trace.mjs`                         | commit-msg hook            | ✅ 2026-10-27 接入     |
+| G15 | **CHANGELOG 版本行格式**（可被 build-version 解析） | `scripts/check-doc-drift.mjs` R4                         | CI + `pnpm verify`         | ✅ 2026-10-27 接入     |
 
 > **登记规则**：新增 MUST 时先在此表补一行并写明判定命令；无法给出判定命令的，不得标 MUST。当前 15 条中 10 条完全自动化、3 条人判、2 条流程约束——人判项是后续自动化的候选池。
 

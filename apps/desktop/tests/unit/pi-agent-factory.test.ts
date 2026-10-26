@@ -59,11 +59,11 @@ describe('pi-agent-factory', () => {
     vi.clearAllMocks();
     mocks.getProviders.mockReturnValue(['openai', 'anthropic', 'ollama']);
     mocks.getModel.mockReturnValue(BUILTIN_MODEL);
-  const toolMock = { name: '', parameters: { type: 'object', properties: {} } };
-  mocks.createBashTool.mockReturnValue({ ...toolMock, name: 'bash' });
-  mocks.createReadTool.mockReturnValue({ ...toolMock, name: 'read' });
-  mocks.createEditTool.mockReturnValue({ ...toolMock, name: 'edit' });
-  mocks.createWriteTool.mockReturnValue({ ...toolMock, name: 'write' });
+    const toolMock = { name: '', parameters: { type: 'object', properties: {} } };
+    mocks.createBashTool.mockReturnValue({ ...toolMock, name: 'bash' });
+    mocks.createReadTool.mockReturnValue({ ...toolMock, name: 'read' });
+    mocks.createEditTool.mockReturnValue({ ...toolMock, name: 'edit' });
+    mocks.createWriteTool.mockReturnValue({ ...toolMock, name: 'write' });
     mocks.streamSimple.mockImplementation(() => ({
       result: () => Promise.resolve({ stopReason: 'stop', content: [] }),
       async *[Symbol.asyncIterator]() {

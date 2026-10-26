@@ -43,7 +43,7 @@ export default defineConfig({
        * 低于门槛也退出码 0，等于「门禁」名存实亡——此处补上后才真正阻断。
        *
        * 基线实测（2026-10-27，v0.2.0 stable 收口后，120 个测试文件全量收集）：
-       * lines 69.18% / statements 69.18% / branches 79.57% / functions 77.12%
+       * lines 69.03% / statements 69.03% / branches 79.57% / functions 77.12%
        * 距 65% 门槛约 4pp 余量——新代码请自带测试，否则门禁会先于评审拦下。
        * 逐版本提升时只改这四个数字，并同步 docs/03-技术栈 §4（唯一真源）。
        *

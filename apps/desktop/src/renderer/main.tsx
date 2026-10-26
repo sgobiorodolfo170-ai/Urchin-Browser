@@ -12,12 +12,7 @@
  */
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { initRuntimeErrorLog } from './lib/runtime-error-log';
 import './styles/globals.css';
-
-// 启动即安装运行时错误采集（设置页「调试 → 运行报错日志」数据源）。
-// 设置页是按需挂载的，只有在这里安装才能记录设置页打开前发生的错误。
-initRuntimeErrorLog();
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {

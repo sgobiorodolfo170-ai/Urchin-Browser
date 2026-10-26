@@ -524,9 +524,15 @@ adapted_for: Urchin-Browser
 | ---------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | 写代码时         | IDE 实时提示                      | ESLint + Prettier VSCode 插件实时拦截                                                                                                |
 | 提交时           | pre-commit（Husky + lint-staged） | `lint-staged`：ESLint --fix → Prettier --write（仅暂存文件），任一失败阻止提交。typecheck 与单测**不在钩子内**，由下一行 CI 卡点兜底 |
-| PR 阶段          | GitHub Actions CI                 | `pnpm typecheck` + `pnpm lint` + `pnpm test:coverage` + `pnpm e2e` 全绿方可合并                                                      |
+| PR 阶段          | GitHub Actions CI                 | `pnpm typecheck` + `pnpm lint` + `pnpm format:check` + `pnpm check:docs` + `pnpm test:coverage` + `pnpm e2e` 全绿方可合并            |
 | **不可逆操作前** | **人类确认门禁**                  | **数据库写/生产变更/权限修改/文件删除/对外发布——AI 生成方案后自动暂停，等待人类确认方可继续**                                        |
 | 发布前           | 人工确认门禁                      | 人工跑 `pnpm e2e` 全套、检查覆盖率报告、安装包签名验证（[docs/03 §5](docs/03-技术栈.md#5-cicd-门槛v01)）                             |
+
+> 🚨 **CI 真实状态（2026-10-27 核查，必须知道）**：`gh run list` 显示 **2026-08-02 起每一次 CI 运行都失败**，且失败点在第 2 步「Setup pnpm」——意味着 typecheck / lint / 测试 / E2E **从未真正在 CI 上执行过**。上文「全绿方可合并」在此前是空转条款。
+>
+> 2026-10-27 已连修三道墙：① `pnpm/action-setup` 与 `packageManager` 版本双写；② lockfile 与 `apps/desktop/package.json` 不一致（dsh 0.2.1-rc.2）；③ `vendor/pi/packages/tui` 被排除出 workspace 导致构建解析不到 `marked`。修复后 CI 已能跑到最后一步。
+>
+> **仍未通过**：`pnpm e2e` 7 通过 / 7 失败（首次在 CI 环境暴露，属历史遗留而非新引入）。E2E 绿之前，「CI 全绿方可合并」仍是目标而非事实——本行必须随状态更新，不得沿用旧结论。
 
 ### 3. 与人工评审的区别
 

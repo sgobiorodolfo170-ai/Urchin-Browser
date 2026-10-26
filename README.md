@@ -2,7 +2,7 @@
 
 > AI 原生 + 开发者友好的桌面浏览器，基于 Electron / 完整 Chromium 内核。
 
-**当前阶段**：v0.1.0 里程碑（2026-07-29，MVP 最小闭环 + per-provider 强隔离架构）后持续迭代，当前 dev.115（2026-10-20）；首个 GitHub stable 计划 v0.2.0。已交付 GenOffice 四编辑器融合、pi-web、网页翻译、本地文件查看/编辑、应用内自动更新等能力，逐条记录见 [CHANGELOG.md](./CHANGELOG.md)。安装包见 [GitHub Releases](https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases)。
+**当前阶段**：v0.1.0 里程碑（2026-07-29，MVP 最小闭环 + per-provider 强隔离架构）后持续迭代，当前 **dev.121（2026-10-26）**；v0.2.0 dev 线推进中，首个 GitHub stable 计划 v0.2.0。已交付 GenOffice 六编辑器融合、pi-web、网页翻译、本地文件查看/编辑、应用内自动更新、M15 DevTools 检视面板、M25 邮箱、多工作区（TP7）等能力，逐条记录见 [CHANGELOG.md](./CHANGELOG.md)。安装包见 [GitHub Releases](https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases)。
 
 ## 项目定位
 
@@ -15,31 +15,35 @@
 
 ## v0.1 功能概览
 
-| 模块                       | 范围                                                                        |
-| -------------------------- | --------------------------------------------------------------------------- |
-| M1 Window Lifecycle        | 完整（多窗口管理 + 单实例锁 + 窗口尺寸记忆）                                |
-| M2 Tab Manager             | 完整（BrowserView + GenOffice WebContentsView 混挂 + 事件同步 + 持久化）    |
-| M3 Navigation Stack        | 完整（loadUrl/stop/back/forward/reload）                                    |
-| M4 Omnibox                 | 完整（URL 解析 + 历史/书签合并补全 + 安全协议拦截 + 本地路径识别）          |
-| M5 Bookmarks               | 完整（CRUD + 收藏夹面板）                                                   |
-| M6 History                 | 完整（查询 + 去重 + 访问计数）                                              |
-| M7 Settings                | 完整（分层默认值 + 跨进程同步 + 数据目录/默认应用等设置页）                 |
-| M8 Storage Layer           | SQLite WAL + safeStorage 加密 + LRU 连接池 + 数据目录可配置（pi 数据独立）  |
-| M10-lite Extension Loader  | 基础（MV3 manifest 校验 + 目录加载 + 生命周期）                             |
-| M11 AI Orchestrator        | 完整（per-provider 子进程隔离 + 心跳 + 限流 + 重试 + 流式）                 |
-| M12 Provider Plugin API    | 完整契约 v1                                                                 |
-| M13 AI Side Panel          | demo（流式对话 + 页面上下文注入；`urchin://ai` 入口现由 pi-web 启动器承载） |
-| M14 Page Context Extractor | demo（Readability 正文抽取）                                                |
-| M17 IPC Protocol           | 完整（类型化 RPC + MessagePort 流式 + 事件推送）                            |
-| M18 Permission/Sandbox     | 完整（sandbox + contextIsolation + preload）                                |
-| M19 Theme/UI System        | 基础（暗色/亮色 + Radix + Tailwind）                                        |
-| M23 Download Manager       | 完整（will-download 接管 + 保存对话框 + 进度 + 暂停/取消）                  |
-| M24 网页翻译               | 完整（谷歌/微软双引擎兜底 + 整页替换/恢复 + 划词翻译 + 自动翻译开关）       |
+| 模块                       | 范围                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------- |
+| M1 Window Lifecycle        | 完整（多窗口管理 + 单实例锁 + 窗口尺寸记忆）                                          |
+| M2 Tab Manager             | 完整（BrowserView + GenOffice WebContentsView 混挂 + 事件同步 + 持久化）              |
+| M3 Navigation Stack        | 完整（loadUrl/stop/back/forward/reload）                                              |
+| M4 Omnibox                 | 完整（URL 解析 + 历史/书签合并补全 + 安全协议拦截 + 本地路径识别）                    |
+| M5 Bookmarks               | 完整（CRUD + 收藏夹面板）                                                             |
+| M6 History                 | 完整（查询 + 去重 + 访问计数）                                                        |
+| M7 Settings                | 完整（分层默认值 + 跨进程同步 + 数据目录/默认应用等设置页）                           |
+| M8 Storage Layer           | SQLite WAL + safeStorage 加密 + LRU 连接池 + 数据目录可配置（pi 数据独立）            |
+| M10-lite Extension Loader  | 基础（MV3 manifest 校验 + 目录加载 + 生命周期）                                       |
+| M11 AI Orchestrator        | 完整（per-provider 子进程隔离 + 心跳 + 限流 + 重试 + 流式）                           |
+| M12 Provider Plugin API    | 完整契约 v1                                                                           |
+| M13 AI Side Panel          | demo（流式对话 + 页面上下文注入；`urchin://ai` 入口现由 pi-web 启动器承载）           |
+| M14 Page Context Extractor | demo（Readability 正文抽取）                                                          |
+| M15 DevTools Enhancement   | 一期（dev.119：CDP Network/Console 采集 + Runtime.evaluate + 右侧第三列检视面板 F12） |
+| M17 IPC Protocol           | 完整（类型化 RPC + MessagePort 流式 + 事件推送）                                      |
+| M18 Permission/Sandbox     | 完整（sandbox + contextIsolation + preload）                                          |
+| M19 Theme/UI System        | 基础（暗色/亮色 + Radix + Tailwind）                                                  |
+| M23 Download Manager       | 完整（will-download 接管 + 保存对话框 + 进度 + 暂停/取消）                            |
+| M24 网页翻译               | 完整（谷歌/微软双引擎兜底 + 整页替换/恢复 + 划词翻译 + 自动翻译开关）                 |
+| M20 Update Service         | 完整（dev.114 提前：electron-updater + GitHub dev 预发布通道 + dev→stable 两段检查）  |
+| M25 邮箱                   | 基础（2026-09-29 交付：IMAP 收信 + SMTP 发信 + MIME 解析 + 自建 UI）                  |
 
 ### dev 系列交付的其他能力（M 编号之外）
 
-- **pi-web**：pi coding agent 网页化（启动器拉起 pi-web-ui，系统 Node 子进程 + 127.0.0.1 随机端口，与主进程隔离）
-- **GenOffice 编辑器融合**（ADR-009）：markdown / pdf / html / docs(docx) 四编辑器嵌入标签体系 + 侧栏文档主页
+- **pi-web**：pi coding agent 网页化（启动器拉起 pi-web-ui，Electron 内置 Node 子进程 `ELECTRON_RUN_AS_NODE` + 127.0.0.1 随机端口，与主进程隔离）
+- **GenOffice 编辑器融合**（ADR-009）：markdown / pdf / html / docs(docx) / slides(pptx) / sheets(xlsx) **六编辑器**嵌入标签体系 + 侧栏文档主页（dev.107-108 补齐 Slides/Sheets）
+- **多工作区**（TP7，dev.116）：同一网站多账号登录，Cookie/localStorage/IndexedDB/Service Worker 全隔离、持久化、可切换
 - **本地文件查看器/编辑器**：打开入口 ×4（侧栏按钮 / Ctrl+O / 拖放 / 地址栏路径）、文件夹浏览、Tiptap 富文本编辑
 - **截图**（整屏框选裁剪保存）、**Windows 文件关联**（可设为默认打开方式）、**网页右键菜单**（复制/粘贴/保存网页）
 - **Ctrl+滚轮缩放**、**广告浮窗屏蔽**（默认开）等体验能力
@@ -108,7 +112,7 @@ pnpm package:win
 | 覆盖率（Stmts）   | ≥ 60%    | 68.05% ✓     |
 | E2E 关键路径      | 全过     | 4 passed ✓   |
 
-**当前（dev 系列）**：单测规模持续增长至 900+ 用例、覆盖率最高 89.21%（dev.23），E2E 12 个 spec；逐次验收数字见 [CHANGELOG.md](./CHANGELOG.md)。
+**当前（dev 系列）**：单测规模增长至 1400+ 用例（dev.119 记录 1439 passed）、单元覆盖率峰值 89.21%（dev.23），E2E 共 13 个 spec（`apps/desktop/tests/e2e/*.spec.ts`）；逐次验收数字见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 文档
 
@@ -117,9 +121,9 @@ pnpm package:win
 - 产品定位与决策记录（[01](./docs/01-愿景与定位.md)）
 - 架构与进程模型（[02](./docs/02-架构设计.md)）
 - 技术栈与覆盖率门槛（[03](./docs/03-技术栈.md)）
-- 模块全景与 v0.1 范围（M1-M24 + 非编号能力，[04](./docs/04-模块全景.md)）
+- 模块全景与 v0.1 范围（M1-M25 + 非编号能力，[04](./docs/04-模块全景.md)）
 - 11 份接口契约（[Provider API / IPC / Chrome 兼容 / Tab Manager 等 A-K](./docs/contracts/)）
-- 决策留痕：7 份关键 ADR + 决策索引（核心 56 项 + 契约内 68 项 = 124 项）（[decisions/](./docs/decisions/决策索引.md)）
+- 决策留痕：7 份关键 ADR + 决策索引（核心 58 项 + 契约内 68 项 = 126 项）（[decisions/](./docs/decisions/决策索引.md)）
 
 ## 开发规范
 
@@ -130,7 +134,7 @@ pnpm package:win
 - **per-provider 强隔离**：每个 AI Provider 运行在独立子进程（utility process），crash 不影响浏览器主进程
 - **Provider 中立**：支持本地路径/npm 包加载第三方 Provider，版本协商 + 安全 warning 流程
 - **GenOffice 视图级融合**：编辑器以独立 WebContentsView 嵌入标签体系，宿主只依赖自包含嵌入包（不 import vendor 依赖树），产物缺失自动回落内置查看器
-- **pi 进程外运行**：pi coding agent 全部运行于系统 Node 子进程，Electron 主进程零 pi 依赖
+- **pi 进程外运行**：pi coding agent 全部运行于 Electron 内置 Node（`ELECTRON_RUN_AS_NODE`）子进程，Electron 主进程零 pi 依赖
 - **类型化 IPC**：zod schema 双向验证 + MessagePort 流式传输
 - **SQLite 加密存储**：WAL 模式 + safeStorage 加密 + per-provider/per-extension 命名空间隔离
 

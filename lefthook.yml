@@ -1,3 +1,7 @@
+# ⚠ 本文件为 lefthook 官方示例模板（全部注释、未启用）。
+# 本项目实际使用 Husky + lint-staged（见 .husky/ 与 package.json 的 prepare 脚本），
+# 需要迁移到 lefthook 时再取消注释并移除 Husky。
+#
 # EXAMPLE USAGE:
 #
 #   Refer for explanation to following link:

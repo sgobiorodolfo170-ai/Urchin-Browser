@@ -115,6 +115,18 @@ export const ipcSchema = {
 
   // DevTools 增强 → Side Panel 上下文注入（契约 G §7 的第一跳；第二跳为事件推送 'sidepanel.context_injected'）
   'sidepanel.inject_context': { req: z.object({ content: z.string(), source: z.enum(['devtools', 'manual']) }), res: z.object({ ok: z.boolean() }) },
+
+  // M15 DevTools 一期（dev.119，CDP 采集检视面板）：
+  // 8 通道 + 2 事件通道（devtools:event / devtools:toggle）。
+  // 实际单一真源为 packages/ipc-contract/src/schemas/ipc-schema.ts + events.ts
+  'devtools.attach':         { req: z.object({ tabId: z.number().int().positive() }), res: z.object({ state: z.enum(['detached', 'attached', 'unavailable']), reason: z.string().optional(), target: z.object({ tabId: z.number(), title: z.string() }).optional() }) },
+  'devtools.detach':         { req: z.object({ tabId: z.number().int().positive() }), res: z.object({ ok: z.literal(true) }) },
+  'devtools.status':         { req: z.object({ tabId: z.number().int().positive() }), res: z.object({ state: z.enum(['detached', 'attached', 'unavailable']), reason: z.string().optional(), target: z.object({ tabId: z.number(), title: z.string() }).optional() }) },
+  'devtools.network.list':   { req: z.object({ tabId: z.number().int().positive() }), res: z.object({ entries: z.array(z.unknown()), dropped: z.number().int().nonnegative() }) },
+  'devtools.network.clear':  { req: z.object({ tabId: z.number().int().positive() }), res: z.object({ ok: z.literal(true) }) },
+  'devtools.console.list':   { req: z.object({ tabId: z.number().int().positive() }), res: z.object({ entries: z.array(z.unknown()), dropped: z.number().int().nonnegative() }) },
+  'devtools.console.clear':  { req: z.object({ tabId: z.number().int().positive() }), res: z.object({ ok: z.literal(true) }) },
+  'devtools.evaluate':       { req: z.object({ tabId: z.number().int().positive(), expression: z.string().min(1).max(8192), awaitPromise: z.boolean().optional() }), res: z.object({ ok: z.boolean(), result: z.unknown().optional(), exception: z.string().optional(), error: z.string().optional(), truncated: z.boolean().optional() }) },
   // ...
 } as const;
 
@@ -423,6 +435,21 @@ export const sidepanelEventsSchema = {
 } as const;
 
 export type SidePanelEvent = keyof typeof sidepanelEventsSchema;
+
+// M15 DevTools 一期事件通道（dev.119）：
+// devtools:event = 数据批（state 变更 / network.batch / console.append / cleared）
+// devtools:toggle = F12 开/关通知（主进程键盘拦截 → 渲染层状态源）
+// 常量定义在 packages/ipc-contract/src/events.ts（DEVTOOLS_EVENT_CHANNEL / DEVTOOLS_TOGGLE_CHANNEL）
+export const devtoolsEventsSchema = {
+  'devtools:event': z.object({
+    type: z.enum(['state', 'network.batch', 'console.append', 'cleared']),
+    tabId: z.number().int().positive(),
+    // 各 type 的 payload 字段见 ipc-schema.ts 的 DevtoolsEventPayload 联合类型
+  }),
+  'devtools:toggle': z.object({}).optional(),
+} as const;
+
+export type DevtoolsEvent = keyof typeof devtoolsEventsSchema;
 ```
 
 - Main 进程单向推送：`webContents.send(event, payload)`。

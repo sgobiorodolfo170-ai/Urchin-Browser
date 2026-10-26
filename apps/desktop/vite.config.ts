@@ -29,11 +29,14 @@ const nodeBuiltins = [
 /**
  * 运行时桩模块别名（覆盖 nodeBuiltins 中的 external 项）。
  *
- * `node:sqlite` 是 Node.js 22.5+ 才加入的内置模块，Urchin 的 Electron 32.3.3
- * （Node.js 20.x）没有该模块。undici 的 SqliteCacheStore 在模块顶层执行
- * `require("node:sqlite")`，若不处理会导致主进程启动即崩溃
- * （ERR_UNKNOWN_BUILTIN_MODULE）。Urchin 不使用 SqliteCacheStore，因此用桩模块
- * 顶替：顶层 require 成功，DatabaseSync 仅在实例化时抛错（永远不会触发）。
+ * 历史背景：`node:sqlite` 是 Node.js 22.5+ 才加入的内置模块，早期 Urchin 的
+ * Electron 32.3.3（Node.js 20.x）没有该模块。undici 的 SqliteCacheStore 在模块
+ * 顶层执行 `require("node:sqlite")`，若不处理会导致主进程启动即崩溃
+ * （ERR_UNKNOWN_BUILTIN_MODULE）。当时代用桩模块顶替：顶层 require 成功，
+ * DatabaseSync 仅在实例化时抛错（Urchin 不使用 SqliteCacheStore，永不触发）。
+ *
+ * 现状（Electron 43 / Node 24 已内置 node:sqlite）：本别名作为早期兼容保留，
+ * 继续指向桩模块以维持既有构建行为；如需启用原生 SqliteCacheStore 再移除本别名。
  *
  * 必须放在 resolve.alias 中且优先级高于 rollupOptions.external，才能让 rollup
  * 真正打包桩模块而不是保留 `require("node:sqlite")`。

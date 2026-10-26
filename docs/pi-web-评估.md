@@ -1,10 +1,12 @@
 # pi-web 生态依赖引入审查与效果评估
 
-> 状态：阶段 0/1 已交付（dev.37-89，启动器 + pi-web-ui 集成落地；多次升级核验见 §六-§八），阶段 2（自研官方对标前端）未启动 · 初版日期：2026-08-22
+> 状态：阶段 0/1 已交付（dev.37-121，启动器 + pi-web-ui 集成落地；多次升级核验见 §六-§八），阶段 2（自研官方对标前端）未启动 · 初版日期：2026-08-22
 > 关联决策：用户指令「pi 模块 = 定制前端网页版 UI + pi 官方源码(可更新),前端优先直接调用 pi 原有接口;与浏览器主体隔离;现有前端入口退化为启动器」
 > 依据:AGENTS.md §九 依赖引入审查(包名验证 / 版本可达性 / 许可证兼容性 / 维护度评估)
+>
+> **运行时注记（2026-10-24，dev.109/110）**：pi-web 子进程已由「系统 Node」切换为 **Electron 内置 Node**（`ELECTRON_RUN_AS_NODE` + `process.execPath`）运行；下文 §三、§五 中「系统 Node」表述为 dev.39-42 时的历史记录。dsh 子进程（`vendor/deepseek-harness`）则使用随包便携 `node.exe`（dev.110）。
 
-## 一、官方架构事实(vendored 0.84.2 核验)
+## 一、官方架构事实(vendored 1.4.0 核验)
 
 | 包                                | 浏览器安全                             | 角色                                                                    |
 | --------------------------------- | -------------------------------------- | ----------------------------------------------------------------------- |
@@ -17,7 +19,7 @@
 
 官方「自定义前端」路径:Node 侧 `PiServer` ↔ 浏览器侧 `PiClient`(WebSocket/Unix ByteTransport),快照权威 + `session_progress` 流式增量;配套 `RemoteSession`/transcript 视图模型。**上游标记 experimental、无兼容性承诺**——本项目 vendored 锁定版本,更新节奏由本项目控制,风险可控。
 
-> 当前 vendored 版本:**0.85.1**(2026-09-18 由 0.84.3 升级;上游 releases 0.84.4/0.85.0/0.85.1;适配面核验与门禁见 CHANGELOG dev.83)。
+> 当前 vendored 版本:**1.4.0**(2026-10-24 由 1.0.0 升级,pi-web-ui 同步至 0.110.0;上游 tag v1.4.0;适配面核验与门禁见 CHANGELOG dev.117)。
 
 ## 二、候选社区包审查
 
@@ -118,7 +120,7 @@
 | themes/light.css、favicon.svg                                                      | 通过                                                                          |
 | set_cwd 等 WS 命令                                                                 | 通过(命令 50→56:新增 scm__/terminal__/start_goal_wizard/write_file 等,无删除) |
 | install_pi_agent(内部 npm i -g)                                                    | 通过(仍在 → npm 前缀沙箱继续覆盖)                                             |
-| 内嵌 pi SDK                                                                        | ^0.83.0 → ^0.84.2(与本项目 vendored pi 0.84.2 对齐)                           |
+| 内嵌 pi SDK                                                                        | 1.4.0(与本项目 vendored pi 1.4.0 对齐,dev.117)                                |
 
 验证:typecheck / 938 单测全绿 / build:main / pi-web E2E 20.3s 全绿
 (启动→auth占位→原生目录选择→主题亮色→删除按钮→提示抑制→退出杀进程全链路)。

@@ -1,9 +1,9 @@
 # 契约 G · M15 DevTools Enhancement
 
-> 状态：已定稿 · 日期：2026-07-27  · 关联决策：DT1-DT8
+> 状态：已定稿 · 日期：2026-07-27  · 关联决策：DT1-DT13（DT9-DT13 为 dev.119 一期实施期增补）
 > 模块归属：renderer  · 关联模块：M2 / M11 / M12 / M13 / M17
-> 实现现状：v0.1 为 demo 级（W4 交付）；完整能力（CDP 接入、AI 辅助 console/网络分析）按本文契约演进。
-> 代码示例：文中代码为示意伪码，用于表达设计意图，非可编译实现；文中文件路径为设计期示意，实际代码布局以 [03-技术栈 §3](../03-技术栈.md#3-目录结构现状2026-09-24-同步) 为准。
+> 实现现状：dev.119 起一期落地（CDP Network/Console 采集 + Runtime.evaluate + 右侧第三列检视面板，F12 开关）；完整能力（自定义 Panel 开放、AI 辅助分析、Elements/Sources、性能瀑布图）按本文契约演进。实施规划见 [开发者工具增强一期实施规划](../开发者工具增强一期实施规划.md)。
+> 代码示例：文中代码为示意伪码，用于表达设计意图，非可编译实现；文中文件路径为设计期示意，实际代码布局以 [03-技术栈 §3](../03-技术栈.md#3-目录结构现状2026-10-26-同步) 为准。
 
 ## 1. 设计目标
 
@@ -143,10 +143,25 @@ async function analyzeWithAI(entry: NetworkEntry): Promise<void> {
 
 ## 5. AI 辅助 console 解析（v0.1 demo）
 
+> **dev.119 修正**：原伪码只订阅 `Runtime.exceptionThrown` + `Log.entryAdded`，
+> **捕获不到 `console.log/warn/error/info/debug`**（这些产生 `Runtime.consoleAPICalled` 事件，
+> 而非 `Log.entryAdded`）。该伪码从未被实现验证，错误从 demo 设计期延续至今。
+> 实施时已修正：console 采集三来源 = `Runtime.consoleAPICalled`（console API 主源）+
+> `Runtime.exceptionThrown`（未捕获异常）+ `Log.entryAdded`（浏览器级消息：网络错误/CSP/存储等）。
+
 ```typescript
 // apps/desktop/src/renderer/devtools-enhance/console-tracker.ts
 async function trackConsole(cdp: CdpClient): Promise<void> {
   await cdp.enableConsole();
+
+  // dev.119 修正：console.log/warn/error/info/debug 的唯一来源
+  cdp.on('Runtime.consoleAPICalled', (p) => {
+    consoleStore.add({
+      type: mapConsoleType(p.type), // log/info/warning/error/debug
+      text: formatArgs(p.args),     // value ?? description ?? '<type>'
+      source: 'console-api',
+    });
+  });
 
   cdp.on('Runtime.exceptionThrown', (p) => {
     const details = p.exceptionDetails;
@@ -189,7 +204,8 @@ async function summarizeErrors(): Promise<void> {
 ## 6. 自定义 Panel 注册（DT4 决策：v0.1 仅内部）
 
 ```typescript
-// M15 未在 v0.1 实现，此文件仅为占位契约
+// 自定义 Panel 注册暂未实现（一期 dev.119 仅内置 Network / Console / evaluate 三视图）；
+// 此文件为扩展开放接口的占位契约
 export interface DevToolsPanelManifest {
   id: string;                        // 'panel-network-summary'
   title: string;                     // 显示在 tab 标题
@@ -255,6 +271,11 @@ ipcRenderer.on('sidepanel.context_injected', (_e, { content, source }) => {
 - 独立 BrowserWindow 窗口管理复杂。
 - 嵌入原生 DevTools 受限于 Chromium DevToolsFrontend。
 
+> **dev.119 一期落地偏离注记**：DT2 原文「主窗口的独立 BrowserView 分屏」，一期实际落地为
+> **主窗口渲染层第三列**（React 组件，非独立 BrowserView）。理由（与 DT9 一致）：让 BrowserView
+> 承载 React 面板需 preload/沙箱权衡，收益为负；主窗口渲染层第三列天然与 BrowserView 几何联动
+> （`computeViewBounds` 扣减 `devtoolsWidth`），实现更简且无安全边界问题。DT2 历史决策文本不修改。
+
 ## 9. 性能策略（DT7 决策）
 
 CDP 事件高频（每秒可能几十次），需节流 + 环形缓冲：
@@ -300,13 +321,20 @@ const flushTicker = setInterval(() => {
 | ID | 决策 | 选定方案 | 否决方案理由 |
 |---|---|---|---|
 | DT1 | v0.1 集成形态 | A. CDP 客户端 + 自研 React 面板 | B DevTools Extension Electron 支持不完整；C Overlay 注入不专业 |
-| DT2 | DevTools Enhancement 渲染位置 | 主窗口的独立 BrowserView 分屏 | 独立 BrowserWindow 窗口管理复杂；嵌入原生 DevTools 受限 |
+| DT2 | DevTools Enhancement 渲染位置 | 主窗口的独立 BrowserView 分屏（一期 dev.119 实际落为主窗口渲染层第三列，见 §8 偏离注记） | 独立 BrowserWindow 窗口管理复杂；嵌入原生 DevTools 受限 |
 | DT3 | CDP 版本 | '1.3'（成熟稳定） | '1.2' 或更低，能力受限 |
 | DT4 | 自定义 Panel 注册开放时机 | v0.1 仅内部；v0.2+ 开放给扩展 | v0.1 就开放但生态空，意义不大 |
 | DT5 | 与 Side Panel 联动 | v0.1 demo：「右键发到 Side Panel」单向 | v0.1 直接做双向复杂度高 |
 | DT6 | AI 调用通道 | 复用 M11 Orchestrator + Provider 流式 Port | 独立「devtools-only Provider」破坏 Provider 中立 |
 | DT7 | 性能：CDP 事件高频 | 节流 200ms batch + Ring Buffer 1000 条 | 实时 setState 卡；全量保留爆内存 |
 | DT8 | 启动方式 | 命令面板（Ctrl+Shift+P）+ 快捷键 F12 | 仅快捷键不够发现性；仅菜单不够便捷 |
+| DT9 | 检视面板形态 | 右侧第三列停靠（内容区与右侧栏之间，可拖宽 260-720px） | 底部停靠与悬浮状态栏冲突且几何改动最大；独立子窗口需新增 HTML 入口；内部标签页打开时网页不可见 |
+| DT10 | 一期能力集 | Network + Console + Runtime.evaluate，不开放原始 cdp.send | Elements/Sources 需 DOM/CSS/Debugger/Overlay 域，工作量 3-4 倍；raw 透传扩大攻击面 |
+| DT11 | attach 时机 | 手动「开始检视」（打开面板不 attach） | 自动 attach 使每个活跃标签常挂 debugger + 与 Playwright E2E CDP 潜在冲突 |
+| DT12 | 会话绑定 | 绑定「开始检视」时的 tabId，切标签不漂移；提供「绑定当前标签」 | 随活跃标签漂移产生 attach/detach 抖动 + 用户丢失对目标的预期 |
+| DT13 | 原生 DevTools 共存 | 一期不注册原生 DevTools 快捷键；未来引入则监听 devtools-opened 主动 detach | 两套 debugger 抢会话；当前生产态原生 DevTools 本就无入口 |
+
+> **DT8 注记（dev.119）**：命令面板尚未实现（OM10 决策），一期以「F12 + 左侧栏调试图标按钮」替代命令面板入口，DT8 的「命令面板」部分作为后续演进保留。
 
 ## 12. 未来演进
 

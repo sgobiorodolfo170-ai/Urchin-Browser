@@ -1,6 +1,6 @@
 # Urchin Browser v0.1.0 Release Notes
 
-> **本文件为 v0.1.0 首发（2026-07-29）历史快照**，反映发布时点状态。此后 dev.1–dev.101 的持续迭代（GenOffice 编辑器融合、pi-web、M24 网页翻译、本地文件查看/编辑等）见 [CHANGELOG.md](./CHANGELOG.md)；项目现状见 [README.md](./README.md)。
+> **本文件为 v0.1.0 首发（2026-07-29）历史快照**，反映发布时点状态。此后 dev.1–dev.121 的持续迭代（GenOffice 六编辑器融合、pi-web、M24 网页翻译、M15 DevTools、M25 邮箱、多工作区、本地文件查看/编辑等）见 [CHANGELOG.md](./CHANGELOG.md)；项目现状见 [README.md](./README.md)。
 
 **发布日期**：2026-07-29
 **版本**：v0.1.0（MVP 最小闭环 + per-provider 强隔离架构）
@@ -77,7 +77,7 @@ Urchin Browser v0.1.0 是首个可安装的里程碑版本，基于 Electron / �
 
 - AI 摘要功能需配置真实 Provider + API key（v0.1 不预置官方 Provider）
 - 扩展系统为 lite 版（仅目录加载，不支持 .crx 安装/权限审批 UI/自动更新）
-- DevTools 增强（M15）为 demo 级
+- DevTools 增强（M15）：dev.119 起一期交付（CDP Network/Console 采集 + Runtime.evaluate + 右侧第三列检视面板，F12 开关）；AI 分析/Elements/Sources/性能瀑布图为后续版本演进
 - 无代码签名证书（安装时 Windows SmartScreen 可能警告）
 
 ## 开发团队

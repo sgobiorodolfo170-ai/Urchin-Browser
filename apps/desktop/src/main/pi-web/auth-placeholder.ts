@@ -9,7 +9,7 @@
  * <agentDir>/auth.json，**仅当文件不存在或为空对象 {} 时**注入一条空白占位
  * 凭据，使 isPiConfigured() 判定已配置、引导不再出现。
  *
- * 兼容性依据（vendor/pi 0.84.2 + pi-web-ui 0.28.2 源码核验）：
+ * 兼容性依据（vendor/pi 1.4.0 + pi-web-ui 0.110.0 源码核验；auth.json 形状自 0.84.2 起未变）：
  * - auth.json 官方形状 = Record<provider, Credential>；ApiKeyCredential 的
  *   `key` 字段本就可空（pi-ai auth/types.ts），`{ type: "api_key" }` 合法；
  * - 凭据按 providerId 按需读取，未知 provider 的条目永不被使用；

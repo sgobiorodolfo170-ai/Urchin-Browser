@@ -1,14 +1,17 @@
 /**
- * node:worker_threads polyfill（兼容 Electron 32 / Node.js 20）
+ * node:worker_threads polyfill（Electron 32 / Node 20 历史兼容；Electron 43 / Node 24 已内置该 API，现为防御性 no-op）
  *
  * 背景：
  * undici 的 webidl-converters 模块在加载时执行
  *   const { markAsUncloneable } = require("node:worker_threads");
- * 而 `markAsUncloneable` 是 Node.js 22.3+ 才加入的函数，Urchin 的
+ * 而 `markAsUncloneable` 是 Node.js 22.3+ 才加入的函数，早期 Urchin 的
  * Electron 32.3.3（Node.js 20.x）没有该函数，解构得到 undefined，
  * 后续调用 `markAsUncloneable(value)` 时抛出 TypeError：
  *   "e.util.markAsUncloneable is not a function"
  * 导致主进程启动即崩溃。
+ *
+ * 现状：Electron 43（Node 24）已内置该 API，本 polyfill 仅在缺失时才打补丁，
+ * 正常运行时为空操作；保留以兼容更旧的运行时。
  *
  * 方案：
  * 在主进程入口最顶部（早于 undici 加载）注入本 polyfill，
@@ -28,7 +31,7 @@ const workerThreads = require('node:worker_threads') as {
 
 if (typeof workerThreads.markAsUncloneable !== 'function') {
   workerThreads.markAsUncloneable = function markAsUncloneable(value: unknown): void {
-    // no-op: Electron 32 / Node 20 不支持该 API，Urchin 不依赖其行为
+    // no-op: 仅当运行时缺失该 API 时生效（Electron 43 / Node 24 已内置，正常不会走到这里）
     void value;
   };
 }

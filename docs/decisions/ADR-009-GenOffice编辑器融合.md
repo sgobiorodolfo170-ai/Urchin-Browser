@@ -59,11 +59,11 @@ GenOffice 是 Apache-2.0 的 AI Office 套件（Electron 43 + React 19），其�
 
 ### 负面
 
-- **安装包显著增大**：dev.94 打包 266.2MB（Electron 43 本体 + GenOffice 四编辑器产物 + pdfium/hb-subset wasm）。
+- **安装包显著增大**：dev.94 打包 266.2MB（Electron 43 本体 + GenOffice 六编辑器产物 + pdfium/hb-subset wasm）。
 - **Electron 升级连带成本**：原生模块（better-sqlite3 N-API 预编译）、electron-builder 26、Playwright 1.63、
   pi 注入脚本的 Chromium 兼容修复（见 dev.90）。
 - **vendor 维护义务**：上游升级需重放补丁；许可合规需随包分发 LICENSE/NOTICE/THIRD-PARTY-NOTICES。
-- **Sheets/Slides 未接入**：xlsx/pptx 仍走保底（查看器提示外部打开），二期评估 Rust sidecar 与体积代价。
+- **Sheets/Slides 已接入（GF6，dev.107-108）**：xlsx/pptx 编辑器已落地（Sheets 依赖 Rust xlsx-sidecar），体积与构建成本上升为已知代价。
 
 ## 后续受影响决策
 

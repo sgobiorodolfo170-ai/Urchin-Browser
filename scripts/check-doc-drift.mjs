@@ -42,7 +42,7 @@ const KNOWN_DUPLICATE_VERSIONS = new Set(['v0.1.0-dev.65']);
 
 const TRUTH_SOURCE = 'docs/03-技术栈.md';
 
-/** 收集待检文件：docs/**\/*.md + 根目录 md */
+/** 收集待检文件：docs/**\/*.md + 根目录 md + CI 工作流（yml 里也会复述命令） */
 function collectFiles() {
   const out = [];
   const walk = (dir) => {
@@ -60,6 +60,15 @@ function collectFiles() {
     } catch {
       /* 文件不存在则跳过 */
     }
+  }
+  // CI 工作流：注释里同样会复述卡点命令，属同源漂移面
+  try {
+    const wf = join(repoRoot, '.github/workflows');
+    for (const name of readdirSync(wf)) {
+      if (name.endsWith('.yml') || name.endsWith('.yaml')) out.push(join(wf, name));
+    }
+  } catch {
+    /* 无 workflows 目录则跳过 */
   }
   return out.map((p) => relative(repoRoot, p).replace(/\\/g, '/'));
 }

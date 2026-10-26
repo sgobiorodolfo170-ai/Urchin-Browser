@@ -7,7 +7,7 @@ on:
     branches: [main, develop]
 
 # 依据：07-立项准备 §1.5 / 03-技术栈 §5
-# 卡点：typecheck + lint + test --coverage + e2e 全绿方可合并
+# 卡点：typecheck + lint + format:check + test:coverage + e2e 全绿方可合并
 jobs:
   verify:
     runs-on: windows-latest
@@ -16,8 +16,10 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
+        # 不写 version：action-setup v4 会从 package.json 的 packageManager
+        # 字段（pnpm@9.12.0）读取。同时指定 version 会报
+        # "Multiple versions of pnpm specified" 并让整个 job 在第一步就失败
+        # ——这正是本仓库 CI 自 2026-08 起从未真正跑过测试的原因。
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

@@ -598,6 +598,15 @@ export class TabManager {
       this.emit('updated', this.toSnapshot(tab));
     });
 
+    // 页内导航（pushState/hashChange）：更新前进后退可用性。
+    // GenOffice 编辑器内部导航（如切换文档）经此事件触发，canGoBack/canGoForward 随之刷新。
+    wc.on('did-navigate-in-page', () => {
+      const nav = readNavigationState(wc);
+      tab.canGoBack = nav.canGoBack;
+      tab.canGoForward = nav.canGoForward;
+      this.emit('updated', this.toSnapshot(tab));
+    });
+
     wc.on('page-title-updated', (...args: unknown[]) => {
       const title = args[1];
       if (typeof title === 'string') {

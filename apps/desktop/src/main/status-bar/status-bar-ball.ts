@@ -45,23 +45,29 @@ export interface StatusBarBallOptions {
   onPositionChanged?: () => void;
   /** 获取地址栏窗口当前 bounds（用于防重叠；null 表示地址栏不可见） */
   getBarBounds?: () => { x: number; y: number; width: number; height: number } | null;
+  /** 读取布局尺寸（右栏宽度等，球定位需让出右侧栏） */
+  getLayout?: () => { leftWidth: number; rightWidth: number; bottomHeight: number };
   createWindow?: (opts: Electron.BrowserWindowConstructorOptions) => BrowserWindow;
 }
 
 /**
  * 计算悬浮球窗口 bounds（屏幕坐标）。
  * 导出供单测验证几何。
+ * 球定位在 BrowserView/WebContentsView 的滚动条左侧（不遮挡滚动条，不进入右侧栏区域）。
  */
 export function computeBallBounds(params: {
   contentBounds: { x: number; y: number; width: number; height: number };
   bottomHeight: number;
+  /** 右侧栏宽度（球需让出此区域，定位在网页区右缘而非窗口右缘） */
+  rightWidth?: number;
 }): { x: number; y: number; width: number; height: number } {
-  const { contentBounds, bottomHeight } = params;
+  const { contentBounds, bottomHeight, rightWidth = 0 } = params;
   const frame = WINDOW_FRAME_WIDTH;
   const size = BALL_SIZE + BALL_PAD * 2;
-  // 定位在网页区最右侧、让出滚动条宽度：右缘 = 内容区右缘 - 外框 - 滚动条 - 间隙 - 球宽
+  // 网页区右缘 = 内容区右缘 - 外框 - 右侧栏宽度
+  // 球右缘 = 网页区右缘 - 滚动条 - 间隙
   const x = Math.round(
-    contentBounds.x + contentBounds.width - frame - SCROLLBAR_WIDTH - BALL_GAP - size,
+    contentBounds.x + contentBounds.width - frame - rightWidth - SCROLLBAR_WIDTH - BALL_GAP - size,
   );
   // 垂直居中于底部状态栏区域：底部对齐内容区底，上移 (bottomHeight - size)/2
   const y = Math.round(
@@ -258,9 +264,12 @@ export class StatusBarBall {
     if (!win || win.isDestroyed()) return;
     const parent = this.options.getParentWindow();
     if (!parent) return;
+    // 读取布局状态以获取右侧栏宽度（球定位在网页区右缘，不进入右侧栏）
+    const layout = this.options.getLayout?.();
     const bounds = computeBallBounds({
       contentBounds: parent.getContentBounds(),
-      bottomHeight: 48,
+      bottomHeight: layout?.bottomHeight ?? 48,
+      rightWidth: layout?.rightWidth ?? 0,
     });
     win.setBounds(bounds);
   }

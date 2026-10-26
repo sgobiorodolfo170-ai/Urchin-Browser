@@ -2136,6 +2136,14 @@ void app.whenReady().then(() => {
       onScroll: (dx, dy) => scrollActivePage(dx, dy),
       onPositionChanged: () => statusBarOverlay?.refreshPosition(),
       getBarBounds: () => statusBarOverlay?.getBounds() ?? null,
+      getLayout: () => {
+        const state = getLayoutState();
+        return {
+          leftWidth: state.leftWidth,
+          rightWidth: state.rightWidth,
+          bottomHeight: state.bottomHeight,
+        };
+      },
     });
     // 悬浮球在所有页面常驻（仅全屏/最小化隐藏），启动即创建显示
     statusBarBall.setVisible(true);

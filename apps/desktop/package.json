@@ -22,7 +22,7 @@
     "package:win": "pnpm run icon:build && pnpm run build:main && pnpm run build:preload && pnpm run build:renderer && node ../../scripts/genoffice-build.mjs && node ../../scripts/fetch-node.mjs && node ../../scripts/clean-release.mjs && node ../../scripts/package-win.mjs"
   },
   "dependencies": {
-    "@deepseek-ai/dsh": "0.2.1-rc.2",
+    "@deepseek-ai/dsh": "0.2.1-rc.3",
     "@radix-ui/react-slot": "^1.3.3",
     "better-sqlite3": "^13.0.3",
     "clsx": "^2.1.1",

@@ -1049,6 +1049,21 @@ function registerIpcHandlers(): void {
     forkTarget: join(__dirname, 'pi-web-host.js'),
     wwwDir: join(app.getAppPath(), 'dist', 'pi-web'),
     dataDir: piWebHostDataDir,
+    // M2B：fork 时从 settings + agentConfigProvider 解析当前凭据/模型（支持运行时变更）
+    agentCredsProvider: async () => {
+      await settingsManager.ensureSecretsLoaded();
+      const providerId = settingsManager.get('ai.providerId') as string | undefined;
+      const modelId = settingsManager.get('ai.model') as string | undefined;
+      if (!providerId || !modelId) return null;
+      const cfg = await agentConfigProvider.get(providerId);
+      if (!cfg.apiKey) return null;
+      return {
+        apiKey: cfg.apiKey,
+        providerId,
+        modelId,
+        baseUrl: cfg.baseUrl,
+      };
+    },
   });
   registerPiWebHostHandlers(ipcMain, piWebHostLauncher);
   unbindPiWebHostTabClose = bindTabCloseToStop(tabManager, piWebHostLauncher);

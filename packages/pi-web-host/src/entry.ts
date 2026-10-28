@@ -22,6 +22,11 @@ async function main(): Promise<void> {
   const wwwDir = parseArg('www-dir');
   const portRaw = parseArg('port');
   const dataDir = parseArg('cwd');
+  const apiKey = parseArg('api-key') ?? process.env.PI_HOST_API_KEY;
+  const providerId = parseArg('provider-id') ?? process.env.PI_HOST_PROVIDER;
+  const modelId = parseArg('model') ?? process.env.PI_HOST_MODEL;
+  const baseUrl = parseArg('base-url') ?? process.env.PI_HOST_BASE_URL;
+  const systemPrompt = parseArg('system-prompt') ?? process.env.PI_HOST_SYSTEM_PROMPT;
   if (!wwwDir) {
     throw new Error('pi-web-host: --www-dir is required');
   }
@@ -34,6 +39,17 @@ async function main(): Promise<void> {
   const handle = await startPiWebHostServer({
     wwwDir,
     port: portRaw === undefined ? 0 : Number(portRaw),
+    // M2B：凭据/模型经 argv 注入（主进程 agentConfigProvider 合并后传入）
+    agent:
+      apiKey && providerId && modelId
+        ? {
+            apiKey,
+            providerId,
+            modelId,
+            baseUrl: baseUrl ?? undefined,
+            systemPrompt: systemPrompt ?? undefined,
+          }
+        : undefined,
   });
 
   stdout.write(`\n${HOST_READY_PREFIX}${handle.url}\n`);

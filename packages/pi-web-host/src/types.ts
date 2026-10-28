@@ -2,12 +2,12 @@
  * pi 阶段 2 自研托管服务 · 共享类型与协议面
  *
  * 依据：docs/pi-web-评估.md 阶段 2（自研 apps/pi-web 前端 + packages/pi-web-host 托管服务）。
- * M2A 骨架只承载协议 v0 子集（hello/hello_ok/ping/pong/error）；完整的会话/对话命令集
- * （prompt/abort/list_models/list_sessions/new_session/switch_session/fork_session/get_state）
- * 在 M2B 接入 AgentSession 时扩展——不要在本枚举外扩散消息类型。
+ * M2A 骨架承载协议 v0 子集（hello/ping）；M2B 扩展 prompt/abort/stream.* ——会话/模型目录/
+ * 工具能力（list_models/list_sessions/new_session/switch_session/fork_session/get_state）
+ * 随 M2B-3/4 推进，不要在本枚举外扩散消息类型。
  *
- * 该包只在 utilityProcess（Electron 内置 Node）内运行，与 vendor/pi 的 Node-only
- * @earendil-works/pi-coding-agent 对接面留给 M2B；本层不 import 任何 pi 代码。
+ * 该包在 utilityProcess（Electron 内置 Node）内运行；M2B 起 import vendored pi 的
+ * @earendil-works/pi-agent-core + pi-ai（浏览器安全子集，经 esbuild 别名打包）。
  */
 
 /** 托管服务状态机（与 desktop 侧 PiWebHostLauncher 的 PiWebHostState 一致） */
@@ -22,7 +22,17 @@ export type HostClientMessage =
   /** 握手：服务端回 hello_ok（携带 service/version） */
   | { readonly type: 'hello'; readonly client?: string }
   /** 心跳：服务端回 pong */
-  | { readonly type: 'ping' };
+  | { readonly type: 'ping' }
+  /** M2B：发起一轮对话；服务端流式回 stream.chunk → stream.end */
+  | { readonly type: 'prompt'; readonly text: string; readonly sessionId?: string }
+  /** M2B：中止当前对话轮 */
+  | { readonly type: 'abort' };
+
+/** token 用量（promptTokens/completionTokens） */
+export interface HostUsage {
+  readonly promptTokens: number;
+  readonly completionTokens: number;
+}
 
 /** WebSocket 协议 v0 · 服务端 → 客户端 */
 export type HostServerMessage =
@@ -33,6 +43,12 @@ export type HostServerMessage =
       readonly status: 'ok';
     }
   | { readonly type: 'pong'; readonly ts: number }
+  | { readonly type: 'stream.chunk'; readonly content: string }
+  | {
+      readonly type: 'stream.end';
+      readonly finishReason: string;
+      readonly usage?: HostUsage;
+    }
   | { readonly type: 'error'; readonly code: string; readonly message: string };
 
 /** 静态文件 Content-Type 映射（M2A 最小集，覆盖自研前端产物） */

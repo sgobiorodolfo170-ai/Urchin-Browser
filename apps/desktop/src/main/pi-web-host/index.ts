@@ -11,5 +11,6 @@ export type {
   PiWebHostState,
   UtilityProcessLike,
   HostForkFn,
+  AgentCreds,
 } from './launcher';
 export { registerPiWebHostHandlers } from './register-handlers';

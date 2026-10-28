@@ -1,4 +1,26 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// agent-bridge imports vendored pi 包（仅 esbuild 别名解析）；单测 mock 掉避免
+// vitest 解析失败。server.test.ts 只测 HTTP/WS 协议面，不测真实 Agent 行为。
+vi.mock('@earendil-works/pi-agent-core', () => ({
+  Agent: class MockAgent {
+    subscribe() {
+      return () => undefined;
+    }
+    async prompt() {
+      /* mock */
+    }
+    abort() {
+      /* mock */
+    }
+  },
+}));
+vi.mock('@earendil-works/pi-ai/compat', () => ({
+  streamSimple: vi.fn(),
+  getModel: vi.fn(() => undefined),
+  getProviders: vi.fn(() => []),
+}));
+
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';

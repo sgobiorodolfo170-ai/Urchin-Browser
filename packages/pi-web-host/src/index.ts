@@ -23,4 +23,12 @@ export {
 } from './auth';
 export { createStaticHandler, StaticHandler, type StaticHandlerOptions } from './http-static';
 export { handleClientMessage, sendJson, sendError } from './ws-handler';
-export type { HostClientMessage, HostServerMessage, PiWebHostState } from './types';
+export {
+  createAgentBridge,
+  normalizeProviderId,
+  resolveModel,
+  extractDeltaForTest,
+  type AgentBridgeOptions,
+  type AgentBridgeHandle,
+} from './agent-bridge';
+export type { HostClientMessage, HostServerMessage, PiWebHostState, HostUsage } from './types';

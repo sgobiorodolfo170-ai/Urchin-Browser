@@ -25,9 +25,22 @@ const repoRoot = resolve(here, '..');
 const hostPkg = join(repoRoot, 'packages', 'pi-web-host');
 const frontApp = join(repoRoot, 'apps', 'pi-web');
 const desktop = join(repoRoot, 'apps', 'desktop');
+const piRoot = join(repoRoot, 'vendor', 'pi', 'packages');
 
 const entryOut = join(desktop, 'dist', 'main', 'pi-web-host.js');
 const frontendDistOut = join(desktop, 'dist', 'pi-web');
+
+/**
+ * pi 仓库包别名（与 apps/desktop/vite.config.ts 的 piAliases 同源）：
+ * vendored pi 只有 src 源码（无 dist/），必须别名指向 src 才能被 esbuild 打包。
+ * M2B 起 pi-web-host import pi-agent-core + pi-ai（浏览器安全子集）。
+ */
+const piAliases = {
+  '@earendil-works/pi-ai': resolve(piRoot, 'ai', 'src'),
+  '@earendil-works/pi-agent-core': resolve(piRoot, 'agent', 'src'),
+  '@earendil-works/pi-coding-agent': resolve(piRoot, 'coding-agent', 'src'),
+  '@earendil-works/pi-tui': resolve(piRoot, 'tui', 'src'),
+};
 
 async function main() {
   // 1) bundle pi-web-host utility 入口
@@ -39,8 +52,12 @@ async function main() {
     format: 'cjs',
     target: 'es2022',
     sourcemap: false,
-    // bufferutil / utf-8-validate 是 ws 的可选原生加速，缺失时 ws 自动回退纯 JS
+    // bufferutil / utf-8-validate 是 ws 的可选原生加速，缺失时 ws 自动回退纯 JS；
+    // pi 依赖的原生/wasm 模块在 utility 进程内 lazy 加载，external 化避免打包失败
     external: ['bufferutil', 'utf-8-validate'],
+    alias: piAliases,
+    // codemode/mcp/telemetry 等包 exports 带 source 条件 → src；pi-tui 别名已覆盖
+    conditions: ['source', 'node', 'import'],
     logLevel: 'info',
   });
 

@@ -19,10 +19,11 @@ import {
   buildTokenCookie,
 } from './auth';
 import { StaticHandler } from './http-static';
-import { handleClientMessage, sendError } from './ws-handler';
+import { handleClientMessage, sendError, sendJson } from './ws-handler';
+import { createAgentBridge, type AgentBridgeHandle, type AgentBridgeOptions } from './agent-bridge';
 import { PiWebHostState } from './types';
 
-export const SERVICE_VERSION = '0.1.0';
+export const SERVICE_VERSION = '0.2.0';
 
 export interface PiWebHostServerOptions {
   /** 静态文件根目录（apps/pi-web 构建产物） */
@@ -33,6 +34,8 @@ export interface PiWebHostServerOptions {
   readonly host?: string;
   /** 预置 token（缺省自动生成） */
   readonly token?: string;
+  /** M2B：Agent 凭据/模型（缺省时 prompt 回 no_api_key 错误） */
+  readonly agent?: AgentBridgeOptions;
 }
 
 export interface PiWebHostServerHandle {
@@ -86,18 +89,71 @@ export async function startPiWebHostServer(
   });
 
   wss.on('connection', (ws: WebSocket) => {
+    // M2B：per-connection Agent 桥（懒创建，prompt 首次调用时建）
+    let bridge: AgentBridgeHandle | null = null;
+    const agentOpts = options.agent;
+
+    const ensureBridge = (): AgentBridgeHandle | null => {
+      if (bridge) return bridge;
+      if (!agentOpts?.apiKey) {
+        sendError(ws, 'no_api_key', '未配置 API Key（请在 Urchin 设置中配置 AI Provider）');
+        return null;
+      }
+      bridge = createAgentBridge(
+        agentOpts,
+        (msg) => sendJson(ws, msg),
+        (code, message) => sendError(ws, code, message),
+      );
+      return bridge;
+    };
+
     ws.on('message', (data, isBinary) => {
       if (isBinary) {
         sendError(ws, 'bad_message', 'text/JSON only');
         return;
       }
-      // data 类型为 RawData（Buffer | ArrayBuffer | Buffer[]）：统一收敛为 utf8 文本
       const text = Buffer.isBuffer(data)
         ? data.toString('utf8')
         : ArrayBuffer.isView(data) || data instanceof ArrayBuffer
           ? Buffer.from(data as ArrayBuffer).toString('utf8')
           : String(data);
-      handleClientMessage(ws, text, { version: SERVICE_VERSION });
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        sendError(ws, 'bad_message', 'invalid JSON');
+        return;
+      }
+      const msg = parsed as { type?: string };
+      // prompt/abort 需连接级状态，由 bridge 处理；hello/ping 仍走无状态 handler
+      switch (msg?.type) {
+        case 'prompt': {
+          const h = ensureBridge();
+          if (!h) return;
+          const promptText = (parsed as { text?: string }).text ?? '';
+          if (!promptText) {
+            sendError(ws, 'bad_message', 'prompt.text required');
+            return;
+          }
+          void h
+            .prompt(promptText)
+            .catch((e: unknown) =>
+              sendError(ws, 'prompt_failed', e instanceof Error ? e.message : String(e)),
+            );
+          return;
+        }
+        case 'abort': {
+          bridge?.abort();
+          return;
+        }
+        default:
+          handleClientMessage(ws, text, { version: SERVICE_VERSION });
+      }
+    });
+
+    ws.on('close', () => {
+      bridge?.dispose();
+      bridge = null;
     });
   });
 

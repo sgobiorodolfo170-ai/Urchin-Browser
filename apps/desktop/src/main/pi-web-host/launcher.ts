@@ -75,10 +75,21 @@ export interface PiWebHostLauncherOptions {
   readonly forkFn?: HostForkFn;
   /** 数据目录确保存在（默认 mkdir recursive；测试注入 mock） */
   readonly ensureDirFn?: (dir: string) => Promise<void>;
+  /** M2B：Agent 凭据提供器（主进程 agentConfigProvider 合并；fork 时异步解析，支持运行时变更） */
+  readonly agentCredsProvider?: () => Promise<AgentCreds | null>;
   /** 启动超时（默认 60s，测试注入缩短） */
   readonly startupTimeoutMs?: number;
   /** stdout 轮询间隔（默认 1s，测试注入缩短） */
   readonly pollIntervalMs?: number;
+}
+
+/** M2B：Agent 凭据（主进程 agentConfigProvider 合并后传入） */
+export interface AgentCreds {
+  readonly apiKey: string;
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly baseUrl?: string;
+  readonly systemPrompt?: string;
 }
 
 /** 默认 fork 工厂：utilityProcess.fork（runs Electron 内置 Node 的 ESM/CJS 模块） */
@@ -190,12 +201,26 @@ export class PiWebHostLauncher {
     let stdoutBuffer = '';
     let resolvedUrl: string | undefined;
 
+    // M2B：fork 时解析当前凭据（支持运行时变更；apiKey 经 env 注入避免 argv 泄漏）
+    const creds = this.opts.agentCredsProvider ? await this.opts.agentCredsProvider() : undefined;
+
     const child = this.opts.forkFn(
       this.opts.forkTarget,
       [`--www-dir=${this.opts.wwwDir}`, `--cwd=${this.opts.dataDir}`],
       {
         // utilityProcess env 只接受 Record<string,string>：剔除 process.env 中的 undefined 键
-        env: filterEnv(process.env),
+        env: {
+          ...filterEnv(process.env),
+          ...(creds
+            ? {
+                PI_HOST_API_KEY: creds.apiKey,
+                PI_HOST_PROVIDER: creds.providerId,
+                PI_HOST_MODEL: creds.modelId,
+                ...(creds.baseUrl ? { PI_HOST_BASE_URL: creds.baseUrl } : {}),
+                ...(creds.systemPrompt ? { PI_HOST_SYSTEM_PROMPT: creds.systemPrompt } : {}),
+              }
+            : {}),
+        },
         cwd: this.opts.dataDir,
         stdio: 'pipe',
       },

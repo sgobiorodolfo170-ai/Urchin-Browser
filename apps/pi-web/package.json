@@ -2,7 +2,7 @@
   "name": "@urchin/pi-web",
   "version": "0.1.0",
   "private": true,
-  "description": "pi 阶段 2 自研前端（Vite + React）：对话主界面 / 流式渲染 / 会话管理（docs/pi-web-评估.md 阶段 2）",
+  "description": "pi 阶段 2 自研前端（Vite + React 19）：全量继承 pi-web-ui 组件 + Urchin pi-web-host WS 协议适配",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,12 +11,23 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "highlight.js": "^11.12.0",
+    "katex": "^0.18.7",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-icons": "^5.7.0",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-katex": "^7.0.1",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
-    "@types/react": "^18.3.11",
-    "@types/react-dom": "^18.3.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^4.3.2",
     "typescript": "^5.6.0",
     "vite": "^5.4.0",

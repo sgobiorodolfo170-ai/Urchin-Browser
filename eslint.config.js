@@ -46,6 +46,9 @@ export default tseslint.config(
       'scripts/**',
       'apps/desktop/scripts/**',
       'apps/desktop/ico/**',
+      // apps/pi-web：全量继承 pi-web-ui 源码（MIT），自带 oxlint 工具链，
+      // 不纳入本项目 eslint（类型感知规则与 pi-web-ui 的 strict 设置不兼容）
+      'apps/pi-web/**',
     ],
   },
 

@@ -59,13 +59,6 @@ import { registerAiHandlers } from './ai';
 import { registerAiInputHandlers } from './ai/input-handlers';
 import type { ProviderConfigStore } from './ai';
 import {
-  createPiWebLauncher,
-  registerPiWebHandlers,
-  installPiWebPageEnhance,
-  pushPiTheme,
-  type PiWebLauncher,
-} from './pi-web';
-import {
   createDshLauncher,
   registerDshHandlers,
   bindTabCloseToStop,
@@ -452,8 +445,6 @@ let tabViewIntegration: TabViewIntegrationHandle | null = null;
 let disposeContextMenu: (() => void) | null = null;
 /** Ctrl+滚轮缩放卸载句柄（installZoomControl 返回）。退出时移除 created 监听。 */
 let disposeZoomControl: (() => void) | null = null;
-/** pi 页体验增强注入卸载句柄（dev.45，installPiWebPageEnhance 返回）。 */
-let disposePiEnhance: (() => void) | null = null;
 /** 网页翻译管理器卸载句柄（dev.80，M24：停轮询/移除导航钩子/清状态）。 */
 let disposeTranslateManager: (() => void) | null = null;
 /** 网页翻译管理器引用（dev.81：右键菜单翻译动作与划词结果回传使用）。 */
@@ -589,14 +580,9 @@ let statusBarBall: StatusBarBall | null = null;
  */
 let aiHandlersDispose: (() => void) | null = null;
 /**
- * pi 网页版启动器（阶段 1）：系统 Node 子进程运行 pi-web-ui。
- * 进程退出时 performCleanup 调用 dispose() 终止子进程树（taskkill /T /F）。
- */
-let piWebLauncher: PiWebLauncher | null = null;
-/**
  * DeepSeek Harness 启动器：系统 Node 子进程运行 vendor/deepseek-harness (dsh web)。
  * 进程退出时 performCleanup 调用 dispose() 终止子进程树。
- * 与 piWebLauncher 不同：标签关闭后自动停止后端（bindTabCloseToStop）。
+ * 标签关闭后自动停止后端（bindTabCloseToStop）。
  */
 let dshLauncher: DshLauncher | null = null;
 /** dsh 标签关闭→停止 unbind 函数（performCleanup 调用） */
@@ -604,7 +590,7 @@ let unbindDshTabClose: (() => void) | null = null;
 /**
  * pi 阶段 2 自研托管服务启动器：Electron utilityProcess 运行 @urchin/pi-web-host
  * （HTTP 静态 + WebSocket + 随机 token 鉴权）。进程退出时 performCleanup 调用
- * dispose() 终止 utility 子进程。与 piWebLauncher（阶段 1）双轨并存。
+ * dispose() 终止 utility 子进程。阶段 1（pi-web-ui）已于 M2C 退役。
  */
 let piWebHostLauncher: PiWebHostLauncher | null = null;
 /** pi 阶段 2 标签关闭→停止 unbind 函数（performCleanup 调用；对齐 dsh 语义） */
@@ -665,12 +651,6 @@ function broadcastProviderEvent(event: ProviderEvent): void {
  */
 function applyTheme(theme: 'light' | 'dark' | 'system'): void {
   nativeTheme.themeSource = theme;
-  const piUrl = piWebLauncher?.status().url;
-  pushPiTheme(
-    tabManager,
-    (url) => (piUrl ? url.startsWith(piUrl) : false),
-    nativeTheme.shouldUseDarkColors,
-  );
   const bg = currentThemeBackground();
   for (const managed of windowManager.getAllWindows()) {
     const win = managed.browserWindow as unknown as {
@@ -939,42 +919,6 @@ function registerIpcHandlers(): void {
   // pi 模块前端加号菜单三项：截图、上传文件、设置工作目录
   registerAiInputHandlers(ipcMain);
 
-  // pi 网页版启动器（阶段 1，docs/pi-web-评估.md）：系统 Node 子进程运行 pi-web-ui，
-  // 与浏览器主进程完全隔离。依赖已在 pnpm install 预装（apps/desktop dependencies，
-  // 运行时零下载）；--no-browser 禁止其拉起系统默认浏览器（dev.39：一律由 Urchin 打开）。
-  // 数据目录落 userData/pi/web-ui（DD1 决策）。旧 ai-extension 对话 UI 保留
-  // （urchin://ai 页已切换为启动器视图，回退时恢复渲染 AiChatView 即可）。
-  // CLI 入口解析：开发态在 apps/desktop/node_modules；打包态 node_modules 经 asarUnpack
-  // 移至 app.asar.unpacked（外部系统 node 无法读取 asar 内文件，见 electron-builder.yml）。
-  const piWebCliPathInAsar = join(
-    app.getAppPath(),
-    'node_modules',
-    'pi-web-ui',
-    'bin',
-    'pi-web-ui.mjs',
-  );
-  const piWebCliPath = app.isPackaged
-    ? piWebCliPathInAsar.replace('app.asar', 'app.asar.unpacked')
-    : piWebCliPathInAsar;
-  if (!existsSync(piWebCliPath)) {
-    log.error('pi-web-ui CLI not found (依赖未安装？请运行 pnpm install)', { piWebCliPath });
-  }
-  const piWebDataDir = join(startupUserDataPath, PI_DIR_NAME, 'web-ui');
-  // pi agent 目录（会话库/agent 配置根，dev.41）：不设则 pi 落全局 ~/.pi——
-  // 既污染用户主目录（含 E2E 临时会话遗留），也违背 DD1「pi 数据固定 userData/pi」
-  const piWebAgentDir = join(startupUserDataPath, PI_DIR_NAME, 'agent');
-  // npm 全局前缀沙箱（dev.42 用户原则：pi 依赖全部随本项目，禁止系统级全局安装）：
-  // pi-web-ui 内任何 `npm i -g`（如「安装 pi agent」按钮）都落此目录，卸载即整体移除
-  const piWebNpmGlobalDir = join(startupUserDataPath, PI_DIR_NAME, 'npm-global');
-  piWebLauncher = createPiWebLauncher({
-    cliPath: piWebCliPath,
-    dataDir: piWebDataDir,
-    cwd: piWebDataDir,
-    agentDir: piWebAgentDir,
-    npmGlobalPrefixDir: piWebNpmGlobalDir,
-  });
-  registerPiWebHandlers(ipcMain, piWebLauncher);
-
   // DeepSeek Harness 启动器（X4 双模式，两种模式均用便携 node.exe 直启）：
   // - 开发态：vendor/deepseek-harness TypeScript 源码 + tsx ESM loader，
   //   运行时 = apps/desktop/build/node/node.exe（scripts/fetch-node.mjs 前置生成）。
@@ -1074,8 +1018,6 @@ function registerIpcHandlers(): void {
   // dev.48：pi 模块内打开的网页（window.open 新标签）右侧栏图标钉定为 π——
   // 来源 tab URL 命中当前 pi 服务地址时返回钉定图标（端口随机，读实时状态）
   tabManager.setPiIconPinner((sourceUrl) => {
-    const piUrl = piWebLauncher?.status().url;
-    if (piUrl && sourceUrl.startsWith(piUrl)) return 'urchin://pi-icon/';
     const phUrl = piWebHostLauncher?.status().url;
     if (phUrl && sourceUrl.startsWith(phUrl)) return 'urchin://pi-icon/';
     const dshUrl = dshLauncher?.status().url;
@@ -1626,12 +1568,6 @@ void app.whenReady().then(() => {
     piIconPath: join(app.getAppPath(), 'dist', 'renderer', 'pi-icon.png'),
     // dsh 品牌图标（SVG）——favicon 重定向目标（urchin://dsh-icon）。
     dshIconPath: join(app.getAppPath(), 'dist', 'renderer', 'dsh-icon.svg'),
-    // dev.48：pi 页主题跟随浏览器——主进程读 nativeTheme 实际生效值
-    //（含「跟随系统」模式的解析结果），pi 页注入脚本轮询此端点切换主题
-    isBrowserDarkTheme: () => nativeTheme.shouldUseDarkColors,
-    // dev.67：pi 页 UI 状态（分割线宽度/折叠/项目排序）持久化文件——
-    // pi 端口随机致页面 localStorage 不可跨会话，改由主进程落盘
-    piUiStateFile: join(startupUserDataPath, PI_DIR_NAME, 'ui-state.json'),
     // M25：邮箱正文内容查询（urchin://mail-content/<token>）——
     // 惰性闭包引用模块级 mailContentStore（请求到达时已初始化）
     getMailContent: (token) => mailContentStore?.get(token) ?? null,
@@ -2104,36 +2040,15 @@ void app.whenReady().then(() => {
       sendToMainWindow(DEVTOOLS_TOGGLE_CHANNEL, undefined),
     );
 
-    // dev.44：pi 页右下角「📁 项目路径」→ 原生目录选择器注入（脚本按 DOM 守卫，
-    // 仅 pi-web-ui 页面的 status-cwd 生效；其他页面零影响）
-    //
-    // 调试开关（临时排查用）：URCHIN_DISABLE_PIWEB_PICKER=1 /
-    // URCHIN_DISABLE_PIWEB_ENHANCE=1 分别跳过两处注入，用于隔离
-    // 「注入脚本导致 pi 页 renderer 卡死」类问题。
-    // dev.45：pi 页体验增强注入——主题默认亮色 + 最近项目删除按钮 + 路径提示
-    // 抑制（同样按 DOM 守卫仅 pi 页生效；详见 pi-web/page-enhance.ts 头注释）
-    // 调试开关（临时排查用）：URCHIN_DISABLE_PIWEB_ENHANCE=1 跳过注入。
-    if (process.env.URCHIN_DISABLE_PIWEB_ENHANCE !== '1') {
-      disposePiEnhance = installPiWebPageEnhance(tabManager);
-    }
-
     // dev.45：pi 网页 favicon 统一为 π 品牌图标——拦截 pi 服务（当前随机端口）的
     // favicon 请求重定向到 urchin://pi-icon。效果覆盖标签栏/历史/主页等所有经
     // favicon URL 渲染的位置；仅匹配 pi 端口，不影响其他 localhost 应用。
+    // M2C：阶段 1（pi-web-ui）已退役，仅保留 piWebHost + dsh favicon 重定向。
     session.defaultSession.webRequest.onBeforeRequest(
       { urls: ['http://127.0.0.1/*'] },
       (details, callback) => {
         try {
           const u = new URL(details.url);
-          const piPort = piWebLauncher?.status().port;
-          if (
-            piPort &&
-            u.port === String(piPort) &&
-            (u.pathname === '/favicon.svg' || u.pathname === '/favicon.ico')
-          ) {
-            callback({ redirectURL: 'urchin://pi-icon/' });
-            return;
-          }
           const dshPort = dshLauncher?.status().port;
           if (
             dshPort &&
@@ -2356,17 +2271,6 @@ async function performCleanup(): Promise<void> {
       aiHandlersDispose = null;
     }
 
-    // 0.5 终止 pi-web-ui 子进程树（阶段 1 启动器）：await 确保 kill 信号发出
-    //     （taskkill /T /F）后再继续，避免 app 退出后遗留孤儿 node 进程。
-    if (piWebLauncher) {
-      try {
-        await piWebLauncher.dispose();
-      } catch (e) {
-        log.error('Failed to dispose piWeb launcher on quit', { error: String(e) });
-      }
-      piWebLauncher = null;
-    }
-
     // 0.52 终止 pi 阶段 2 托管服务 utility 子进程 + 解绑标签关闭监听
     unbindPiWebHostTabClose?.();
     unbindPiWebHostTabClose = null;
@@ -2515,16 +2419,6 @@ async function performCleanup(): Promise<void> {
         log.error('Failed to dispose status bar ball on quit', { error: String(e) });
       }
       statusBarBall = null;
-    }
-
-    // 4.7 移除 pi 页体验增强注入的监听（dev.45；webRequest 随 session 销毁释放）
-    if (disposePiEnhance) {
-      try {
-        disposePiEnhance();
-      } catch (e) {
-        log.error('Failed to dispose pi enhance on quit', { error: String(e) });
-      }
-      disposePiEnhance = null;
     }
 
     // 4.9 网页翻译管理器清理（dev.79）：停 pending 轮询、移除 did-finish-load 钩子、清每 tab 状态

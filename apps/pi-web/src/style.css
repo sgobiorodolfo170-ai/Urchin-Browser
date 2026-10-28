@@ -10,6 +10,19 @@
   --radius: 12px;
 }
 
+/* M2C：主题原生化——跟随系统 prefers-color-scheme（不再注入叠加） */
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f8f9fa;
+    --bg-elev: #ffffff;
+    --bg-elev2: #f1f3f5;
+    --text: #1a1a1a;
+    --text-dim: #6c757d;
+    --accent: #2563eb;
+    --border: #dee2e6;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

@@ -21,7 +21,6 @@ import { getBookmarkPanelHtml } from '../panel/bookmark-panel';
 import { getCaptureOverlayHtml } from '../screenshots/capture-overlay-html';
 import { inferMimeType } from '../files/file-kind';
 
-import { buildUiStateResponse, UI_STATE_HOST } from '../pi-web/ui-state';
 import type { FaviconResponse } from '../favicons/favicon-service';
 
 const log = createLogger('urchin-protocol');
@@ -241,10 +240,6 @@ export function registerUrchinProtocol(
     piIconPath?: string;
     /** dsh 品牌图标 SVG 绝对路径（dist/renderer/dsh-icon.svg；缺省 404） */
     dshIconPath?: string;
-    /** 浏览器当前主题是否暗色（dev.48：pi 页主题跟随浏览器，主进程读 nativeTheme） */
-    isBrowserDarkTheme?: () => boolean;
-    /** pi 页 UI 状态文件路径（dev.67：urchin://pi-ui-state 读写端点落盘位置） */
-    piUiStateFile?: string;
     /** M25 邮箱正文内容查询（urchin://mail-content/<token> → 已 sanitize 的 HTML） */
     getMailContent?: (token: string) => string | null;
     /** favicon 缓存读取（urchin://favicon/<hash> → 位图字节；缺失返回 null） */
@@ -252,23 +247,6 @@ export function registerUrchinProtocol(
   },
   targetSession?: Session,
 ): void {
-  /**
-   * pi 页主题跟随端点（pi-theme host，dev.48）：返回浏览器当前主题
-   * {dark:boolean}。pi 页注入脚本轮询此端点并驱动 pi 主题切换
-   * （亮=white.css 浅色主题，暗=移除样式表回默认；dev.84 适配 0.90.0
-   * 主题引擎重构）。只读、无副作用。
-   */
-  const handlePiTheme = (): Response => {
-    const dark = opts?.isBrowserDarkTheme?.() ?? false;
-    return new Response(JSON.stringify({ dark }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
-  };
-
   /**
    * 服务 pi 品牌图标（pi-icon host）：首读后缓存（favicon 请求频繁）。
    * 未配置/文件缺失返回 404——调用方（favicon 重定向）将显示原图标回退。
@@ -365,25 +343,7 @@ export function registerUrchinProtocol(
         });
       }
 
-      if (host === 'pi-theme') {
-        // pi 页主题跟随浏览器（dev.48）：注入脚本轮询读取 {dark}
-        return handlePiTheme();
-      }
-
-      if (host === UI_STATE_HOST) {
-        // pi 页 UI 状态持久化（dev.67）：分割线宽度/折叠状态/项目排序——
-        // pi 服务端口随机致页面 localStorage 不可跨会话，经主进程落盘。
-        // 文件未配置时返回 404（读端点），注入脚本回退默认值。
-        const file = opts?.piUiStateFile;
-        if (!file) {
-          return new Response('Not Found', {
-            status: 404,
-            headers: { 'Content-Type': 'text/plain' },
-          });
-        }
-        return buildUiStateResponse(request.headers.get('Referer') ?? '', request.url, file);
-      }
-
+      // M2C：pi-theme / pi-ui-state 路由已随阶段 1 退役移除
       if (host === 'settings') {
         // 设置页由主窗口 React 组件渲染（SettingsPage），BrowserView 仅加载空白页面。
         // 这样避免 BrowserView 在无 preload 环境下调用 window.urchin 而报错。

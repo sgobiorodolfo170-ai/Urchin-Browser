@@ -16,13 +16,7 @@
       "electron",
       "esbuild"
     ],
-    "packageExtensions": {
-      "pi-web-ui": {
-        "dependencies": {
-          "@earendil-works/pi-tui": "1.4.0"
-        }
-      }
-    },
+    "packageExtensions": {},
     "overrides": {
       "@earendil-works/pi-durable": "workspace:*",
       "pi-web-ui>@earendil-works/pi-coding-agent": "1.4.0",

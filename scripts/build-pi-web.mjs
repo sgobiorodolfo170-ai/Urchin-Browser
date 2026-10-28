@@ -49,7 +49,16 @@ async function main() {
     outfile: entryOut,
     bundle: true,
     platform: 'node',
+    // CJS 格式（utilityProcess.fork 加载；ESM 格式与 pi 源码的动态 require 冲突）。
+    // import.meta.url 垫片：pi-coding-agent config.ts 用 import.meta.url，CJS 中为 undefined；
+    // 用 banner 注入 pathToFileURL(__filename) + define 替换。
     format: 'cjs',
+    banner: {
+      js: 'const __import_meta_url = require("url").pathToFileURL(__filename).toString();',
+    },
+    define: {
+      'import.meta.url': '__import_meta_url',
+    },
     target: 'es2022',
     sourcemap: false,
     // bufferutil / utf-8-validate 是 ws 的可选原生加速，缺失时 ws 自动回退纯 JS；

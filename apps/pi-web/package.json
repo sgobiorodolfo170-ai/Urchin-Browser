@@ -1,0 +1,25 @@
+{
+  "name": "@urchin/pi-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "pi 阶段 2 自研前端（Vite + React）：对话主界面 / 流式渲染 / 会话管理（docs/pi-web-评估.md 阶段 2）",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}

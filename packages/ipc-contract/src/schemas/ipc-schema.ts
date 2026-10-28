@@ -1399,6 +1399,59 @@ export const piWebStopResSchema = z.object({
 export type PiWebStopRes = z.infer<typeof piWebStopResSchema>;
 
 // ============================================================================
+// piWebHost.* —— pi 阶段 2 自研托管服务（utilityProcess 内运行 @urchin/pi-web-host）
+// ============================================================================
+
+/**
+ * piWebHost.launch：启动（或复用）自研 pi 托管服务并返回带 token 的入口 URL。
+ *
+ * 阶段 2（docs/pi-web-评估.md 阶段 2）：pi 服务以 Electron utilityProcess 运行自研
+ * @urchin/pi-web-host（HTTP 静态 + WebSocket + 随机 token 鉴权），与浏览器主体隔离；
+ * 就绪 URL 携带 token（capability URL），渲染层直接 tab.open。
+ */
+export const piWebHostLaunchReqSchema = z.object({}).default({});
+export type PiWebHostLaunchReq = z.infer<typeof piWebHostLaunchReqSchema>;
+
+export const piWebHostLaunchResSchema = z.object({
+  ok: z.literal(true),
+  /** 带 token 的入口 URL（http://127.0.0.1:<port>/?token=...） */
+  url: z.string().url(),
+  /** 本次服务监听端口 */
+  port: z.number().int().min(1).max(65_535),
+});
+export type PiWebHostLaunchRes = z.infer<typeof piWebHostLaunchResSchema>;
+
+/** piWebHost.status：查询托管服务状态（不产生副作用） */
+export const piWebHostStatusReqSchema = z.object({}).default({});
+export type PiWebHostStatusReq = z.infer<typeof piWebHostStatusReqSchema>;
+
+/** 托管服务运行状态（幂等状态机：stopped → starting → running / error） */
+export const piWebHostStateSchema = z.enum(['stopped', 'starting', 'running', 'error']);
+export type PiWebHostState = z.infer<typeof piWebHostStateSchema>;
+
+export const piWebHostStatusResSchema = z.object({
+  state: piWebHostStateSchema,
+  /** running 时返回入口 URL */
+  url: z.string().url().optional(),
+  /** 本次服务监听端口（starting/running 时返回） */
+  port: z.number().int().min(1).max(65_535).optional(),
+  /** utility 子进程 PID（starting/running 时返回） */
+  pid: z.number().int().optional(),
+  /** error 状态时的最后错误信息 */
+  lastError: z.string().optional(),
+});
+export type PiWebHostStatusRes = z.infer<typeof piWebHostStatusResSchema>;
+
+/** piWebHost.stop：停止托管服务（终止 utility 子进程；已停时幂等成功） */
+export const piWebHostStopReqSchema = z.object({}).default({});
+export type PiWebHostStopReq = z.infer<typeof piWebHostStopReqSchema>;
+
+export const piWebHostStopResSchema = z.object({
+  ok: z.literal(true),
+});
+export type PiWebHostStopRes = z.infer<typeof piWebHostStopResSchema>;
+
+// ============================================================================
 // deepseekHarness.* —— DeepSeek Harness 启动器（vendor 子进程运行 dsh web）
 // ============================================================================
 
@@ -2547,6 +2600,10 @@ export const ipcSchema = {
   'piWeb.launch': { req: piWebLaunchReqSchema, res: piWebLaunchResSchema },
   'piWeb.status': { req: piWebStatusReqSchema, res: piWebStatusResSchema },
   'piWeb.stop': { req: piWebStopReqSchema, res: piWebStopResSchema },
+  // pi 阶段 2 自研托管服务（utilityProcess）：launch / status / stop
+  'piWebHost.launch': { req: piWebHostLaunchReqSchema, res: piWebHostLaunchResSchema },
+  'piWebHost.status': { req: piWebHostStatusReqSchema, res: piWebHostStatusResSchema },
+  'piWebHost.stop': { req: piWebHostStopReqSchema, res: piWebHostStopResSchema },
   // DeepSeek Harness 启动器：launch / status / stop（标签关闭后自动停止）
   'deepseekHarness.launch': {
     req: deepseekHarnessLaunchReqSchema,

@@ -1,6 +1,6 @@
 # pi-web 生态依赖引入审查与效果评估
 
-> 状态：阶段 0/1 已交付（dev.37-121，启动器 + pi-web-ui 集成落地；多次升级核验见 §六-§八），阶段 2（自研官方对标前端）未启动 · 初版日期：2026-08-22
+> 状态：阶段 0/1 已交付（dev.37-121，启动器 + pi-web-ui 集成落地；多次升级核验见 §六-§八）；**阶段 2（自研前端 + 托管服务）M2A 骨架已交付（2026-10-28，dev.124）**——`apps/pi-web` + `packages/pi-web-host` 落地（HTTP 静态 + WebSocket + token 鉴权，utilityProcess 运行），对话/会话/模型目录等 M2B 待接线；阶段 1 于 M2C 整体退役 · 初版日期：2026-08-22
 > 关联决策：用户指令「pi 模块 = 定制前端网页版 UI + pi 官方源码(可更新),前端优先直接调用 pi 原有接口;与浏览器主体隔离;现有前端入口退化为启动器」
 > 依据:AGENTS.md §九 依赖引入审查(包名验证 / 版本可达性 / 许可证兼容性 / 维护度评估)
 >
@@ -85,6 +85,8 @@
 ## 四、阶段 2 方向(已获计划批准,另立迭代实施)
 
 自研 `apps/pi-web`(Vite+React,消费 pi 原生类型)+ `packages/pi-web-host`(Electron utilityProcess 内 vendored pi SDK `AgentSession` + WebSocket + 随机 token,数据落 `userData/pi`);同时满足 ADR-004 进程隔离与工具恢复条件。CBOR 官方栈 vs 轻量 JSON-over-WS 于开工时决策留痕。
+
+> **2026-10-28（dev.124）M2A 落地更正**：§一 所述官方「自定义前端」栈（`pi-server`/`pi-client`/`pi-protocol`、PiServer↔PiClient、ByteTransport、CBOR、session_progress）在 vendored **1.4.0 中不存在**——真实接口面为进程内 SDK（`createAgentSession`/`AgentSessionRuntime`/`SessionManager`）+ 子进程 RPC（`--mode rpc`，JSONL over stdio）。因此「CBOR 官方栈 vs 轻量 JSON-over-WS」决策**闭合为 JSON**。M2A 架构：`packages/pi-web-host` 跑 Electron utilityProcess（HTTP 静态 + WebSocket + 32B 随机 token/Cookie 鉴权），`apps/pi-web`（Vite+React 骨架）产物由宿主托管并以普通网页标签打开；协议 v0 仅 hello/ping。决策记录见 [ADR-013](./decisions/ADR-013-pi阶段2自研前端与托管服务.md)。
 
 ## 五、依赖 containment 原则(2026-08-22 用户四次决策,dev.42)
 

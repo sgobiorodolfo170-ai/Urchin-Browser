@@ -15,6 +15,8 @@ files:
   - dist/main/**/*
   - dist/preload/**/*
   - dist/renderer/**/*
+  # 阶段 2 自研前端（pi-web-host 的 wwwDir；打包态从 asar 内读取，utilityProcess 可读 asar）
+  - dist/pi-web/**/*
   - package.json
   - '!**/*.map'
   # 排除工作区包内被 symlink 带入的测试产物（gitignore 已忽略，避免 asar 打包报错）

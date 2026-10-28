@@ -71,6 +71,11 @@ import {
   bindTabCloseToStop,
   type DshLauncher,
 } from './deepseek-harness';
+import {
+  createPiWebHostLauncher,
+  registerPiWebHostHandlers,
+  type PiWebHostLauncher,
+} from './pi-web-host';
 import { registerPageContextHandlers } from './page-context';
 import { SummaryManager, registerSummaryHandlers } from './summary';
 import {
@@ -597,6 +602,14 @@ let dshLauncher: DshLauncher | null = null;
 /** dsh 标签关闭→停止 unbind 函数（performCleanup 调用） */
 let unbindDshTabClose: (() => void) | null = null;
 /**
+ * pi 阶段 2 自研托管服务启动器：Electron utilityProcess 运行 @urchin/pi-web-host
+ * （HTTP 静态 + WebSocket + 随机 token 鉴权）。进程退出时 performCleanup 调用
+ * dispose() 终止 utility 子进程。与 piWebLauncher（阶段 1）双轨并存。
+ */
+let piWebHostLauncher: PiWebHostLauncher | null = null;
+/** pi 阶段 2 标签关闭→停止 unbind 函数（performCleanup 调用；对齐 dsh 语义） */
+let unbindPiWebHostTabClose: (() => void) | null = null;
+/**
  * 全局 StorageLayer 引用（在 whenReady 中赋值）。
  * 退出时需调用 close() 以释放 better-sqlite3 原生句柄，
  * 避免进程退出后残留线程或 WAL 文件未 checkpoint。
@@ -1026,11 +1039,27 @@ function registerIpcHandlers(): void {
   registerDshHandlers(ipcMain, dshLauncher);
   unbindDshTabClose = bindTabCloseToStop(tabManager, dshLauncher);
 
+  // pi 阶段 2 自研托管服务启动器（docs/pi-web-评估.md 阶段 2）：utilityProcess 内运行
+  // @urchin/pi-web-host（HTTP 静态 + WebSocket + 随机 token 鉴权，前端 apps/pi-web）。
+  // 与 piWeb（阶段 1）双轨并存：本自研服务是收敛终点，阶段 1 于 M2C 整体退役。
+  // forkTarget = dist/main/pi-web-host.js（scripts/build-pi-web.mjs 产物，dev/打包同构）；
+  // wwwDir = dist/pi-web（apps/pi-web 构建产物）。数据落 userData/pi/self-host（DD1）。
+  const piWebHostDataDir = join(startupUserDataPath, PI_DIR_NAME, 'self-host');
+  piWebHostLauncher = createPiWebHostLauncher({
+    forkTarget: join(__dirname, 'pi-web-host.js'),
+    wwwDir: join(app.getAppPath(), 'dist', 'pi-web'),
+    dataDir: piWebHostDataDir,
+  });
+  registerPiWebHostHandlers(ipcMain, piWebHostLauncher);
+  unbindPiWebHostTabClose = bindTabCloseToStop(tabManager, piWebHostLauncher);
+
   // dev.48：pi 模块内打开的网页（window.open 新标签）右侧栏图标钉定为 π——
   // 来源 tab URL 命中当前 pi 服务地址时返回钉定图标（端口随机，读实时状态）
   tabManager.setPiIconPinner((sourceUrl) => {
     const piUrl = piWebLauncher?.status().url;
     if (piUrl && sourceUrl.startsWith(piUrl)) return 'urchin://pi-icon/';
+    const phUrl = piWebHostLauncher?.status().url;
+    if (phUrl && sourceUrl.startsWith(phUrl)) return 'urchin://pi-icon/';
     const dshUrl = dshLauncher?.status().url;
     if (dshUrl && sourceUrl.startsWith(dshUrl)) return 'urchin://dsh-icon/';
     return undefined;
@@ -2318,6 +2347,18 @@ async function performCleanup(): Promise<void> {
         log.error('Failed to dispose piWeb launcher on quit', { error: String(e) });
       }
       piWebLauncher = null;
+    }
+
+    // 0.52 终止 pi 阶段 2 托管服务 utility 子进程 + 解绑标签关闭监听
+    unbindPiWebHostTabClose?.();
+    unbindPiWebHostTabClose = null;
+    if (piWebHostLauncher) {
+      try {
+        await piWebHostLauncher.dispose();
+      } catch (e) {
+        log.error('Failed to dispose piWebHost launcher on quit', { error: String(e) });
+      }
+      piWebHostLauncher = null;
     }
 
     // 0.55 停 GenOffice Rust sidecar 子进程（dev.109 上游 shell 的 before-quit 对应钩子；

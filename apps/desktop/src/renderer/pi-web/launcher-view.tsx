@@ -229,6 +229,127 @@ export function PiWebLauncherView({ onOpenUrl, autoStart = false }: PiWebLaunche
           <span className="break-all">{actionError ?? snapshot?.lastError}</span>
         </div>
       )}
+
+      {/* 阶段 2：自研托管服务（双轨并存，docs/pi-web-评估.md 阶段 2） */}
+      <PhaseTwoPanel onOpenUrl={onOpenUrl} />
+    </div>
+  );
+}
+
+// ============================================================================
+// 阶段 2 · 自研托管服务面板
+// ============================================================================
+
+/** piWebHost.status 返回快照（与 ipc-contract PiWebHostStatusRes 对齐） */
+interface PiWebHostSnapshot {
+  state: 'stopped' | 'starting' | 'running' | 'error';
+  url?: string;
+  port?: number;
+  pid?: number;
+  lastError?: string;
+}
+
+interface PhaseTwoPanelProps {
+  /** 打开服务 URL（App 层新开标签页） */
+  readonly onOpenUrl: (url: string) => void;
+}
+
+function PhaseTwoPanel({ onOpenUrl }: PhaseTwoPanelProps) {
+  const [snapshot, setSnapshot] = useState<PiWebHostSnapshot | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const s = (await window.urchin.invoke('piWebHost.status', {})) as PiWebHostSnapshot;
+      setSnapshot(s);
+    } catch (e) {
+      setSnapshot({ state: 'error', lastError: e instanceof Error ? e.message : String(e) });
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const start = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = (await window.urchin.invoke('piWebHost.launch', {})) as { url: string };
+      await refresh();
+      onOpenUrl(res.url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  }, [onOpenUrl, refresh]);
+
+  const stop = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await window.urchin.invoke('piWebHost.stop', {});
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      await refresh();
+      setBusy(false);
+    }
+  }, [refresh]);
+
+  const state = snapshot?.state ?? 'stopped';
+  const running = state === 'running';
+
+  return (
+    <div className="flex w-full max-w-lg flex-col gap-3 rounded-lg border border-dashed border-border bg-surface-secondary/60 p-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-text">自研前端（阶段 2 · 试用）</h2>
+        <span className="rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[10px] text-primary">
+          pi-web-host
+        </span>
+      </div>
+      <p className="text-xs leading-relaxed text-text-secondary">
+        自研 <code className="rounded bg-surface px-1">apps/pi-web</code> +{' '}
+        <code className="rounded bg-surface px-1">packages/pi-web-host</code> 的骨架预览
+        （M2A）：HTTP 静态 + WebSocket + 随机 token 鉴权，运行于 Electron utilityProcess。
+        会话/对话能力随 M2B 补充；阶段 1（pi-web-ui）届时整体退役。
+      </p>
+      <div className="flex items-center gap-2 text-xs text-text-secondary">
+        {running ? (
+          <>自研版运行中{snapshot?.port ? ` · 端口 ${snapshot.port}` : ''}</>
+        ) : (
+          <>自研版未运行</>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        {!running ? (
+          <Button size="sm" onClick={() => void start()} disabled={busy || state === 'starting'}>
+            <Play className="mr-1.5 h-4 w-4" />
+            {state === 'error' ? '重试启动' : '启动自研版'}
+          </Button>
+        ) : (
+          <>
+            <Button
+              size="sm"
+              onClick={() => snapshot?.url && onOpenUrl(snapshot.url)}
+              disabled={busy}
+            >
+              <ExternalLink className="mr-1.5 h-4 w-4" />
+              打开
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => void stop()} disabled={busy}>
+              <Square className="mr-1.5 h-4 w-4" />
+              停止
+            </Button>
+          </>
+        )}
+      </div>
+      {(error ?? snapshot?.lastError) && (
+        <div className="break-all text-xs text-error">{error ?? snapshot?.lastError}</div>
+      )}
     </div>
   );
 }

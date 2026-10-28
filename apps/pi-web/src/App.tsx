@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { HostClientMessage, HostServerMessage } from './protocol';
+import type { HostClientMessage, HostServerMessage, SessionSummary } from './protocol';
 
 interface ReadyInfo {
   readonly service: string;
@@ -40,6 +40,8 @@ export function App(): React.JSX.Element {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [providers, setProviders] = useState<readonly string[]>([]);
+  const [sessions, setSessions] = useState<readonly SessionSummary[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string>('');
   const wsRef = useRef<WebSocket | null>(null);
   const currentAssistantRef = useRef<string | null>(null);
 
@@ -74,13 +76,37 @@ export function App(): React.JSX.Element {
           const provider = typeof msg.provider === 'string' ? msg.provider : undefined;
           const model = typeof msg.model === 'string' ? msg.model : undefined;
           setReady({ service: svc, version, provider, model });
-          // 请求可用 provider 列表
+          // 请求可用 provider 列表 + 历史会话
           ws.send(JSON.stringify({ type: 'list_models' }));
+          ws.send(JSON.stringify({ type: 'list_sessions' }));
           break;
         }
         case 'models': {
           const list = Array.isArray(msg.providers) ? msg.providers : [];
           setProviders(list);
+          break;
+        }
+        case 'session_list': {
+          setSessions(Array.isArray(msg.sessions) ? msg.sessions : []);
+          break;
+        }
+        case 'session_created': {
+          setCurrentSessionId(typeof msg.sessionId === 'string' ? msg.sessionId : '');
+          setMessages([]);
+          // 刷新会话列表
+          ws.send(JSON.stringify({ type: 'list_sessions' }));
+          break;
+        }
+        case 'session_switched': {
+          setCurrentSessionId(typeof msg.sessionId === 'string' ? msg.sessionId : '');
+          const loadedMsgs = Array.isArray(msg.messages) ? msg.messages : [];
+          setMessages(
+            loadedMsgs.map((m: { role: 'user' | 'assistant'; content: string }) => ({
+              id: nextMsgId(),
+              role: m.role,
+              content: m.content,
+            })),
+          );
           break;
         }
         case 'state': {
@@ -172,6 +198,18 @@ export function App(): React.JSX.Element {
     setStreaming(false);
   }, []);
 
+  const newSession = useCallback(() => {
+    const ws = wsRef.current;
+    if (ws?.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'new_session' }));
+  }, []);
+
+  const switchSession = useCallback((sessionId: string) => {
+    const ws = wsRef.current;
+    if (ws?.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'switch_session', sessionId }));
+  }, []);
+
   return (
     <main className="page">
       <header className="header">
@@ -204,18 +242,49 @@ export function App(): React.JSX.Element {
         </details>
       )}
 
-      <section className="messages" aria-label="对话消息列表">
-        {messages.length === 0 ? (
-          <p className="placeholder">输入消息开始对话…</p>
-        ) : (
-          messages.map((m) => (
-            <article key={m.id} className={`msg msg-${m.role}`}>
-              <span className="msg-role">{m.role === 'user' ? '你' : 'pi'}</span>
-              <pre className="msg-content">{m.content || (m.streaming ? '…' : '')}</pre>
-            </article>
-          ))
-        )}
-      </section>
+      <div className="body">
+        <aside className="sidebar" aria-label="会话列表">
+          <button
+            type="button"
+            className="btn-new-session"
+            onClick={() => void newSession()}
+            disabled={connState !== 'open'}
+          >
+            + 新建会话
+          </button>
+          {sessions.length === 0 ? (
+            <p className="sidebar-empty">暂无历史会话</p>
+          ) : (
+            <ul className="session-list">
+              {sessions.map((s) => (
+                <li key={s.id}>
+                  <button
+                    type="button"
+                    className={`session-item ${s.id === currentSessionId ? 'active' : ''}`}
+                    onClick={() => void switchSession(s.id)}
+                  >
+                    <span className="session-title">{s.firstMessage || s.id.slice(0, 19)}</span>
+                    <span className="session-meta">{s.messageCount} 条</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+
+        <section className="messages" aria-label="对话消息列表">
+          {messages.length === 0 ? (
+            <p className="placeholder">输入消息开始对话…</p>
+          ) : (
+            messages.map((m) => (
+              <article key={m.id} className={`msg msg-${m.role}`}>
+                <span className="msg-role">{m.role === 'user' ? '你' : 'pi'}</span>
+                <pre className="msg-content">{m.content || (m.streaming ? '…' : '')}</pre>
+              </article>
+            ))
+          )}
+        </section>
+      </div>
 
       <footer className="composer">
         <textarea

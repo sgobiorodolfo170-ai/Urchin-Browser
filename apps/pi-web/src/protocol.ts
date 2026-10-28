@@ -6,7 +6,16 @@ export type HostClientMessage =
   | { readonly type: 'prompt'; readonly text: string; readonly sessionId?: string }
   | { readonly type: 'abort' }
   | { readonly type: 'list_models' }
-  | { readonly type: 'get_state' };
+  | { readonly type: 'get_state' }
+  | { readonly type: 'new_session' }
+  | { readonly type: 'list_sessions' }
+  | { readonly type: 'switch_session'; readonly sessionId: string };
+
+export interface SessionSummary {
+  readonly id: string;
+  readonly firstMessage: string;
+  readonly messageCount: number;
+}
 
 export type HostServerMessage =
   | {
@@ -26,4 +35,14 @@ export type HostServerMessage =
     }
   | { readonly type: 'models'; readonly providers: readonly string[] }
   | { readonly type: 'state'; readonly streaming: boolean; readonly messageCount: number }
+  | { readonly type: 'session_list'; readonly sessions: readonly SessionSummary[] }
+  | { readonly type: 'session_created'; readonly sessionId: string }
+  | {
+      readonly type: 'session_switched';
+      readonly sessionId: string;
+      readonly messages: readonly {
+        readonly role: 'user' | 'assistant';
+        readonly content: string;
+      }[];
+    }
   | { readonly type: 'error'; readonly code: string; readonly message: string };

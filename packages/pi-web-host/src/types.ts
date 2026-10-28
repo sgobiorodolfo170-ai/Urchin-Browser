@@ -23,10 +23,14 @@ export type HostClientMessage =
   | { readonly type: 'ping' }
   | { readonly type: 'prompt'; readonly text: string; readonly sessionId?: string }
   | { readonly type: 'abort' }
-  /** M2B-3：列出可用 provider 列表 */
   | { readonly type: 'list_models' }
-  /** M2B-3：查询当前会话状态 */
-  | { readonly type: 'get_state' };
+  | { readonly type: 'get_state' }
+  /** M2B-3b：创建新会话 */
+  | { readonly type: 'new_session' }
+  /** M2B-3b：列出历史会话 */
+  | { readonly type: 'list_sessions' }
+  /** M2B-3b：切换到指定会话 */
+  | { readonly type: 'switch_session'; readonly sessionId: string };
 
 /** token 用量（promptTokens/completionTokens） */
 export interface HostUsage {
@@ -53,6 +57,23 @@ export type HostServerMessage =
     }
   | { readonly type: 'models'; readonly providers: readonly string[] }
   | { readonly type: 'state'; readonly streaming: boolean; readonly messageCount: number }
+  | {
+      readonly type: 'session_list';
+      readonly sessions: readonly {
+        readonly id: string;
+        readonly firstMessage: string;
+        readonly messageCount: number;
+      }[];
+    }
+  | { readonly type: 'session_created'; readonly sessionId: string }
+  | {
+      readonly type: 'session_switched';
+      readonly sessionId: string;
+      readonly messages: readonly {
+        readonly role: 'user' | 'assistant';
+        readonly content: string;
+      }[];
+    }
   | { readonly type: 'error'; readonly code: string; readonly message: string };
 
 /** 静态文件 Content-Type 映射（M2A 最小集，覆盖自研前端产物） */

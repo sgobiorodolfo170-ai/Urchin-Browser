@@ -191,3 +191,70 @@ button:disabled {
   padding: 1px 8px;
   font-size: 11px;
 }
+
+.body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 200px;
+  border-right: 1px solid var(--border);
+  padding: 8px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.btn-new-session {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 6px;
+  font-size: 13px;
+}
+
+.sidebar-empty {
+  color: var(--text-dim);
+  font-size: 12px;
+  text-align: center;
+  padding: 12px 0;
+}
+
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.session-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin-bottom: 2px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.session-item:hover {
+  background: var(--bg-elev);
+}
+.session-item.active {
+  border-color: var(--accent);
+  background: var(--bg-elev2);
+}
+
+.session-title {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-meta {
+  font-size: 10px;
+  color: var(--text-dim);
+}

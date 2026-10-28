@@ -32,4 +32,12 @@ export {
   type AgentBridgeOptions,
   type AgentBridgeHandle,
 } from './agent-bridge';
+export {
+  persistExchange,
+  listSessions,
+  loadSessionMessages,
+  generateSessionId,
+  type SessionInfo,
+  type StoredMessage,
+} from './session-store';
 export type { HostClientMessage, HostServerMessage, PiWebHostState, HostUsage } from './types';

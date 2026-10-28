@@ -26,6 +26,12 @@ import {
   type AgentBridgeOptions,
   getProviderList,
 } from './agent-bridge';
+import {
+  persistExchange,
+  listSessions,
+  loadSessionMessages,
+  generateSessionId,
+} from './session-store';
 import { PiWebHostState } from './types';
 
 export const SERVICE_VERSION = '0.2.0';
@@ -41,6 +47,8 @@ export interface PiWebHostServerOptions {
   readonly token?: string;
   /** M2B：Agent 凭据/模型（缺省时 prompt 回 no_api_key 错误） */
   readonly agent?: AgentBridgeOptions;
+  /** M2B-3b：agent 数据目录（会话 JSONL 持久化根） */
+  readonly agentDir?: string;
 }
 
 export interface PiWebHostServerHandle {
@@ -96,13 +104,18 @@ export async function startPiWebHostServer(
   wss.on('connection', (ws: WebSocket) => {
     let bridge: AgentBridgeHandle | null = null;
     const agentOpts = options.agent;
+    const agentDir = options.agentDir;
     let messageCount = 0;
+    let currentSessionId = generateSessionId();
+    let lastUserText = '';
+    let assistantAccumulator = '';
     const ctx = {
       version: SERVICE_VERSION,
       provider: agentOpts?.providerId,
       model: agentOpts?.modelId,
     };
 
+    /** 创建/重建 Agent 桥（带当前 sessionId） */
     const ensureBridge = (): AgentBridgeHandle | null => {
       if (bridge) return bridge;
       if (!agentOpts?.apiKey) {
@@ -110,11 +123,23 @@ export async function startPiWebHostServer(
         return null;
       }
       bridge = createAgentBridge(
-        agentOpts,
-        (msg) => sendJson(ws, msg),
+        { ...agentOpts, sessionId: currentSessionId },
+        (msg) => {
+          // 拦截 stream.chunk 累积 assistant 文本（用于 stream.end 时持久化）
+          if (msg.type === 'stream.chunk' && typeof msg.content === 'string') {
+            assistantAccumulator += msg.content;
+          }
+          sendJson(ws, msg);
+        },
         (code, message) => sendError(ws, code, message),
       );
       return bridge;
+    };
+
+    /** 销毁当前桥（切换/新建会话时调用） */
+    const disposeBridge = (): void => {
+      bridge?.dispose();
+      bridge = null;
     };
 
     ws.on('message', (data, isBinary) => {
@@ -145,8 +170,27 @@ export async function startPiWebHostServer(
             return;
           }
           messageCount++;
+          lastUserText = promptText;
+          assistantAccumulator = '';
+          // stream.end 时持久化（在 onMessage 回调中检测）
+          const origDispose = h.dispose.bind(h);
+          h.dispose = () => origDispose();
           void h
             .prompt(promptText)
+            .then(() => {
+              // prompt 完成（agent.prompt resolved = agent_end 已触发）；
+              // 持久化本轮对话
+              if (agentDir && lastUserText && assistantAccumulator) {
+                void persistExchange(
+                  agentDir,
+                  currentSessionId,
+                  lastUserText,
+                  assistantAccumulator,
+                ).catch(() => {
+                  /* 持久化失败不阻塞对话 */
+                });
+              }
+            })
             .catch((e: unknown) =>
               sendError(ws, 'prompt_failed', e instanceof Error ? e.message : String(e)),
             );
@@ -166,6 +210,60 @@ export async function startPiWebHostServer(
             streaming: bridge !== null && messageCount > 0,
             messageCount,
           });
+          return;
+        }
+        case 'new_session': {
+          disposeBridge();
+          currentSessionId = generateSessionId();
+          messageCount = 0;
+          lastUserText = '';
+          assistantAccumulator = '';
+          sendJson(ws, { type: 'session_created', sessionId: currentSessionId });
+          return;
+        }
+        case 'list_sessions': {
+          if (!agentDir) {
+            sendJson(ws, { type: 'session_list', sessions: [] });
+            return;
+          }
+          void listSessions(agentDir)
+            .then((sessions) =>
+              sendJson(ws, {
+                type: 'session_list',
+                sessions: sessions.map((s) => ({
+                  id: s.id,
+                  firstMessage: s.firstMessage,
+                  messageCount: s.messageCount,
+                })),
+              }),
+            )
+            .catch(() => sendJson(ws, { type: 'session_list', sessions: [] }));
+          return;
+        }
+        case 'switch_session': {
+          const targetId = (parsed as { sessionId?: string }).sessionId ?? '';
+          if (!targetId) {
+            sendError(ws, 'bad_message', 'switch_session.sessionId required');
+            return;
+          }
+          disposeBridge();
+          currentSessionId = targetId;
+          messageCount = 0;
+          lastUserText = '';
+          assistantAccumulator = '';
+          const sendSwitched = (
+            messages: readonly { role: 'user' | 'assistant'; content: string }[],
+          ) => {
+            messageCount = messages.length;
+            sendJson(ws, { type: 'session_switched', sessionId: targetId, messages });
+          };
+          if (!agentDir) {
+            sendSwitched([]);
+            return;
+          }
+          void loadSessionMessages(agentDir, targetId)
+            .then((msgs) => sendSwitched(msgs))
+            .catch(() => sendSwitched([]));
           return;
         }
         default:

@@ -39,6 +39,7 @@ async function main(): Promise<void> {
   const handle = await startPiWebHostServer({
     wwwDir,
     port: portRaw === undefined ? 0 : Number(portRaw),
+    agentDir: dataDir,
     // M2B：凭据/模型经 argv 注入（主进程 agentConfigProvider 合并后传入）
     agent:
       apiKey && providerId && modelId

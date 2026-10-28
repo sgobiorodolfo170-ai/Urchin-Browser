@@ -11,6 +11,8 @@ import type { HostClientMessage, HostServerMessage } from './types';
 
 export interface WsMessageContext {
   readonly version: string;
+  readonly provider?: string;
+  readonly model?: string;
 }
 
 /** 归一化输出 JSON 消息到 WS（异常不上抛，记录后发送 error） */
@@ -43,6 +45,8 @@ export function handleClientMessage(ws: WebSocket, raw: string, ctx: WsMessageCo
         service: 'pi-web-host',
         version: ctx.version,
         status: 'ok',
+        provider: ctx.provider,
+        model: ctx.model,
       });
       break;
     case 'ping':

@@ -4,6 +4,8 @@ import type { HostClientMessage, HostServerMessage } from './protocol';
 interface ReadyInfo {
   readonly service: string;
   readonly version: string;
+  readonly provider?: string;
+  readonly model?: string;
 }
 
 interface ChatMessage {
@@ -37,6 +39,7 @@ export function App(): React.JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [providers, setProviders] = useState<readonly string[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const currentAssistantRef = useRef<string | null>(null);
 
@@ -68,7 +71,22 @@ export function App(): React.JSX.Element {
         case 'hello_ok': {
           const svc = typeof msg.service === 'string' ? msg.service : '';
           const version = typeof msg.version === 'string' ? msg.version : '';
-          setReady({ service: svc, version });
+          const provider = typeof msg.provider === 'string' ? msg.provider : undefined;
+          const model = typeof msg.model === 'string' ? msg.model : undefined;
+          setReady({ service: svc, version, provider, model });
+          // 请求可用 provider 列表
+          ws.send(JSON.stringify({ type: 'list_models' }));
+          break;
+        }
+        case 'models': {
+          const list = Array.isArray(msg.providers) ? msg.providers : [];
+          setProviders(list);
+          break;
+        }
+        case 'state': {
+          if (typeof msg.streaming === 'boolean' && !msg.streaming) {
+            setStreaming(false);
+          }
           break;
         }
         case 'stream.chunk': {
@@ -162,9 +180,29 @@ export function App(): React.JSX.Element {
         {ready && (
           <span className="hint">
             已握手 {ready.service} @ {ready.version}
+            {ready.provider ? ` · ${ready.provider}` : ''}
+            {ready.model ? ` / ${ready.model}` : ''}
           </span>
         )}
       </header>
+
+      {ready && !ready.provider && (
+        <div className="notice">
+          未配置 AI Provider——请在 Urchin 设置中配置 apiKey / provider / model 后重启自研版
+        </div>
+      )}
+      {providers.length > 0 && (
+        <details className="providers-panel">
+          <summary>可用 Providers（{providers.length}）</summary>
+          <div className="providers-list">
+            {providers.map((p) => (
+              <span key={p} className="provider-chip">
+                {p}
+              </span>
+            ))}
+          </div>
+        </details>
+      )}
 
       <section className="messages" aria-label="对话消息列表">
         {messages.length === 0 ? (

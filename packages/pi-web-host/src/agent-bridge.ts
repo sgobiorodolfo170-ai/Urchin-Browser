@@ -25,9 +25,10 @@ import {
 import {
   streamSimple,
   getModel,
+  getProviders,
   type AssistantMessageEvent,
-  type Context,
   type Model,
+  type Context,
   type SimpleStreamOptions,
 } from '@earendil-works/pi-ai/compat';
 import type { HostServerMessage, HostUsage } from './types';
@@ -198,6 +199,11 @@ export function createAgentBridge(
 }
 
 export { normalizeProviderId, resolveModel, extractDeltaFromEvent as extractDeltaForTest };
+
+/** M2B-3：返回 pi 内置 provider id 列表（供前端模型目录展示） */
+export function getProviderList(): readonly string[] {
+  return getProviders();
+}
 
 /** 测试用导出：从 AssistantMessageEvent 提取 delta（与内部 extractDelta 同） */
 function extractDeltaFromEvent(event: AssistantMessageEvent): string {

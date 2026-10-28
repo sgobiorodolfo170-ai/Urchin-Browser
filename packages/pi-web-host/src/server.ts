@@ -20,7 +20,12 @@ import {
 } from './auth';
 import { StaticHandler } from './http-static';
 import { handleClientMessage, sendError, sendJson } from './ws-handler';
-import { createAgentBridge, type AgentBridgeHandle, type AgentBridgeOptions } from './agent-bridge';
+import {
+  createAgentBridge,
+  type AgentBridgeHandle,
+  type AgentBridgeOptions,
+  getProviderList,
+} from './agent-bridge';
 import { PiWebHostState } from './types';
 
 export const SERVICE_VERSION = '0.2.0';
@@ -89,9 +94,14 @@ export async function startPiWebHostServer(
   });
 
   wss.on('connection', (ws: WebSocket) => {
-    // M2B：per-connection Agent 桥（懒创建，prompt 首次调用时建）
     let bridge: AgentBridgeHandle | null = null;
     const agentOpts = options.agent;
+    let messageCount = 0;
+    const ctx = {
+      version: SERVICE_VERSION,
+      provider: agentOpts?.providerId,
+      model: agentOpts?.modelId,
+    };
 
     const ensureBridge = (): AgentBridgeHandle | null => {
       if (bridge) return bridge;
@@ -125,7 +135,6 @@ export async function startPiWebHostServer(
         return;
       }
       const msg = parsed as { type?: string };
-      // prompt/abort 需连接级状态，由 bridge 处理；hello/ping 仍走无状态 handler
       switch (msg?.type) {
         case 'prompt': {
           const h = ensureBridge();
@@ -135,6 +144,7 @@ export async function startPiWebHostServer(
             sendError(ws, 'bad_message', 'prompt.text required');
             return;
           }
+          messageCount++;
           void h
             .prompt(promptText)
             .catch((e: unknown) =>
@@ -146,8 +156,20 @@ export async function startPiWebHostServer(
           bridge?.abort();
           return;
         }
+        case 'list_models': {
+          sendJson(ws, { type: 'models', providers: [...getProviderList()] });
+          return;
+        }
+        case 'get_state': {
+          sendJson(ws, {
+            type: 'state',
+            streaming: bridge !== null && messageCount > 0,
+            messageCount,
+          });
+          return;
+        }
         default:
-          handleClientMessage(ws, text, { version: SERVICE_VERSION });
+          handleClientMessage(ws, text, ctx);
       }
     });
 

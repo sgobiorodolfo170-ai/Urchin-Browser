@@ -28,6 +28,7 @@ export {
   normalizeProviderId,
   resolveModel,
   extractDeltaForTest,
+  getProviderList,
   type AgentBridgeOptions,
   type AgentBridgeHandle,
 } from './agent-bridge';

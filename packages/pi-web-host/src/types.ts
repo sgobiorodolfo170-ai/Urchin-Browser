@@ -19,14 +19,14 @@ export type PiWebHostState = 'stopped' | 'starting' | 'running' | 'error';
  * 所有消息为 JSON over WS（docs/pi-web-评估.md 决策：官方无 CBOR 面，闭合成 JSON）。
  */
 export type HostClientMessage =
-  /** 握手：服务端回 hello_ok（携带 service/version） */
   | { readonly type: 'hello'; readonly client?: string }
-  /** 心跳：服务端回 pong */
   | { readonly type: 'ping' }
-  /** M2B：发起一轮对话；服务端流式回 stream.chunk → stream.end */
   | { readonly type: 'prompt'; readonly text: string; readonly sessionId?: string }
-  /** M2B：中止当前对话轮 */
-  | { readonly type: 'abort' };
+  | { readonly type: 'abort' }
+  /** M2B-3：列出可用 provider 列表 */
+  | { readonly type: 'list_models' }
+  /** M2B-3：查询当前会话状态 */
+  | { readonly type: 'get_state' };
 
 /** token 用量（promptTokens/completionTokens） */
 export interface HostUsage {
@@ -41,6 +41,8 @@ export type HostServerMessage =
       readonly service: 'pi-web-host';
       readonly version: string;
       readonly status: 'ok';
+      readonly provider?: string;
+      readonly model?: string;
     }
   | { readonly type: 'pong'; readonly ts: number }
   | { readonly type: 'stream.chunk'; readonly content: string }
@@ -49,6 +51,8 @@ export type HostServerMessage =
       readonly finishReason: string;
       readonly usage?: HostUsage;
     }
+  | { readonly type: 'models'; readonly providers: readonly string[] }
+  | { readonly type: 'state'; readonly streaming: boolean; readonly messageCount: number }
   | { readonly type: 'error'; readonly code: string; readonly message: string };
 
 /** 静态文件 Content-Type 映射（M2A 最小集，覆盖自研前端产物） */

@@ -160,3 +160,34 @@ button:disabled {
 .btn-stop {
   background: #ef4444;
 }
+
+.notice {
+  padding: 8px 20px;
+  background: #7f1d1d33;
+  border-bottom: 1px solid #7f1d1d;
+  font-size: 13px;
+  color: #fca5a5;
+}
+
+.providers-panel {
+  padding: 6px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.providers-panel summary {
+  cursor: pointer;
+  color: var(--text-dim);
+}
+.providers-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 0;
+}
+.provider-chip {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 8px;
+  font-size: 11px;
+}

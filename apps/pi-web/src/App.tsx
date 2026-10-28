@@ -1,22 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { HostClientMessage, HostServerMessage } from './protocol';
 
-/** 服务就绪信息（由 hello_ok 回填） */
 interface ReadyInfo {
   readonly service: string;
   readonly version: string;
-  readonly status: string;
+}
+
+interface ChatMessage {
+  readonly id: string;
+  readonly role: 'user' | 'assistant';
+  readonly content: string;
+  readonly streaming?: boolean;
 }
 
 type ConnState = 'connecting' | 'open' | 'closed' | 'error';
 
-/** 从当前页面 URL 解析 token（页面以 ?token=<...> 打开） */
 function pageToken(): string | undefined {
   const params = new URLSearchParams(window.location.search);
   const t = params.get('token');
   return typeof t === 'string' && t.length > 0 ? t : undefined;
 }
 
-/** 构造 WS 地址：http://127.0.0.1:<port> → ws://127.0.0.1:<port>/ws + token */
 function wsUrl(): string {
   const token = pageToken();
   const wsBase = window.location.origin.replace(/^http/, 'ws');
@@ -24,20 +28,23 @@ function wsUrl(): string {
   return `${wsBase}/ws${sep}`;
 }
 
-/**
- * pi 阶段 2 前端骨架（M2A）。
- * 目标：验证「页面由自研托管服务加载 + WS 经 token 鉴权握手」整链路；
- * 对话 UI（流式/思考/工具卡片/会话管理）在 M2B 填充。
- */
+let msgIdCounter = 0;
+const nextMsgId = (): string => `m-${++msgIdCounter}`;
+
 export function App(): React.JSX.Element {
   const [connState, setConnState] = useState<ConnState>('connecting');
   const [ready, setReady] = useState<ReadyInfo | null>(null);
-  const [pongTs, setPongTs] = useState<number | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [streaming, setStreaming] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const currentAssistantRef = useRef<string | null>(null);
 
   const connect = useCallback(() => {
     setConnState('connecting');
     setReady(null);
     const ws = new WebSocket(wsUrl());
+    wsRef.current = ws;
 
     const timeout = window.setTimeout(() => {
       ws.close();
@@ -51,9 +58,9 @@ export function App(): React.JSX.Element {
     };
 
     ws.onmessage = (event) => {
-      let msg: Record<string, unknown>;
+      let msg: HostServerMessage;
       try {
-        msg = JSON.parse(String(event.data)) as Record<string, unknown>;
+        msg = JSON.parse(String(event.data)) as HostServerMessage;
       } catch {
         return;
       }
@@ -61,13 +68,38 @@ export function App(): React.JSX.Element {
         case 'hello_ok': {
           const svc = typeof msg.service === 'string' ? msg.service : '';
           const version = typeof msg.version === 'string' ? msg.version : '';
-          const status = typeof msg.status === 'string' ? msg.status : '';
-          setReady({ service: svc, version, status });
+          setReady({ service: svc, version });
           break;
         }
-        case 'pong': {
-          const ts = typeof msg.ts === 'number' ? msg.ts : 0;
-          setPongTs(ts);
+        case 'stream.chunk': {
+          const content = typeof msg.content === 'string' ? msg.content : '';
+          setMessages((prev) => {
+            const id = currentAssistantRef.current;
+            if (!id) return prev;
+            return prev.map((m) => (m.id === id ? { ...m, content: m.content + content } : m));
+          });
+          break;
+        }
+        case 'stream.end': {
+          const id = currentAssistantRef.current;
+          currentAssistantRef.current = null;
+          setStreaming(false);
+          if (id) {
+            setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, streaming: false } : m)));
+          }
+          break;
+        }
+        case 'error': {
+          const code = typeof msg.code === 'string' ? msg.code : 'unknown';
+          const message = typeof msg.message === 'string' ? msg.message : '';
+          if (streaming) {
+            setStreaming(false);
+            currentAssistantRef.current = null;
+          }
+          setMessages((prev) => [
+            ...prev,
+            { id: nextMsgId(), role: 'assistant', content: `[错误 ${code}] ${message}` },
+          ]);
           break;
         }
         default:
@@ -92,45 +124,91 @@ export function App(): React.JSX.Element {
 
   useEffect(() => connect(), [connect]);
 
+  const send = useCallback(() => {
+    const text = input.trim();
+    if (!text || streaming || connState !== 'open') return;
+    const ws = wsRef.current;
+    if (ws?.readyState !== WebSocket.OPEN) return;
+
+    const userMsg: ChatMessage = { id: nextMsgId(), role: 'user', content: text };
+    const assistantId = nextMsgId();
+    const assistantMsg: ChatMessage = {
+      id: assistantId,
+      role: 'assistant',
+      content: '',
+      streaming: true,
+    };
+    currentAssistantRef.current = assistantId;
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setInput('');
+    setStreaming(true);
+
+    const payload: HostClientMessage = { type: 'prompt', text };
+    ws.send(JSON.stringify(payload));
+  }, [input, streaming, connState]);
+
+  const abort = useCallback(() => {
+    const ws = wsRef.current;
+    if (ws?.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'abort' }));
+    setStreaming(false);
+  }, []);
+
   return (
     <main className="page">
-      <h1>pi · Urchin（阶段 2 骨架）</h1>
-      <section className="card">
-        <div>
-          <span className="label">连接状态</span>
-          <span className={`badge badge-${connState}`}>{connState}</span>
-        </div>
-        {ready ? (
-          <p>
-            已握手：{ready.service} @ {ready.version}（{ready.status}）
-          </p>
+      <header className="header">
+        <h1>pi · Urchin（阶段 2）</h1>
+        <span className={`badge badge-${connState}`}>{connState}</span>
+        {ready && (
+          <span className="hint">
+            已握手 {ready.service} @ {ready.version}
+          </span>
+        )}
+      </header>
+
+      <section className="messages" aria-label="对话消息列表">
+        {messages.length === 0 ? (
+          <p className="placeholder">输入消息开始对话…</p>
         ) : (
-          <p>等待 hello_ok…</p>
+          messages.map((m) => (
+            <article key={m.id} className={`msg msg-${m.role}`}>
+              <span className="msg-role">{m.role === 'user' ? '你' : 'pi'}</span>
+              <pre className="msg-content">{m.content || (m.streaming ? '…' : '')}</pre>
+            </article>
+          ))
         )}
       </section>
-      <section className="card">
-        <div className="row">
-          <span className="label">心跳</span>
-          <span className="badge badge-open">{pongTs !== null ? `pong@${pongTs}` : '—'}</span>
-          <button type="button" onClick={() => void pingCurrent()}>
-            发送 ping
+
+      <footer className="composer">
+        <textarea
+          className="input"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              void send();
+            }
+          }}
+          placeholder="输入消息（Enter 发送，Shift+Enter 换行）"
+          rows={2}
+          disabled={connState !== 'open'}
+        />
+        {streaming ? (
+          <button type="button" className="btn-stop" onClick={() => void abort()}>
+            停止
           </button>
-        </div>
-      </section>
-      <p className="hint">
-        认证 token 取自页面地址栏（?token=…），服务端在首次请求时一并回写 HttpOnly Cookie。
-      </p>
+        ) : (
+          <button
+            type="button"
+            className="btn-send"
+            onClick={() => void send()}
+            disabled={!input.trim() || connState !== 'open'}
+          >
+            发送
+          </button>
+        )}
+      </footer>
     </main>
   );
-
-  function pingCurrent(): void {
-    // 与集中连接的 WS 解耦：M2A 仅演示，真正复用时把 socket 提升为模块态。
-    const ws = new WebSocket(wsUrl());
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'ping' }));
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(String(e.data)) as Record<string, unknown>;
-      if (msg.type === 'pong') setPongTs(Number(msg.ts ?? 0));
-      ws.close();
-    };
-  }
 }

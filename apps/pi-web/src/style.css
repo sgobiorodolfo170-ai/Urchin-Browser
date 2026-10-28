@@ -258,3 +258,36 @@ button:disabled {
   font-size: 10px;
   color: var(--text-dim);
 }
+
+.msg-tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 60%;
+  margin: 4px 0;
+  padding: 4px 10px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.tool-icon {
+  font-size: 14px;
+}
+.tool-name {
+  font-weight: 600;
+  color: var(--accent);
+}
+.tool-status {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.tool-status-start {
+  color: #fbbf24;
+}
+.tool-status-end {
+  color: #4ade80;
+}
+.tool-status-error {
+  color: #f87171;
+}

@@ -20,6 +20,12 @@ vi.mock('@earendil-works/pi-ai/compat', () => ({
   getModel: vi.fn(() => undefined),
   getProviders: vi.fn(() => []),
 }));
+vi.mock('@earendil-works/pi-coding-agent', () => ({
+  createBashTool: vi.fn(() => ({})),
+  createReadTool: vi.fn(() => ({})),
+  createEditTool: vi.fn(() => ({})),
+  createWriteTool: vi.fn(() => ({})),
+}));
 
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

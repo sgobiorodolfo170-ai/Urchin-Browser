@@ -1062,6 +1062,9 @@ function registerIpcHandlers(): void {
         providerId,
         modelId,
         baseUrl: cfg.baseUrl,
+        // M2B-4：在 utility 进程内恢复 coding 工具（PH7；agent 不跑主进程，安全）
+        enableTools: true,
+        toolsCwd: piWebHostDataDir,
       };
     },
   });

@@ -27,6 +27,8 @@ async function main(): Promise<void> {
   const modelId = parseArg('model') ?? process.env.PI_HOST_MODEL;
   const baseUrl = parseArg('base-url') ?? process.env.PI_HOST_BASE_URL;
   const systemPrompt = parseArg('system-prompt') ?? process.env.PI_HOST_SYSTEM_PROMPT;
+  const enableTools = (parseArg('enable-tools') ?? process.env.PI_HOST_ENABLE_TOOLS) === 'true';
+  const toolsCwd = parseArg('tools-cwd') ?? process.env.PI_HOST_TOOLS_CWD;
   if (!wwwDir) {
     throw new Error('pi-web-host: --www-dir is required');
   }
@@ -49,6 +51,8 @@ async function main(): Promise<void> {
             modelId,
             baseUrl: baseUrl ?? undefined,
             systemPrompt: systemPrompt ?? undefined,
+            enableTools,
+            toolsCwd: toolsCwd ?? undefined,
           }
         : undefined,
   });

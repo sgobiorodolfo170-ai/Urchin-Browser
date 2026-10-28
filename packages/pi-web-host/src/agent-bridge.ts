@@ -31,6 +31,12 @@ import {
   type Context,
   type SimpleStreamOptions,
 } from '@earendil-works/pi-ai/compat';
+import {
+  createBashTool,
+  createReadTool,
+  createEditTool,
+  createWriteTool,
+} from '@earendil-works/pi-coding-agent';
 import type { HostServerMessage, HostUsage } from './types';
 
 /** Agent 桥创建选项（经 argv 从主进程注入） */
@@ -41,8 +47,10 @@ export interface AgentBridgeOptions {
   readonly baseUrl?: string;
   readonly systemPrompt?: string;
   readonly sessionId?: string;
-  /** M2B-1 不挂工具（enableTools 留 M2B-4 在 utility 进程内恢复） */
-  readonly tools?: readonly AgentTool[];
+  /** M2B-4：启用 coding 工具（bash/read/edit/write）；仅 utility 进程内安全 */
+  readonly enableTools?: boolean;
+  /** M2B-4：工具工作目录（enableTools=true 时必填） */
+  readonly toolsCwd?: string;
 }
 
 /** 桥接句柄 */
@@ -143,10 +151,22 @@ export function createAgentBridge(
   const getApiKey = (provider: string): string | undefined =>
     provider === normalizedProviderId ? options.apiKey : undefined;
 
+  // M2B-4：在 utility 进程内恢复 coding 工具（bash/read/edit/write）
+  // 安全前提：agent 只跑在独立 utility 进程，不污染主进程（ADR-004 / PH7）
+  const tools: AgentTool[] = [];
+  if (options.enableTools && options.toolsCwd) {
+    tools.push(
+      createBashTool(options.toolsCwd),
+      createReadTool(options.toolsCwd),
+      createEditTool(options.toolsCwd),
+      createWriteTool(options.toolsCwd),
+    );
+  }
+
   const agent = new Agent({
     initialState: {
       model,
-      tools: options.tools ? [...options.tools] : [],
+      tools,
       systemPrompt: options.systemPrompt ?? '',
     },
     streamFn,
@@ -166,6 +186,19 @@ export function createAgentBridge(
       }
       case 'tool_execution_start': {
         onMessage({ type: 'stream.chunk', content: `\n[执行工具: ${event.toolName}]\n` });
+        onMessage({
+          type: 'tool_call',
+          toolName: event.toolName ?? '',
+          status: 'start',
+        });
+        break;
+      }
+      case 'tool_execution_end': {
+        onMessage({
+          type: 'tool_call',
+          toolName: event.toolName ?? '',
+          status: event.isError ? 'error' : 'end',
+        });
         break;
       }
       case 'agent_end': {

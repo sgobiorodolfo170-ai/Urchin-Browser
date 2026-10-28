@@ -10,8 +10,10 @@ interface ReadyInfo {
 
 interface ChatMessage {
   readonly id: string;
-  readonly role: 'user' | 'assistant';
+  readonly role: 'user' | 'assistant' | 'tool';
   readonly content: string;
+  readonly toolName?: string;
+  readonly toolStatus?: 'start' | 'end' | 'error';
   readonly streaming?: boolean;
 }
 
@@ -113,6 +115,31 @@ export function App(): React.JSX.Element {
           if (typeof msg.streaming === 'boolean' && !msg.streaming) {
             setStreaming(false);
           }
+          break;
+        }
+        case 'tool_call': {
+          const toolName = typeof msg.toolName === 'string' ? msg.toolName : '';
+          const status = msg.status;
+          setMessages((prev) => {
+            // 更新同名的最后一条 tool 消息状态；不存在则新增
+            const lastToolIdx = [...prev]
+              .map((m, i) => (m.role === 'tool' && m.toolName === toolName ? i : -1))
+              .filter((i) => i >= 0)
+              .pop();
+            if (lastToolIdx !== undefined) {
+              return prev.map((m, i) => (i === lastToolIdx ? { ...m, toolStatus: status } : m));
+            }
+            return [
+              ...prev,
+              {
+                id: nextMsgId(),
+                role: 'tool' as const,
+                content: toolName,
+                toolName,
+                toolStatus: status,
+              },
+            ];
+          });
           break;
         }
         case 'stream.chunk': {
@@ -276,12 +303,26 @@ export function App(): React.JSX.Element {
           {messages.length === 0 ? (
             <p className="placeholder">输入消息开始对话…</p>
           ) : (
-            messages.map((m) => (
-              <article key={m.id} className={`msg msg-${m.role}`}>
-                <span className="msg-role">{m.role === 'user' ? '你' : 'pi'}</span>
-                <pre className="msg-content">{m.content || (m.streaming ? '…' : '')}</pre>
-              </article>
-            ))
+            messages.map((m) =>
+              m.role === 'tool' ? (
+                <article key={m.id} className="msg msg-tool">
+                  <span className="tool-icon">🔧</span>
+                  <span className="tool-name">{m.toolName}</span>
+                  <span className={`tool-status tool-status-${m.toolStatus}`}>
+                    {m.toolStatus === 'start'
+                      ? '执行中…'
+                      : m.toolStatus === 'error'
+                        ? '失败'
+                        : '完成'}
+                  </span>
+                </article>
+              ) : (
+                <article key={m.id} className={`msg msg-${m.role}`}>
+                  <span className="msg-role">{m.role === 'user' ? '你' : 'pi'}</span>
+                  <pre className="msg-content">{m.content || (m.streaming ? '…' : '')}</pre>
+                </article>
+              ),
+            )
           )}
         </section>
       </div>

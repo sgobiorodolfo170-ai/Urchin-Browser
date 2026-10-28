@@ -45,3 +45,10 @@ declare module '@earendil-works/pi-ai' {
 
   export type AssistantMessageEvent = any;
 }
+
+declare module '@earendil-works/pi-coding-agent' {
+  export const createBashTool: (cwd: string) => any;
+  export const createReadTool: (cwd: string) => any;
+  export const createEditTool: (cwd: string) => any;
+  export const createWriteTool: (cwd: string) => any;
+}

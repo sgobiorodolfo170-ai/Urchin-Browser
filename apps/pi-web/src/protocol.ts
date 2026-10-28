@@ -33,6 +33,11 @@ export type HostServerMessage =
       readonly finishReason: string;
       readonly usage?: { promptTokens: number; completionTokens: number };
     }
+  | {
+      readonly type: 'tool_call';
+      readonly toolName: string;
+      readonly status: 'start' | 'end' | 'error';
+    }
   | { readonly type: 'models'; readonly providers: readonly string[] }
   | { readonly type: 'state'; readonly streaming: boolean; readonly messageCount: number }
   | { readonly type: 'session_list'; readonly sessions: readonly SessionSummary[] }

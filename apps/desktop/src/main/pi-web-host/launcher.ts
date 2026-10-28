@@ -90,6 +90,10 @@ export interface AgentCreds {
   readonly modelId: string;
   readonly baseUrl?: string;
   readonly systemPrompt?: string;
+  /** M2B-4：启用 coding 工具（utility 进程内安全，ADR-004 / PH7） */
+  readonly enableTools?: boolean;
+  /** M2B-4：工具工作目录 */
+  readonly toolsCwd?: string;
 }
 
 /** 默认 fork 工厂：utilityProcess.fork（runs Electron 内置 Node 的 ESM/CJS 模块） */
@@ -218,6 +222,8 @@ export class PiWebHostLauncher {
                 PI_HOST_MODEL: creds.modelId,
                 ...(creds.baseUrl ? { PI_HOST_BASE_URL: creds.baseUrl } : {}),
                 ...(creds.systemPrompt ? { PI_HOST_SYSTEM_PROMPT: creds.systemPrompt } : {}),
+                ...(creds.enableTools ? { PI_HOST_ENABLE_TOOLS: 'true' } : {}),
+                ...(creds.toolsCwd ? { PI_HOST_TOOLS_CWD: creds.toolsCwd } : {}),
               }
             : {}),
         },

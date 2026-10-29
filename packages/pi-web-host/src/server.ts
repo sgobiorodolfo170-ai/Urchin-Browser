@@ -35,7 +35,7 @@ import {
   generateSessionId,
 } from './session-store';
 import { handleFileOps } from './file-ops';
-import { PiWebHostState } from './types';
+import { PiWebHostState, type HostServerMessage } from './types';
 
 export const SERVICE_VERSION = '0.2.0';
 
@@ -157,7 +157,6 @@ export async function startPiWebHostServer(
     let currentSessionId = generateSessionId();
     let lastUserText = '';
     let assistantAccumulator = '';
-    const pendingApprovals = new Map<string, (approved: boolean) => void>();
     const ctx = {
       version: SERVICE_VERSION,
       provider: agentOpts?.providerId,
@@ -181,30 +180,12 @@ export async function startPiWebHostServer(
           sendJson(ws, msg);
         },
         (code, message) => sendError(ws, code, message),
-        {
-          onApproval: (toolCallId, toolName, args) => {
-            return new Promise<{ approved: boolean; reason?: string }>((resolve) => {
-              pendingApprovals.set(toolCallId, (approved) => resolve({ approved }));
-              sendJson(ws, {
-                type: 'tool_approval_pending',
-                id: toolCallId,
-                toolCallId,
-                toolName,
-                params: args,
-              } as unknown as Parameters<typeof sendJson>[1]);
-            });
-          },
-        },
       );
       return bridge;
     };
 
     /** 销毁当前桥（切换/新建会话时调用） */
     const disposeBridge = (): void => {
-      for (const [, resolver] of pendingApprovals) {
-        resolver(false);
-      }
-      pendingApprovals.clear();
       bridge?.dispose();
       bridge = null;
     };
@@ -342,20 +323,16 @@ export async function startPiWebHostServer(
             conversationId: currentSessionId,
             messages: [],
             error: 'no compacted history',
-          } as unknown as Parameters<typeof sendJson>[1]);
+          } as unknown as HostServerMessage);
           return;
         }
         case 'tool_approval_response': {
           const id = (parsed as { id?: string }).id ?? '';
-          const decision = (parsed as { decision?: string }).decision ?? 'approve';
-          const resolver = pendingApprovals.get(id);
-          if (resolver) {
-            pendingApprovals.delete(id);
-            resolver(decision !== 'deny');
-          }
-          sendJson(ws, { type: 'tool_approval_resolved', id } as unknown as Parameters<
-            typeof sendJson
-          >[1]);
+          const rawDecision = (parsed as { decision?: string }).decision ?? 'approve';
+          const decision =
+            rawDecision === 'deny' ? 'deny' : rawDecision === 'edit' ? 'edit' : 'approve';
+          bridge?.resolveApproval(id, decision);
+          sendJson(ws, { type: 'tool_approval_resolved', id });
           return;
         }
         default:
@@ -374,10 +351,6 @@ export async function startPiWebHostServer(
     });
 
     ws.on('close', () => {
-      for (const [, resolver] of pendingApprovals) {
-        resolver(false);
-      }
-      pendingApprovals.clear();
       bridge?.dispose();
       bridge = null;
     });

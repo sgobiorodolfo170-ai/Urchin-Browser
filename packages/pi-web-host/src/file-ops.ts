@@ -114,7 +114,7 @@ export async function handleFileOps(
           .map((e) => ({
             name: e.name,
             path: (dirPart ? dirPart + '/' : '') + e.name,
-            type: e.isDirectory() ? 'dir' : 'file',
+            type: e.isDirectory() ? ('dir' as const) : ('file' as const),
           }));
         return { type: 'path_completions', completions };
       } catch {

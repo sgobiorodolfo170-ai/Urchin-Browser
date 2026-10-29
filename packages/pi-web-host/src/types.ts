@@ -30,7 +30,14 @@ export type HostClientMessage =
   /** M2B-3b：列出历史会话 */
   | { readonly type: 'list_sessions' }
   /** M2B-3b：切换到指定会话 */
-  | { readonly type: 'switch_session'; readonly sessionId: string };
+  | { readonly type: 'switch_session'; readonly sessionId: string }
+  /** M2C-2：工具审批答复（tool_approval_pending 回复） */
+  | {
+      readonly type: 'tool_approval_response';
+      readonly id: string;
+      readonly decision: 'approve' | 'deny' | 'edit';
+      readonly editedParams?: unknown;
+    };
 
 /** token 用量（promptTokens/completionTokens） */
 export interface HostUsage {
@@ -79,7 +86,17 @@ export type HostServerMessage =
         readonly content: string;
       }[];
     }
-  | { readonly type: 'error'; readonly code: string; readonly message: string };
+  | { readonly type: 'error'; readonly code: string; readonly message: string }
+  /** M2C-2：高危工具审批请求（beforeToolCall 钩子触发，暂停工具执行等待答复） */
+  | {
+      readonly type: 'tool_approval_pending';
+      readonly id: string;
+      readonly toolCallId: string;
+      readonly toolName: string;
+      readonly params: unknown;
+    }
+  /** M2C-2：审批已解决（用户批准/拒绝/编辑后发送） */
+  | { readonly type: 'tool_approval_resolved'; readonly id: string };
 
 /** 静态文件 Content-Type 映射（M2A 最小集，覆盖自研前端产物） */
 export const MIME_TYPES: Readonly<Record<string, string>> = {

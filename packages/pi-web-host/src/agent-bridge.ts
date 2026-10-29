@@ -61,19 +61,8 @@ export interface AgentBridgeHandle {
   abort(): void;
   /** 销毁：解绑订阅（agent 无显式 dispose，仅 unsubscribe） */
   dispose(): void;
-}
-
-/** 工具审批钩子（beforeToolCall 的高层封装） */
-export interface AgentBridgeHooks {
-  /**
-   * 工具执行前审批回调。返回 {approved:true} 放行，{approved:false} 阻止。
-   * 实现方应在调用时发送 tool_approval_pending，并在收到 tool_approval_response 后 resolve。
-   */
-  onApproval?: (
-    toolCallId: string,
-    toolName: string,
-    args: unknown,
-  ) => Promise<{ approved: boolean; reason?: string }>;
+  /** M2C-2：解决工具审批（approve 放行 / deny 拒绝 / edit 暂等同 approve） */
+  resolveApproval(id: string, decision: 'approve' | 'deny' | 'edit'): void;
 }
 
 /** 从 AssistantMessageEvent 提取文本增量（与 pi-event-bridge 同） */
@@ -157,7 +146,6 @@ export function createAgentBridge(
   options: AgentBridgeOptions,
   onMessage: (msg: HostServerMessage) => void,
   onError: (code: string, message: string) => void,
-  hooks?: AgentBridgeHooks,
 ): AgentBridgeHandle {
   const normalizedProviderId = normalizeProviderId(options.providerId);
   const model = resolveModel(normalizedProviderId, options.modelId, options.baseUrl);
@@ -177,6 +165,14 @@ export function createAgentBridge(
     );
   }
 
+  // M2C-2：工具审批——beforeToolCall 钩子在工具执行前暂停，发 tool_approval_pending，
+  // 等待前端 tool_approval_response 后 resolve（approve 放行 / deny 阻断）。
+  // pi Agent 的 beforeToolCall 是 async 且被 await（agent-loop.ts:739），真正暂停工具执行。
+  const pendingApprovals = new Map<
+    string,
+    { resolve: (result: { block?: boolean; reason?: string } | undefined) => void }
+  >();
+
   const agent = new Agent({
     initialState: {
       model,
@@ -186,27 +182,32 @@ export function createAgentBridge(
     streamFn,
     getApiKey,
     sessionId: options.sessionId,
-    beforeToolCall: hooks?.onApproval
-      ? async (
-          context: { toolCall: { id: string; name: string }; args: unknown },
-          signal?: AbortSignal,
-        ) => {
-          if (signal?.aborted) return { block: true, reason: 'aborted' };
-          try {
-            const result = await hooks.onApproval!(
-              context.toolCall.id,
-              context.toolCall.name,
-              context.args,
-            );
-            if (!result.approved) {
-              return { block: true, reason: result.reason ?? 'denied by user' };
+    beforeToolCall: async (
+      context: { toolCall: { id?: string; name?: string }; args: unknown },
+      signal?: AbortSignal,
+    ) => {
+      const toolCallId = context.toolCall.id ?? '';
+      const toolName = context.toolCall.name ?? '';
+      onMessage({
+        type: 'tool_approval_pending',
+        id: toolCallId,
+        toolCallId,
+        toolName,
+        params: context.args,
+      });
+      return new Promise<{ block?: boolean; reason?: string } | undefined>((resolve) => {
+        pendingApprovals.set(toolCallId, { resolve });
+        if (signal) {
+          signal.addEventListener('abort', () => {
+            const pending = pendingApprovals.get(toolCallId);
+            if (pending) {
+              pendingApprovals.delete(toolCallId);
+              pending.resolve({ block: true, reason: 'aborted' });
             }
-            return undefined;
-          } catch {
-            return { block: true, reason: 'approval error' };
-          }
+          });
         }
-      : undefined,
+      });
+    },
   });
 
   let ended = false;
@@ -262,6 +263,17 @@ export function createAgentBridge(
     },
     dispose(): void {
       unsubscribe();
+    },
+    resolveApproval(id: string, decision: 'approve' | 'deny' | 'edit'): void {
+      const pending = pendingApprovals.get(id);
+      if (!pending) return;
+      pendingApprovals.delete(id);
+      if (decision === 'deny') {
+        pending.resolve({ block: true, reason: '用户拒绝执行' });
+      } else {
+        // approve 放行；edit 暂不支持参数修改，等同于 approve
+        pending.resolve(undefined);
+      }
     },
   };
 }

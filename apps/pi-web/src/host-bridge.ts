@@ -551,7 +551,10 @@ export class HostBridgeWebSocket {
         });
         break;
       case 'check_updates_all':
-        this.dispatchSynthetic({ type: 'update_status_all', items: [] });
+        this.dispatchSynthetic({
+          type: 'update_status_all',
+          items: [],
+        });
         break;
       case 'scm_status':
       case 'scm_stage':
@@ -576,7 +579,7 @@ export class HostBridgeWebSocket {
         this.dispatchSynthetic({ type: 'plugins', plugins: [] });
         break;
 
-      // ── Goal/Plan：host-bridge 维护 goal 状态（pi-web-host 无 goal/review 后端） ──
+      // ── Goal/Plan：host-bridge 维护状态（后端不支持 goal/review） ──
       case 'start_goal_wizard': {
         const text = typeof msg['text'] === 'string' ? msg['text'] : '';
         this.goalStatus = {
@@ -591,7 +594,7 @@ export class HostBridgeWebSocket {
         break;
       }
 
-      // ── 工具审批：转发到 pi-web-host（后端 beforeToolCall 等待 resolve） ──
+      // ── 工具审批：转发到 pi-web-host（后端 beforeToolCall 钩子等待 resolve） ──
       case 'tool_approval_response':
         this.ws.send(JSON.stringify(msg));
         break;

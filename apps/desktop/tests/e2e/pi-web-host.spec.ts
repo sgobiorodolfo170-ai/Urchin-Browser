@@ -136,7 +136,9 @@ test.describe('pi 阶段 2 自研托管服务（M2A 骨架）', () => {
         { basePort: launchRes.port },
       );
       expect(result.found).toBe(true);
-      expect(result.url).toContain('token=');
+      // BrowserView 加载后 URL 中的 token 被 Cookie 取代（server.ts Set-Cookie 后不再需要 query token），
+      // 只验证页面已打开到正确端口即可；token 已在 launchRes.url（第 91 行）中验证。
+      expect(result.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+/);
     } finally {
       // 6. 关闭应用 → utility 子进程随 performCleanup 终止 → 端口不可达
       await electronApp.close();

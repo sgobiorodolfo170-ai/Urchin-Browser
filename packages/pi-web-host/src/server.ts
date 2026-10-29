@@ -397,6 +397,10 @@ export async function startPiWebHostServer(
               error: result.error,
               notRepo: result.notRepo,
               branch: result.branch,
+              detached: result.detached,
+              upstream: result.upstream,
+              ahead: result.ahead,
+              behind: result.behind,
               files: result.files,
               branches: result.branches,
             } as unknown as HostServerMessage);

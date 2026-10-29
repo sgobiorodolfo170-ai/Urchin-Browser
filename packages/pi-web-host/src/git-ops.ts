@@ -26,6 +26,10 @@ export interface GitStatusResult {
   error?: string;
   notRepo?: boolean;
   branch?: string;
+  detached?: boolean;
+  upstream?: string | null;
+  ahead?: number;
+  behind?: number;
   files?: ScmFileEntry[];
   branches?: ScmBranchEntry[];
 }
@@ -39,14 +43,66 @@ export async function getGitStatus(cwd: string): Promise<GitStatusResult> {
   try {
     // 1. 当前分支
     let branch = '';
+    let detached = false;
     try {
       const { stdout: branchOut } = await execFileAsync('git', ['branch', '--show-current'], {
         cwd,
         timeout: 5000,
       });
       branch = branchOut.trim();
+      if (!branch) {
+        detached = true;
+        try {
+          const { stdout: headOut } = await execFileAsync('git', ['rev-parse', '--short', 'HEAD'], {
+            cwd,
+            timeout: 5000,
+          });
+          branch = headOut.trim();
+        } catch {
+          /* ignore */
+        }
+      }
     } catch {
       /* detached HEAD 等情况 */
+    }
+
+    // 1b. 上游分支 + ahead/behind
+    let upstream: string | null = null;
+    let ahead = 0;
+    let behind = 0;
+    if (!detached) {
+      try {
+        const { stdout: upOut } = await execFileAsync(
+          'git',
+          ['rev-parse', '--abbrev-ref', '@{upstream}'],
+          { cwd, timeout: 5000 },
+        );
+        upstream = upOut.trim() || null;
+        if (upstream) {
+          try {
+            const { stdout: aheadOut } = await execFileAsync(
+              'git',
+              ['rev-list', '--count', '@{upstream}..HEAD'],
+              { cwd, timeout: 5000 },
+            );
+            ahead = parseInt(aheadOut.trim(), 10) || 0;
+          } catch {
+            /* ignore */
+          }
+          try {
+            const { stdout: behindOut } = await execFileAsync(
+              'git',
+              ['rev-list', '--count', 'HEAD..@{upstream}'],
+              { cwd, timeout: 5000 },
+            );
+            behind = parseInt(behindOut.trim(), 10) || 0;
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch {
+        /* no upstream */
+      }
     }
 
     // 2. 文件状态（porcelain v1）
@@ -84,7 +140,7 @@ export async function getGitStatus(cwd: string): Promise<GitStatusResult> {
       /* ignore */
     }
 
-    return { ok: true, branch, files, branches };
+    return { ok: true, branch, detached, upstream, ahead, behind, files, branches };
   } catch (e) {
     const err = e as { stderr?: string; message?: string };
     if (

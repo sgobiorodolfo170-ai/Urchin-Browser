@@ -636,7 +636,6 @@ export class HostBridgeWebSocket {
       // ── 文件操作：转发到 pi-web-host（utility 进程有 fs 访问） ──
       case 'list_files':
       case 'read_file':
-      case 'file_search':
         this.ws.send(JSON.stringify(msg));
         break;
 
@@ -776,6 +775,24 @@ export class HostBridgeWebSocket {
         });
         break;
       }
+
+      // ── 未实现功能：忽略（不转发后端避免 unknown_type error） ──
+      case 'fork_conversation':
+      case 'delete_conversation':
+      case 'edit_message':
+      case 'steer':
+      case 'follow_up':
+      case 'set_workspace_roots':
+      case 'present_files':
+      case 'ask_user_question_response':
+      case 'sandbox_create':
+      case 'sandbox_remove':
+      case 'worktree_create':
+      case 'worktree_remove':
+      case 'page_request':
+      case 'mcp_manage':
+      case 'dismiss_conversation':
+        break;
 
       default:
         // 其他消息——透传到 pi-web-host（后续批次逐步对接）

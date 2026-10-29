@@ -72,6 +72,88 @@ function makeEmptyGoalStatus(): BridgeGoalStatus {
   };
 }
 
+/** UiSettingsState 全字段默认值（protocol.ts:3305）——空对象会导致组件访问 .length 崩溃 */
+function makeDefaultSettings(): Record<string, unknown> {
+  return {
+    promptMode: 'append',
+    customSystemPrompt: '',
+    promptTemplate: '',
+    promptOverrides: {},
+    promptDisabled: [],
+    toolPromptOverrides: {},
+    disabledSkills: [],
+    disabledExtensions: [],
+    disabledAgentTools: [],
+    disabledPluginTools: [],
+    terminalToolsEnabled: true,
+    terminalBash: false,
+    terminalBashIdleMs: 0,
+    terminalBashMaxForegroundMs: 0,
+    toolWatchdogTimeoutMs: 0,
+    readDirEnabled: true,
+    bgAutoCleanupMin: 0,
+    toolLazyLoading: false,
+    codemodeMode: 'on',
+    codemodeInlineBudget: 3000,
+    editSoftEnabled: true,
+    questionnaireEnabled: true,
+    toolApprovalEnabled: true,
+    approvalPolicy: { allowAll: false, categories: [] },
+    approvalRules: [],
+    parallelReminderEnabled: true,
+    goalModeEnabled: true,
+    thinkingWrap: true,
+    toolsWrap: true,
+    toolImagesEnabled: true,
+    keepRecentMessages: 15,
+    showForkedParentSessions: false,
+    retainFinishedConversations: false,
+    openRecentSessionOnProjectSwitch: true,
+    skillsFullText: [],
+    skillsCatalogMaxDesc: 250,
+    skillsCatalogShowLocation: false,
+    skillsCatalogBudget: 20000,
+    visionBridgeEnabled: true,
+    visionBridgeModel: null,
+    visionBridgePromptMode: 'append',
+    visionBridgePrompt: '',
+    scmCommitMsgPromptMode: 'append',
+    scmCommitMsgPrompt: '',
+    planModePromptMode: 'append',
+    planModePrompt: '',
+    reviewPrompt: '',
+    reviewDisabledSkills: [],
+    disabledPlugins: [],
+    uiLayout: {},
+    effectiveSystemPrompt: '',
+    promptSourceDefaults: {},
+    toolsSchema: '',
+    visionBridgeDefaultPrompt: '',
+    scmCommitMsgDefaultPrompt: '',
+    planModeDefaultPrompt: '',
+    visionModels: [],
+    skills: [],
+    reviewSkills: [],
+    extensions: [],
+    presets: [],
+    markersEnabled: false,
+    disabledMarkers: [],
+    markers: [],
+    subagentTemplates: [],
+    subagentDefaultModel: null,
+    retryMaxAttempts: 6,
+    softCapTokens: 0,
+    softCapByModel: {},
+    quickPhrases: [],
+    quickPhrasesEnabled: true,
+    minimalNewChat: false,
+    preserveDraftAcrossConversations: false,
+    quickPhrasesSeeded: true,
+    subagentModels: [],
+    subagentDefaultTemplates: [],
+  };
+}
+
 function makeDefaultState(): BridgeState {
   return {
     rev: 0,
@@ -231,8 +313,11 @@ export class HostBridgeWebSocket {
     // 插件（protocol.ts: plugins {plugins, epoch} / plugin_catalog {entries, epoch}）
     this.dispatchSynthetic({ type: 'plugins', plugins: [], epoch: 0 });
     this.dispatchSynthetic({ type: 'plugin_catalog', entries: [], epoch: 0 });
-    // 设置
-    this.dispatchSynthetic({ type: 'settings_state', settings: this.settings });
+    // 设置（UiSettingsState 全字段默认值 + 用户覆盖）
+    this.dispatchSynthetic({
+      type: 'settings_state',
+      settings: { ...makeDefaultSettings(), ...this.settings },
+    });
     // 模型配置（protocol.ts: models_config {providers} / providers_status {providers}）
     this.dispatchSynthetic({ type: 'models_config', providers: [] });
     this.dispatchSynthetic({ type: 'providers_status', providers: [] });
@@ -508,14 +593,19 @@ export class HostBridgeWebSocket {
 
       // ── 设置：本地存储 + 同步到 pi-web-host ──
       case 'get_settings':
-        this.dispatchSynthetic({ type: 'settings_state', settings: this.settings });
+        this.dispatchSynthetic({
+          type: 'settings_state',
+          settings: { ...makeDefaultSettings(), ...this.settings },
+        });
         break;
       case 'set_settings': {
-        const newSettings = msg['settings'] as Record<string, unknown> | undefined;
-        if (newSettings) {
-          this.settings = { ...this.settings, ...newSettings };
-        }
-        this.dispatchSynthetic({ type: 'settings_state', settings: this.settings });
+        // 前端发 {type:'set_settings', field1: val1, ...}（顶层字段，非 settings 包装）
+        const { type: _omit, ...rest } = msg;
+        this.settings = { ...this.settings, ...rest };
+        this.dispatchSynthetic({
+          type: 'settings_state',
+          settings: { ...makeDefaultSettings(), ...this.settings },
+        });
         break;
       }
 

@@ -35,6 +35,7 @@ import {
   generateSessionId,
 } from './session-store';
 import { handleFileOps } from './file-ops';
+import { getGitStatus } from './git-ops';
 import { PiWebHostState, type HostServerMessage } from './types';
 
 export const SERVICE_VERSION = '0.2.0';
@@ -157,6 +158,7 @@ export async function startPiWebHostServer(
     let currentSessionId = generateSessionId();
     let lastUserText = '';
     let assistantAccumulator = '';
+    let currentCwd: string | undefined;
     const ctx = {
       version: SERVICE_VERSION,
       provider: agentOpts?.providerId,
@@ -333,6 +335,28 @@ export async function startPiWebHostServer(
             rawDecision === 'deny' ? 'deny' : rawDecision === 'edit' ? 'edit' : 'approve';
           bridge?.resolveApproval(id, decision);
           sendJson(ws, { type: 'tool_approval_resolved', id });
+          return;
+        }
+        case 'set_cwd': {
+          currentCwd = (parsed as { path?: string }).path;
+          return;
+        }
+        case 'scm_status': {
+          const reqId = (parsed as { reqId?: number }).reqId ?? 0;
+          const cwd = currentCwd ?? agentDir ?? process.cwd();
+          void getGitStatus(cwd).then((result) => {
+            sendJson(ws, {
+              type: 'scm_data',
+              reqId,
+              kind: 'status',
+              ok: result.ok,
+              error: result.error,
+              notRepo: result.notRepo,
+              branch: result.branch,
+              files: result.files,
+              branches: result.branches,
+            } as unknown as HostServerMessage);
+          });
           return;
         }
         default:

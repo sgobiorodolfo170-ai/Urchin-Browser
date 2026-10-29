@@ -698,6 +698,27 @@ export class HostBridgeWebSocket {
         this.ws.send(JSON.stringify(msg));
         break;
 
+      // ── 技能市场：后端不支持，返回空目录（3-7） ──
+      case 'fetch_skill_market':
+        this.dispatchSynthetic({
+          type: 'skill_market_result',
+          ok: true,
+          skills: [],
+          repo: '',
+        });
+        break;
+      case 'fetch_skill_content': {
+        const skillId = typeof msg['skillId'] === 'string' ? msg['skillId'] : '';
+        this.dispatchSynthetic({
+          type: 'skill_content_result',
+          ok: false,
+          skillId,
+          content: '',
+          error: 'skill not found',
+        });
+        break;
+      }
+
       default:
         // 其他消息——透传到 pi-web-host（后续批次逐步对接）
         this.ws.send(JSON.stringify(msg));

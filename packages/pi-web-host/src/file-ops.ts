@@ -4,7 +4,7 @@
  * utility 进程有 Node.js fs 访问，直接读写 agentDir 下的文件系统。
  */
 import { readdir, readFile, stat, mkdir, writeFile } from 'node:fs/promises';
-import { join, basename, extname, relative, isAbsolute, resolve } from 'node:path';
+import { join, basename, dirname, extname, relative, isAbsolute, resolve } from 'node:path';
 
 const SETTINGS_FILE = 'settings.json';
 
@@ -120,6 +120,31 @@ export async function handleFileOps(
       } catch {
         return { type: 'path_completions', completions: [] };
       }
+    }
+
+    case 'write_file': {
+      const requestPath = typeof msg.path === 'string' ? msg.path : '';
+      const text = typeof msg.text === 'string' ? msg.text : '';
+      if (!requestPath) return null;
+      try {
+        const fullPath = safePath(agentDir, requestPath);
+        await mkdir(dirname(fullPath), { recursive: true });
+        await writeFile(fullPath, text, 'utf8');
+        return { type: 'file_changed', path: requestPath };
+      } catch {
+        return null;
+      }
+    }
+
+    case 'search_files': {
+      const reqId = typeof msg.reqId === 'number' ? msg.reqId : 0;
+      return {
+        type: 'search_files_result',
+        reqId,
+        ok: true,
+        results: [],
+        truncated: false,
+      };
     }
 
     case 'get_settings': {

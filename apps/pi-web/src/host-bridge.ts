@@ -652,6 +652,9 @@ export class HostBridgeWebSocket {
         });
         break;
       case 'scm_status':
+        // 转发到 pi-web-host（git-ops.ts getGitStatus 返回真实 git 状态）
+        this.ws.send(JSON.stringify(msg));
+        break;
       case 'scm_stage':
       case 'scm_unstage':
       case 'scm_commit':

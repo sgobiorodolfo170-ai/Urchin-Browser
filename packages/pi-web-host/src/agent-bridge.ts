@@ -63,6 +63,19 @@ export interface AgentBridgeHandle {
   dispose(): void;
 }
 
+/** 工具审批钩子（beforeToolCall 的高层封装） */
+export interface AgentBridgeHooks {
+  /**
+   * 工具执行前审批回调。返回 {approved:true} 放行，{approved:false} 阻止。
+   * 实现方应在调用时发送 tool_approval_pending，并在收到 tool_approval_response 后 resolve。
+   */
+  onApproval?: (
+    toolCallId: string,
+    toolName: string,
+    args: unknown,
+  ) => Promise<{ approved: boolean; reason?: string }>;
+}
+
 /** 从 AssistantMessageEvent 提取文本增量（与 pi-event-bridge 同） */
 function extractDelta(event: AssistantMessageEvent): string {
   return event.type === 'text_delta' ? (event.delta ?? '') : '';
@@ -144,6 +157,7 @@ export function createAgentBridge(
   options: AgentBridgeOptions,
   onMessage: (msg: HostServerMessage) => void,
   onError: (code: string, message: string) => void,
+  hooks?: AgentBridgeHooks,
 ): AgentBridgeHandle {
   const normalizedProviderId = normalizeProviderId(options.providerId);
   const model = resolveModel(normalizedProviderId, options.modelId, options.baseUrl);
@@ -172,6 +186,27 @@ export function createAgentBridge(
     streamFn,
     getApiKey,
     sessionId: options.sessionId,
+    beforeToolCall: hooks?.onApproval
+      ? async (
+          context: { toolCall: { id: string; name: string }; args: unknown },
+          signal?: AbortSignal,
+        ) => {
+          if (signal?.aborted) return { block: true, reason: 'aborted' };
+          try {
+            const result = await hooks.onApproval!(
+              context.toolCall.id,
+              context.toolCall.name,
+              context.args,
+            );
+            if (!result.approved) {
+              return { block: true, reason: result.reason ?? 'denied by user' };
+            }
+            return undefined;
+          } catch {
+            return { block: true, reason: 'approval error' };
+          }
+        }
+      : undefined,
   });
 
   let ended = false;

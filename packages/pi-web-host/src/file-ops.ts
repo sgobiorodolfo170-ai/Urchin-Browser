@@ -101,6 +101,27 @@ export async function handleFileOps(
       }
     }
 
+    case 'complete_path': {
+      const partial = typeof msg.path === 'string' ? msg.path : '';
+      const lastSlash = partial.lastIndexOf('/');
+      const dirPart = lastSlash >= 0 ? partial.slice(0, lastSlash) : '';
+      const prefix = lastSlash >= 0 ? partial.slice(lastSlash + 1) : partial;
+      try {
+        const targetDir = dirPart ? safePath(agentDir, dirPart) : agentDir;
+        const entries = await readdir(targetDir, { withFileTypes: true });
+        const completions = entries
+          .filter((e) => e.name.toLowerCase().startsWith(prefix.toLowerCase()))
+          .map((e) => ({
+            name: e.name,
+            path: (dirPart ? dirPart + '/' : '') + e.name,
+            type: e.isDirectory() ? 'dir' : 'file',
+          }));
+        return { type: 'path_completions', completions };
+      } catch {
+        return { type: 'path_completions', completions: [] };
+      }
+    }
+
     case 'get_settings': {
       try {
         const raw = await readFile(join(agentDir, SETTINGS_FILE), 'utf8');

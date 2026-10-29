@@ -29,6 +29,49 @@ interface BridgeSettings {
   [key: string]: unknown;
 }
 
+interface BridgeGoalStatus {
+  conversationId: string | null;
+  goal: string | null;
+  reviewModel: string | null;
+  maxRounds: number;
+  locked: boolean;
+  reviewing: boolean;
+  round: number;
+  status: string;
+  verdict: 'pending' | 'pass' | 'fail' | 'blocked';
+  wizard: {
+    active: boolean;
+    draft: string;
+    model: string | null;
+    step: number;
+    maxSteps: number;
+    status: string;
+  };
+  phase?: 'idle' | 'executing' | 'reviewing' | 'blocked';
+}
+
+function makeEmptyGoalStatus(): BridgeGoalStatus {
+  return {
+    conversationId: null,
+    goal: null,
+    reviewModel: null,
+    maxRounds: 0,
+    locked: false,
+    reviewing: false,
+    round: 0,
+    status: '',
+    verdict: 'pending',
+    wizard: {
+      active: false,
+      draft: '',
+      model: null,
+      step: 0,
+      maxSteps: 0,
+      status: '',
+    },
+  };
+}
+
 function makeDefaultState(): BridgeState {
   return {
     rev: 0,
@@ -78,6 +121,7 @@ export class HostBridgeWebSocket {
   private state: BridgeState = makeDefaultState();
   private toolCalls: Map<string, { id: string; name: string; status: string }> = new Map();
   private settings: BridgeSettings = {};
+  private goalStatus: BridgeGoalStatus = makeEmptyGoalStatus();
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   onopen: ((ev: Event) => void) | null = null;
@@ -175,7 +219,7 @@ export class HostBridgeWebSocket {
       scm: { changed: [], staged: [], branches: [], currentBranch: '' },
     });
     // Goal/Plan
-    this.dispatchSynthetic({ type: 'goal_status', goal: null });
+    this.dispatchSynthetic({ type: 'goal_status', status: this.goalStatus });
     // 会话（空列表，list_sessions 会更新）
     this.dispatchSynthetic({ type: 'sessions', sessions: [] });
     this.dispatchSynthetic({ type: 'projects', projects: [] });
@@ -498,8 +542,16 @@ export class HostBridgeWebSocket {
         this.dispatchSynthetic({ type: 'slash_commands', slashCommands: [] });
         break;
       case 'check_update':
+        this.dispatchSynthetic({
+          type: 'update_status',
+          current: '',
+          latest: null,
+          latestPublishedAt: null,
+          upToDate: true,
+        });
+        break;
       case 'check_updates_all':
-        // managed=true 时前端不发送；如果发了，返回空
+        this.dispatchSynthetic({ type: 'update_status_all', items: [] });
         break;
       case 'scm_status':
       case 'scm_stage':
@@ -522,6 +574,26 @@ export class HostBridgeWebSocket {
       case 'plugin_enable':
       case 'plugin_disable':
         this.dispatchSynthetic({ type: 'plugins', plugins: [] });
+        break;
+
+      // ── Goal/Plan：host-bridge 维护 goal 状态（pi-web-host 无 goal/review 后端） ──
+      case 'start_goal_wizard': {
+        const text = typeof msg['text'] === 'string' ? msg['text'] : '';
+        this.goalStatus = {
+          ...this.goalStatus,
+          conversationId: this.state.conversationId || null,
+          goal: text,
+          phase: 'executing',
+          status: '执行中',
+          wizard: { ...this.goalStatus.wizard, active: false },
+        };
+        this.dispatchSynthetic({ type: 'goal_status', status: this.goalStatus });
+        break;
+      }
+
+      // ── 工具审批：转发到 pi-web-host（后端 beforeToolCall 等待 resolve） ──
+      case 'tool_approval_response':
+        this.ws.send(JSON.stringify(msg));
         break;
 
       default:

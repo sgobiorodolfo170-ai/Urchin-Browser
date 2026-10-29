@@ -13,6 +13,9 @@ export default defineConfig({
   plugins: [react()],
   root: 'src',
   base: './',
+  define: {
+    __BUILD_ID__: JSON.stringify(new Date().toISOString().replace(/[-:.]/g, '').slice(0, 14)),
+  },
   resolve: {
     alias: {
       '../server': resolve(__dirname, 'server'),

@@ -203,8 +203,8 @@ function createCodingToolsList(cwd: string): readonly AgentTool[] {
  * const { agent, model, tools } = createPiAgent({
  *   providerId: 'openai',
  *   modelId: 'gpt-4o-mini',
- *   apiKey: settingsManager.get('ai.apiKey'),
- *   baseUrl: settingsManager.get('ai.baseUrl'),
+ *   apiKey: settingsManager.get('pi.apiKey'),
+ *   baseUrl: settingsManager.get('pi.baseUrl'),
  *   enableTools: true,
  *   cwd: process.cwd(),
  * });

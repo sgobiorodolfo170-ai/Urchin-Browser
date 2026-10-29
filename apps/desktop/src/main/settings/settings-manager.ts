@@ -33,23 +33,15 @@ export interface SettingsPersistence {
  * 这些键的值通过 secretStore（safeStorage 加密）落盘，不写入明文 SQLite。
  * 内存中仍以普通值存在（主进程是 Single Source of Truth，渲染层经 IPC 读取用于编辑展示）。
  */
-const SECRET_KEYS = new Set([
-  'ai.apiKey',
-  'summary.apiKey',
-  // 命名提供商配置（设置页保存的多套「提供商名 → 模型/Key/URL」）。
-  // 整体作为敏感键加密落盘：value 是数组，JSON 序列化后写入 secretStore，
-  // 避免配置文件中的 apiKey 以明文进入 SQLite。
-  'ai.providerProfiles',
-]);
+const SECRET_KEYS = new Set(['pi.apiKey']);
 
 /**
- * pi(AI) 设置键判定（DD1 决策）：
- * ai.* / summary.* 键属 pi 模块（AI 对话 + 摘要助手），持久化到 pi 目录
- * （pi/ai.db + pi/secrets），与用户个人数据（书签/历史/普通设置）隔离，
- * 不随 data.directory 配置变动。
+ * pi 设置键判定（DD1 决策）：
+ * pi.* 键属 pi 对话模块，持久化到 pi 目录（pi/ai.db + pi/secrets），
+ * 与用户个人数据（书签/历史/普通设置）隔离，不随 data.directory 配置变动。
  */
 export function isPiSettingKey(key: string): boolean {
-  return key.startsWith('ai.') || key.startsWith('summary.');
+  return key.startsWith('pi.');
 }
 
 /** pi 持久化注入项（DD1 决策：pi 键独立存储） */
@@ -58,7 +50,7 @@ export interface SettingsPiOptions {
   readonly piPersistence?: SettingsPersistence;
   /** pi 敏感键加密存储（pi/secrets，safeStorage） */
   readonly piSecretStore?: SecretStore;
-  /** 扫描旧主库残留 pi 键（settings:ai.* / settings:summary.*），构造时迁移到 pi store 后删除 */
+  /** 扫描旧主库残留 pi 键（settings:ai.* / settings:pi.*），构造时迁移到 pi store 后删除 */
   readonly legacyPiKeysScan?: () => readonly { key: string; value: unknown }[];
 }
 
@@ -80,29 +72,19 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   ['ui.workspaceSwitcherMode', 'wheel'],
   // 主页常用网站（用户手动添加/拖拽排序，持久化于 settings；仅存根网址）
   ['home.frequentSites', []],
-  // 用户数据目录（DD1 决策）：书签/历史/普通设置/摘要/截图/下载/网页保存的根目录。
+  // 用户数据目录（DD1 决策）：书签/历史/普通设置/截图/下载/网页保存的根目录。
   // 留空 = userData/data；填写后写 data-location 指针，重启后迁移生效。
-  // pi 数据（ai.* / summary.* / pi 库 / 密钥）固定 userData/pi，不随此目录变动。
+  // pi 数据（pi.* / pi 库 / 密钥）固定 userData/pi，不随此目录变动。
   ['data.directory', ''],
-  // pi 模块（AI 对话标签页）AI 助手设置：由 PiSettingsDialog 编辑，pi-agent-factory 消费。
-  // 注意：此组设置与 summary.* 完全独立，pi 模块与摘要模块互不干扰。
-  ['ai.model', 'gpt-4o-mini'],
-  // ai.apiKey 为敏感键：注入 secretStore 时经 safeStorage 加密落盘（SECRET_KEYS），不存明文 SQLite
-  ['ai.apiKey', ''],
-  ['ai.providerId', ''],
+  // pi 对话模块设置：pi-agent-factory / pi-web-host agentCredsProvider 消费。
+  // pi.* 命名空间与未来 AI 助手（ai.*）完全独立。
+  ['pi.model', 'gpt-4o-mini'],
+  // pi.apiKey 为敏感键：注入 secretStore 时经 safeStorage 加密落盘（SECRET_KEYS），不存明文 SQLite
+  ['pi.apiKey', ''],
+  ['pi.providerId', ''],
   // OpenAI 兼容协议的 Base URL（留空使用官方 https://api.openai.com；
   // 可填 Azure OpenAI、Ollama、vLLM、LM Studio 等兼容端点）
-  ['ai.baseUrl', ''],
-  // 命名提供商配置（设置页「AI 助手」选项卡维护）：用户把一组模型/Key/URL 命名保存，
-  // 配置名进入「默认 Provider」下拉框，选中即自动回填。整体为敏感键（SECRET_KEYS）加密落盘。
-  ['ai.providerProfiles', []],
-  // 摘要助手（浏览器内置单 agent，独立于 pi 模块）配置：
-  // 由设置页「AI 助手」选项卡编辑，SummaryAgent 消费。
-  // 与 ai.* 设置完全独立，两套配置不互通。
-  ['summary.model', 'gpt-4o-mini'],
-  ['summary.apiKey', ''],
-  ['summary.providerId', ''],
-  ['summary.baseUrl', ''],
+  ['pi.baseUrl', ''],
   // 调试选项：右侧边栏折叠态下鼠标停留后延迟展开的时长（毫秒，默认 300ms）
   ['debug.sidebarHoverDelay', 300],
   // 网页翻译（M24，dev.79）：目标语言（2026-08-30 评审确认 zh-CN 默认必含；
@@ -137,7 +119,7 @@ export class SettingsManager {
   /** 敏感数据存储（可选，safeStorage 加密；注入后 SECRET_KEYS 键不再明文落盘） */
   private readonly secretStore?: SecretStore;
 
-  /** pi 键持久化存储（DD1 决策：ai.* / summary.* 键写 pi/ai.db） */
+  /** pi 键持久化存储（DD1 决策：pi.* 键写 pi/ai.db） */
   private readonly piPersistence?: SettingsPersistence;
 
   /** pi 敏感键加密存储（pi/secrets） */
@@ -180,15 +162,25 @@ export class SettingsManager {
       log.info('settings loaded from persistence');
     }
 
-    // 3. 迁移旧布局残留：早期版本 pi 键曾写入主库（settings:ai.* / settings:summary.*），
+    // 3. 迁移旧布局残留：早期版本 pi 键曾写入主库（settings:ai.* / settings:pi.*），
     //    搬入 pi 库并删除主库条目，保证重启后不再读写错库。
+    //    ai.*→pi.* 重命名迁移：旧 ai.model/apiKey/providerId/baseUrl → pi.* 同名。
+    //    summary.* / ai.providerProfiles 已废弃：仅从主库删除，不迁移。
     if (piOptions?.legacyPiKeysScan && persistence) {
       for (const { key, value } of piOptions.legacyPiKeysScan()) {
         const bare = key.startsWith('settings:') ? key.slice('settings:'.length) : key;
-        if (isPiSettingKey(bare)) {
-          piOptions.piPersistence?.set(`settings:${bare}`, value);
+        // ai.* → pi.* 重命名映射
+        const migratedKey = bare.startsWith('ai.') ? 'pi.' + bare.slice(3) : bare;
+        const isAiOrPiKey = bare.startsWith('ai.') || bare.startsWith('pi.');
+        const isAbandonedKey = bare.startsWith('summary.') || bare === 'ai.providerProfiles';
+        if (isAiOrPiKey && !isAbandonedKey) {
+          // 迁移到 pi 库（ai.* 重命名为 pi.*）
+          piOptions.piPersistence?.set(`settings:${migratedKey}`, value);
           persistence.delete?.(`settings:${bare}`);
-          this.entries.set(bare, value);
+          this.entries.set(migratedKey, value);
+        } else if (isAbandonedKey) {
+          // 废弃键：仅从主库删除
+          persistence.delete?.(`settings:${bare}`);
         }
       }
     }
@@ -205,7 +197,7 @@ export class SettingsManager {
    * settings key → SecretStore name 映射。
    *
    * ST6 决策（secret-store.ts VALID_NAME_PATTERN）要求 name 仅含字母数字/下划线/
-   * 连字符/斜杠——settings key 中的点号（如 ai.apiKey）不合法，否则读写抛
+   * 连字符/斜杠——settings key 中的点号（如 pi.apiKey）不合法，否则读写抛
    * "Invalid secret name" 导致 apiKey 无法落盘（2026-08-14 修复）。
    * 约定：`settings/<key 点转下划线>`，settings/ 前缀做命名空间隔离。
    */
@@ -214,18 +206,10 @@ export class SettingsManager {
   }
 
   /**
-   * 敏感键中非字符串类型的值（如 ai.providerProfiles 数组）在 set 时被
-   * JSON.stringify 后写入 secretStore，读取时需要还原为原始类型。
+   * 敏感键值在 set 时被写入 secretStore，读取时还原。
+   * 当前所有 SECRET_KEYS 均为字符串（pi.apiKey），直接返回。
    */
-  private parseSecretValue(key: string, value: string): unknown {
-    if (key === 'ai.providerProfiles') {
-      try {
-        return JSON.parse(value) as unknown;
-      } catch {
-        log.warn('failed to parse secret setting as JSON', { key });
-        return null;
-      }
-    }
+  private parseSecretValue(_key: string, value: string): unknown {
     return value;
   }
 
@@ -256,7 +240,7 @@ export class SettingsManager {
    * 等待敏感键预加载完成。
    *
    * 供主进程内部消费者（agentConfigProvider / mergedConfigProvider）在读取
-   * ai.apiKey / summary.apiKey 前调用，避免启动早期读到未加载的 undefined。
+   * pi.apiKey 前调用，避免启动早期读到未加载的 undefined。
    */
   async ensureSecretsLoaded(): Promise<void> {
     await this.secretPreload;
@@ -283,7 +267,7 @@ export class SettingsManager {
    */
   set(key: string, value: unknown): void {
     this.entries.set(key, value);
-    // 持久化（同步写入）：pi 键（ai.* / summary.*）优先 pi 库，未注入时回退主库
+    // 持久化（同步写入）：pi 键（pi.*）优先 pi 库，未注入时回退主库
     // （DD1 决策 + 向后兼容）；其余键始终走主库。
     const store = isPiSettingKey(key) ? (this.piPersistence ?? this.persistence) : this.persistence;
     const secretStore = isPiSettingKey(key)

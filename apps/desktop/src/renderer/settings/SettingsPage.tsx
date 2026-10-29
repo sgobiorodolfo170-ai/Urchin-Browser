@@ -220,7 +220,7 @@ const DATA_FIELDS: readonly SettingField[] = [
   {
     key: 'data.directory',
     label: '数据存储位置',
-    desc: '书签、历史、设置、截图、摘要、下载、网页保存的根目录（留空使用默认位置）。修改后重启生效；pi 对话数据与设置固定存于 userData/pi，不随此目录变动',
+    desc: '书签、历史、设置、截图、下载、网页保存的根目录（留空使用默认位置）。修改后重启生效；pi 对话数据与设置固定存于 userData/pi，不随此目录变动',
     type: 'directory',
   },
   {
@@ -228,34 +228,6 @@ const DATA_FIELDS: readonly SettingField[] = [
     label: '下载位置',
     desc: '下载保存目录（留空 = 每次下载询问保存位置，确认时可设为默认）',
     type: 'directory',
-  },
-];
-
-const AI_FIELDS: readonly SettingField[] = [
-  {
-    key: 'summary.providerId',
-    label: '默认 Provider',
-    desc: 'AI 助手仅兼容 OpenAI 协议；选择已保存的命名配置即自动回填模型/Key/URL，选中项后可删除',
-    type: 'provider-select',
-  },
-  {
-    key: 'ai.providerProfileName',
-    label: '提供商名',
-    desc: '把当前模型 / API Key / Base URL 保存为一套命名配置，保存后自动出现在「默认 Provider」下拉框',
-    type: 'provider-name',
-  },
-  { key: 'summary.model', label: '模型', desc: '摘要助手调用 LLM 时使用的模型名', type: 'text' },
-  {
-    key: 'summary.apiKey',
-    label: 'API Key',
-    desc: '摘要助手 Provider 鉴权密钥（加密存储）',
-    type: 'password',
-  },
-  {
-    key: 'summary.baseUrl',
-    label: 'Base URL',
-    desc: 'OpenAI 兼容协议端点（留空使用官方 https://api.openai.com；可填 Azure OpenAI、Ollama、vLLM 等）',
-    type: 'text',
   },
 ];
 
@@ -281,11 +253,6 @@ const DEFAULTS: Record<string, unknown> = {
   'links.openInNewTab': false,
   'ui.rightSidebarAutoExpand': false,
   'ui.workspaceSwitcherMode': 'wheel',
-  'summary.model': 'gpt-4o-mini',
-  'summary.apiKey': '',
-  'summary.providerId': '',
-  'summary.baseUrl': '',
-  'ai.providerProfiles': [],
   'debug.sidebarHoverDelay': 300,
   'ui.statusBall.sensitivityVertical': 1,
   'ui.statusBall.sensitivityHorizontal': 1,
@@ -309,18 +276,6 @@ function toStr(v: unknown): string {
   }
 }
 
-/** 将 unknown 值安全解析为命名配置数组（过滤非法项，容忍损坏数据） */
-function parseProfiles(v: unknown): ProviderProfile[] {
-  if (!Array.isArray(v)) return [];
-  return v.filter(
-    (p): p is ProviderProfile =>
-      typeof p === 'object' &&
-      p !== null &&
-      typeof (p as ProviderProfile).id === 'string' &&
-      typeof (p as ProviderProfile).name === 'string',
-  );
-}
-
 // ───────────────── 主组件 ─────────────────
 
 export interface SettingsPageProps {
@@ -340,8 +295,6 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
   );
   const [toast, setToast] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  // 「提供商名」输入框草稿（命名配置保存后清空）
-  const [profileNameDraft, setProfileNameDraft] = useState('');
 
   // 待保存的变更（key → value），自动保存队列
   const pendingRef = useRef<Map<string, unknown>>(new Map());
@@ -434,73 +387,6 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
     }
   }, [showToast]);
 
-  // ── 命名提供商配置（ai.providerProfiles）──
-  const profilesRaw = entries['ai.providerProfiles'];
-  const profiles = useMemo(() => parseProfiles(profilesRaw), [profilesRaw]);
-
-  /** 把当前模型/Key/URL 保存为一套命名配置（同名覆盖） */
-  const handleSaveProfile = useCallback(
-    (name: string) => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      const model = toStr(entries['summary.model']);
-      const apiKey = toStr(entries['summary.apiKey']);
-      const baseUrl = toStr(entries['summary.baseUrl']);
-      const existing = profiles.find((p) => p.name === trimmed);
-      const next: ProviderProfile[] = existing
-        ? profiles.map((p) => (p === existing ? { ...p, model, apiKey, baseUrl } : p))
-        : [
-            ...profiles,
-            {
-              id: `profile-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-              name: trimmed,
-              model,
-              apiKey,
-              baseUrl,
-            },
-          ];
-      updateField('ai.providerProfiles', next);
-      showToast(`已保存配置「${trimmed}」`);
-    },
-    [profiles, entries, updateField, showToast],
-  );
-
-  /** 删除命名配置；若正被选为默认 Provider，同步复位为「自动」 */
-  const handleDeleteProfile = useCallback(
-    (id: string) => {
-      const next = profiles.filter((p) => p.id !== id);
-      updateField('ai.providerProfiles', next);
-      if (toStr(entries['summary.providerId']) === id) {
-        updateField('summary.providerId', '');
-      }
-      showToast('已删除配置');
-    },
-    [profiles, entries, updateField, showToast],
-  );
-
-  /** 选中命名配置：自动回填模型/Key/URL，并把默认 Provider 指向该配置 */
-  const handleSelectProfile = useCallback(
-    (profile: ProviderProfile) => {
-      updateField('summary.providerId', profile.id);
-      updateField('summary.model', profile.model);
-      updateField('summary.apiKey', profile.apiKey);
-      updateField('summary.baseUrl', profile.baseUrl);
-    },
-    [updateField],
-  );
-
-  const profileApi = useMemo<ProfileApi>(
-    () => ({
-      profiles,
-      nameDraft: profileNameDraft,
-      setNameDraft: setProfileNameDraft,
-      save: handleSaveProfile,
-      remove: handleDeleteProfile,
-      select: handleSelectProfile,
-    }),
-    [profiles, profileNameDraft, handleSaveProfile, handleDeleteProfile, handleSelectProfile],
-  );
-
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-text-secondary">加载中…</div>
@@ -561,13 +447,12 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
           )}
           {activeTab === 'ops' && <OpsTab entries={entries} onChange={updateField} />}
           {activeTab === 'ai' && (
-            <SettingsSection
-              title="AI 助手"
-              fields={AI_FIELDS}
-              entries={entries}
-              onChange={updateField}
-              profileApi={profileApi}
-            />
+            <section>
+              <h1 className="mb-6 text-2xl font-semibold">AI 助手</h1>
+              <div className="rounded-md border border-border bg-surface-secondary px-6 py-12 text-center">
+                <p className="text-sm text-text-secondary">AI 助手功能正在开发中，敬请期待。</p>
+              </div>
+            </section>
           )}
           {activeTab === 'data' && (
             <SettingsSection

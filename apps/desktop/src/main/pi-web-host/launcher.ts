@@ -41,6 +41,8 @@ export interface UtilityProcessLike {
   };
   on(event: 'exit', listener: (code: number | null) => void): unknown;
   on(event: 'error', listener: (err: Error) => void): unknown;
+  on(event: 'message', listener: (msg: unknown) => void): unknown;
+  postMessage(msg: unknown): void;
   kill(): boolean;
 }
 
@@ -77,6 +79,8 @@ export interface PiWebHostLauncherOptions {
   readonly ensureDirFn?: (dir: string) => Promise<void>;
   /** M2B：Agent 凭据提供器（主进程 agentConfigProvider 合并；fork 时异步解析，支持运行时变更） */
   readonly agentCredsProvider?: () => Promise<AgentCreds | null>;
+  /** Phase 4：子进程→主进程消息回调（pi-web SettingsModal 配置变更写回 pi.* 键） */
+  readonly onChildMessage?: (msg: unknown) => void;
   /** 启动超时（默认 60s，测试注入缩短） */
   readonly startupTimeoutMs?: number;
   /** stdout 轮询间隔（默认 1s，测试注入缩短） */
@@ -271,6 +275,19 @@ export class PiWebHostLauncher {
       log.error('fork pi-web-host failed', { error: err.message });
     });
 
+    // Phase 4：子进程→主进程消息（pi-web SettingsModal 配置变更写回 pi.* 键）
+    child.on('message', (msg: unknown) => {
+      if (this.opts.onChildMessage) {
+        try {
+          this.opts.onChildMessage(msg);
+        } catch (e) {
+          log.error('pi-web-host onChildMessage callback failed', {
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+    });
+
     const deadline = Date.now() + this.opts.startupTimeoutMs;
     while (Date.now() < deadline) {
       if (exited) {
@@ -301,6 +318,17 @@ export class PiWebHostLauncher {
     this.lastError = message;
     log.error('pi-web-host launch failed', { error: message });
     return undefined;
+  }
+
+  /** 向 utility 子进程发送消息（主进程→子进程，如 credsUpdate） */
+  postMessage(msg: unknown): void {
+    if (this.child) {
+      try {
+        this.child.postMessage(msg);
+      } catch (e) {
+        log.error('pi-web-host postMessage failed', { error: String(e) });
+      }
+    }
   }
 
   /** 终止 utility 子进程（幂等） */

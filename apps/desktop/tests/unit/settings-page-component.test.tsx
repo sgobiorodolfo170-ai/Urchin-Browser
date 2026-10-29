@@ -48,7 +48,6 @@ function mockLoadSuccess() {
           { key: 'searchEngine', value: 'google' },
           { key: 'blockTrackers', value: true },
           { key: 'doNotTrack', value: true },
-          { key: 'summary.model', value: 'gpt-4o-mini' },
           { key: 'debug.sidebarHoverDelay', value: 300 },
         ],
       });
@@ -96,13 +95,9 @@ describe('SettingsPage', () => {
     render(<SettingsPage />);
     await waitFor(() => expect(screen.getAllByText('通用').length).toBeGreaterThan(0));
 
-    // AI 助手选项卡
+    // AI 助手选项卡（占位）
     clickTab('AI 助手');
-    expect(screen.getByText('默认 Provider')).toBeTruthy();
-    expect(screen.getByText('API Key')).toBeTruthy();
-    expect(screen.getByText('提供商名')).toBeTruthy();
-    // 默认 Provider 为自定义下拉（按钮），无配置时空白
-    expect(screen.getByRole('button', { name: '选择默认 Provider' })).toBeTruthy();
+    expect(screen.getByText('AI 助手功能正在开发中，敬请期待。')).toBeTruthy();
 
     // 隐私与安全
     clickTab('隐私与安全');
@@ -251,151 +246,5 @@ describe('SettingsPage', () => {
       key: 'data.directory',
       value: 'D:\\urchin-data',
     });
-  });
-
-  // ===== 命名提供商配置（ai.providerProfiles） =====
-
-  it('should save named provider profile and show it in provider select', async () => {
-    mockLoadSuccess();
-    const { container } = render(<SettingsPage />);
-    await waitFor(() => expect(screen.getAllByText('通用').length).toBeGreaterThan(0));
-    clickTab('AI 助手');
-
-    // AI 选项卡字段顺序：提供商名[0] / 模型[1] / API Key(password) / Base URL[2]
-    const providerName = container.querySelector<HTMLInputElement>('input[placeholder*="配置名"]');
-    const apiKeyInput = container.querySelector<HTMLInputElement>('input[type="password"]');
-    const textInputs = Array.from(
-      container.querySelectorAll<HTMLInputElement>('input[type="text"]'),
-    );
-    const model = textInputs[1];
-    const baseUrl = textInputs[2];
-    expect(providerName).not.toBeNull();
-    expect(apiKeyInput).not.toBeNull();
-    expect(model).toBeDefined();
-    expect(baseUrl).toBeDefined();
-
-    fireEvent.change(providerName!, { target: { value: '公司 OpenAI' } });
-    fireEvent.change(model!, { target: { value: 'gpt-4o' } });
-    fireEvent.change(apiKeyInput!, { target: { value: 'sk-test' } });
-    fireEvent.change(baseUrl!, { target: { value: 'https://api.openai.com/v1' } });
-
-    // 点击「保存配置」
-    fireEvent.click(screen.getByText('保存配置'));
-    // 立即显示「已保存配置」提示（后续会被自动保存的「已保存」覆盖）
-    expect(await screen.findByText(/已保存配置/)).toBeTruthy();
-
-    await waitForDebouncedSave();
-    expect(mockInvoke).toHaveBeenCalledWith('settings.set', {
-      key: 'ai.providerProfiles',
-      value: expect.arrayContaining([
-        expect.objectContaining({ name: '公司 OpenAI', model: 'gpt-4o', apiKey: 'sk-test' }),
-      ]) as readonly unknown[],
-    });
-  });
-
-  it('should load profile config when selected in provider select', async () => {
-    const profile = {
-      id: 'profile-abc',
-      name: '公司 OpenAI',
-      model: 'gpt-4o',
-      apiKey: 'sk-secret',
-      baseUrl: 'https://api.openai.com/v1',
-    };
-    mockInvoke.mockImplementation((channel: string) => {
-      if (channel === 'settings.getAll') {
-        return Promise.resolve({
-          entries: [
-            { key: 'language', value: 'zh-CN' },
-            { key: 'summary.model', value: 'gpt-4o-mini' },
-            { key: 'summary.apiKey', value: 'sk-old' },
-            { key: 'summary.baseUrl', value: '' },
-            { key: 'ai.providerProfiles', value: [profile] },
-          ],
-        });
-      }
-      if (channel === 'settings.set') return Promise.resolve({ ok: true });
-      return Promise.resolve({});
-    });
-    render(<SettingsPage />);
-    await waitFor(() => expect(screen.getAllByText('通用').length).toBeGreaterThan(0));
-    clickTab('AI 助手');
-
-    // 收起态按钮空白（未选中任何配置）
-    const trigger = screen.getByRole('button', { name: '选择默认 Provider' });
-    expect(trigger.textContent).toBe('');
-
-    // 展开下拉，点击配置名 → 自动回填模型 / Key / URL
-    fireEvent.click(trigger);
-    const option = screen.getByRole('button', { name: '公司 OpenAI' });
-    fireEvent.click(option);
-
-    await waitForDebouncedSave();
-    expect(mockInvoke).toHaveBeenCalledWith('settings.set', {
-      key: 'summary.providerId',
-      value: profile.id,
-    });
-    expect(mockInvoke).toHaveBeenCalledWith('settings.set', {
-      key: 'summary.model',
-      value: 'gpt-4o',
-    });
-    expect(mockInvoke).toHaveBeenCalledWith('settings.set', {
-      key: 'summary.apiKey',
-      value: 'sk-secret',
-    });
-    expect(mockInvoke).toHaveBeenCalledWith('settings.set', {
-      key: 'summary.baseUrl',
-      value: 'https://api.openai.com/v1',
-    });
-    // 选中后收起，按钮显示配置名
-    expect(screen.getByRole('button', { name: '选择默认 Provider' }).textContent).toBe(
-      '公司 OpenAI',
-    );
-  });
-
-  it('should delete named profile via option item x button', async () => {
-    const profile = {
-      id: 'profile-abc',
-      name: '公司 OpenAI',
-      model: 'gpt-4o',
-      apiKey: 'sk-secret',
-      baseUrl: 'https://api.openai.com/v1',
-    };
-    mockInvoke.mockImplementation((channel: string) => {
-      if (channel === 'settings.getAll') {
-        return Promise.resolve({
-          entries: [
-            { key: 'language', value: 'zh-CN' },
-            { key: 'summary.providerId', value: 'profile-abc' },
-            { key: 'ai.providerProfiles', value: [profile] },
-          ],
-        });
-      }
-      if (channel === 'settings.set') return Promise.resolve({ ok: true });
-      return Promise.resolve({});
-    });
-    render(<SettingsPage />);
-    await waitFor(() => expect(screen.getAllByText('通用').length).toBeGreaterThan(0));
-    clickTab('AI 助手');
-
-    // 收起态按钮显示当前选中的配置名
-    const trigger = screen.getByRole('button', { name: '选择默认 Provider' });
-    expect(trigger.textContent).toBe('公司 OpenAI');
-
-    // 展开下拉，点击配置项内的 × 删除
-    fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole('button', { name: '删除配置 公司 OpenAI' }));
-
-    await waitForDebouncedSave();
-    expect(mockInvoke).toHaveBeenCalledWith('settings.set', {
-      key: 'ai.providerProfiles',
-      value: [],
-    });
-    // 被删配置正被选中 → 默认 Provider 复位为空白
-    expect(mockInvoke).toHaveBeenCalledWith('settings.set', {
-      key: 'summary.providerId',
-      value: '',
-    });
-    // 下拉仍展开（删除不关闭），列表已空，显示空态
-    expect(screen.getByText('暂无已保存配置')).toBeTruthy();
   });
 });

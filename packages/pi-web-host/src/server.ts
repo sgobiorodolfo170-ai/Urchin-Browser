@@ -159,6 +159,9 @@ export async function startPiWebHostServer(
     let lastUserText = '';
     let assistantAccumulator = '';
     let currentCwd: string | undefined;
+    // Phase 4：运行时可变的 model/provider（set_model 更新，ensureBridge 使用）
+    let currentProviderId = agentOpts?.providerId;
+    let currentModelId = agentOpts?.modelId;
     const ctx = {
       version: SERVICE_VERSION,
       provider: agentOpts?.providerId,
@@ -173,7 +176,12 @@ export async function startPiWebHostServer(
         return null;
       }
       bridge = createAgentBridge(
-        { ...agentOpts, sessionId: currentSessionId },
+        {
+          ...agentOpts,
+          providerId: currentProviderId ?? agentOpts.providerId,
+          modelId: currentModelId ?? agentOpts.modelId,
+          sessionId: currentSessionId,
+        },
         (msg) => {
           // 拦截 stream.chunk 累积 assistant 文本（用于 stream.end 时持久化）
           if (msg.type === 'stream.chunk' && typeof msg.content === 'string') {
@@ -339,6 +347,40 @@ export async function startPiWebHostServer(
         }
         case 'set_cwd': {
           currentCwd = (parsed as { path?: string }).path;
+          return;
+        }
+        case 'set_model': {
+          const provider =
+            typeof (parsed as { provider?: string }).provider === 'string'
+              ? (parsed as { provider?: string }).provider
+              : '';
+          const model =
+            typeof (parsed as { model?: string }).model === 'string'
+              ? (parsed as { model?: string }).model
+              : '';
+          if (provider && model) {
+            // 更新当前 model/provider，销毁旧 bridge（下次 prompt 时 ensureBridge 用新值重建）
+            currentProviderId = provider;
+            currentModelId = model;
+            disposeBridge();
+            // Phase 4：写回主进程 pi.* 键（MessagePort）
+            try {
+              const parentPort =
+                typeof process !== 'undefined' && 'parentPort' in process && process.parentPort;
+              if (
+                parentPort &&
+                typeof (parentPort as { postMessage: unknown }).postMessage === 'function'
+              ) {
+                (parentPort as { postMessage: (msg: unknown) => void }).postMessage({
+                  type: 'piSettingsChanged',
+                  providerId: provider,
+                  modelId: model,
+                });
+              }
+            } catch {
+              /* parentPort 不可用时静默跳过 */
+            }
+          }
           return;
         }
         case 'scm_status': {

@@ -141,9 +141,6 @@ importers:
       '@types/react-dom':
         specifier: ^18.3.0
         version: 18.3.7(@types/react@18.3.31)
-      '@urchin/ai-extension':
-        specifier: workspace:*
-        version: link:../../packages/ai-extension
       '@urchin/ai-provider-contract':
         specifier: workspace:*
         version: link:../../packages/ai-provider-contract
@@ -162,9 +159,6 @@ importers:
       '@urchin/provider-sdk':
         specifier: workspace:*
         version: link:../../packages/provider-sdk
-      '@urchin/summary-agent':
-        specifier: workspace:*
-        version: link:../../packages/summary-agent
       '@vitejs/plugin-react':
         specifier: ^4.3.2
         version: 4.7.0(vite@5.4.21(@types/node@24.19.2))
@@ -275,46 +269,6 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@24.19.2)(jsdom@30.1.3(@noble/hashes@2.4.0)(canvas@3.2.3))
 
-  packages/ai-extension:
-    dependencies:
-      '@radix-ui/react-slot':
-        specifier: ^1.3.3
-        version: 1.5.0(@types/react@18.3.31)(react@18.3.1)
-      '@urchin/browser-host':
-        specifier: workspace:*
-        version: link:../browser-host
-      clsx:
-        specifier: ^2.1.1
-        version: 2.1.1
-      lucide-react:
-        specifier: ^1.27.0
-        version: 1.58.0(@types/react@18.3.31)(react@18.3.1)
-      react:
-        specifier: ^18.3.1
-        version: 18.3.1
-      react-dom:
-        specifier: ^18.3.1
-        version: 18.3.1(react@18.3.1)
-      tailwind-merge:
-        specifier: ^3.6.0
-        version: 3.7.0
-      zustand:
-        specifier: ^5.0.0
-        version: 5.0.15(@types/react@18.3.31)(react@18.3.1)
-    devDependencies:
-      '@types/react':
-        specifier: ^18.3.11
-        version: 18.3.31
-      '@types/react-dom':
-        specifier: ^18.3.0
-        version: 18.3.7(@types/react@18.3.31)
-      typescript:
-        specifier: ^5.6.0
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.0
-        version: 2.1.9(@types/node@24.19.2)(jsdom@30.1.3(@noble/hashes@2.4.0)(canvas@3.2.3))
-
   packages/ai-provider-contract:
     dependencies:
       '@urchin/logger':
@@ -398,15 +352,6 @@ importers:
       '@urchin/logger':
         specifier: workspace:*
         version: link:../logger
-    devDependencies:
-      typescript:
-        specifier: ^5.6.0
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.0
-        version: 2.1.9(@types/node@24.19.2)(jsdom@30.1.3(@noble/hashes@2.4.0)(canvas@3.2.3))
-
-  packages/summary-agent:
     devDependencies:
       typescript:
         specifier: ^5.6.0
@@ -9894,24 +9839,6 @@ packages:
 
   zod@4.6.7:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
-
-  zustand@5.0.15:
-    resolution: {integrity: sha512-MpSEjRiBkA9crSYeOUH32rJC7SVqAbm0Fqcqge/bUi2PPoLcBWKOsG+C8mevmpr8TwXHBVkChbbJiyvkE+i/3A==}
-    engines: {node: '>=12.20.0'}
-    peerDependencies:
-      '@types/react': '>=18.0.0'
-      immer: '>=9.0.6'
-      react: '>=18.0.0'
-      use-sync-external-store: '>=1.2.0'
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-      immer:
-        optional: true
-      react:
-        optional: true
-      use-sync-external-store:
-        optional: true
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -20919,10 +20846,5 @@ snapshots:
   zod@4.6.5: {}
 
   zod@4.6.7: {}
-
-  zustand@5.0.15(@types/react@18.3.31)(react@18.3.1):
-    optionalDependencies:
-      '@types/react': 18.3.31
-      react: 18.3.1
 
   zwitch@2.0.4: {}

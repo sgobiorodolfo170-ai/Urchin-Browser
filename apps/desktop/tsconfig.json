@@ -16,8 +16,7 @@
       "@urchin/chrome-types": ["../../packages/chrome-types/src/index.ts"],
       "@urchin/logger": ["../../packages/logger/src/index.ts"],
       "@urchin/provider-sdk": ["../../packages/provider-sdk/src/index.ts"],
-      "@urchin/browser-host": ["../../packages/browser-host/src/index.ts"],
-      "@urchin/ai-extension": ["../../packages/ai-extension/src/index.ts"]
+      "@urchin/browser-host": ["../../packages/browser-host/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "vitest.setup.ts"],

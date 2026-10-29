@@ -23,7 +23,6 @@ const DEFAULT_STATE: StatusBarState = {
   reloadDisabled: true,
   bookmarkSaved: false,
   bookmarkable: false,
-  summarizeDisabled: true,
   screenshotDisabled: true,
   translateActive: false,
   translateDisabled: true,

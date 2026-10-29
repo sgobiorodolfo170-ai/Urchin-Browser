@@ -51,10 +51,6 @@ export interface OmniboxProps {
   readonly bookmarkable?: boolean;
   /** 收藏按钮点击回调 */
   readonly onBookmarkToggle?: () => void;
-  /** 摘要当前页面回调（点击摘要按钮时触发） */
-  readonly onSummarize?: () => void;
-  /** 摘要按钮是否禁用（如未配置 Provider 或流式生成中） */
-  readonly summarizeDisabled?: boolean;
   /** 截图当前页面回调（截图保存到 <数据目录>/screenshots/） */
   readonly onScreenshot?: () => void;
   /** 截图按钮是否禁用（如无活跃网页可截） */
@@ -97,8 +93,6 @@ export function Omnibox({
   bookmarkSaved = false,
   bookmarkable = false,
   onBookmarkToggle,
-  onSummarize,
-  summarizeDisabled = false,
   onScreenshot,
   screenshotDisabled = false,
   onTranslate,
@@ -260,14 +254,15 @@ export function Omnibox({
         <Scissors className="h-4 w-4 -scale-x-100" />
       </button>
 
-      {/* AI 助手按钮：一键提取当前网页内容并保存到本地 */}
+      {/* AI 助手按钮（占位 · 待开发） */}
       <button
         type="button"
-        className="flex shrink-0 items-center justify-center rounded-md p-1.5 text-text-secondary hover:bg-surface-secondary hover:text-text disabled:opacity-40 disabled:hover:bg-transparent"
-        onClick={() => onSummarize?.()}
-        disabled={summarizeDisabled || !onSummarize}
-        aria-label="提取网页内容并保存"
-        title="提取网页内容并保存"
+        className="flex shrink-0 items-center justify-center rounded-md p-1.5 text-text-secondary hover:bg-surface-secondary hover:text-text"
+        onClick={() => {
+          /* AI 助手功能开发中 */
+        }}
+        aria-label="AI 助手（开发中）"
+        title="AI 助手（开发中）"
       >
         <Sparkles className="h-4 w-4" />
       </button>

@@ -70,7 +70,6 @@ import {
   type PiWebHostLauncher,
 } from './pi-web-host';
 import { registerPageContextHandlers } from './page-context';
-import { SummaryManager, registerSummaryHandlers } from './summary';
 import {
   registerFileHandlers,
   registerEditorHandlers,
@@ -102,7 +101,6 @@ import {
   resolveDataLocation,
   setDataLocation,
   migrateLegacyPiData,
-  migrateLegacySummaries,
   PI_DIR_NAME,
 } from './storage/data-location';
 import { installWillDownload, installWillDownloadForSession } from './downloads/will-download';
@@ -209,8 +207,6 @@ migrateLegacyPiData(startupUserDataPath);
 const testDataDir = process.env.URCHIN_TEST_DATA_DIR;
 const defaultDataRoot = testDataDir ?? (app.isPackaged ? startupUserDataPath : app.getAppPath());
 currentDataDir = resolveDataLocation(startupUserDataPath, defaultDataRoot);
-// 一次性升级迁移：旧 userData/summaries 迁入数据目录（DD1 决策）
-migrateLegacySummaries(startupUserDataPath, currentDataDir);
 
 // cookies 及网页存储（sessionData：cookies / localStorage / IndexedDB / service worker 等）
 // 重定向到 <数据目录>/cookies（必须在 app ready 之前调用，否则不生效）。
@@ -420,12 +416,6 @@ let settingsManager!: SettingsManager;
  */
 let workspaceRegistry!: WorkspaceRegistry;
 let workspaceSessions!: WorkspaceSessionManager;
-
-/**
- * 全局 SummaryManager 实例（摘要文档本地存储）。
- * 在 app.whenReady() 中初始化，保存目录恒为 <数据目录>/summaries（DD1 决策）。
- */
-let summaryManager!: SummaryManager;
 
 /**
  * 全局 DownloadManager 实例（M23）。
@@ -881,15 +871,15 @@ function registerIpcHandlers(): void {
   // 注意：providerConfigStore.get 返回 Promise（aiStore.get 是 async），必须 await
   const agentConfigProvider = {
     async get(providerId: string): Promise<{ apiKey?: string; baseUrl?: string }> {
-      // 等待敏感键预加载完成，确保 ai.apiKey 已从 secretStore 读入内存
+      // 等待敏感键预加载完成，确保 pi.apiKey 已从 secretStore 读入内存
       await settingsManager.ensureSecretsLoaded();
       const perProvider = providerConfigStore ? await providerConfigStore.get(providerId) : null;
       const cfg =
         typeof perProvider === 'object' && perProvider !== null
           ? (perProvider as Record<string, unknown>)
           : {};
-      const globalApiKey = settingsManager.get('ai.apiKey');
-      const globalBaseUrl = settingsManager.get('ai.baseUrl');
+      const globalApiKey = settingsManager.get('pi.apiKey');
+      const globalBaseUrl = settingsManager.get('pi.baseUrl');
       return {
         apiKey:
           typeof cfg.apiKey === 'string'
@@ -996,8 +986,8 @@ function registerIpcHandlers(): void {
     // M2B：fork 时从 settings + agentConfigProvider 解析当前凭据/模型（支持运行时变更）
     agentCredsProvider: async () => {
       await settingsManager.ensureSecretsLoaded();
-      const providerId = settingsManager.get('ai.providerId') as string | undefined;
-      const modelId = settingsManager.get('ai.model') as string | undefined;
+      const providerId = settingsManager.get('pi.providerId') as string | undefined;
+      const modelId = settingsManager.get('pi.model') as string | undefined;
       if (!providerId || !modelId) return null;
       const cfg = await agentConfigProvider.get(providerId);
       if (!cfg.apiKey) return null;
@@ -1010,6 +1000,15 @@ function registerIpcHandlers(): void {
         enableTools: true,
         toolsCwd: piWebHostDataDir,
       };
+    },
+    // Phase 4：子进程→主进程消息回调（pi-web SettingsModal set_model → 写回 pi.* 键）
+    onChildMessage: (msg: unknown) => {
+      if (typeof msg !== 'object' || msg === null) return;
+      const m = msg as { type?: string; providerId?: string; modelId?: string };
+      if (m.type === 'piSettingsChanged') {
+        if (m.providerId) settingsManager.set('pi.providerId', m.providerId);
+        if (m.modelId) settingsManager.set('pi.model', m.modelId);
+      }
     },
   });
   registerPiWebHostHandlers(ipcMain, piWebHostLauncher);
@@ -1027,14 +1026,6 @@ function registerIpcHandlers(): void {
 
   // M14 page context 域 handler（page.extract）
   registerPageContextHandlers(ipcMain, tabManager);
-
-  // Summary 域 handler（摘要 Agent · 与 pi 模块隔离）
-  registerSummaryHandlers({
-    ipcMain,
-    summaryManager,
-    tabManager,
-    windowManager,
-  });
 
   // 本地文件域 handler（file.stat / file.read / file.write / file.saveAs / file.open / file.dir）
   // 支撑「以网页形式打开本地文件」：音视频/PDF/图片原生渲染，文本类文档查看器渲染
@@ -1592,7 +1583,7 @@ void app.whenReady().then(() => {
   markStartup('main:storage');
 
   // 初始化 SettingsManager，注入 StorageLayer 持久化（设置变更自动写入 SQLite）。
-  // DD1 决策：pi 键（ai.* / summary.*）持久化到 pi 库 + pi 密钥存储，
+  // DD1 决策：pi 键（pi.*）持久化到 pi 库 + pi 密钥存储，
   // 其余（书签/历史/普通设置）走主库。启动时迁移旧主库残留的 pi 键到 pi 库。
   settingsManager = new SettingsManager(sl.mainStore, sl.secrets, {
     piPersistence: sl.aiStore,
@@ -1737,9 +1728,6 @@ void app.whenReady().then(() => {
   };
   historyManager = new HistoryManager(historyPersistence);
 
-  // 初始化 SummaryManager（摘要文档本地存储）。
-  // DD1 决策：摘要文档存 <数据目录>/summaries（随用户数据目录迁移，无可配置项）
-  summaryManager = new SummaryManager(dataDir);
   markStartup('main:managers');
 
   // 数据目录设置变更（DD1 决策）：写入 data-location 指针，重启后整体迁移生效。
@@ -1780,7 +1768,7 @@ void app.whenReady().then(() => {
   /**
    * 配置提供器：合并 per-provider 配置与全局 AI 设置（apiKey / baseUrl / model）。
    *
-   * 全局设置（ai.apiKey / ai.baseUrl / ai.model）通过 SettingsManager 读取，
+   * 全局设置（pi.apiKey / pi.baseUrl / pi.model）通过 SettingsManager 读取，
    * 合并到 provider config 中，使 OpenAI 兼容 Provider 能直接使用设置页配置的密钥和端点。
    * per-provider 配置（provider_config:<id>）优先级高于全局设置，允许覆盖。
    *
@@ -1789,12 +1777,12 @@ void app.whenReady().then(() => {
    * 经 port.postMessage 结构化克隆会抛 "An object could not be cloned"。
    */
   const mergedConfigProvider = async (providerId: string): Promise<unknown> => {
-    // 等待敏感键预加载完成，确保 ai.apiKey 已从 secretStore 读入内存
+    // 等待敏感键预加载完成，确保 pi.apiKey 已从 secretStore 读入内存
     await settingsManager.ensureSecretsLoaded();
     const perProvider = await providerConfigStore.get(providerId);
-    const globalApiKey = settingsManager.get('ai.apiKey');
-    const globalBaseUrl = settingsManager.get('ai.baseUrl');
-    const globalModel = settingsManager.get('ai.model');
+    const globalApiKey = settingsManager.get('pi.apiKey');
+    const globalBaseUrl = settingsManager.get('pi.baseUrl');
+    const globalModel = settingsManager.get('pi.model');
     const merged: Record<string, unknown> = {
       ...(typeof perProvider === 'object' && perProvider !== null
         ? (perProvider as Record<string, unknown>)
@@ -1893,15 +1881,15 @@ void app.whenReady().then(() => {
     historyManager.record(url, snapshot.title, favicon);
   });
 
-  // 监听 AI 设置变更：当 ai.apiKey / ai.baseUrl / ai.model / ai.providerId 变化时，
+  // 监听 AI 设置变更：当 pi.apiKey / pi.baseUrl / pi.model / pi.providerId 变化时，
   // dispose 已加载的 Provider 子进程，下次调用 ai.chat.start 时会以新配置重新 spawn。
   // 这是必要的，因为 Provider 子进程在 init 时接收配置并缓存，不会主动重新读取。
   settingsManager.on('changed', (key) => {
     if (
-      key === 'ai.apiKey' ||
-      key === 'ai.baseUrl' ||
-      key === 'ai.model' ||
-      key === 'ai.providerId'
+      key === 'pi.apiKey' ||
+      key === 'pi.baseUrl' ||
+      key === 'pi.model' ||
+      key === 'pi.providerId'
     ) {
       log.info('AI settings changed, disposing providers for config reload', { key });
       void orchestrator.disposeAll();

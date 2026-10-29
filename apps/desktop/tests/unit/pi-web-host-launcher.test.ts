@@ -40,6 +40,10 @@ class MockChild implements UtilityProcessLike {
     return undefined;
   }
 
+  postMessage(): void {
+    /* mock no-op */
+  }
+
   readonly stdout = {
     on: (_event: string, listener: (chunk: Buffer) => void): unknown => {
       this.stdoutCbs.push(listener);

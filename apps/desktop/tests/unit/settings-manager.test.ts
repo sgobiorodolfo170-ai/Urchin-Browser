@@ -87,14 +87,13 @@ describe('SettingsManager', () => {
 
     const entries = mgr.getAll();
 
-    // 默认 25 项（language/searchEngine/downloadsPath/data.directory/blockTrackers/doNotTrack/blockAds/links.openInNewTab/
-    //   ai.model/ai.apiKey/ai.providerId/ai.baseUrl/ai.providerProfiles/
-    //   summary.model/summary.apiKey/summary.providerId/summary.baseUrl/
+    // 默认项（language/searchEngine/downloadsPath/data.directory/blockTrackers/doNotTrack/blockAds/links.openInNewTab/
+    //   pi.model/pi.apiKey/pi.providerId/pi.baseUrl/
     //   debug.sidebarHoverDelay/ui.rightSidebarAutoExpand/home.frequentSites/
     //   window.bounds 窗口几何记忆，主进程内部状态/
     //   translate.targetLang/translate.engine/translate.autoTranslate 网页翻译 dev.79/
     //   ui.workspaceSwitcherMode 折叠态工作区切换模式 TP7） + 自定义 1 项
-    expect(entries).toHaveLength(27);
+    expect(entries).toHaveLength(22);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');
@@ -105,15 +104,10 @@ describe('SettingsManager', () => {
     expect(keys).toContain('doNotTrack');
     expect(keys).toContain('blockAds');
     expect(keys).toContain('links.openInNewTab');
-    expect(keys).toContain('ai.model');
-    expect(keys).toContain('ai.apiKey');
-    expect(keys).toContain('ai.providerId');
-    expect(keys).toContain('ai.baseUrl');
-    expect(keys).toContain('ai.providerProfiles');
-    expect(keys).toContain('summary.model');
-    expect(keys).toContain('summary.apiKey');
-    expect(keys).toContain('summary.providerId');
-    expect(keys).toContain('summary.baseUrl');
+    expect(keys).toContain('pi.model');
+    expect(keys).toContain('pi.apiKey');
+    expect(keys).toContain('pi.providerId');
+    expect(keys).toContain('pi.baseUrl');
     expect(keys).toContain('window.bounds');
     expect(keys).toContain('translate.targetLang');
     expect(keys).toContain('translate.engine');
@@ -315,7 +309,7 @@ describe('SettingsManager', () => {
   });
 
   // ===== secretStore（safeStorage 加密）测试 =====
-  // 回归：2026-08-14 修复——settings key 含点号（ai.apiKey）不合法 ST6 白名单，
+  // 回归：2026-08-14 修复——settings key 含点号（pi.apiKey）不合法 ST6 白名单，
   // secret name 需做 `settings/<点转下划线>` 映射，否则读写抛 Invalid secret name 导致 apiKey 无法落盘。
 
   function createSecretStoreMock() {
@@ -333,11 +327,11 @@ describe('SettingsManager', () => {
       secretStore,
     );
 
-    mgr.set('ai.apiKey', 'sk-test-123');
+    mgr.set('pi.apiKey', 'sk-test-123');
     // 等 fire-and-forget 的异步 set 完成
     await vi.waitFor(() => expect(secretStore.set).toHaveBeenCalled());
 
-    expect(secretStore.set).toHaveBeenCalledWith('settings/ai_apiKey', 'sk-test-123');
+    expect(secretStore.set).toHaveBeenCalledWith('settings/pi_apiKey', 'sk-test-123');
   });
 
   it('secret: set with dot-free name must not throw (ST6 白名单校验)', () => {
@@ -349,7 +343,7 @@ describe('SettingsManager', () => {
     );
 
     // 失败仅记日志不抛（fire-and-forget .catch）
-    expect(() => mgr.set('ai.apiKey', 'x')).not.toThrow();
+    expect(() => mgr.set('pi.apiKey', 'x')).not.toThrow();
   });
 
   it('secret: delete removes mapped name from secretStore', async () => {
@@ -359,9 +353,9 @@ describe('SettingsManager', () => {
       secretStore,
     );
 
-    mgr.delete('ai.apiKey');
+    mgr.delete('pi.apiKey');
     await vi.waitFor(() => expect(secretStore.delete).toHaveBeenCalled());
-    expect(secretStore.delete).toHaveBeenCalledWith('settings/ai_apiKey');
+    expect(secretStore.delete).toHaveBeenCalledWith('settings/pi_apiKey');
   });
 
   it('secret: preload loads apiKey from mapped name', async () => {
@@ -373,76 +367,7 @@ describe('SettingsManager', () => {
     );
 
     await mgr.ensureSecretsLoaded();
-    expect(secretStore.get).toHaveBeenCalledWith('settings/ai_apiKey');
-    expect(secretStore.get).toHaveBeenCalledWith('settings/summary_apiKey');
-    expect(secretStore.get).toHaveBeenCalledWith('settings/ai_providerProfiles');
-    expect(mgr.get('ai.apiKey')).toBe('sk-preloaded');
-  });
-
-  // ===== 命名提供商配置（ai.providerProfiles，整体加密落盘）测试 =====
-
-  it('secret: providerProfiles set writes JSON to secretStore, not plaintext SQLite', async () => {
-    const secretStore = createSecretStoreMock();
-    const persistSet = vi.fn();
-    const mgr = new SettingsManager(
-      { get: vi.fn().mockReturnValue(null), set: persistSet },
-      secretStore,
-    );
-
-    const profiles = [
-      {
-        id: 'p1',
-        name: '公司 OpenAI',
-        model: 'gpt-4o',
-        apiKey: 'sk-secret',
-        baseUrl: 'https://api.openai.com/v1',
-      },
-    ];
-    mgr.set('ai.providerProfiles', profiles);
-    await vi.waitFor(() => expect(secretStore.set).toHaveBeenCalled());
-
-    expect(secretStore.set).toHaveBeenCalledWith(
-      'settings/ai_providerProfiles',
-      JSON.stringify(profiles),
-    );
-    // 敏感键不落明文 SQLite（persistSet 永不被调用）
-    expect(persistSet).not.toHaveBeenCalledWith('settings:ai.providerProfiles', expect.anything());
-    expect(mgr.get('ai.providerProfiles')).toEqual(profiles);
-  });
-
-  it('secret: providerProfiles preload parses JSON back into array', () => {
-    const secretStore = createSecretStoreMock();
-    const profiles = [
-      {
-        id: 'p1',
-        name: '公司 OpenAI',
-        model: 'gpt-4o',
-        apiKey: 'sk-secret',
-        baseUrl: 'https://api.openai.com/v1',
-      },
-    ];
-    secretStore.get.mockImplementation((name: string) =>
-      Promise.resolve(name === 'settings/ai_providerProfiles' ? JSON.stringify(profiles) : null),
-    );
-    const mgr = new SettingsManager(
-      { get: vi.fn().mockReturnValue(null), set: vi.fn() },
-      secretStore,
-    );
-
-    return mgr.ensureSecretsLoaded().then(() => {
-      expect(mgr.get('ai.providerProfiles')).toEqual(profiles);
-    });
-  });
-
-  it('secret: providerProfiles delete removes mapped name from secretStore', async () => {
-    const secretStore = createSecretStoreMock();
-    const mgr = new SettingsManager(
-      { get: vi.fn().mockReturnValue(null), set: vi.fn() },
-      secretStore,
-    );
-
-    mgr.delete('ai.providerProfiles');
-    await vi.waitFor(() => expect(secretStore.delete).toHaveBeenCalled());
-    expect(secretStore.delete).toHaveBeenCalledWith('settings/ai_providerProfiles');
+    expect(secretStore.get).toHaveBeenCalledWith('settings/pi_apiKey');
+    expect(mgr.get('pi.apiKey')).toBe('sk-preloaded');
   });
 });

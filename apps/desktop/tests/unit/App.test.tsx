@@ -397,59 +397,6 @@ describe('App (Browser Shell)', () => {
     });
   });
 
-  // ── 左侧栏：展开加载摘要树 + 打开文档 ──
-
-  it('should load summary tree when left sidebar expanded and open doc on click', async () => {
-    mockInvoke.mockImplementation((channel: string) => {
-      if (channel === 'tab.list') {
-        return Promise.resolve({
-          tabs: [makeTab({ url: 'https://example.com', title: 'Example' })],
-        });
-      }
-      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
-      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
-      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
-      if (channel === 'summary.listTree') {
-        return Promise.resolve({
-          tree: [
-            {
-              type: 'directory' as const,
-              name: '2026-08',
-              relativePath: '2026-08',
-              children: [
-                {
-                  type: 'file' as const,
-                  name: 'article.html',
-                  relativePath: '2026-08/article.html',
-                  absolutePath: 'C:\\summaries\\2026-08\\article.html',
-                },
-              ],
-            },
-          ],
-          rootPath: 'C:\\summaries',
-        });
-      }
-      if (channel === 'summary.open') return Promise.resolve({ ok: true });
-      return Promise.resolve({});
-    });
-
-    renderApp();
-    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
-
-    // 点击展开左侧栏
-    fireEvent.click(screen.getByLabelText('展开左侧栏'));
-
-    // 展开后触发 summary.listTree 加载，渲染目录树
-    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('summary.listTree', {}));
-    await waitFor(() => expect(screen.getByText('2026-08')).toBeTruthy());
-
-    // 点击文件节点 → summary.open
-    fireEvent.click(screen.getByText('article.html'));
-    expect(mockInvoke).toHaveBeenCalledWith('summary.open', {
-      absolutePath: 'C:\\summaries\\2026-08\\article.html',
-    });
-  });
-
   // ── AI 入口：创建 urchin://ai 标签页 ──
 
   it('should create ai tab via left sidebar AI button', async () => {
@@ -610,43 +557,7 @@ describe('App (Browser Shell)', () => {
     );
   });
 
-  // ── 摘要（AI 助手）：summary.run ──
-
-  it('should run summary extraction and show toast', async () => {
-    mockInvoke.mockImplementation((channel: string) => {
-      if (channel === 'tab.list') {
-        return Promise.resolve({
-          tabs: [makeTab({ url: 'https://example.com', title: 'Example' })],
-        });
-      }
-      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
-      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
-      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
-      if (channel === 'summary.run') {
-        return Promise.resolve({
-          filePath: 'C:\\summaries\\a.html',
-          relativePath: 'a.html',
-          documentTitle: 'Example 摘要',
-        });
-      }
-      return Promise.resolve({});
-    });
-
-    renderApp();
-    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
-
-    // 悬浮层点击摘要按钮 → ui.statusbar.action summarize
-    act(() => getStatusBarActionHandler()({ type: 'summarize' }));
-    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('summary.run', { tabId: 1 }));
-    await waitFor(() =>
-      expect(mockInvoke).toHaveBeenCalledWith(
-        'ui.statusbar.sync',
-        expect.objectContaining({
-          toast: expect.objectContaining({ text: '已保存：Example 摘要' }) as object,
-        }),
-      ),
-    );
-  });
+  // ── 下一个测试 ──
 
   // ── tab:event 推送分支：created / updated / removed / crashed ──
 

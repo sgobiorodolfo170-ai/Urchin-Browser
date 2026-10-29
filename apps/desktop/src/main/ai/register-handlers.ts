@@ -67,7 +67,7 @@ interface ActiveStream {
  * Agent 模式配置提供器（方案 A 适配层）。
  *
  * 返回指定 providerId 的合并配置（apiKey / baseUrl）。
- * 实现侧在 index.ts 中复用 mergedConfigProvider，合并全局 ai.* 设置与 per-provider 配置。
+ * 实现侧在 index.ts 中复用 mergedConfigProvider，合并全局 pi.* 设置与 per-provider 配置。
  */
 export interface AgentConfigProvider {
   get(providerId: string): Promise<{ apiKey?: string; baseUrl?: string }>;

@@ -26,16 +26,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Home,
-  Folder,
-  FolderOpen,
   FileText,
-  ChevronRight,
-  ChevronDown,
   Mail as MailIcon,
 } from 'lucide-react';
 import { AppTitleBar } from './components/app-titlebar';
-// 回退提示：旧对话视图 AiChatView(@urchin/ai-extension)在阶段 1 启动器切换时移出渲染树,
-// 恢复时重新 import 并在 isAiTab 分支渲染即可（配套:const host = useMemo(() => createHostFromUrchin(), [])）
 import { PiWebLauncherView } from './pi-web/launcher-view';
 import { MailView } from './mail/MailView';
 import { SettingsPage } from './settings/SettingsPage';
@@ -48,7 +42,6 @@ import { ConfirmDialog } from './components/ui/confirm-dialog';
 import { getEditGuardSession, closeNeedsGuard, switchNeedsGuard } from './lib/edit-guard';
 import { useDragScroll } from './lib/use-drag-scroll';
 import { lookupBuiltinSite, builtinIconUrl } from './home/site-directory-lookup';
-import { PiSettingsDialog } from './omnibox/pi-settings-dialog';
 import { useTheme } from './theme/theme-provider';
 import type { StatusBarState, StatusBarAction } from '@urchin/ipc-contract';
 import type { Suggestion } from './omnibox/types';
@@ -139,118 +132,6 @@ function getSecurityState(url: string): 'secure' | 'insecure' | 'mixed' {
 
 function isBookmarkable(url: string): boolean {
   return /^https?:\/\//i.test(url);
-}
-
-/**
- * 摘要文档目录树节点（与主进程 SummaryTreeNode 对齐）。
- * 数据空间入口：左侧边栏以此树展示本地保存的摘要文档。
- */
-interface SummaryTreeNode {
-  readonly type: 'directory' | 'file';
-  readonly name: string;
-  readonly relativePath: string;
-  readonly children?: readonly SummaryTreeNode[];
-  readonly absolutePath?: string;
-}
-
-/**
- * 摘要文档目录树视图（数据空间入口）。
- *
- * 渲染规则：
- * - directory 节点：可展开/折叠，默认展开
- * - file 节点：点击调用 onOpenDoc，在新标签页打开 HTML 文档
- */
-function SummaryTreeView({
-  nodes,
-  loading,
-  onOpenDoc,
-}: {
-  nodes: readonly SummaryTreeNode[];
-  loading: boolean;
-  onOpenDoc: (absolutePath: string) => void;
-}) {
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center text-xs text-text-secondary">
-        加载中…
-      </div>
-    );
-  }
-  if (nodes.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center text-xs text-text-secondary">
-        暂无摘要文档
-      </div>
-    );
-  }
-  return (
-    <div className="h-full overflow-y-auto p-1">
-      {nodes.map((node) => (
-        <SummaryTreeItem key={node.relativePath} node={node} depth={0} onOpenDoc={onOpenDoc} />
-      ))}
-    </div>
-  );
-}
-
-function SummaryTreeItem({
-  node,
-  depth,
-  onOpenDoc,
-}: {
-  node: SummaryTreeNode;
-  depth: number;
-  onOpenDoc: (absolutePath: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(true);
-  const paddingLeft = 8 + depth * 12;
-
-  if (node.type === 'file') {
-    return (
-      <button
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs text-text-secondary hover:bg-surface hover:text-text"
-        style={{ paddingLeft }}
-        onClick={() => node.absolutePath && onOpenDoc(node.absolutePath)}
-        title={node.name}
-      >
-        <FileText className="h-3.5 w-3.5 shrink-0" />
-        <span className="flex-1 truncate">{node.name}</span>
-      </button>
-    );
-  }
-
-  return (
-    <div>
-      <button
-        className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-xs font-medium text-text hover:bg-surface"
-        style={{ paddingLeft }}
-        onClick={() => setExpanded((v) => !v)}
-      >
-        {expanded ? (
-          <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-        )}
-        {expanded ? (
-          <FolderOpen className="h-3.5 w-3.5 shrink-0" />
-        ) : (
-          <Folder className="h-3.5 w-3.5 shrink-0" />
-        )}
-        <span className="flex-1 truncate">{node.name}</span>
-      </button>
-      {expanded && node.children && node.children.length > 0 && (
-        <div>
-          {node.children.map((child) => (
-            <SummaryTreeItem
-              key={child.relativePath}
-              node={child}
-              depth={depth + 1}
-              onOpenDoc={onOpenDoc}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 /** 标签页图标（展开态与折叠态共用）：
@@ -466,19 +347,14 @@ export function App() {
   const [resizingRight, setResizingRight] = useState(false);
   const [bookmarkSaved, setBookmarkSaved] = useState(false);
   const [bookmarkToast, setBookmarkToast] = useState<string | null>(null);
-  // 网页内容提取（AI 助手）：一键提取当前网页正文并保存到本地
-  // 按钮位于地址栏 omnibox.tsx，点击直接调用 summary.run IPC（纯本地操作，不依赖 LLM）
-  const [summaryRunning, setSummaryRunning] = useState(false);
-  const [summaryToast, setSummaryToast] = useState<string | null>(null);
-  // DeepSeek Harness 启动中标记：独立于 summaryToast（后者 3 秒自动消失），
-  // 用于显示启动过程中的持久提示，启动完成（成功/失败）后再消失。
+  // 通用操作 toast（截图/翻译/DeepSeek Harness 等反馈，3 秒自动消失）
+  const [actionToast, setActionToast] = useState<string | null>(null);
+  // DeepSeek Harness 启动中标记：用于显示启动过程中的持久提示，
+  // 启动完成（成功/失败）后再消失。
   const [dshStarting, setDshStarting] = useState(false);
   // 编辑器轻提示（保存失败等）：稳定引用（useEditSession 依赖稳定性需要）。
   // showEditorToast / editorGuardAsk / handleCloseTab / handleSelectTab 声明于
   // 上方「编辑守卫」区（tab 事件订阅 effect 之前，供事件路径守卫引用）。
-  // pi 设置对话框显示状态：齿轮按钮位于 AiChatView 中区 header 右上角，
-  // 通过此状态与 PiSettingsDialog 解耦（PiSettingsDialog 在 App.tsx 渲染）
-  const [showPiSettings, setShowPiSettings] = useState(false);
 
   // ── TP7 工作区状态 ──
   const [workspaces, setWorkspaces] = useState<readonly Workspace[]>([]);
@@ -544,42 +420,6 @@ export function App() {
   /** 折叠态工作区切换模式（设置 ui.workspaceSwitcherMode；'wheel'=滚轮循环；'cards'=点击打开工作区总览页）。 */
   const [workspaceSwitcherMode, setWorkspaceSwitcherMode] =
     useState<WorkspaceSwitcherMode>('wheel');
-
-  // 摘要文档目录树（左侧边栏数据空间入口）
-  // 左侧边栏展开时显示已保存的摘要文档树，点击叶节点在新标签页打开
-  const [summaryTree, setSummaryTree] = useState<readonly SummaryTreeNode[]>([]);
-  const [summaryTreeLoading, setSummaryTreeLoading] = useState(false);
-
-  /** 加载摘要文档目录树 */
-  const loadSummaryTree = useCallback(async () => {
-    setSummaryTreeLoading(true);
-    try {
-      const result = (await window.urchin.invoke('summary.listTree', {})) as {
-        tree: readonly SummaryTreeNode[];
-        rootPath: string;
-      };
-      setSummaryTree(result.tree);
-    } catch (e) {
-      console.error('Failed to load summary tree:', e);
-      setSummaryTree([]);
-    } finally {
-      setSummaryTreeLoading(false);
-    }
-  }, []);
-
-  // 左侧边栏展开时加载目录树
-  useEffect(() => {
-    if (leftExpanded) {
-      void loadSummaryTree();
-    }
-  }, [leftExpanded, loadSummaryTree]);
-
-  /** 打开摘要文档：在新标签页中打开 HTML 文件 */
-  const handleOpenSummaryDoc = useCallback((absolutePath: string) => {
-    void window.urchin.invoke('summary.open', { absolutePath }).catch((e) => {
-      console.error('Failed to open summary doc:', e);
-    });
-  }, []);
 
   /**
    * 打开本地路径（文件夹/文件统一入口）：
@@ -663,42 +503,12 @@ export function App() {
     return off;
   }, []);
 
-  /**
-   * 一键提取当前网页内容并保存到本地（AI 助手）。
-   *
-   * 流程：调用 summary.run IPC → 主进程在页面上下文执行提取脚本 →
-   *      格式化为自包含 HTML → 保存到本地目录。
-   * 纯本地操作，不依赖 LLM 模型，与 pi 模块完全隔离。
-   */
-  const handleSummarize = useCallback(async () => {
-    if (!activeTabId || summaryRunning) return;
-    setSummaryRunning(true);
-    setSummaryToast('正在提取网页内容…');
-    try {
-      const result = (await window.urchin.invoke('summary.run', { tabId: activeTabId })) as {
-        filePath: string;
-        relativePath: string;
-        documentTitle: string;
-      };
-      setSummaryToast(`已保存：${result.documentTitle}`);
-      // 左侧边栏展开时刷新目录树，让新文档立即出现
-      if (leftExpanded) {
-        void loadSummaryTree();
-      }
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      setSummaryToast(`提取失败：${message}`);
-    } finally {
-      setSummaryRunning(false);
-    }
-  }, [activeTabId, summaryRunning, leftExpanded, loadSummaryTree]);
-
-  // 摘要 toast 自动消失（3 秒后清除）
+  // 通用 toast 自动消失（3 秒后清除）
   useEffect(() => {
-    if (!summaryToast) return;
-    const timer = setTimeout(() => setSummaryToast(null), 3000);
+    if (!actionToast) return;
+    const timer = setTimeout(() => setActionToast(null), 3000);
     return () => clearTimeout(timer);
-  }, [summaryToast]);
+  }, [actionToast]);
 
   // 截图当前网页（地址栏截图按钮）：主进程弹出整屏框选覆盖窗口，用户拖拽框选
   // 确认后裁剪保存到 <数据目录>/screenshots/ 并打开所在文件夹。
@@ -709,7 +519,7 @@ export function App() {
       // 覆盖窗口已弹出（截图/取消结果由覆盖窗口自身处理，无需 toast）
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      setSummaryToast(`截图失败：${message}`);
+      setActionToast(`截图失败：${message}`);
     }
   }, [activeTabId]);
 
@@ -948,7 +758,7 @@ export function App() {
 
   // 编辑器轻提示（保存失败等）：稳定引用（useEditSession 依赖稳定性需要）
   const showEditorToast = useCallback((msg: string): void => {
-    if (msg) setSummaryToast(msg);
+    if (msg) setActionToast(msg);
   }, []);
 
   // 窗口整体关闭兜底：存在脏编辑会话时阻止静默关闭（Electron 弹原生确认）。
@@ -1089,7 +899,7 @@ export function App() {
       if (translateActive) {
         await window.urchin.invoke('translate.stop', { tabId: activeTabId });
         setTranslateActive(false);
-        setSummaryToast('已恢复原文');
+        setActionToast('已恢复原文');
       } else {
         const res = (await window.urchin.invoke('translate.start', { tabId: activeTabId })) as {
           status: 'started' | 'skipped';
@@ -1097,13 +907,13 @@ export function App() {
           segmentCount?: number;
         };
         if (res.status === 'skipped') {
-          setSummaryToast('页面语言与目标语言一致，无需翻译');
+          setActionToast('页面语言与目标语言一致，无需翻译');
         } else {
-          setSummaryToast(`正在翻译（共 ${res.segmentCount ?? 0} 段）…`);
+          setActionToast(`正在翻译（共 ${res.segmentCount ?? 0} 段）…`);
         }
       }
     } catch (e) {
-      setSummaryToast(`翻译失败：${e instanceof Error ? e.message : String(e)}`);
+      setActionToast(`翻译失败：${e instanceof Error ? e.message : String(e)}`);
     }
   }, [activeTabId, translateActive]);
 
@@ -1137,9 +947,9 @@ export function App() {
       };
       if (data.tabId !== activeTabIdRef.current) return;
       if (data.phase === 'translating') {
-        setSummaryToast(`正在翻译 ${data.done ?? 0}/${data.total ?? 0} 段…`);
+        setActionToast(`正在翻译 ${data.done ?? 0}/${data.total ?? 0} 段…`);
       } else if (data.phase === 'done') {
-        setSummaryToast(
+        setActionToast(
           data.message ?? (data.total ? `翻译完成（共 ${data.total} 段）` : '已恢复原文'),
         );
         window.urchin
@@ -1149,7 +959,7 @@ export function App() {
           })
           .catch(() => undefined);
       } else if (data.phase === 'error') {
-        setSummaryToast(data.message ?? '翻译失败');
+        setActionToast(data.message ?? '翻译失败');
       }
     });
     const offSelection = window.urchin.on('translate:selection-result', (payload) => {
@@ -1253,10 +1063,10 @@ export function App() {
   // 未运行 → 打开启动器标签页（挂载即自动启动并跳转，无需再点「启动」按钮）。
   // 阶段2 解耦：AI 模块作为独立标签页（urchin://ai），不再融合到地址栏
   const handleOpenAi = useCallback(async () => {
-    // 1. 查询 pi 服务状态：running 则直达 pi 网页标签（toggle 语义：已激活则关闭标签）
+    // 1. 查询 piWebHost 服务状态：running 则直达 pi 网页标签（toggle 语义：已激活则关闭标签）
     let piUrl: string | null = null;
     try {
-      const s = (await window.urchin.invoke('piWeb.status', {})) as {
+      const s = (await window.urchin.invoke('piWebHost.status', {})) as {
         state?: string;
         url?: string;
       };
@@ -1415,7 +1225,7 @@ export function App() {
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      setSummaryToast(`DeepSeek Harness 启动失败：${message}`);
+      setActionToast(`DeepSeek Harness 启动失败：${message}`);
       console.error('Failed to launch dsh:', e);
     } finally {
       setDshStarting(false);
@@ -2270,11 +2080,11 @@ export function App() {
     const statusBarVisible = !isAiTab;
     // 导航禁用页面（设置/邮件/主页/工作区/文件查看器）：后退/前进/刷新无意义
     const isNavDisabledPage = isInternalPage && !isGenOfficeTab && !isGenOfficeHomeTab;
-    // toast 优先级：DeepSeek Harness 启动 > 摘要/截图/翻译 > 书签
+    // toast 优先级：DeepSeek Harness 启动 > 截图/翻译 > 书签
     const toast = dshStarting
       ? { text: '正在启动 DeepSeek Harness…', spinning: true }
-      : summaryToast
-        ? { text: summaryToast, spinning: summaryRunning }
+      : actionToast
+        ? { text: actionToast }
         : bookmarkToast
           ? { text: bookmarkToast }
           : null;
@@ -2288,7 +2098,6 @@ export function App() {
       reloadDisabled: !activeTabId || isNavDisabledPage,
       bookmarkSaved,
       bookmarkable: !isNavDisabledPage && !!activeTab?.url && isBookmarkable(activeTab.url),
-      summarizeDisabled: summaryRunning || !activeTab?.url || !/^https?:\/\//i.test(activeTab.url),
       screenshotDisabled: !activeTabId,
       translateActive,
       translateDisabled: !activeTab?.url || !/^https?:\/\//i.test(activeTab.url),
@@ -2309,8 +2118,7 @@ export function App() {
     activeTab?.canGoForward,
     activeTabId,
     bookmarkSaved,
-    summaryRunning,
-    summaryToast,
+    actionToast,
     bookmarkToast,
     dshStarting,
     translateActive,
@@ -2345,9 +2153,6 @@ export function App() {
         case 'bookmark-toggle':
           void handleSaveBookmark();
           break;
-        case 'summarize':
-          void handleSummarize();
-          break;
         case 'screenshot':
           void handleScreenshot();
           break;
@@ -2369,7 +2174,6 @@ export function App() {
     handleGoForward,
     handleReload,
     handleSaveBookmark,
-    handleSummarize,
     handleScreenshot,
     handleTranslate,
     handleSuggestionQuery,
@@ -2443,19 +2247,6 @@ export function App() {
                 <PanelLeftOpen className="h-4 w-4" />
               )}
             </button>
-
-            {/* 中部：摘要文档目录树（数据空间入口）
-             *  左侧边栏折叠时不渲染（宽度不足）；展开时加载并显示本地摘要文档
-             *  点击文件节点在新标签页打开 HTML 文档 */}
-            <div className="flex-1 overflow-hidden">
-              {leftExpanded && (
-                <SummaryTreeView
-                  nodes={summaryTree}
-                  loading={summaryTreeLoading}
-                  onOpenDoc={handleOpenSummaryDoc}
-                />
-              )}
-            </div>
 
             {/* 底部：DeepSeek Harness / pi / GenOffice 文档 / 邮箱 / 主页 / 主题切换 / 设置入口
              *（GenOffice 入口打开模块主页：打开文件 / 格式说明 / 原生 AI 设置） */}
@@ -2564,9 +2355,8 @@ export function App() {
                       initialTab={settingsInitialTab}
                     />
                   ) : isAiTab ? (
-                    /* AI 页：pi 网页版启动器（阶段 1，docs/pi-web-评估.md）——pi 对话迁移至
-                     * 独立系统 Node 子进程的 pi-web-ui 网页,本页仅作入口（启动/停止/打开）。
-                     * 旧对话视图 AiChatView 保留于 @urchin/ai-extension,回退时恢复渲染即可。 */
+                    /* AI 页：pi 网页版启动器（piWebHost 自研托管服务 + WebSocket + token 鉴权）。
+                     * 本页仅作入口（启动/停止/打开），pi 对话前端由 pi-web-host 托管。 */
                     <PiWebLauncherView
                       autoStart
                       onOpenUrl={(url) => void handleOpenPiWebUrl(url)}
@@ -2981,9 +2771,6 @@ export function App() {
             onRemove={(id) => handleRemoveWorkspace(id)}
           />
         )}
-
-        {/* pi 设置对话框：由 AiChatView 中区 header 的齿轮按钮触发 */}
-        <PiSettingsDialog open={showPiSettings} onClose={() => setShowPiSettings(false)} />
       </div>
     </div>
   );

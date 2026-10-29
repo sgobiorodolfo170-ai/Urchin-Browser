@@ -38,8 +38,6 @@ function renderOmnibox(overrides: Partial<Parameters<typeof Omnibox>[0]> = {}) {
     bookmarkSaved: false,
     bookmarkable: true,
     onBookmarkToggle: onBookmarkToggleMock,
-    onSummarize: onSummarizeMock,
-    summarizeDisabled: false,
     ...overrides,
   };
   render(<Omnibox {...props} />);
@@ -50,13 +48,11 @@ function renderOmnibox(overrides: Partial<Parameters<typeof Omnibox>[0]> = {}) {
 const onNavigateMock = vi.fn();
 const onSuggestionQueryMock = vi.fn();
 const onBookmarkToggleMock = vi.fn();
-const onSummarizeMock = vi.fn();
 
 beforeEach(() => {
   onNavigateMock.mockReset();
   onSuggestionQueryMock.mockReset();
   onBookmarkToggleMock.mockReset();
-  onSummarizeMock.mockReset();
   mockInvoke.mockReset();
   mockInvoke.mockResolvedValue({});
   Object.defineProperty(window, 'urchin', {
@@ -155,17 +151,6 @@ describe('Omnibox', () => {
     fireEvent.click(screen.getByLabelText('收藏夹'));
     // 悬浮面板由主进程 BookmarkPanel 子窗口管理，渲染层仅发开关通知
     expect(mockInvoke).toHaveBeenCalledWith('ui.panel.toggle', {});
-  });
-
-  it('should trigger onSummarize when enabled', () => {
-    renderOmnibox({ summarizeDisabled: false });
-    fireEvent.click(screen.getByLabelText('提取网页内容并保存'));
-    expect(onSummarizeMock).toHaveBeenCalled();
-  });
-
-  it('should disable summarize button when summarizeDisabled', () => {
-    renderOmnibox({ summarizeDisabled: true });
-    expect(screen.getByLabelText<HTMLButtonElement>('提取网页内容并保存').disabled).toBe(true);
   });
 });
 

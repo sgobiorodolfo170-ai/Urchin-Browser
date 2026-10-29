@@ -120,7 +120,7 @@ export class StorageLayer {
     runMigrations(this.main, MIGRATIONS_MAIN);
     runMigrations(this.ai, MIGRATIONS_AI);
 
-    // 密钥（ai.apiKey / summary.apiKey 等）属 pi 敏感数据，加密落盘到 pi 目录
+    // 密钥（pi.apiKey 等）属 pi 敏感数据，加密落盘到 pi 目录
     this.secrets = new SecretStoreImpl(piDataDir, safeStorage);
 
     log.info('storage layer initialized', { dataDir, piDataDir });

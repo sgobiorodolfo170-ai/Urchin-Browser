@@ -88,9 +88,11 @@ function handleThemeRequest(urlPath: string, wwwDir: string, res: ServerResponse
             id.includes('light') || id.includes('latte') || id.includes('white') ? 'light' : 'dark',
         };
       });
-      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(themes));
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ themes }));
     } catch {
-      res.writeHead(200, { 'Content-Type': 'application/json' }).end('[]');
+      res
+        .writeHead(200, { 'Content-Type': 'application/json' })
+        .end(JSON.stringify({ themes: [] }));
     }
     return;
   }

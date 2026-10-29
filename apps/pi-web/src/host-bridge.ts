@@ -6,6 +6,7 @@
  */
 
 import type { UiMessage, UiState, UiContentBlock, UiModelInfo } from '../server/protocol';
+import { applyTheme, type ThemeInfo } from './theme';
 
 interface BridgeState {
   rev: number;
@@ -200,10 +201,12 @@ function nextMsgId(role: string): string {
 
 export class HostBridgeWebSocket {
   private ws: WebSocket;
+  private readonly wsUrl: string;
   private state: BridgeState = makeDefaultState();
   private toolCalls: Map<string, { id: string; name: string; status: string }> = new Map();
   private settings: BridgeSettings = {};
   private goalStatus: BridgeGoalStatus = makeEmptyGoalStatus();
+  private themeInfos: ThemeInfo[] = [];
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
   onopen: ((ev: Event) => void) | null = null;
@@ -214,6 +217,7 @@ export class HostBridgeWebSocket {
   declare readyState: number;
 
   constructor(url: string | URL) {
+    this.wsUrl = typeof url === 'string' ? url : url.toString();
     this.ws = new WebSocket(url);
     const self = this;
 
@@ -264,6 +268,43 @@ export class HostBridgeWebSocket {
   close(): void {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.ws.close();
+  }
+
+  /** 主题跟随浏览器：监听 prefers-color-scheme 自动切换 pi-web 浅色/深色主题 */
+  private initThemeFollowing(): void {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    try {
+      const u = new URL(this.wsUrl);
+      const httpBase = `${u.protocol === 'ws:' ? 'http:' : 'https:'}//${u.host}`;
+      const token = u.searchParams.get('token') ?? '';
+      fetch(`${httpBase}/api/themes?token=${encodeURIComponent(token)}`)
+        .then((res) => res.json())
+        .then((data: unknown) => {
+          const arr: ThemeInfo[] = Array.isArray(data)
+            ? data
+            : Array.isArray((data as { themes?: ThemeInfo[] }).themes)
+              ? (data as { themes: ThemeInfo[] }).themes
+              : [];
+          this.themeInfos = arr;
+          this.applySystemTheme();
+        })
+        .catch(() => {});
+    } catch {
+      /* URL 解析失败 */
+    }
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    mq.addEventListener('change', () => this.applySystemTheme());
+  }
+
+  private applySystemTheme(): void {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (isDark) {
+      applyTheme(null);
+    } else {
+      const light = this.themeInfos.find((t) => t.scheme === 'light');
+      applyTheme(light?.id ?? 'latte');
+    }
   }
 
   private dispatchSynthetic(serverMsg: Record<string, unknown>): void {
@@ -349,6 +390,7 @@ export class HostBridgeWebSocket {
         this.sendSnapshot();
         this.startHeartbeat();
         this.sendInitialEmpties();
+        this.initThemeFollowing();
         this.ws.send(JSON.stringify({ type: 'list_models' }));
         this.ws.send(JSON.stringify({ type: 'list_sessions' }));
         this.ws.send(JSON.stringify({ type: 'list_files', path: '' }));
@@ -527,7 +569,14 @@ export class HostBridgeWebSocket {
       }
 
       case 'settings_state': {
-        this.dispatchSynthetic(msg);
+        const rawSettings =
+          typeof msg['settings'] === 'object' && msg['settings']
+            ? (msg['settings'] as Record<string, unknown>)
+            : {};
+        this.dispatchSynthetic({
+          type: 'settings_state',
+          settings: { ...makeDefaultSettings(), ...rawSettings, ...this.settings },
+        });
         break;
       }
 
@@ -591,17 +640,23 @@ export class HostBridgeWebSocket {
         this.ws.send(JSON.stringify(msg));
         break;
 
-      // ── 设置：本地存储 + 同步到 pi-web-host ──
+      // ── 设置：本地存储 + 同步到 pi-web-host（落盘） ──
       case 'get_settings':
+        this.ws.send(JSON.stringify(msg));
         this.dispatchSynthetic({
           type: 'settings_state',
           settings: { ...makeDefaultSettings(), ...this.settings },
         });
         break;
       case 'set_settings': {
-        // 前端发 {type:'set_settings', field1: val1, ...}（顶层字段，非 settings 包装）
         const { type: _omit, ...rest } = msg;
         this.settings = { ...this.settings, ...rest };
+        this.ws.send(
+          JSON.stringify({
+            type: 'set_settings',
+            settings: { ...makeDefaultSettings(), ...this.settings },
+          }),
+        );
         this.dispatchSynthetic({
           type: 'settings_state',
           settings: { ...makeDefaultSettings(), ...this.settings },
@@ -634,7 +689,7 @@ export class HostBridgeWebSocket {
         this.dispatchSynthetic({ type: 'commands', commands: [] });
         break;
       case 'get_commands':
-        this.dispatchSynthetic({ type: 'slash_commands', slashCommands: [] });
+        this.dispatchSynthetic({ type: 'slash_commands', commands: [] });
         break;
       case 'check_update':
         this.dispatchSynthetic({
@@ -678,7 +733,7 @@ export class HostBridgeWebSocket {
       case 'plugin_uninstall':
       case 'plugin_enable':
       case 'plugin_disable':
-        this.dispatchSynthetic({ type: 'plugins', plugins: [] });
+        this.dispatchSynthetic({ type: 'plugins', plugins: [], epoch: 0 });
         break;
 
       // ── Goal/Plan：host-bridge 维护状态（后端不支持 goal/review） ──

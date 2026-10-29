@@ -204,32 +204,37 @@ export class HostBridgeWebSocket {
 
   /** ready 后发送初始空响应（让前端各面板正常初始化） */
   private sendInitialEmpties(): void {
-    // 命令面板
+    // 命令面板（protocol.ts: commands {commands, path?} / slash_commands {commands}）
     this.dispatchSynthetic({ type: 'commands', commands: [] });
-    this.dispatchSynthetic({ type: 'slash_commands', slashCommands: [] });
-    // 组件
+    this.dispatchSynthetic({ type: 'slash_commands', commands: [] });
+    // 组件（protocol.ts: widgets {widgets} / statuses {statuses}）
     this.dispatchSynthetic({ type: 'widgets', widgets: [] });
     this.dispatchSynthetic({ type: 'statuses', statuses: [] });
-    this.dispatchSynthetic({ type: 'bg_servers', bgServers: [] });
-    this.dispatchSynthetic({ type: 'scheduler_tasks', schedulerTasks: [] });
+    // 后台服务 / 定时任务（protocol.ts: bg_servers {servers} / scheduler_tasks {tasks}）
+    this.dispatchSynthetic({ type: 'bg_servers', servers: [] });
+    this.dispatchSynthetic({ type: 'scheduler_tasks', tasks: [] });
     this.dispatchSynthetic({ type: 'mcp_servers', servers: [] });
-    // Git
+    // Git（protocol.ts: scm_data {reqId, kind, ok, files?, branches?, ...}）
     this.dispatchSynthetic({
       type: 'scm_data',
-      scm: { changed: [], staged: [], branches: [], currentBranch: '' },
+      reqId: 0,
+      kind: 'status',
+      ok: true,
+      files: [],
+      branches: [],
     });
-    // Goal/Plan
+    // Goal/Plan（protocol.ts: goal_status {status: GoalStatus}）
     this.dispatchSynthetic({ type: 'goal_status', status: this.goalStatus });
     // 会话（空列表，list_sessions 会更新）
     this.dispatchSynthetic({ type: 'sessions', sessions: [] });
     this.dispatchSynthetic({ type: 'projects', projects: [] });
-    // 插件
-    this.dispatchSynthetic({ type: 'plugins', plugins: [] });
-    this.dispatchSynthetic({ type: 'plugin_catalog', catalog: [] });
+    // 插件（protocol.ts: plugins {plugins, epoch} / plugin_catalog {entries, epoch}）
+    this.dispatchSynthetic({ type: 'plugins', plugins: [], epoch: 0 });
+    this.dispatchSynthetic({ type: 'plugin_catalog', entries: [], epoch: 0 });
     // 设置
     this.dispatchSynthetic({ type: 'settings_state', settings: this.settings });
-    // 模型配置（空，list_models 会更新）
-    this.dispatchSynthetic({ type: 'models_config', modelsConfig: [] });
+    // 模型配置（protocol.ts: models_config {providers} / providers_status {providers}）
+    this.dispatchSynthetic({ type: 'models_config', providers: [] });
     this.dispatchSynthetic({ type: 'providers_status', providers: [] });
     this.dispatchSynthetic({ type: 'provider_keys', keys: {} });
   }
@@ -563,7 +568,11 @@ export class HostBridgeWebSocket {
       case 'scm_branch':
         this.dispatchSynthetic({
           type: 'scm_data',
-          scm: { changed: [], staged: [], branches: [], currentBranch: '' },
+          reqId: 0,
+          kind: 'status',
+          ok: true,
+          files: [],
+          branches: [],
         });
         break;
       case 'terminal_create':

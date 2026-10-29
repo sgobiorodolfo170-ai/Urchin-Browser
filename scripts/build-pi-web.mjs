@@ -13,7 +13,7 @@
  * 用法：node scripts/build-pi-web.mjs（由 @urchin/desktop build / package:win 调用）
  * 前置：pnpm install 完成（ws/esbuild 已装）、apps/pi-web 依赖可解析。
  */
-import { mkdirSync, cpSync, rmSync } from 'node:fs';
+import { mkdirSync, cpSync, rmSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -82,6 +82,11 @@ async function main() {
   rmSync(frontendDistOut, { recursive: true, force: true });
   mkdirSync(dirname(frontendDistOut), { recursive: true });
   cpSync(join(frontApp, 'dist'), frontendDistOut, { recursive: true });
+  // 主题文件：/themes/*.css → dist/pi-web/themes/
+  const themesSrc = join(frontApp, 'themes');
+  if (existsSync(themesSrc)) {
+    cpSync(themesSrc, join(frontendDistOut, 'themes'), { recursive: true });
+  }
 
   console.log(
     `[build-pi-web] ok\n  host bundle -> ${entryOut}\n  frontend     -> ${frontendDistOut}`,

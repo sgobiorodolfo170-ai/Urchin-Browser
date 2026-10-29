@@ -8,7 +8,9 @@
  * 生命周期：startPiWebHostServer() 幂等返回 handle（port/url/token/close）。
  * 本模块零 Electron 依赖，可在 vitest 内直接跑真端口（127.0.0.1）。
  */
-import { createServer, type IncomingMessage, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { join as pathJoin, basename as pathBasename } from 'node:path';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
@@ -32,6 +34,7 @@ import {
   loadSessionMessages,
   generateSessionId,
 } from './session-store';
+import { handleFileOps } from './file-ops';
 import { PiWebHostState } from './types';
 
 export const SERVICE_VERSION = '0.2.0';
@@ -68,6 +71,43 @@ function requestAuthorized(req: IncomingMessage, expectedToken: string): boolean
   return isAuthorizedRequest(expectedToken, search, req.headers.cookie);
 }
 
+/** 处理主题文件请求 /themes/<name>.css 或 /api/themes（列表） */
+function handleThemeRequest(urlPath: string, wwwDir: string, res: ServerResponse): void {
+  const themesDir = pathJoin(wwwDir, 'themes');
+  if (urlPath === '/api/themes') {
+    try {
+      const files = readdirSync(themesDir).filter((f) => f.endsWith('.css'));
+      const themes = files.map((f) => {
+        const id = f.replace(/\.css$/, '');
+        return {
+          id,
+          name: id,
+          builtin: true,
+          scheme:
+            id.includes('light') || id.includes('latte') || id.includes('white') ? 'light' : 'dark',
+        };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(themes));
+    } catch {
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end('[]');
+    }
+    return;
+  }
+  const themeName = pathBasename(urlPath).replace(/\.css$/, '');
+  const filePath = pathJoin(themesDir, `${themeName}.css`);
+  if (existsSync(filePath)) {
+    const content = readFileSync(filePath, 'utf8');
+    res
+      .writeHead(200, {
+        'Content-Type': 'text/css; charset=utf-8',
+        'Cache-Control': 'no-cache',
+      })
+      .end(content);
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain' }).end('theme not found');
+  }
+}
+
 export async function startPiWebHostServer(
   options: PiWebHostServerOptions,
 ): Promise<PiWebHostServerHandle> {
@@ -85,6 +125,14 @@ export async function startPiWebHostServer(
     if (req.headers.cookie?.includes(HOST_TOKEN_COOKIE) !== true) {
       res.setHeader('Set-Cookie', buildTokenCookie(token));
     }
+
+    // 主题文件：/themes/*.css → wwwDir/themes/*.css
+    const urlPath = req.url?.split('?')[0] ?? '';
+    if (urlPath.startsWith('/themes/') || urlPath === '/api/themes') {
+      handleThemeRequest(urlPath, options.wwwDir, res);
+      return;
+    }
+
     void staticHandler.serve(req, res);
   });
 
@@ -267,7 +315,17 @@ export async function startPiWebHostServer(
           return;
         }
         default:
-          handleClientMessage(ws, text, ctx);
+          // 文件操作 / 设置：交给 file-ops 处理；未命中则走无状态 handler
+          if (agentDir) {
+            void handleFileOps(parsed as Record<string, unknown>, agentDir)
+              .then((result) => {
+                if (result) sendJson(ws, result as unknown as Parameters<typeof sendJson>[1]);
+                else handleClientMessage(ws, text, ctx);
+              })
+              .catch(() => handleClientMessage(ws, text, ctx));
+          } else {
+            handleClientMessage(ws, text, ctx);
+          }
       }
     });
 

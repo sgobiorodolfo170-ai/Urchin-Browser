@@ -28,15 +28,7 @@ export default defineConfig({
     emptyOutDir: true,
     target: 'es2022',
     rollupOptions: {
-      external: [
-        '@xterm/xterm',
-        '@xterm/addon-fit',
-        '@xterm/xterm/css/xterm.css',
-        '@pi-web-ui/plugin-sdk/client',
-        'html-to-image',
-        'mermaid',
-        'vis-timeline',
-      ],
+      external: ['@pi-web-ui/plugin-sdk/client'],
     },
   },
   server: {

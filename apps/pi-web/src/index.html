@@ -6,6 +6,27 @@
     <meta name="color-scheme" content="dark" />
     <link rel="icon" type="image/png" href="./pi-icon.png" />
     <title>pi · Urchin</title>
+    <script>
+      // 诊断：捕获模块加载错误并显示在页面上
+      window.addEventListener('error', function (e) {
+        var d = document.createElement('div');
+        d.style.cssText =
+          'position:fixed;top:0;left:0;right:0;z-index:9999;background:#7f1d1d;color:#fca5a5;padding:12px;font:13px monospace;white-space:pre-wrap;word-break:break-all';
+        d.textContent =
+          '[ERROR] ' +
+          (e.message || 'unknown') +
+          (e.filename ? ' @ ' + e.filename + ':' + e.lineno : '');
+        document.body.appendChild(d);
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var d = document.createElement('div');
+        d.style.cssText =
+          'position:fixed;top:40px;left:0;right:0;z-index:9999;background:#7f1d1d;color:#fca5a5;padding:12px;font:13px monospace;white-space:pre-wrap;word-break:break-all';
+        d.textContent =
+          '[REJECTION] ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason));
+        document.body.appendChild(d);
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>

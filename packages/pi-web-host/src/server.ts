@@ -37,7 +37,7 @@ import {
   forkSession,
 } from './session-store';
 import { handleFileOps } from './file-ops';
-import { getGitStatus } from './git-ops';
+import { getGitStatus, getGitHistory, getGitFileDiff, getGitCommitDetail } from './git-ops';
 import { PiWebHostState, type HostServerMessage } from './types';
 
 export const SERVICE_VERSION = '0.2.0';
@@ -432,6 +432,67 @@ export async function startPiWebHostServer(
           void deleteSession(agentDir, targetId).then(() => {
             sendJson(ws, { type: 'session_list', sessions: [] } as unknown as HostServerMessage);
           });
+          return;
+        }
+        case 'scm_history': {
+          const reqId = (parsed as { reqId?: number }).reqId ?? 0;
+          const cwd = currentCwd ?? agentDir ?? process.cwd();
+          void getGitHistory(cwd).then((result) => {
+            sendJson(ws, {
+              type: 'scm_data',
+              reqId,
+              kind: 'history',
+              ok: result.ok,
+              error: result.error,
+              history: result.history,
+            } as unknown as HostServerMessage);
+          });
+          return;
+        }
+        case 'scm_filediff': {
+          const reqId = (parsed as { reqId?: number }).reqId ?? 0;
+          const filePath = (parsed as { path?: string }).path ?? '';
+          const cwd = currentCwd ?? agentDir ?? process.cwd();
+          void getGitFileDiff(cwd, filePath).then((result) => {
+            sendJson(ws, {
+              type: 'scm_data',
+              reqId,
+              kind: 'filediff',
+              ok: result.ok,
+              error: result.error,
+              stagedText: result.stagedText,
+              worktreeText: result.worktreeText,
+              untracked: result.untracked,
+            } as unknown as HostServerMessage);
+          });
+          return;
+        }
+        case 'scm_commit': {
+          const reqId = (parsed as { reqId?: number }).reqId ?? 0;
+          const hash = (parsed as { hash?: string }).hash ?? '';
+          const cwd = currentCwd ?? agentDir ?? process.cwd();
+          void getGitCommitDetail(cwd, hash).then((result) => {
+            sendJson(ws, {
+              type: 'scm_data',
+              reqId,
+              kind: 'commit',
+              ok: result.ok,
+              error: result.error,
+              stagedText: result.stagedText,
+            } as unknown as HostServerMessage);
+          });
+          return;
+        }
+        case 'scm_commitmsg': {
+          const reqId = (parsed as { reqId?: number }).reqId ?? 0;
+          // AI 生成提交信息需要 LLM 调用，简化为返回空文本
+          sendJson(ws, {
+            type: 'scm_data',
+            reqId,
+            kind: 'commitmsg',
+            ok: true,
+            text: '',
+          } as unknown as HostServerMessage);
           return;
         }
         default:

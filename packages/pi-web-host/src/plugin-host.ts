@@ -6,6 +6,8 @@
  * 后续阶段逐步补全（llm / net / dom / secrets / schedule ...）
  */
 
+import { canUse } from './plugin-permissions';
+
 /** 可逆副作用栈：插件注册的一切都登记，反激活时逆序回卷 */
 export class PluginEffectStack {
   private cleanups: (() => void)[] = [];
@@ -60,10 +62,12 @@ export function createPluginHost(
   effects: PluginEffectStack,
   tools: Map<string, PluginTool>,
   commands: Map<string, PluginCommand>,
+  caps: { families: Set<string>; apiVersion: number; netAllowlist: string[] },
 ): Record<string, unknown> {
   return {
-    // ── 工具注册 ──
+    // ── 工具注册（需 tools 权限） ──
     registerAgentTool(tool: PluginTool): void {
+      if (!canUse(caps, 'tools')) return;
       if (!tool.name || !tool.description || typeof tool.execute !== 'function') return;
       tools.set(tool.name, tool);
       effects.add(() => tools.delete(tool.name));
@@ -91,25 +95,30 @@ export function createPluginHost(
       effects.add(() => commands.delete(cmd.name));
     },
 
-    // ── KV 存储（内存态） ──
+    // ── KV 存储（需 storage 权限） ──
     storage: {
       get(key: string): unknown {
+        if (!canUse(caps, 'storage')) return undefined;
         return pluginStorage.get(`${pluginId}:${key}`);
       },
       set(key: string, value: unknown): void {
+        if (!canUse(caps, 'storage')) return;
         pluginStorage.set(`${pluginId}:${key}`, value);
       },
       delete(key: string): void {
+        if (!canUse(caps, 'storage')) return;
         pluginStorage.delete(`${pluginId}:${key}`);
       },
     },
 
-    // ── 文件系统（简化：阶段 3 添加权限检查） ──
+    // ── 文件系统（需 fs:read 权限） ──
     fs: {
       readFile(): Promise<string> {
+        if (!canUse(caps, 'fs:read')) return Promise.resolve('');
         return Promise.resolve('');
       },
       readdir(): Promise<string[]> {
+        if (!canUse(caps, 'fs:read')) return Promise.resolve([]);
         return Promise.resolve([]);
       },
     },

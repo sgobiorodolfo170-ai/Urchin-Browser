@@ -73,6 +73,7 @@ import {
   deactivateAllPlugins,
   getActivePluginTools,
 } from './plugin-manager';
+import { listGrants, listPermissions, grantDirAccess, grantNetHost } from './plugin-permissions';
 import { PiWebHostState, type HostServerMessage } from './types';
 
 export const SERVICE_VERSION = '0.2.0';
@@ -865,6 +866,56 @@ export async function startPiWebHostServer(
                 } as unknown as HostServerMessage);
               });
             });
+          }
+          return;
+        }
+        case 'plugin_grants': {
+          if (!agentDir) {
+            sendJson(ws, { type: 'plugin_grants', grants: [] } as unknown as HostServerMessage);
+            return;
+          }
+          void listGrants(agentDir).then((grants) => {
+            sendJson(ws, {
+              type: 'plugin_grants',
+              grants: grants.map((g) => ({ pluginId: g.pluginId, paths: g.paths })),
+            } as unknown as HostServerMessage);
+          });
+          return;
+        }
+        case 'plugin_permissions': {
+          if (!agentDir) {
+            sendJson(ws, {
+              type: 'plugin_permissions',
+              grants: [],
+            } as unknown as HostServerMessage);
+            return;
+          }
+          void listPermissions(agentDir).then((perms) => {
+            sendJson(ws, {
+              type: 'plugin_permissions',
+              grants: perms,
+            } as unknown as HostServerMessage);
+          });
+          return;
+        }
+        case 'plugin_path_response': {
+          const pluginId = (parsed as { pluginId?: string }).pluginId ?? '';
+          const path = (parsed as { path?: string }).path ?? '';
+          const granted = (parsed as { granted?: boolean }).granted === true;
+          if (agentDir && pluginId && path && granted) {
+            void grantDirAccess(agentDir, pluginId, path);
+          }
+          return;
+        }
+        case 'plugin_permission_response': {
+          const pluginId = (parsed as { pluginId?: string }).pluginId ?? '';
+          const family = (parsed as { family?: string }).family ?? '';
+          const granted = (parsed as { granted?: boolean }).granted === true;
+          if (agentDir && pluginId && family === 'net' && granted) {
+            const hosts = (parsed as { hosts?: string[] }).hosts ?? [];
+            for (const host of hosts) {
+              void grantNetHost(agentDir, pluginId, host);
+            }
           }
           return;
         }

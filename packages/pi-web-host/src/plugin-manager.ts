@@ -19,6 +19,7 @@ import {
   type LoadedPlugin,
   type PluginTool,
 } from './plugin-host';
+import { validatePluginManifest, extractCapabilities } from './plugin-permissions';
 
 const execFileAsync = promisify(execFile);
 
@@ -337,13 +338,27 @@ export async function activatePlugin(
   }
 
   try {
+    // 校验 manifest
+    const manifestPath = join(pluginDir, 'manifest.json');
+    let manifest: { permissions?: string[]; apiVersion?: number; netAllowlist?: string[] } = {};
+    try {
+      manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as typeof manifest;
+    } catch {
+      return { ok: false, error: 'manifest.json missing or invalid' };
+    }
+    const validation = validatePluginManifest(manifest);
+    if (validation.errors.length > 0) {
+      return { ok: false, error: validation.errors.join('; ') };
+    }
+
+    const caps = extractCapabilities(manifest);
     const effects = new PluginEffectStack();
     const tools = new Map<string, PluginTool>();
     const commands = new Map<
       string,
       LoadedPlugin['commands'] extends Map<string, infer V> ? V : never
     >();
-    const host = createPluginHost(pluginId, effects, tools, commands);
+    const host = createPluginHost(pluginId, effects, tools, commands, caps);
 
     const mod = await loadPluginEntry(entryPath);
     const activateFn = mod.default as

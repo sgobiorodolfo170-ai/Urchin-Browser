@@ -51,6 +51,8 @@ export interface AgentBridgeOptions {
   readonly enableTools?: boolean;
   /** M2B-4：工具工作目录（enableTools=true 时必填） */
   readonly toolsCwd?: string;
+  /** 插件工具（从 plugin-manager getActivePluginTools 获取，注入 Agent tools） */
+  readonly extraTools?: AgentTool[];
 }
 
 /** 桥接句柄 */
@@ -163,6 +165,11 @@ export function createAgentBridge(
       createEditTool(options.toolsCwd),
       createWriteTool(options.toolsCwd),
     );
+  }
+  if (options.extraTools) {
+    for (const t of options.extraTools) {
+      tools.push(t);
+    }
   }
 
   // M2C-2：工具审批——beforeToolCall 钩子在工具执行前暂停，发 tool_approval_pending，

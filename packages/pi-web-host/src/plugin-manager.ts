@@ -8,9 +8,17 @@
 import { readdir, readFile, stat, mkdir, rm, writeFile } from 'node:fs/promises';
 import { type Dirent } from 'node:fs';
 import { join, isAbsolute } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
+import {
+  createPluginHost,
+  PluginEffectStack,
+  clearPluginStorage,
+  type LoadedPlugin,
+  type PluginTool,
+} from './plugin-host';
 
 const execFileAsync = promisify(execFile);
 
@@ -291,4 +299,125 @@ async function copyDir(src: string, dest: string): Promise<void> {
       await writeFile(destPath, content);
     }
   }
+}
+
+// ── 阶段 2：激活 / 反激活 / 工具收集 ──
+
+const loadedPlugins = new Map<string, LoadedPlugin>();
+
+/** 动态加载插件入口文件（支持 ESM .mjs 和 CJS .js） */
+async function loadPluginEntry(entryPath: string): Promise<{ default?: unknown }> {
+  const url = pathToFileURL(entryPath).href;
+  return (await import(url)) as { default?: unknown };
+}
+
+/** 激活插件 */
+export async function activatePlugin(
+  agentDir: string,
+  pluginId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (loadedPlugins.has(pluginId)) {
+    return { ok: true };
+  }
+
+  const pluginsDir = getPluginsDir(agentDir);
+  const pluginDir = join(pluginsDir, pluginId);
+  const entryPath = join(pluginDir, 'index.mjs');
+
+  let hasEntry = false;
+  try {
+    await stat(entryPath);
+    hasEntry = true;
+  } catch {
+    /* no entry → 纯静态插件，不需要激活 */
+  }
+
+  if (!hasEntry) {
+    return { ok: true };
+  }
+
+  try {
+    const effects = new PluginEffectStack();
+    const tools = new Map<string, PluginTool>();
+    const commands = new Map<
+      string,
+      LoadedPlugin['commands'] extends Map<string, infer V> ? V : never
+    >();
+    const host = createPluginHost(pluginId, effects, tools, commands);
+
+    const mod = await loadPluginEntry(entryPath);
+    const activateFn = mod.default as
+      { activate?: (host: unknown) => unknown } | ((host: unknown) => unknown) | undefined;
+
+    let deactivate: (() => void) | undefined;
+
+    if (typeof activateFn === 'function') {
+      const ret = await activateFn(host);
+      if (typeof ret === 'function') {
+        deactivate = ret as () => void;
+      }
+    } else if (
+      activateFn &&
+      typeof activateFn === 'object' &&
+      typeof activateFn.activate === 'function'
+    ) {
+      const ret = await activateFn.activate(host);
+      if (typeof ret === 'function') {
+        deactivate = ret as () => void;
+      }
+    }
+
+    const loaded: LoadedPlugin = {
+      id: pluginId,
+      name: pluginId,
+      effects,
+      tools,
+      commands: commands,
+      deactivate,
+    };
+    loadedPlugins.set(pluginId, loaded);
+
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** 反激活插件 */
+export function deactivatePlugin(pluginId: string): void {
+  const plugin = loadedPlugins.get(pluginId);
+  if (!plugin) return;
+
+  try {
+    plugin.deactivate?.();
+  } catch {
+    /* ignore */
+  }
+
+  plugin.effects.release();
+  loadedPlugins.delete(pluginId);
+  clearPluginStorage(pluginId);
+}
+
+/** 反激活所有插件 */
+export function deactivateAllPlugins(): void {
+  for (const id of loadedPlugins.keys()) {
+    deactivatePlugin(id);
+  }
+}
+
+/** 获取所有已激活插件注册的 AI 工具 */
+export function getActivePluginTools(): PluginTool[] {
+  const allTools: PluginTool[] = [];
+  for (const plugin of loadedPlugins.values()) {
+    for (const tool of plugin.tools.values()) {
+      allTools.push(tool);
+    }
+  }
+  return allTools;
+}
+
+/** 获取所有已激活插件 ID */
+export function getActivePluginIds(): string[] {
+  return Array.from(loadedPlugins.keys());
 }

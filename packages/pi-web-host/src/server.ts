@@ -68,6 +68,10 @@ import {
   removeCatalogEntry,
   installPlugin,
   uninstallPlugin,
+  activatePlugin,
+  deactivatePlugin,
+  deactivateAllPlugins,
+  getActivePluginTools,
 } from './plugin-manager';
 import { PiWebHostState, type HostServerMessage } from './types';
 
@@ -275,6 +279,7 @@ export async function startPiWebHostServer(
           providerId: currentProviderId ?? agentOpts.providerId,
           modelId: currentModelId ?? agentOpts.modelId,
           sessionId: currentSessionId,
+          extraTools: getActivePluginTools(),
         },
         (msg) => {
           // 拦截 stream.chunk 累积 assistant 文本（用于 stream.end 时持久化）
@@ -726,6 +731,7 @@ export async function startPiWebHostServer(
         }
         case 'plugins_reload': {
           if (!agentDir) return;
+          disposeBridge();
           void scanPlugins(agentDir).then((plugins) => {
             sendJson(ws, {
               type: 'plugins',
@@ -783,9 +789,39 @@ export async function startPiWebHostServer(
           });
           return;
         }
-        case 'plugin_enable':
+        case 'plugin_enable': {
+          const pluginId = (parsed as { id?: string }).id ?? '';
+          if (!agentDir || !pluginId) return;
+          void activatePlugin(agentDir, pluginId).then((result) => {
+            sendJson(ws, {
+              type: 'plugin_job',
+              jobId: `enable-${pluginId}-${Date.now()}`,
+              action: 'install',
+              pluginId,
+              phase: 'done',
+              ok: result.ok,
+              error: result.error,
+            } as unknown as HostServerMessage);
+            void scanPlugins(agentDir).then((plugins) => {
+              sendJson(ws, {
+                type: 'plugins',
+                plugins,
+                epoch: Date.now(),
+              } as unknown as HostServerMessage);
+            });
+          });
+          return;
+        }
         case 'plugin_disable': {
-          // 阶段 1：仅记录状态（激活在阶段 2 实现）
+          const pluginId = (parsed as { id?: string }).id ?? '';
+          if (pluginId) deactivatePlugin(pluginId);
+          void scanPlugins(agentDir ?? '').then((plugins) => {
+            sendJson(ws, {
+              type: 'plugins',
+              plugins,
+              epoch: Date.now(),
+            } as unknown as HostServerMessage);
+          });
           return;
         }
         case 'plugin_catalog_add': {
@@ -852,6 +888,7 @@ export async function startPiWebHostServer(
       bridge = null;
       disposeAllTerminals();
       disposeAllSsh();
+      deactivateAllPlugins();
     });
   });
 

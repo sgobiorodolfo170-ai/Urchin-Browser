@@ -2,6 +2,15 @@
 
 > 创建：2026-10-29 · 本会话（glm-5.2 Loop 1-11）的完整上下文压缩 + 后续批次实施清单
 > 关联：ADR-013、docs/pi-web-评估.md 阶段 2、host-bridge.ts、packages/pi-web-host/
+>
+> **状态更新（2026-10-30）**：
+> - 第二批（工具审批/路径补全/上下文压缩/Goal-Plan/更新检查）：✅ 已完成（`f16dca5b` + `63223cac`）
+> - 第三批首批（Git 面板/write_file/search_files/set_cwd/技能市场）：✅ 已完成（`3c5e818a` + `3d28a927`）
+> - P0 修复（字段名/epoch/settings 持久化/主题跟随）：✅ 已完成（`7dde686c`）
+> - P1 修复（scm_data 补全/unknown_type 消除/E2E 断言）：✅ 已完成（`ecd64c0d`）
+> - 第四批 D2-D3（fork/delete/edit 会话操作）：✅ 已完成（`ee50c6eb`）
+> - ai.*→pi.* 切割整改：✅ 已完成（`05c1b51c`，见 [AI助手与pi切割整改报告](./AI助手与pi切割整改报告.md)）
+> - 第三批剩余（终端/SSH/插件/DSH/MCP/子代理/Canvas）：❌ 仍未做
 
 ## 本会话已完成的工作（Loop 1-11）
 

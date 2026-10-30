@@ -8,7 +8,7 @@
  */
 
 import { canUse } from './plugin-permissions';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /** LLM 提供回调（由 server.ts 注入 streamSimple） */
@@ -121,15 +121,23 @@ export function createPluginHost(
       },
     },
 
-    // ── 文件系统（需 fs:read 权限） ──
+    // ── 文件系统（需 fs:read 权限，实际实现） ──
     fs: {
-      readFile(): Promise<string> {
-        if (!canUse(caps, 'fs:read')) return Promise.resolve('');
-        return Promise.resolve('');
+      async readFile(filePath: string): Promise<string> {
+        if (!canUse(caps, 'fs:read')) return '';
+        try {
+          return await readFile(filePath, 'utf8');
+        } catch {
+          return '';
+        }
       },
-      readdir(): Promise<string[]> {
-        if (!canUse(caps, 'fs:read')) return Promise.resolve([]);
-        return Promise.resolve([]);
+      async readdir(dirPath: string): Promise<string[]> {
+        if (!canUse(caps, 'fs:read')) return [];
+        try {
+          return await readdir(dirPath);
+        } catch {
+          return [];
+        }
       },
     },
 
@@ -165,13 +173,33 @@ export function createPluginHost(
         return llmProvider(req);
       },
     },
+    // ── 网络请求（需 net 权限，实际实现） ──
     net: {
-      fetch(): Promise<{ ok: boolean; status: number; body?: string }> {
-        return Promise.resolve({ ok: false, status: 0 });
+      async fetch(url: string): Promise<{ ok: boolean; status: number; body?: string }> {
+        if (!canUse(caps, 'net')) return { ok: false, status: 0 };
+        try {
+          const response = await globalThis.fetch(url);
+          const body = await response.text();
+          return { ok: true, status: response.status, body: body.slice(0, 100000) };
+        } catch (e) {
+          return { ok: false, status: 0, body: e instanceof Error ? e.message : String(e) };
+        }
       },
     },
+    // ── 定时任务（需 tools 权限，setInterval 实现） ──
+    registerSchedule(name: string, intervalMs: number, callback: () => void): void {
+      if (!canUse(caps, 'tools')) return;
+      const timer = setInterval(() => {
+        try {
+          callback();
+        } catch {
+          /* ignore schedule errors */
+        }
+      }, intervalMs);
+      effects.add(() => clearInterval(timer));
+    },
     reloadCatalog: (): void => {
-      /* 阶段 4 */
+      /* 由 server.ts plugins_reload 处理 */
     },
   };
 }

@@ -266,3 +266,44 @@ export async function listPermissions(
   }
   return result;
 }
+
+// ── DOM 授权表（plugin-dom.json） ──
+
+const DOM_FILE = 'plugin-dom.json';
+
+async function readDomConsent(agentDir: string): Promise<Record<string, boolean>> {
+  try {
+    const raw = await readFile(join(agentDir, DOM_FILE), 'utf8');
+    return JSON.parse(raw) as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+async function writeDomConsent(agentDir: string, data: Record<string, boolean>): Promise<void> {
+  await mkdir(agentDir, { recursive: true });
+  await writeFile(join(agentDir, DOM_FILE), JSON.stringify(data, null, 2), 'utf8');
+}
+
+/** 检查插件是否被授权访问特权 DOM */
+export async function checkDomConsent(agentDir: string, pluginId: string): Promise<boolean> {
+  const data = await readDomConsent(agentDir);
+  return data[pluginId] === true;
+}
+
+/** 授权/撤销插件 DOM 访问 */
+export async function setDomConsent(
+  agentDir: string,
+  pluginId: string,
+  granted: boolean,
+): Promise<void> {
+  const data = await readDomConsent(agentDir);
+  data[pluginId] = granted;
+  await writeDomConsent(agentDir, data);
+}
+
+/** 检查 manifest 是否请求了特权 DOM */
+export function declarationWantsDom(permissions: string[] | undefined): boolean {
+  if (!permissions) return false;
+  return permissions.some((p) => p === 'dom' || p === 'dom:anchor');
+}

@@ -74,7 +74,14 @@ import {
   deactivateAllPlugins,
   getActivePluginTools,
 } from './plugin-manager';
-import { listGrants, listPermissions, grantDirAccess, grantNetHost } from './plugin-permissions';
+import {
+  listGrants,
+  listPermissions,
+  grantDirAccess,
+  grantNetHost,
+  checkDomConsent,
+  declarationWantsDom,
+} from './plugin-permissions';
 import { PiWebHostState, type HostServerMessage } from './types';
 
 export const SERVICE_VERSION = '0.2.0';
@@ -188,6 +195,22 @@ async function handlePluginStatic(
   if (!fullPath.startsWith(baseDir)) {
     res.writeHead(403, { 'Content-Type': 'text/plain' }).end('forbidden');
     return;
+  }
+
+  // DOM 门禁：检查插件是否请求了特权 DOM，若请求则需用户授权
+  try {
+    const manifestPath = pathJoin(agentDir, 'plugins', pluginId, 'manifest.json');
+    const manifestRaw = await readFile(manifestPath, 'utf8');
+    const manifest = JSON.parse(manifestRaw) as { permissions?: string[] };
+    if (declarationWantsDom(manifest.permissions)) {
+      const granted = await checkDomConsent(agentDir, pluginId);
+      if (!granted) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' }).end('dom consent required');
+        return;
+      }
+    }
+  } catch {
+    /* manifest 读取失败 → 放行（非特权插件） */
   }
 
   try {

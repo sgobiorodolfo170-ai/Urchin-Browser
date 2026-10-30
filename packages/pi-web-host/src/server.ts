@@ -10,7 +10,13 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
-import { join as pathJoin, basename as pathBasename } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import {
+  join as pathJoin,
+  basename as pathBasename,
+  extname,
+  resolve as pathResolve,
+} from 'node:path';
 import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import {
@@ -55,6 +61,14 @@ import {
   saveProfile as sshSaveProfile,
   disposeAllSsh,
 } from './ssh-client';
+import {
+  scanPlugins,
+  readCatalog,
+  addCatalogEntry,
+  removeCatalogEntry,
+  installPlugin,
+  uninstallPlugin,
+} from './plugin-manager';
 import { PiWebHostState, type HostServerMessage } from './types';
 
 export const SERVICE_VERSION = '0.2.0';
@@ -130,6 +144,56 @@ function handleThemeRequest(urlPath: string, wwwDir: string, res: ServerResponse
   }
 }
 
+const PLUGIN_MIME_TYPES: Readonly<Record<string, string>> = {
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.ttf': 'font/ttf',
+};
+
+/** 插件静态文件：/plugins/<id>/client/<path> → agentDir/plugins/<id>/client/<path> */
+async function handlePluginStatic(
+  urlPath: string,
+  agentDir: string,
+  res: ServerResponse,
+): Promise<void> {
+  const parts = urlPath.split('/');
+  if (parts.length < 5) {
+    res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found');
+    return;
+  }
+  const pluginId = parts[2] ?? '';
+  const filePath = parts.slice(4).join('/');
+
+  if (!/^[A-Za-z0-9_-]+$/.test(pluginId) || filePath.includes('..')) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' }).end('forbidden');
+    return;
+  }
+
+  const baseDir = pathResolve(pathJoin(agentDir, 'plugins', pluginId, 'client'));
+  const fullPath = pathResolve(pathJoin(baseDir, filePath));
+  if (!fullPath.startsWith(baseDir)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' }).end('forbidden');
+    return;
+  }
+
+  try {
+    const content = await readFile(fullPath);
+    const ext = extname(fullPath).toLowerCase();
+    const contentType = PLUGIN_MIME_TYPES[ext] ?? 'application/octet-stream';
+    res.writeHead(200, { 'Content-Type': contentType }).end(content);
+  } catch {
+    res.writeHead(404, { 'Content-Type': 'text/plain' }).end('not found');
+  }
+}
+
 export async function startPiWebHostServer(
   options: PiWebHostServerOptions,
 ): Promise<PiWebHostServerHandle> {
@@ -153,6 +217,15 @@ export async function startPiWebHostServer(
     if (urlPath.startsWith('/themes/') || urlPath === '/api/themes') {
       handleThemeRequest(urlPath, options.wwwDir, res);
       return;
+    }
+
+    // 插件静态文件：/plugins/<id>/client/<path> → agentDir/plugins/<id>/client/<path>
+    if (urlPath.startsWith('/plugins/') && urlPath.includes('/client/')) {
+      const agentDir = options.agentDir;
+      if (agentDir) {
+        void handlePluginStatic(urlPath, agentDir, res);
+        return;
+      }
     }
 
     void staticHandler.serve(req, res);
@@ -649,6 +722,114 @@ export async function startPiWebHostServer(
         case 'remote_ssh_delete_profile': {
           const name = (parsed as { name?: string }).name ?? '';
           if (agentDir && name) void sshDeleteProfile(agentDir, name);
+          return;
+        }
+        case 'plugins_reload': {
+          if (!agentDir) return;
+          void scanPlugins(agentDir).then((plugins) => {
+            sendJson(ws, {
+              type: 'plugins',
+              plugins,
+              epoch: Date.now(),
+            } as unknown as HostServerMessage);
+          });
+          return;
+        }
+        case 'plugin_install': {
+          const source = (parsed as { source?: string }).source ?? '';
+          const pluginId = (parsed as { id?: string }).id ?? '';
+          if (!agentDir || !source || !pluginId) return;
+          void installPlugin(agentDir, source, pluginId).then((result) => {
+            sendJson(ws, {
+              type: 'plugin_job',
+              jobId: `install-${pluginId}-${Date.now()}`,
+              action: 'install',
+              pluginId,
+              phase: 'done',
+              ok: result.ok,
+              error: result.error,
+            } as unknown as HostServerMessage);
+            if (result.ok) {
+              void scanPlugins(agentDir).then((plugins) => {
+                sendJson(ws, {
+                  type: 'plugins',
+                  plugins,
+                  epoch: Date.now(),
+                } as unknown as HostServerMessage);
+              });
+            }
+          });
+          return;
+        }
+        case 'plugin_uninstall': {
+          const pluginId = (parsed as { id?: string }).id ?? '';
+          if (!agentDir || !pluginId) return;
+          void uninstallPlugin(agentDir, pluginId).then(() => {
+            sendJson(ws, {
+              type: 'plugin_job',
+              jobId: `uninstall-${pluginId}-${Date.now()}`,
+              action: 'uninstall',
+              pluginId,
+              phase: 'done',
+              ok: true,
+            } as unknown as HostServerMessage);
+            void scanPlugins(agentDir).then((plugins) => {
+              sendJson(ws, {
+                type: 'plugins',
+                plugins,
+                epoch: Date.now(),
+              } as unknown as HostServerMessage);
+            });
+          });
+          return;
+        }
+        case 'plugin_enable':
+        case 'plugin_disable': {
+          // 阶段 1：仅记录状态（激活在阶段 2 实现）
+          return;
+        }
+        case 'plugin_catalog_add': {
+          if (!agentDir) return;
+          const entry = parsed as {
+            id?: string;
+            name?: string;
+            source?: string;
+            description?: string;
+            icon?: string;
+          };
+          if (entry.id && entry.name && entry.source) {
+            void addCatalogEntry(agentDir, {
+              id: entry.id,
+              name: entry.name,
+              source: entry.source,
+              description: entry.description,
+              icon: entry.icon,
+              builtin: false,
+            }).then(() => {
+              void readCatalog(agentDir).then((catalog) => {
+                sendJson(ws, {
+                  type: 'plugin_catalog',
+                  entries: catalog,
+                  epoch: Date.now(),
+                } as unknown as HostServerMessage);
+              });
+            });
+          }
+          return;
+        }
+        case 'plugin_catalog_remove': {
+          const id = (parsed as { id?: string }).id ?? '';
+          if (agentDir && id) {
+            void removeCatalogEntry(agentDir, id).then(() => {
+              void readCatalog(agentDir).then((catalog) => {
+                sendJson(ws, {
+                  type: 'plugin_catalog',
+                  entries: catalog,
+                  epoch: Date.now(),
+                } as unknown as HostServerMessage);
+              });
+            });
+          }
           return;
         }
         default:

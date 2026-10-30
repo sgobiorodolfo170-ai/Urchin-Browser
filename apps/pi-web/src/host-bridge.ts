@@ -730,11 +730,15 @@ export class HostBridgeWebSocket {
       case 'rename_terminal':
         this.ws.send(JSON.stringify(msg));
         break;
+      // ── 插件：转发到 pi-web-host（plugin-manager.ts） ──
+      case 'plugins_reload':
       case 'plugin_install':
       case 'plugin_uninstall':
       case 'plugin_enable':
       case 'plugin_disable':
-        this.dispatchSynthetic({ type: 'plugins', plugins: [], epoch: 0 });
+      case 'plugin_catalog_add':
+      case 'plugin_catalog_remove':
+        this.ws.send(JSON.stringify(msg));
         break;
 
       // ── Goal/Plan：host-bridge 维护状态（后端不支持 goal/review） ──

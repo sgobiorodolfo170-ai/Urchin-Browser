@@ -46,6 +46,15 @@ import {
   listTerminals,
   disposeAllTerminals,
 } from './terminal';
+import {
+  probe as sshProbe,
+  listDir as sshListDir,
+  installTools as sshInstallTools,
+  listProfiles as sshListProfiles,
+  deleteProfile as sshDeleteProfile,
+  saveProfile as sshSaveProfile,
+  disposeAllSsh,
+} from './ssh-client';
 import { PiWebHostState, type HostServerMessage } from './types';
 
 export const SERVICE_VERSION = '0.2.0';
@@ -562,6 +571,86 @@ export async function startPiWebHostServer(
           } as unknown as HostServerMessage);
           return;
         }
+        case 'remote_ssh_probe': {
+          const params = (parsed as { params?: Record<string, unknown> }).params;
+          if (!params) return;
+          const host = typeof params.host === 'string' ? params.host : '';
+          const port = typeof params.port === 'number' ? params.port : 22;
+          const username = typeof params.username === 'string' ? params.username : '';
+          const auth = params.auth as
+            | { type: 'password'; password?: string }
+            | { type: 'key'; privateKey?: string; passphrase?: string }
+            | { type: 'agent' };
+          void sshProbe(host, port, username, auth).then((result) => {
+            sendJson(ws, {
+              type: 'remote_ssh_probe_result',
+              ok: result.ok,
+              connectionId: result.connectionId,
+              error: result.error,
+              system: result.system,
+              tools: result.tools,
+            } as unknown as HostServerMessage);
+            if (result.ok && result.connectionId && params.saveProfile && agentDir) {
+              const profileName =
+                typeof params.profileName === 'string' ? params.profileName : `${username}@${host}`;
+              void sshSaveProfile(agentDir, {
+                name: profileName,
+                host,
+                port,
+                username,
+                authType:
+                  auth.type === 'password' ? 'password' : auth.type === 'key' ? 'key' : 'agent',
+              });
+            }
+          });
+          return;
+        }
+        case 'remote_ssh_list_dir': {
+          const connectionId = (parsed as { connectionId?: string }).connectionId ?? '';
+          const dirPath = (parsed as { path?: string }).path ?? '.';
+          void sshListDir(connectionId, dirPath).then((result) => {
+            sendJson(ws, {
+              type: 'remote_ssh_list_dir_result',
+              ok: result.ok,
+              error: result.error,
+              items: result.items,
+            } as unknown as HostServerMessage);
+          });
+          return;
+        }
+        case 'remote_ssh_install_tools': {
+          const connectionId = (parsed as { connectionId?: string }).connectionId ?? '';
+          const tools = (parsed as { tools?: string[] }).tools ?? [];
+          void sshInstallTools(connectionId, tools).then((result) => {
+            sendJson(ws, {
+              type: 'remote_ssh_install_result',
+              ok: result.ok,
+              error: result.error,
+            } as unknown as HostServerMessage);
+          });
+          return;
+        }
+        case 'remote_ssh_list_profiles': {
+          if (!agentDir) {
+            sendJson(ws, {
+              type: 'remote_ssh_profiles_result',
+              profiles: [],
+            } as unknown as HostServerMessage);
+            return;
+          }
+          void sshListProfiles(agentDir).then((profiles) => {
+            sendJson(ws, {
+              type: 'remote_ssh_profiles_result',
+              profiles,
+            } as unknown as HostServerMessage);
+          });
+          return;
+        }
+        case 'remote_ssh_delete_profile': {
+          const name = (parsed as { name?: string }).name ?? '';
+          if (agentDir && name) void sshDeleteProfile(agentDir, name);
+          return;
+        }
         default:
           // 文件操作 / 设置：交给 file-ops 处理；未命中则走无状态 handler
           if (agentDir) {
@@ -581,6 +670,7 @@ export async function startPiWebHostServer(
       bridge?.dispose();
       bridge = null;
       disposeAllTerminals();
+      disposeAllSsh();
     });
   });
 

@@ -814,6 +814,30 @@ export class HostBridgeWebSocket {
       case 'mcp_manage':
       case 'dismiss_conversation':
       case 'rollback_session':
+      case 'save_subagent_template':
+      case 'delete_subagent_template':
+      case 'dismiss_finished_subagents':
+      // Canvas（pi 引擎不支持，忽略所有 canvas_* 操作）
+      case 'canvas_list':
+      case 'canvas_load':
+      case 'canvas_save':
+      case 'canvas_delete':
+      case 'canvas_run_all':
+      case 'canvas_run_node':
+      case 'canvas_stop_node':
+      case 'canvas_stop_all':
+      case 'canvas_steer_node':
+      case 'canvas_review_node':
+      case 'canvas_reset_status':
+      case 'canvas_cards':
+      case 'canvas_card_delete':
+      case 'canvas_get_log':
+      case 'canvas_clear_log':
+      // DSH（pi 引擎不提供 dsh_* 消息，忽略）
+      case 'dsh_patches_list':
+      case 'dsh_patches_rescan':
+      case 'dsh_preset_apply':
+      case 'dsh_permission_apply':
         break;
 
       default:

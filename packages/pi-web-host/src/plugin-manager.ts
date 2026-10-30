@@ -16,8 +16,11 @@ import {
   createPluginHost,
   PluginEffectStack,
   clearPluginStorage,
+  loadPluginStorage,
+  savePluginStorage,
   type LoadedPlugin,
   type PluginTool,
+  type LlmProvider,
 } from './plugin-host';
 import { validatePluginManifest, extractCapabilities } from './plugin-permissions';
 
@@ -316,6 +319,7 @@ async function loadPluginEntry(entryPath: string): Promise<{ default?: unknown }
 export async function activatePlugin(
   agentDir: string,
   pluginId: string,
+  llmProvider?: LlmProvider,
 ): Promise<{ ok: boolean; error?: string }> {
   if (loadedPlugins.has(pluginId)) {
     return { ok: true };
@@ -352,13 +356,14 @@ export async function activatePlugin(
     }
 
     const caps = extractCapabilities(manifest);
+    await loadPluginStorage(agentDir, pluginId);
     const effects = new PluginEffectStack();
     const tools = new Map<string, PluginTool>();
     const commands = new Map<
       string,
       LoadedPlugin['commands'] extends Map<string, infer V> ? V : never
     >();
-    const host = createPluginHost(pluginId, effects, tools, commands, caps);
+    const host = createPluginHost(pluginId, effects, tools, commands, caps, llmProvider);
 
     const mod = await loadPluginEntry(entryPath);
     const activateFn = mod.default as
@@ -399,7 +404,7 @@ export async function activatePlugin(
 }
 
 /** 反激活插件 */
-export function deactivatePlugin(pluginId: string): void {
+export async function deactivatePlugin(agentDir: string, pluginId: string): Promise<void> {
   const plugin = loadedPlugins.get(pluginId);
   if (!plugin) return;
 
@@ -411,13 +416,14 @@ export function deactivatePlugin(pluginId: string): void {
 
   plugin.effects.release();
   loadedPlugins.delete(pluginId);
+  await savePluginStorage(agentDir, pluginId);
   clearPluginStorage(pluginId);
 }
 
 /** 反激活所有插件 */
-export function deactivateAllPlugins(): void {
+export async function deactivateAllPlugins(agentDir: string): Promise<void> {
   for (const id of loadedPlugins.keys()) {
-    deactivatePlugin(id);
+    await deactivatePlugin(agentDir, id);
   }
 }
 

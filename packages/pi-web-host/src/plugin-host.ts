@@ -1,12 +1,21 @@
 /**
- * pi-web-host · 插件 host 对象 + 副作用栈（阶段 2：激活 + 工具注册）
+ * pi-web-host · 插件 host 对象 + 副作用栈（阶段 4：LLM + 存储持久化）
  *
- * host 对象是插件与宿主交互的唯一接口。阶段 2 实现核心 ~15 方法：
- * registerAgentTool / registerTool / registerCommand / storage / fs / notify / log
- * 后续阶段逐步补全（llm / net / dom / secrets / schedule ...）
+ * host 对象是插件与宿主交互的唯一接口。
+ * 阶段 2：registerAgentTool / registerCommand / storage / fs / notify / log
+ * 阶段 3：权限检查（canUse）
+ * 阶段 4：LLM 调用 / KV 存储持久化 / 定时任务占位
  */
 
 import { canUse } from './plugin-permissions';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+
+/** LLM 提供回调（由 server.ts 注入 streamSimple） */
+export type LlmProvider = (req: {
+  prompt: string;
+  system?: string;
+}) => Promise<{ ok: boolean; text?: string; error?: string }>;
 
 /** 可逆副作用栈：插件注册的一切都登记，反激活时逆序回卷 */
 export class PluginEffectStack {
@@ -63,6 +72,7 @@ export function createPluginHost(
   tools: Map<string, PluginTool>,
   commands: Map<string, PluginCommand>,
   caps: { families: Set<string>; apiVersion: number; netAllowlist: string[] },
+  llmProvider?: LlmProvider,
 ): Record<string, unknown> {
   return {
     // ── 工具注册（需 tools 权限） ──
@@ -136,10 +146,23 @@ export function createPluginHost(
     // ── 插件元信息 ──
     pluginId,
 
-    // ── 占位方法（阶段 4 实现） ──
+    // ── LLM 调用（需 llm 权限，由 server.ts 注入 streamSimple） ──
     llm: {
-      complete(): Promise<{ ok: boolean; text?: string; error?: string }> {
-        return Promise.resolve({ ok: false, error: 'llm not implemented in this phase' });
+      async complete(req: {
+        prompt: string;
+        system?: string;
+      }): Promise<{ ok: boolean; text?: string; error?: string }> {
+        if (!canUse(caps, 'llm')) {
+          return { ok: false, error: 'llm permission not granted' };
+        }
+        if (!llmProvider) {
+          return { ok: false, error: 'llm provider not configured' };
+        }
+        const promptText = req.prompt ?? '';
+        if (promptText.length > 8000) {
+          return { ok: false, error: 'prompt exceeds 8000 chars' };
+        }
+        return llmProvider(req);
       },
     },
     net: {
@@ -153,10 +176,41 @@ export function createPluginHost(
   };
 }
 
-/** 清除指定插件的存储 */
+/** 清除指定插件的内存存储 */
 export function clearPluginStorage(pluginId: string): void {
   const prefix = `${pluginId}:`;
   for (const key of pluginStorage.keys()) {
     if (key.startsWith(prefix)) pluginStorage.delete(key);
+  }
+}
+
+/** 从文件加载插件存储到内存 */
+export async function loadPluginStorage(agentDir: string, pluginId: string): Promise<void> {
+  try {
+    const raw = await readFile(join(agentDir, 'plugins', pluginId, 'storage.json'), 'utf8');
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    for (const [key, value] of Object.entries(data)) {
+      pluginStorage.set(`${pluginId}:${key}`, value);
+    }
+  } catch {
+    /* 文件不存在或损坏，用空存储 */
+  }
+}
+
+/** 保存插件内存存储到文件 */
+export async function savePluginStorage(agentDir: string, pluginId: string): Promise<void> {
+  const data: Record<string, unknown> = {};
+  const prefix = `${pluginId}:`;
+  for (const [key, value] of pluginStorage.entries()) {
+    if (key.startsWith(prefix)) {
+      data[key.slice(prefix.length)] = value;
+    }
+  }
+  try {
+    const pluginDir = join(agentDir, 'plugins', pluginId);
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, 'storage.json'), JSON.stringify(data, null, 2), 'utf8');
+  } catch {
+    /* 写入失败不阻塞反激活 */
   }
 }

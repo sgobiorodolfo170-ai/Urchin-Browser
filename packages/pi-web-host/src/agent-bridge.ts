@@ -296,3 +296,37 @@ export function getProviderList(): readonly string[] {
 function extractDeltaFromEvent(event: AssistantMessageEvent): string {
   return extractDelta(event);
 }
+
+/** 阶段 4：创建插件 LLM 提供回调（用 streamSimple 做一次性无工具补全） */
+export function createLlmProvider(opts: {
+  apiKey: string;
+  providerId: string;
+  modelId: string;
+  baseUrl?: string;
+}): (req: {
+  prompt: string;
+  system?: string;
+}) => Promise<{ ok: boolean; text?: string; error?: string }> {
+  const normalizedId = normalizeProviderId(opts.providerId);
+  const model = resolveModel(normalizedId, opts.modelId, opts.baseUrl);
+  const streamFn = createStreamFn(opts.apiKey);
+
+  return async (req) => {
+    try {
+      const context = {
+        messages: [
+          ...(req.system ? [{ role: 'system', content: req.system }] : []),
+          { role: 'user', content: req.prompt },
+        ],
+      };
+      let text = '';
+      for await (const chunk of streamFn(model, context, { apiKey: opts.apiKey })) {
+        const delta = chunk && typeof chunk === 'object' ? extractDelta(chunk) : '';
+        if (delta) text += delta;
+      }
+      return { ok: true, text: text.slice(0, 8000) };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  };
+}

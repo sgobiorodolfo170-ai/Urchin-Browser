@@ -8,7 +8,7 @@
  *
  * M2B-4 接入 createAgentSession 时可迁移到官方 SessionManager（format 兼容）。
  */
-import { appendFile, readdir, readFile, mkdir } from 'node:fs/promises';
+import { appendFile, readdir, readFile, mkdir, unlink, copyFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export interface SessionInfo {
@@ -115,4 +115,26 @@ export function generateSessionId(): string {
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const suffix = Math.random().toString(36).slice(2, 8);
   return `${ts}_${suffix}`;
+}
+
+/** 删除会话文件 */
+export async function deleteSession(agentDir: string, sessionId: string): Promise<void> {
+  const dir = await ensureSessionDir(agentDir);
+  try {
+    await unlink(join(dir, `${sessionId}.jsonl`));
+  } catch {
+    /* 文件不存在忽略 */
+  }
+}
+
+/** Fork 会话：复制原会话全部消息到新会话文件，返回新 sessionId */
+export async function forkSession(agentDir: string, originalSessionId: string): Promise<string> {
+  const dir = await ensureSessionDir(agentDir);
+  const newId = generateSessionId();
+  try {
+    await copyFile(join(dir, `${originalSessionId}.jsonl`), join(dir, `${newId}.jsonl`));
+  } catch {
+    /* 原文件不存在时新会话为空 */
+  }
+  return newId;
 }

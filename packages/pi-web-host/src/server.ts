@@ -33,6 +33,8 @@ import {
   listSessions,
   loadSessionMessages,
   generateSessionId,
+  deleteSession,
+  forkSession,
 } from './session-store';
 import { handleFileOps } from './file-ops';
 import { getGitStatus } from './git-ops';
@@ -404,6 +406,31 @@ export async function startPiWebHostServer(
               files: result.files,
               branches: result.branches,
             } as unknown as HostServerMessage);
+          });
+          return;
+        }
+        case 'fork_session': {
+          const originalId =
+            (parsed as { conversationId?: string }).conversationId ?? currentSessionId;
+          if (!agentDir) {
+            sendError(ws, 'no_agent_dir', 'agentDir not configured');
+            return;
+          }
+          void forkSession(agentDir, originalId).then((newId) => {
+            sendJson(ws, {
+              type: 'session_created',
+              sessionId: newId,
+            } as unknown as HostServerMessage);
+          });
+          return;
+        }
+        case 'delete_session': {
+          const targetId = (parsed as { path?: string }).path ?? '';
+          if (!agentDir || !targetId) {
+            return;
+          }
+          void deleteSession(agentDir, targetId).then(() => {
+            sendJson(ws, { type: 'session_list', sessions: [] } as unknown as HostServerMessage);
           });
           return;
         }

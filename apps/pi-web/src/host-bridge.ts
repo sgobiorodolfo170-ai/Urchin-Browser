@@ -776,10 +776,29 @@ export class HostBridgeWebSocket {
         break;
       }
 
+      // ── 会话操作：转发到后端 ──
+      case 'fork_session':
+      case 'delete_session':
+        this.ws.send(JSON.stringify(msg));
+        break;
+      // edit_message = 新建会话 + 用编辑后文本提问
+      case 'edit_message': {
+        const text = typeof msg['text'] === 'string' ? msg['text'] : '';
+        this.ws.send(JSON.stringify({ type: 'new_session' }));
+        if (text) {
+          this.state.messages.push({
+            id: nextMsgId('u'),
+            role: 'user',
+            content: [{ type: 'text', text }],
+            timestamp: Date.now(),
+          });
+          this.sendSnapshot();
+          this.ws.send(JSON.stringify({ type: 'prompt', text }));
+        }
+        break;
+      }
+
       // ── 未实现功能：忽略（不转发后端避免 unknown_type error） ──
-      case 'fork_conversation':
-      case 'delete_conversation':
-      case 'edit_message':
       case 'steer':
       case 'follow_up':
       case 'set_workspace_roots':
@@ -792,6 +811,7 @@ export class HostBridgeWebSocket {
       case 'page_request':
       case 'mcp_manage':
       case 'dismiss_conversation':
+      case 'rollback_session':
         break;
 
       default:

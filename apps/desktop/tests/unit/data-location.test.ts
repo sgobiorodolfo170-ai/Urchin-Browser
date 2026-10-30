@@ -7,8 +7,7 @@
  * 3. 指针带迁移标记 → 整体复制迁移 + 清理源 + 清标记
  * 4. setDataLocation → 写指针 { path, migrateFrom }
  * 5. migrateLegacyPiData → 旧 data/ai.db、data/secrets、data/providers → userData/pi
- * 6. migrateLegacySummaries → 旧 userData/summaries → <dataDir>/summaries
- * 7. 无指针且旧 userData/data 已有数据 → 整体迁入新默认后清理
+ * 6. 无指针且旧 userData/data 已有数据 → 整体迁入新默认后清理
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -19,7 +18,6 @@ import {
   resolveDataLocation,
   setDataLocation,
   migrateLegacyPiData,
-  migrateLegacySummaries,
   PI_DIR_NAME,
 } from '../../src/main/storage/data-location';
 
@@ -140,17 +138,5 @@ describe('data-location', () => {
     expect(existsSync(join(oldData, 'ai.db'))).toBe(false);
     // 主数据（urchin.db 等）不受影响
     expect(existsSync(oldData)).toBe(true);
-  });
-
-  it('migrateLegacySummaries should move userData/summaries into data dir', () => {
-    mkdirSync(join(userDataPath, 'summaries'), { recursive: true });
-    writeFileSync(join(userDataPath, 'summaries', 'doc.html'), '<html/>');
-
-    const dataDirPath = join(defaultRoot, 'data');
-    mkdirSync(dataDirPath, { recursive: true });
-    migrateLegacySummaries(userDataPath, dataDirPath);
-
-    expect(existsSync(join(dataDirPath, 'summaries', 'doc.html'))).toBe(true);
-    expect(existsSync(join(userDataPath, 'summaries'))).toBe(false);
   });
 });

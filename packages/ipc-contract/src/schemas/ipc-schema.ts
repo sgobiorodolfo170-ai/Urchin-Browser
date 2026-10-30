@@ -1701,88 +1701,6 @@ export const pageExtractResSchema = z.object({
 export type PageExtractRes = z.infer<typeof pageExtractResSchema>;
 
 // ============================================================================
-// Summary 域（摘要 Agent · 与 pi 模块隔离的独立 AI 助手）
-// ============================================================================
-
-/** 目录树节点：目录或文件（递归类型，需显式标注 ZodType 以避免循环推断失败） */
-export interface SummaryTreeNode {
-  readonly type: 'directory' | 'file';
-  readonly name: string;
-  readonly relativePath: string;
-  readonly children?: readonly SummaryTreeNode[];
-  readonly absolutePath?: string;
-  readonly size?: number;
-  readonly modifiedAt?: number;
-}
-
-export const summaryTreeNodeSchema: z.ZodType<SummaryTreeNode> = z.object({
-  type: z.enum(['directory', 'file']),
-  name: z.string(),
-  relativePath: z.string(),
-  children: z
-    .lazy(() => summaryTreeNodeSchema)
-    .array()
-    .readonly()
-    .optional(),
-  absolutePath: z.string().optional(),
-  size: z.number().int().nonnegative().optional(),
-  modifiedAt: z.number().int().nonnegative().optional(),
-});
-
-/** summary.listTree：列出保存目录下的文档目录树 */
-export const summaryListTreeReqSchema = z.object({});
-export type SummaryListTreeReq = z.infer<typeof summaryListTreeReqSchema>;
-
-export const summaryListTreeResSchema = z.object({
-  tree: z.array(summaryTreeNodeSchema),
-  /** 保存根目录绝对路径（用于 UI 显示） */
-  rootPath: z.string(),
-});
-export type SummaryListTreeRes = z.infer<typeof summaryListTreeResSchema>;
-
-/** summary.run：对指定 tab 执行摘要生成 */
-export const summaryRunReqSchema = z.object({
-  tabId: tabIdSchema,
-});
-export type SummaryRunReq = z.infer<typeof summaryRunReqSchema>;
-
-export const summaryRunResSchema = z.object({
-  /** 保存的文件绝对路径 */
-  filePath: z.string(),
-  /** 相对于保存根目录的路径 */
-  relativePath: z.string(),
-  /** 文档标题 */
-  documentTitle: z.string(),
-});
-export type SummaryRunRes = z.infer<typeof summaryRunResSchema>;
-
-/** summary.open：在浏览器中打开已保存的摘要文档 */
-export const summaryOpenReqSchema = z.object({
-  /** 文件绝对路径 */
-  absolutePath: z.string().min(1),
-});
-export type SummaryOpenReq = z.infer<typeof summaryOpenReqSchema>;
-
-export const summaryOpenResSchema = z.object({
-  ok: z.literal(true),
-  /** 打开的 tab ID */
-  tabId: tabIdSchema,
-});
-export type SummaryOpenRes = z.infer<typeof summaryOpenResSchema>;
-
-/** summary.delete：删除已保存的摘要文档 */
-export const summaryDeleteReqSchema = z.object({
-  absolutePath: z.string().min(1),
-});
-export type SummaryDeleteReq = z.infer<typeof summaryDeleteReqSchema>;
-
-export const summaryDeleteResSchema = z.object({
-  ok: z.literal(true),
-  absolutePath: z.string(),
-});
-export type SummaryDeleteRes = z.infer<typeof summaryDeleteResSchema>;
-
-// ============================================================================
 // Translate 域（M24 网页翻译 · 免费接口引擎，与 AI Provider / pi 模块完全隔离）
 // ============================================================================
 
@@ -2569,11 +2487,6 @@ export const ipcSchema = {
   'provider.config.get': { req: providerConfigGetReqSchema, res: providerConfigGetResSchema },
   'provider.config.set': { req: providerConfigSetReqSchema, res: providerConfigSetResSchema },
   'page.extract': { req: pageExtractReqSchema, res: pageExtractResSchema },
-  // Summary 域（摘要 Agent · 与 pi 模块隔离）
-  'summary.listTree': { req: summaryListTreeReqSchema, res: summaryListTreeResSchema },
-  'summary.run': { req: summaryRunReqSchema, res: summaryRunResSchema },
-  'summary.open': { req: summaryOpenReqSchema, res: summaryOpenResSchema },
-  'summary.delete': { req: summaryDeleteReqSchema, res: summaryDeleteResSchema },
   // Translate 域（M24 网页翻译 · 免费双引擎，进度经 translate:progress 事件推送）
   'translate.start': { req: translateStartReqSchema, res: translateStartResSchema },
   'translate.stop': { req: translateStopReqSchema, res: translateStopResSchema },

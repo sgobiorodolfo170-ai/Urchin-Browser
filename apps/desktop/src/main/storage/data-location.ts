@@ -36,7 +36,6 @@ export const PI_DIR_NAME = 'pi';
 const DATA_SUBDIRS: readonly string[] = [
   'cookies', // 网站 cookies / 网页存储（sessionData 重定向）
   'screenshots', // 截图
-  'summaries', // 摘要文档
   'pages', // 网页保存（预留）
   'downloads', // 默认下载目录
   'extensions', // 扩展命名空间 db
@@ -198,28 +197,5 @@ export function migrateLegacyPiData(userDataPath: string): void {
         error: err instanceof Error ? err.message : String(err),
       });
     }
-  }
-}
-
-/**
- * 升级迁移（一次性）——摘要文档部分：
- * 旧 userData/summaries → <dataDir>/summaries（摘要文档属用户个人数据，随数据目录）。
- * 幂等：源不存在或目标已存在时跳过。
- */
-export function migrateLegacySummaries(userDataPath: string, dataDir: string): void {
-  const from = join(userDataPath, 'summaries');
-  const to = join(dataDir, 'summaries');
-  if (!existsSync(from) || existsSync(to)) return;
-  try {
-    mkdirSync(dirname(to), { recursive: true });
-    cpSync(from, to, { recursive: true });
-    rmSync(from, { recursive: true, force: true });
-    log.info('legacy summaries migrated', { from, to });
-  } catch (err) {
-    log.error('legacy summaries migration failed', {
-      from,
-      to,
-      error: err instanceof Error ? err.message : String(err),
-    });
   }
 }

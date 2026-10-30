@@ -204,7 +204,7 @@ export function parseInstallSpec(source: string): {
   if (/^@?[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+/.test(s)) {
     const [repo, ref] = s.split('#');
     const parts = (repo ?? '').split('/');
-    if (parts.length >= 2 && parts[0] !== '@') {
+    if (parts.length >= 2 && !(parts[0] ?? '').startsWith('@')) {
       return { kind: 'github', repo, ref };
     }
   }

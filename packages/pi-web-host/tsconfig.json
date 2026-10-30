@@ -3,7 +3,8 @@
   "compilerOptions": {
     "lib": ["ES2023"],
     "types": ["node"],
-    "baseUrl": "."
+    "baseUrl": ".",
+    "noUncheckedIndexedAccess": false
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"],
   "exclude": ["node_modules", "dist"]

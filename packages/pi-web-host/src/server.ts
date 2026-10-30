@@ -38,6 +38,14 @@ import {
 } from './session-store';
 import { handleFileOps } from './file-ops';
 import { getGitStatus, getGitHistory, getGitFileDiff, getGitCommitDetail } from './git-ops';
+import {
+  createTerminal,
+  terminalInput,
+  terminalResize,
+  terminalKill,
+  listTerminals,
+  disposeAllTerminals,
+} from './terminal';
 import { PiWebHostState, type HostServerMessage } from './types';
 
 export const SERVICE_VERSION = '0.2.0';
@@ -495,6 +503,65 @@ export async function startPiWebHostServer(
           } as unknown as HostServerMessage);
           return;
         }
+        case 'terminal_create': {
+          const terminalId = (parsed as { terminalId?: string }).terminalId ?? '';
+          const cwd = (parsed as { cwd?: string }).cwd ?? '';
+          const cols = (parsed as { cols?: number }).cols ?? 80;
+          const rows = (parsed as { rows?: number }).rows ?? 24;
+          const title = (parsed as { title?: string }).title;
+          if (!terminalId) return;
+          createTerminal(
+            terminalId,
+            cwd,
+            cols,
+            rows,
+            title,
+            (id, data) =>
+              sendJson(ws, {
+                type: 'terminal_output',
+                terminalId: id,
+                data,
+              } as unknown as HostServerMessage),
+            (id, exitCode) => {
+              sendJson(ws, {
+                type: 'terminal_exit',
+                terminalId: id,
+                exitCode,
+              } as unknown as HostServerMessage);
+              sendJson(ws, {
+                type: 'terminal_list',
+                terminals: listTerminals(),
+              } as unknown as HostServerMessage);
+            },
+          );
+          sendJson(ws, {
+            type: 'terminal_list',
+            terminals: listTerminals(),
+          } as unknown as HostServerMessage);
+          return;
+        }
+        case 'terminal_input': {
+          const terminalId = (parsed as { terminalId?: string }).terminalId ?? '';
+          const data = (parsed as { data?: string }).data ?? '';
+          if (terminalId) terminalInput(terminalId, data);
+          return;
+        }
+        case 'terminal_resize': {
+          const terminalId = (parsed as { terminalId?: string }).terminalId ?? '';
+          const cols = (parsed as { cols?: number }).cols ?? 80;
+          const rows = (parsed as { rows?: number }).rows ?? 24;
+          if (terminalId) terminalResize(terminalId, cols, rows);
+          return;
+        }
+        case 'terminal_kill': {
+          const terminalId = (parsed as { terminalId?: string }).terminalId ?? '';
+          if (terminalId) terminalKill(terminalId);
+          sendJson(ws, {
+            type: 'terminal_list',
+            terminals: listTerminals(),
+          } as unknown as HostServerMessage);
+          return;
+        }
         default:
           // 文件操作 / 设置：交给 file-ops 处理；未命中则走无状态 handler
           if (agentDir) {
@@ -513,6 +580,7 @@ export async function startPiWebHostServer(
     ws.on('close', () => {
       bridge?.dispose();
       bridge = null;
+      disposeAllTerminals();
     });
   });
 

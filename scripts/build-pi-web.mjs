@@ -63,7 +63,7 @@ async function main() {
     sourcemap: false,
     // bufferutil / utf-8-validate 是 ws 的可选原生加速，缺失时 ws 自动回退纯 JS；
     // pi 依赖的原生/wasm 模块在 utility 进程内 lazy 加载，external 化避免打包失败
-    external: ['bufferutil', 'utf-8-validate'],
+    external: ['bufferutil', 'utf-8-validate', 'node-pty'],
     alias: piAliases,
     // codemode/mcp/telemetry 等包 exports 带 source 条件 → src；pi-tui 别名已覆盖
     conditions: ['source', 'node', 'import'],

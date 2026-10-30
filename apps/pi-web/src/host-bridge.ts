@@ -722,11 +722,13 @@ export class HostBridgeWebSocket {
           branches: [],
         });
         break;
+      // ── 终端：转发到 pi-web-host（node-pty PTY） ──
       case 'terminal_create':
       case 'terminal_input':
       case 'terminal_resize':
-      case 'terminal_restart':
-        // 终端不支持——忽略（前端面板会显示但无法创建终端）
+      case 'terminal_kill':
+      case 'rename_terminal':
+        this.ws.send(JSON.stringify(msg));
         break;
       case 'plugin_install':
       case 'plugin_uninstall':

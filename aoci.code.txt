@@ -13,11 +13,12 @@ README.md[SG7M]: F:项目入口文档-定位(AI原生+开发者友好Electron浏
 RELEASE_NOTES.md[SG5M]: F:v0.1.0首发历史快照-功能清单(M1-M23)/性能指标(冷启动1011ms/内存358MB/覆盖率68%)/安装说明/已知限制/v0.2规划 | R:code:README.md;code:CHANGELOG.md | A:- | S:反映发布时点;后续迭代见CHANGELOG
 commitlint.config.js[XQ5T]: F:commitlint配置-Conventional Commits规则(SC9决策) | R:code:.husky/commit-msg | A:SC9决策/AGENTS.md§五 | S:-
 eslint.config.js[FQ6S]: F:ESLint 9 flat config-@typescript-eslint+react-hooks+测试文件放宽+ignores(config/vendor) | R:code:package.json;code:.lintstagedrc.js | A:03-技术栈§2 | S:-
-package.json[FG8T]: F:根package.json-pnpm monorepo workspace管理+verify/lint/typecheck/test/e2e/package:win脚本+commitlint/husky devDeps+earendil overrides(4×workspace:*+9条pin) | R:code:pnpm-workspace.yaml;code:scripts/package-win.mjs;code:.husky/pre-commit | A:- | S:不可用packageManager字段伪装traversal(pnpm报未知PM);overrides修mcpStructuredContentSchema导出缺失
+package.json[FG8T]: F:根package.json-pnpm monorepo workspace管理+verify/lint/typecheck/test/e2e/package:win脚本+commitlint/husky devDeps+earendil overrides(4×workspace:*+9条pin) | R:code:pnpm-workspace.yaml;code:scripts/package-win.mjs;code:.husky/pre-commit | A:- | S:不可用packageManager字段伪装traversal;overrides修mcpStructuredContentSchema导出缺失
 pnpm-lock.yaml[FG6L]: F:pnpm lockfile-依赖版本锁定(frozen-lockfile CI校验)+earendil pi系override解析结果 | R:code:package.json;code:pnpm-workspace.yaml | A:- | S:.prettierignore忽略;CI用--frozen-lockfile校验
 pnpm-workspace.yaml[FG5T]: F:pnpm workspace定义-apps/desktop+packages/* workspace包管理 | R:code:package.json | A:- | S:-
 tsconfig.base.json[FG5T]: F:根TypeScript基础配置-strict/noUncheckedIndexedAccess/paths alias共享 | R:code:package.json | A:- | S:-
 AGENTS.md[SG9L]: F:AI Agent全流程开发规范-CRTSE/任务跟踪/版本/自审/注释/测试阶梯/质量护栏/Loop/Graph裁剪;项目声明+AOCI区块 | R:code:.husky/pre-commit;code:.lintstagedrc.js | A:§八覆盖率门槛/§九质量护栏/§五结构化提交+追溯 | S:修改红线§〇.3;§五.3版本自增引用ADR-012+build-version.mjs;§五.6条件化自动push;AOCI区块工具托管
+lefthook.yml[OG1T]: F:lefthook官方示例模板(全注释未启用),实际用Husky | R:code:package.json;code:.husky/pre-commit | A:- | S:迁移lefthook时取消注释并移除Husky
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/.github/workflows/===
 ci.yml[OV7S]: F:CI流水线-push/PR触发typecheck->lint->format:check->check:docs->test:coverage->build->e2e全绿方可合并;Windows-latest+pnpm9+Node22 | R:code:apps/desktop/package.json | A:卡点依据03-技术栈§5/07-立项准备§1.5 | S:pnpm/action-setup不写version(读packageManager)避免Multiple versions失败;全绿方可合并是§九CI卡点
@@ -289,6 +290,13 @@ pi-web-评估.md[SE5L]: F:pi-web评估-官方架构事实(vendored锁版)/候选
 新模块接入约束声明.md[SC5M]: F:新模块接入约束-表名前缀隔离/无外键/复用mainStore/测试覆盖率要求 | R:code:docs/00-设计总览.md | A:- | S:-
 网页翻译功能规划.md[SN6L]: F:网页翻译功能规划-谷歌/微软双引擎兜底/整页替换恢复/划词翻译/自动翻译开关 | R:code:docs/00-设计总览.md | A:TD2决策 | S:-
 邮箱模块功能规划.md[SM6M]: F:邮箱模块功能规划-IMAP收发/SMTP/HTML预处理/附件/IDLE推送 | R:code:docs/00-设计总览.md;code:docs/decisions/ADR-010-邮箱模块选型与架构.md | A:ADR-010 | S:-
+AI助手与pi切割整改报告.md[SA5T]: F:AI助手与pi切割整改报告-设置键ai.*->pi.*重命名/死代码删除/占位化与数据迁移 | R:code:docs/pi-web-评估.md | A:- | S:已完成迁移验证;summary/ai-extension删除
+DeepSeek-Harness-现状调研.md[SA4T]: F:DeepSeek-Harness现状调研-dsh集成架构/版本落后rc.5/token重定向生命周期疑似缺陷/打包体积与测试缺口 | R:- | A:- | S:dsh为独立Web标签集成;token匹配存在生命周期疑似缺陷
+pi-web-host-对接实施清单.md[SP3M]: F:pi-web-host对接实施清单-pi阶段2后端对接/跨会话交接/批次完成状态 | R:code:packages/pi-web-host/src/server.ts;code:packages/pi-web-host/src/index.ts | A:- | S:Loop1-11提交历史与架构现状;跨会话交接
+pi-web-host-测试覆盖与阶段5规划.md[SP3M]: F:pi-web-host测试覆盖现状与阶段5补测规划 | R:code:packages/pi-web-host/src/agent-bridge.ts;code:packages/pi-web-host/src/ssh-client.ts | A:- | S:10/15文件已覆盖;缺口P1-P4优先级
+事实登记表.md[SD2S]: F:事实登记表-文档高频事实单一真源台账与漂移自动检查规则 | R:code:scripts/check-doc-drift.mjs;code:docs/03-技术栈.md | A:- | S:F1-F6真源;R1-R3对应check:docs
+开发者工具增强一期实施规划.md[SB4L]: F:开发者工具增强一期实施规划-M15 CDP检视面板一期规划与已确认决策 | R:code:apps/desktop/src/main/devtools/index.ts;code:packages/ipc-contract/src/schemas/ipc-schema.ts | A:- | S:DT9-DT13决策;IPC通道与面板数据流
+数据导入评估.md[SD3S]: F:数据导入评估-书签/Cookie/localStorage跨浏览器导入可行性 | R:code:docs/decisions/决策索引.md | A:- | S:书签已实现;Cookie可行但Chrome ABE受限
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/docs/contracts/===
 A-提供方接口.md[SC7S]: F:契约A-提供方接口(Provider Plugin API)版本协商/能力声明/安全 | R:code:docs/00-设计总览.md | A:- | S:-
@@ -307,9 +315,12 @@ K-主题系统.md[SL5S]: F:契约K-主题系统(设计令牌/亮暗切换/Radix/
 ADR-001-选Electron而非Tauri.md[SG5S]: F:ADR-001-选Electron而非Tauri(完整Chromium内核+Node生态+跨平台) | R:code:docs/decisions/决策索引.md | A:- | S:-
 ADR-004-AI进程隔离策略.md[SA6M]: F:ADR-004-AI进程隔离(per-provider utility子进程/crash不影响主进程) | R:code:docs/decisions/决策索引.md | A:- | S:-
 ADR-008-v0.1范围与工期.md[SG5S]: F:ADR-008-v0.1范围与工期(MVP最小闭环+8周分波) | R:code:docs/decisions/决策索引.md | A:- | S:-
-ADR-009-GenOffice编辑器融合.md[SE6S]: F:ADR-009-GenOffice编辑器融合-GF1框架化WebContentsView嵌入/GF2 Electron43/GF3 AI栈隔离/GF4 Tiptap退役(dev.103)/GF5 shell Home/GF6 slides+sheets六编辑器全量(dev.107-108) | R:code:docs/decisions/决策索引.md | A:- | S:GF6:sheets传includeAiHandlers=false防ai:get-settings二次注册冲突
+ADR-009-GenOffice编辑器融合.md[SE6S]: F:ADR-009-GenOffice编辑器融合-GF1框架化WebContentsView嵌入/GF2 Electron43/GF3 AI栈隔离/GF4 Tiptap退役(dev.103)/GF5 shell Home/GF6 slides+sheets六编辑器全量 | R:code:docs/decisions/决策索引.md | A:- | S:GF6:sheets传includeAiHandlers=false防ai:get-settings二次注册冲突
 ADR-010-邮箱模块选型与架构.md[SM6S]: F:ADR-010-邮箱模块选型与架构(imapflow/nodemailer/postal-mime/SQLite缓存) | R:code:docs/decisions/决策索引.md | A:- | S:-
 决策索引.md[SG7L]: F:决策索引-核心46项决策(首轮36+迭代10)+契约内68项+系列ID(D/T/IP/CP/TP/SP/PC/DT/ST/OM/TH/OR/SC/GR/DD/DL/DB/GF) | R:code:docs/00-设计总览.md | A:AGENTS.md§三 | S:新增决策附带否决方案理由并分配系列ID
+ADR-011-自动更新提前落地与通道设计.md[DR7S]: F:ADR-011-自动更新提前至v0.1,选electron-updater+GitHub dev预发布,版本由CHANGELOG派生(UP1-UP3) | R:code:docs/decisions/决策索引.md | A:- | S:dev通道手动确认;发布须exe/blockmap/dev.yml齐传
+ADR-012-发布通道与版本号治理.md[DR8S]: F:ADR-012-双通道单版本线/基线前进全局计数器/dev->stable两段检查(RC1-RC3) | R:code:docs/decisions/决策索引.md | A:- | S:dev/latest双通道;版本线连续且单调
+ADR-013-pi阶段2自研前端与托管服务.md[DA7S]: F:ADR-013-pi阶段2自研前端+utilityProcess托管服务替代pi-web-ui,JSON-over-WS与token鉴权(PH1-PH7) | R:code:docs/decisions/决策索引.md | A:- | S:utilityProcess+普通标签;阶段1双轨至M2C退役
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/packages/ai-provider-contract/===
 package.json[FG5T]: F:ai-provider-contract包定义-Provider Plugin API契约v1 | R:code:packages/ai-provider-contract/src/index.ts;code:pnpm-workspace.yaml | A:契约A | S:-
@@ -350,10 +361,11 @@ client.ts[FE6S]: F:typedInvoke客户端+createTypedInvoke-渲染进程侧类型�
 errors.ts[FE6S]: F:IpcError+IpcErrorCode(NOT_FOUND/PERMISSION/VALIDATION/UNAVAILABLE/INTERNAL)+结构化错误 | R:code:packages/ipc-contract/src/index.ts;code:packages/ipc-contract/src/server.ts | A:契约B | S:-
 index.ts[EE5T]: F:ipc-contract模块入口-re-export registerHandler/IpcError/typedInvoke/PROVIDER_EVENT_CHANNEL/schema | R:code:packages/ipc-contract/src/server.ts;code:packages/ipc-contract/src/client.ts | A:契约B | S:-
 server.ts[FE7S]: F:registerHandler服务端-主进程侧类型安全IPC handler注册+zod双向校验+ctx注入 | R:code:packages/ipc-contract/src/index.ts;code:packages/ipc-contract/src/schemas/ipc-schema.ts | A:契约B | S:-
+events.ts[II4S]: F:IPC单向事件通道常量与payload类型收口,防字面量漂移 | R:code:packages/ipc-contract/src/schemas/ipc-schema.ts | A:契约B | S:devtools:event/toggle;send-only不校验
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/packages/ipc-contract/src/schemas/===
 index.ts[EE4T]: F:ipc-contract schemas入口-re-export ipc-schema | R:code:packages/ipc-contract/src/schemas/ipc-schema.ts | A:- | S:-
-ipc-schema.ts[FE9L]: F:M17 IPC zod schema-全量入参/出参双向校验(单一真源,域含tab/window/settings/mail(M25)/translate(M24)/piWeb+deepseekHarness启动器);防AI协作schema漂移 | R:code:packages/ipc-contract/src/server.ts;code:packages/ipc-contract/src/index.ts | A:契约B§3.1 | S:schema为zod单一真源防AI协作schema漂移
+ipc-schema.ts[FE9L]: F:M17 IPC zod schema-全量入参/出参双向校验(单一真源,域含tab/window/settings/mail(M25)/translate(M24)/piWeb+deepseekHarness启动器);防AI schema漂移 | R:code:packages/ipc-contract/src/server.ts;code:packages/ipc-contract/src/index.ts | A:契约B§3.1 | S:schema为zod单一真源防AI协作schema漂移
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/packages/logger/===
 package.json[FG4T]: F:logger包定义-createLogger结构化日志 | R:code:packages/logger/src/index.ts;code:pnpm-workspace.yaml | A:- | S:-
@@ -378,7 +390,14 @@ clean-release.mjs[XG4T]: F:清理release目录旧打包产物脚本 | R:code:app
 fetch-site-icons.mjs[XG4S]: F:拉取内置网站目录图标(public/sites/)脚本 | R:code:apps/desktop/src/renderer/home/site-directory.ts | A:- | S:-
 genoffice-build.mjs[XG5S]: F:GenOffice嵌入产物构建-构建vendor/genoffice七目标(markdown/pdf/html/docs/slides/sheets/shell)并产出urchin-embed;默认npmmirror镜像;产物存在性校验作CI/打包前置门禁 | R:code:apps/desktop/package.json;code:apps/desktop/electron-builder.yml | A:ADR-009 | S:package:win前置步骤
 fetch-node.mjs[XG5S]: F:便携Node下载脚本(X4打包前置,幂等)-从npmmirror/官方源下载win-x64 zip仅提取node.exe到build/node;.node-version戳跳过重复校验 | R:code:scripts/package-win.mjs;code:apps/desktop/electron-builder.yml | A:X4决策2026-10-16 | S:升级NODE_VERSION须重跑X4验证链
-package-win.mjs[XG5T]: F:Electron打包包装脚本-伪装包管理器识别为traversal启用内置目录遍历收集器(按realpath去重),规避pnpm收集器对dsh深依赖树指数膨胀OOM(exit134) | R:code:scripts/fetch-node.mjs;code:package.json | A:dev.109 2026-10-16 X4 | S:仅覆盖本进程npm_config_user_agent;electron-builder修复后可移除本包装
+package-win.mjs[XG5T]: F:Electron打包包装脚本-伪装包管理器识别为traversal启用内置目录遍历收集器(按realpath去重),规避pnpm收集器对dsh深依赖树指数膨胀OOM(exit134) | R:code:scripts/fetch-node.mjs;code:package.json | A:dev.109 X4 | S:仅覆盖本进程npm_config_user_agent;electron-builder修复后可移除
+build-pi-web.mjs[XV6S]: F:打包pi-web-host utility入口并复制pi-web前端产物 | R:code:apps/desktop/package.json | A:- | S:须在desktop build:main之后跑避开清空窗口
+build-version.mjs[XV7S]: F:从CHANGELOG解析版本/派生更新通道并做基线门禁(deriveBuildInfo/solveBuildInfo) | R:code:CHANGELOG.md;code:package.json | A:ADR-012 | S:遵循ADR-012单版本线;低于/等于stable失败
+check-before-push.mjs[XQ6S]: F:pre-push门禁-验证内容指纹/无分叉/工作区干净 | R:code:scripts/mark-verify-ok.mjs;code:.husky/pre-push | A:G16 | S:退出码1即拦截推送
+check-commit-trace.mjs[XQ4S]: F:commit-msg门禁-校验Model/Trigger/Loop三字段 | R:code:.husky/commit-msg | A:G14 | S:merge/revert提交豁免
+check-doc-drift.mjs[XQ8S]: F:检查文档事实漂移R1-R4,覆盖率阶梯对齐唯一真源 | R:code:docs/事实登记表.md;code:docs/03-技术栈.md | A:G13/G15 | S:真源docs/03§4.1;支持--json输出
+genoffice-extract-scheme-privileges.mjs[XV6S]: F:构建期抽取GenOffice特权scheme常量为JSON | R:code:apps/desktop/src/main/genoffice/loader.ts | A:- | S:校验形状与去重;异常即失败防白屏
+mark-verify-ok.mjs[XQ4S]: F:记录verify通过的内容树指纹供pre-push比对 | R:code:.husky/pre-push;code:scripts/check-before-push.mjs | A:G16 | S:写.git/urchin-verify-ok;记录失败不阻断verify
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/deepseek-harness/===
 index.ts[EA4T]: F:deepseek-harness模块入口-导出DshLauncher工厂/registerDshHandlers/bindTabCloseToStop;不import任何dsh代码,与pi-web结构对齐(完全隔离) | R:code:apps/desktop/src/main/deepseek-harness/launcher.ts;code:apps/desktop/src/main/deepseek-harness/register-handlers.ts | A:- | S:-
@@ -455,5 +474,27 @@ types.ts[TD3T]: F:工作区渲染层类型定义与IPC错误信息解包(Workspa
 window-snapshot.ts[FI3T]: F:合成工作区整窗截图,窗口UI截图叠加激活标签网页 | R:- | A:- | S:展示用途;任一失败返回null降级占位
 workspace-colors.ts[FD3T]: F:工作区色板常量/全部色值清单与首字头像工具 | R:code:apps/desktop/src/renderer/workspaces/types.ts | A:- | S:色值须写字面量供Tailwind静态扫描
 
-===G:/pj/pj--ing/111111/Urchin-Browser/apps/pi-web/===
-index.html[XW3M]: F:pi-web阶段2前端HTML壳,挂载#root并加载入口脚本 | R:- | A:- | S:Vite入口;标题pi·Urchin
+===G:/pj/pj--ing/111111/Urchin-Browser/packages/pi-web-host/===
+package.json[CB2T]: F:pi-web-host包清单与依赖(node-pty/ssh2/ws);私有包未构建 | R:code:packages/pi-web-host/src/index.ts | A:- | S:依赖源码导出;运行时走entry bundle
+tsconfig.json[FG2T]: F:pi-web-host TS编译配置,继承基础配置 | R:code:packages/pi-web-host/package.json | A:- | S:关闭noUncheckedIndexedAccess;仅含src与tests
+vitest.config.ts[FQ2T]: F:pi-web-host单元测试配置,node环境+v8覆盖率 | R:code:packages/pi-web-host/package.json | A:- | S:仅收集tests/**/*.test.ts;覆盖率限于src
+
+===G:/pj/pj--ing/111111/Urchin-Browser/packages/pi-web-host/src/===
+agent-bridge.ts[AL7L]: F:将pi Agent事件流映射为WS流式消息 | R:code:packages/pi-web-host/src/types.ts;code:packages/pi-web-host/src/ws-handler.ts | A:- | S:单轮prompt->流式回传;工具与持久化后续接入
+auth.ts[KC5L]: F:随机token生成/校验与URL/Cookie鉴权 | R:code:packages/pi-web-host/src/server.ts | A:- | S:token仅存内存不落盘;重启即换新
+entry.ts[ES4L]: F:utilityProcess入口,解析argv启动服务并输出就绪URL | R:code:packages/pi-web-host/src/server.ts | A:- | S:esbuild bundle入口供fork加载
+file-ops.ts[FD5L]: F:agentDir内文件浏览/读写与设置存储,含路径越界防护 | R:code:packages/pi-web-host/src/ws-handler.ts | A:- | S:safePath阻断../越权
+git-ops.ts[OG6L]: F:调git CLI提供状态/历史/diff/提交详情 | R:code:packages/pi-web-host/src/types.ts | A:- | S:输出protocol.ts的scm_data格式
+http-static.ts[XH4L]: F:静态托管pi-web产物,防路径遍历/目录回退index.html | R:code:packages/pi-web-host/src/server.ts | A:- | S:越界与缺失统一404不暴露路径
+index.ts[IM2T]: F:包公共导出面,聚合服务/鉴权/WS/Agent/会话API | R:code:packages/pi-web-host/src/server.ts;code:packages/pi-web-host/src/ws-handler.ts | A:- | S:运行时仍走entry.ts bundle
+pi-shims.d.ts[ZD2T]: F:vendored pi包ambient类型shim(any宽松) | R:- | A:- | S:仅typecheck;运行时走esbuild别名
+plugin-host.ts[PM7L]: F:插件host对象与可逆副作用栈/KV存储 | R:code:packages/pi-web-host/src/plugin-manager.ts | A:- | S:release逆序回卷全部注册副作用
+plugin-manager.ts[PM8S]: F:插件扫描/安装/卸载/启停/激活与工具聚合 | R:code:packages/pi-web-host/src/plugin-host.ts;code:packages/pi-web-host/src/plugin-permissions.ts | A:- | S:插件目录约定manifest.json+index.mjs
+plugin-permissions.ts[PA7L]: F:三层插件权限模型-能力声明/目录/动态授权 | R:code:packages/pi-web-host/src/plugin-manager.ts | A:- | S:fail-closed;读坏按空表并拒基础族
+server.ts[SH9S]: F:组合HTTP静态+WS+token鉴权的托管服务 | R:code:packages/pi-web-host/src/http-static.ts;code:packages/pi-web-host/src/ws-handler.ts;code:packages/pi-web-host/src/auth.ts | A:- | S:零Electron依赖;可单测跑真端口
+session-store.ts[SD5S]: F:JSONL会话持久化-追加/列举/加载/删除/分叉 | R:code:packages/pi-web-host/src/types.ts | A:- | S:兼容pi官方message entry形状
+ssh-client.ts[RN7S]: F:ssh2远程连接/目录浏览/环境探针与工具安装 | R:code:packages/pi-web-host/src/types.ts | A:- | S:连接池Map;配置存ssh-profiles.json
+terminal.ts[LM5S]: F:node-pty真PTY终端创建/输入/调整/关闭 | R:code:packages/pi-web-host/src/ws-handler.ts | A:- | S:进程内Map管理;dispose全量清理
+types.ts[DP3T]: F:WS协议v0消息类型与MIME表 | R:code:packages/pi-web-host/src/ws-handler.ts | A:- | S:消息类型不得在枚举外扩散
+ws-handler.ts[RW4L]: F:WS消息解析与hello/ping/error归一化处理 | R:code:packages/pi-web-host/src/types.ts | A:- | S:纯逻辑便于单测注入fake ws
+

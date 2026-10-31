@@ -1,18 +1,97 @@
+/* eslint-disable @typescript-eslint/no-empty-function -- ssh2 mock 需要宽松类型处理事件回调和 stream 模拟 */
 /**
  * ssh-client.ts 单元测试
  *
- * 仅覆盖纯文件操作：listProfiles / saveProfile / deleteProfile。
- * SSH 连接（probe/listDir/installTools）需真实 ssh2 服务器或 mock，留待 P3。
- * ssh2 被 mock 为空桩，避免原生 bindings 在 CI 中 flaky；文件操作不依赖 Client。
+ * 覆盖纯文件操作（listProfiles / saveProfile / deleteProfile）+
+ * SSH 连接 mock 测试（probe / listDir / installTools）。
+ * ssh2 被 mock 为 MockClient，支持事件分发和 exec/sftp 模拟。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-vi.mock('ssh2', () => ({ Client: vi.fn() }));
+const sshMock = vi.hoisted(() => {
+  const events = new Map<string, ((arg?: any) => void)[]>();
+  const execResults = new Map<string, { stdout: string; stderr: string; code: number }>();
+  let sftpItems: any[] | null = null;
+  let sftpError: string | null = null;
 
-import { listProfiles, deleteProfile, saveProfile } from '../src/ssh-client';
+  class MockClient {
+    on(event: string, cb: (arg?: any) => void): this {
+      if (!events.has(event)) events.set(event, []);
+      events.get(event)!.push(cb);
+      return this;
+    }
+    connect(): void {
+      /* 测试手动触发 ready/error */
+    }
+    exec(cmd: string, cb: (err: Error | null, stream: any) => void): void {
+      const result = execResults.get(cmd) ?? { stdout: '', stderr: '', code: 0 };
+      const handlers: Record<string, (...args: any[]) => void> = {};
+      const stream = {
+        on: (event: string, handler: (...args: any[]) => void) => {
+          handlers[event] = handler;
+          if (event === 'data' && result.stdout) handler(Buffer.from(result.stdout));
+        },
+        stderr: {
+          on: (event: string, handler: (...args: any[]) => void) => {
+            if (event === 'data' && result.stderr) handler(Buffer.from(result.stderr));
+          },
+        },
+      };
+      cb(null, stream);
+      setImmediate(() => handlers.close?.(result.code));
+    }
+    sftp(cb: (err: Error | null, sftp: any) => void): void {
+      if (sftpError) {
+        cb(new Error(sftpError), null);
+        return;
+      }
+      cb(null, {
+        readdir: (_path: string, readdirCb: (err: Error | null, list: any[]) => void) => {
+          if (sftpItems) readdirCb(null, sftpItems);
+          else readdirCb(new Error('no such directory'), []);
+        },
+      });
+    }
+    end(): void {}
+  }
+
+  return {
+    MockClient,
+    events,
+    setExecResult: (cmd: string, result: { stdout: string; stderr: string; code: number }) =>
+      execResults.set(cmd, result),
+    setSftpItems: (items: any[]) => {
+      sftpItems = items;
+      sftpError = null;
+    },
+    setSftpError: (err: string) => {
+      sftpError = err;
+      sftpItems = null;
+    },
+    emit: (event: string, arg?: any) => events.get(event)?.forEach((cb) => cb(arg)),
+    reset: () => {
+      events.clear();
+      execResults.clear();
+      sftpItems = null;
+      sftpError = null;
+    },
+  };
+});
+
+vi.mock('ssh2', () => ({ Client: sshMock.MockClient }));
+
+import {
+  listProfiles,
+  deleteProfile,
+  saveProfile,
+  probe,
+  listDir,
+  installTools,
+  disposeAllSsh,
+} from '../src/ssh-client';
 import type { SshProfileSummary } from '../src/ssh-client';
 
 const PROFILES_FILE = 'ssh-profiles.json';
@@ -198,3 +277,198 @@ describe('ssh-client profiles', () => {
 function writeFileSyncJson(dir: string, data: unknown): void {
   writeFileSync(join(dir, PROFILES_FILE), JSON.stringify(data));
 }
+
+/* ── P3：SSH 连接 mock 测试 ── */
+
+describe('probe (mock ssh2)', () => {
+  beforeEach(() => {
+    sshMock.reset();
+    disposeAllSsh();
+  });
+
+  it('should return ok with system info on connect ready', async () => {
+    sshMock.setExecResult('uname -s -m -n', { stdout: 'Linux x86_64 myhost', stderr: '', code: 0 });
+    sshMock.setExecResult('whoami', { stdout: 'root', stderr: '', code: 0 });
+    sshMock.setExecResult('echo $HOME', { stdout: '/home/root', stderr: '', code: 0 });
+    sshMock.setExecResult('git --version 2>/dev/null', {
+      stdout: 'git version 2.34.1',
+      stderr: '',
+      code: 0,
+    });
+    sshMock.setExecResult('node --version 2>/dev/null', { stdout: 'v18.0.0', stderr: '', code: 0 });
+    sshMock.setExecResult('which bash 2>/dev/null', { stdout: '/bin/bash', stderr: '', code: 0 });
+
+    const promise = probe('1.2.3.4', 22, 'root', { type: 'password', password: 'pass' });
+    sshMock.emit('ready');
+    const result = await promise;
+
+    expect(result.ok).toBe(true);
+    expect(result.connectionId).toBeDefined();
+    expect(result.system).toEqual({
+      os: 'Linux',
+      arch: 'x86_64',
+      hostname: 'myhost',
+      homeDir: '/home/root',
+      user: 'root',
+    });
+    expect(result.tools?.git.installed).toBe(true);
+    expect(result.tools?.git.version).toBe('git version 2.34.1');
+    expect(result.tools?.node.installed).toBe(true);
+    expect(result.tools?.node.version).toBe('v18.0.0');
+    expect(result.tools?.bash.installed).toBe(true);
+    expect(result.tools?.bash.path).toBe('/bin/bash');
+  });
+
+  it('should return error on connect error', async () => {
+    const promise = probe('bad.host', 22, 'root', { type: 'password', password: 'pass' });
+    sshMock.emit('error', new Error('connection refused'));
+    const result = await promise;
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('connection refused');
+  });
+
+  it('should detect missing tools via exit code', async () => {
+    sshMock.setExecResult('uname -s -m -n', { stdout: 'Linux x86_64 host', stderr: '', code: 0 });
+    sshMock.setExecResult('whoami', { stdout: 'root', stderr: '', code: 0 });
+    sshMock.setExecResult('echo $HOME', { stdout: '/root', stderr: '', code: 0 });
+    sshMock.setExecResult('git --version 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+    sshMock.setExecResult('node --version 2>/dev/null', { stdout: '', stderr: '', code: 127 });
+    sshMock.setExecResult('which bash 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+
+    const promise = probe('host', 22, 'root', { type: 'key', privateKey: 'xxx' });
+    sshMock.emit('ready');
+    const result = await promise;
+
+    expect(result.ok).toBe(true);
+    expect(result.tools?.git.installed).toBe(false);
+    expect(result.tools?.node.installed).toBe(false);
+    expect(result.tools?.bash.installed).toBe(false);
+  });
+});
+
+describe('listDir (mock ssh2)', () => {
+  beforeEach(() => {
+    sshMock.reset();
+    disposeAllSsh();
+  });
+
+  it('should return error when connection not found', async () => {
+    const result = await listDir('nonexistent-id', '/home');
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('connection not found');
+  });
+
+  it('should list directory items via sftp', async () => {
+    sshMock.setExecResult('uname -s -m -n', { stdout: 'Linux x86_64 h', stderr: '', code: 0 });
+    sshMock.setExecResult('whoami', { stdout: 'root', stderr: '', code: 0 });
+    sshMock.setExecResult('echo $HOME', { stdout: '/root', stderr: '', code: 0 });
+    sshMock.setExecResult('git --version 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+    sshMock.setExecResult('node --version 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+    sshMock.setExecResult('which bash 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+
+    const probePromise = probe('host', 22, 'root', { type: 'password', password: 'p' });
+    sshMock.emit('ready');
+    const probeResult = await probePromise;
+    expect(probeResult.ok).toBe(true);
+    const connId = probeResult.connectionId!;
+
+    sshMock.setSftpItems([
+      {
+        filename: 'file.txt',
+        attrs: { size: 100, mtime: 1700000000, isDirectory: () => false },
+      },
+      {
+        filename: 'subdir',
+        attrs: { size: 0, mtime: 1700000001, isDirectory: () => true },
+      },
+    ]);
+
+    const result = await listDir(connId, '/home/root');
+    expect(result.ok).toBe(true);
+    expect(result.items).toHaveLength(2);
+    expect(result.items![0].name).toBe('file.txt');
+    expect(result.items![0].type).toBe('file');
+    expect(result.items![1].name).toBe('subdir');
+    expect(result.items![1].type).toBe('dir');
+    expect(result.items![0].path).toBe('/home/root/file.txt');
+  });
+
+  it('should return error when sftp readdir fails', async () => {
+    sshMock.setExecResult('uname -s -m -n', { stdout: 'Linux x86 h', stderr: '', code: 0 });
+    sshMock.setExecResult('whoami', { stdout: 'root', stderr: '', code: 0 });
+    sshMock.setExecResult('echo $HOME', { stdout: '/r', stderr: '', code: 0 });
+    sshMock.setExecResult('git --version 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+    sshMock.setExecResult('node --version 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+    sshMock.setExecResult('which bash 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+
+    const probePromise = probe('h', 22, 'root', { type: 'password', password: 'p' });
+    sshMock.emit('ready');
+    const probeResult = await probePromise;
+    const connId = probeResult.connectionId!;
+
+    sshMock.setSftpError('permission denied');
+    const result = await listDir(connId, '/restricted');
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('permission denied');
+  });
+});
+
+describe('installTools (mock ssh2)', () => {
+  beforeEach(() => {
+    sshMock.reset();
+    disposeAllSsh();
+  });
+
+  it('should return error when connection not found', async () => {
+    const result = await installTools('nonexistent', ['git']);
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('connection not found');
+  });
+
+  it('should install tools successfully', async () => {
+    sshMock.setExecResult('uname -s -m -n', { stdout: 'Linux x86 h', stderr: '', code: 0 });
+    sshMock.setExecResult('whoami', { stdout: 'root', stderr: '', code: 0 });
+    sshMock.setExecResult('echo $HOME', { stdout: '/r', stderr: '', code: 0 });
+    sshMock.setExecResult('git --version 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+    sshMock.setExecResult('node --version 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+    sshMock.setExecResult('which bash 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+    sshMock.setExecResult('apt-get install -y git || yum install -y git', {
+      stdout: '',
+      stderr: '',
+      code: 0,
+    });
+    sshMock.setExecResult('apt-get install -y bash', { stdout: '', stderr: '', code: 0 });
+
+    const probePromise = probe('h', 22, 'root', { type: 'password', password: 'p' });
+    sshMock.emit('ready');
+    const probeResult = await probePromise;
+    const connId = probeResult.connectionId!;
+
+    const result = await installTools(connId, ['git', 'bash']);
+    expect(result.ok).toBe(true);
+  });
+
+  it('should fail when install command fails', async () => {
+    sshMock.setExecResult('uname -s -m -n', { stdout: 'Linux x86 h', stderr: '', code: 0 });
+    sshMock.setExecResult('whoami', { stdout: 'root', stderr: '', code: 0 });
+    sshMock.setExecResult('echo $HOME', { stdout: '/r', stderr: '', code: 0 });
+    sshMock.setExecResult('git --version 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+    sshMock.setExecResult('node --version 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+    sshMock.setExecResult('which bash 2>/dev/null', { stdout: '', stderr: '', code: 1 });
+    sshMock.setExecResult('apt-get install -y git || yum install -y git', {
+      stdout: '',
+      stderr: 'no permissions',
+      code: 1,
+    });
+
+    const probePromise = probe('h', 22, 'root', { type: 'password', password: 'p' });
+    sshMock.emit('ready');
+    const probeResult = await probePromise;
+    const connId = probeResult.connectionId!;
+
+    const result = await installTools(connId, ['git']);
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('failed to install git');
+  });
+});

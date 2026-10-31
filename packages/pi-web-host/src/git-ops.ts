@@ -174,7 +174,7 @@ export async function getGitHistory(cwd: string): Promise<GitHistoryResult> {
   try {
     const { stdout } = await execFileAsync(
       'git',
-      ['log', '--graph', '--format=%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1f%D', '--date=short', '-50'],
+      ['log', '--graph', '--format=%x1f%H%x1f%h%x1f%an%x1f%ad%x1f%s%x1f%D', '--date=short', '-50'],
       { cwd, timeout: 8000 },
     );
     const history: ScmCommitEntry[] = [];

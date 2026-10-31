@@ -73,6 +73,7 @@ import {
   deactivatePlugin,
   deactivateAllPlugins,
   getActivePluginTools,
+  getLoadedPlugins,
 } from './plugin-manager';
 import {
   listGrants,
@@ -310,6 +311,18 @@ export async function startPiWebHostServer(
           // 拦截 stream.chunk 累积 assistant 文本（用于 stream.end 时持久化）
           if (msg.type === 'stream.chunk' && typeof msg.content === 'string') {
             assistantAccumulator += msg.content;
+            dispatchPluginEvent('streaming', msg.content);
+          }
+          if (msg.type === 'tool_call') {
+            if (msg.status === 'start') {
+              dispatchPluginEvent('toolPre', { toolName: msg.toolName });
+            } else {
+              dispatchPluginEvent('toolPost', { toolName: msg.toolName, status: msg.status });
+            }
+          }
+          if (msg.type === 'stream.end') {
+            dispatchPluginEvent('runEvent', { finishReason: msg.finishReason, usage: msg.usage });
+            dispatchPluginEvent('message', { role: 'assistant', content: assistantAccumulator });
           }
           sendJson(ws, msg);
         },
@@ -322,6 +335,13 @@ export async function startPiWebHostServer(
     const disposeBridge = (): void => {
       bridge?.dispose();
       bridge = null;
+    };
+
+    /** C 类：向所有已激活插件分发事件（阶段 5b） */
+    const dispatchPluginEvent = (event: string, data: unknown): void => {
+      for (const plugin of getLoadedPlugins()) {
+        plugin.dispatchEvent?.(event, data);
+      }
     };
 
     ws.on('message', (data, isBinary) => {
@@ -433,6 +453,7 @@ export async function startPiWebHostServer(
           messageCount = 0;
           lastUserText = '';
           assistantAccumulator = '';
+          dispatchPluginEvent('conversationChanged', { id: targetId });
           const sendSwitched = (
             messages: readonly { role: 'user' | 'assistant'; content: string }[],
           ) => {
@@ -471,6 +492,7 @@ export async function startPiWebHostServer(
         }
         case 'set_cwd': {
           currentCwd = (parsed as { path?: string }).path;
+          dispatchPluginEvent('cwdChange', currentCwd);
           return;
         }
         case 'set_model': {
@@ -487,6 +509,7 @@ export async function startPiWebHostServer(
             currentProviderId = provider;
             currentModelId = model;
             disposeBridge();
+            dispatchPluginEvent('clientModelChanged', { providerId: provider, modelId: model });
             // Phase 4：写回主进程 pi.* 键（MessagePort）
             try {
               const parentPort =

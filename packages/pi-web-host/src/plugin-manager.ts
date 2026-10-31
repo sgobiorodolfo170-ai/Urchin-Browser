@@ -403,6 +403,8 @@ export async function activatePlugin(
       effects,
       tools,
       commands: commands,
+      dispatchEvent: (host as { _dispatchEvent?: (event: string, data: unknown) => void })
+        ._dispatchEvent,
       deactivate,
     };
     loadedPlugins.set(pluginId, loaded);
@@ -451,4 +453,9 @@ export function getActivePluginTools(): PluginTool[] {
 /** 获取所有已激活插件 ID */
 export function getActivePluginIds(): string[] {
   return Array.from(loadedPlugins.keys());
+}
+
+/** 获取所有已激活插件实例（阶段 5b：事件分发用） */
+export function getLoadedPlugins(): LoadedPlugin[] {
+  return Array.from(loadedPlugins.values());
 }

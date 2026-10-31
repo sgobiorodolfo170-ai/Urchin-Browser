@@ -509,3 +509,159 @@ describe('host B-class: scm', () => {
     expect(result.ok).toBe(false);
   });
 });
+
+/* ── 阶段 5b：C 类回调注册 ── */
+
+describe('host C-class: callback registration & dispatch', () => {
+  it('should invoke onMessage when message event dispatched', () => {
+    const effects = new PluginEffectStack();
+    const host = createPluginHost(
+      'test',
+      effects,
+      new Map<string, PluginTool>(),
+      new Map<string, PluginCommand>(),
+      extractCapabilities({ apiVersion: 1 }),
+    );
+    const received: unknown[] = [];
+    (host.onMessage as (cb: (data: unknown) => void) => void)((data) => received.push(data));
+    (host._dispatchEvent as (event: string, data: unknown) => void)('message', {
+      role: 'assistant',
+      content: 'hi',
+    });
+    expect(received).toHaveLength(1);
+    expect((received[0] as { content: string }).content).toBe('hi');
+  });
+
+  it('should invoke onStreaming when streaming event dispatched', () => {
+    const host = makeHost([]);
+    const received: string[] = [];
+    (host.onStreaming as (cb: (data: unknown) => void) => void)((data) =>
+      received.push(data as string),
+    );
+    (host._dispatchEvent as (event: string, data: unknown) => void)('streaming', 'delta');
+    expect(received).toEqual(['delta']);
+  });
+
+  it('should invoke onToolPre and onToolPost', () => {
+    const host = makeHost([]);
+    const pre: unknown[] = [];
+    const post: unknown[] = [];
+    (host.onToolPre as (cb: (data: unknown) => void) => void)((d) => pre.push(d));
+    (host.onToolPost as (cb: (data: unknown) => void) => void)((d) => post.push(d));
+    (host._dispatchEvent as (event: string, data: unknown) => void)('toolPre', {
+      toolName: 'bash',
+    });
+    (host._dispatchEvent as (event: string, data: unknown) => void)('toolPost', {
+      toolName: 'bash',
+      status: 'end',
+    });
+    expect(pre).toHaveLength(1);
+    expect(post).toHaveLength(1);
+  });
+
+  it('should invoke onRunEvent on stream end', () => {
+    const host = makeHost([]);
+    const events: unknown[] = [];
+    (host.onRunEvent as (cb: (data: unknown) => void) => void)((d) => events.push(d));
+    (host._dispatchEvent as (event: string, data: unknown) => void)('runEvent', {
+      finishReason: 'stop',
+    });
+    expect(events).toHaveLength(1);
+    expect((events[0] as { finishReason: string }).finishReason).toBe('stop');
+  });
+
+  it('should invoke onConversationChanged / onCwdChange / onClientModelChanged', () => {
+    const host = makeHost([]);
+    const conv: unknown[] = [];
+    const cwd: unknown[] = [];
+    const model: unknown[] = [];
+    (host.onConversationChanged as (cb: (data: unknown) => void) => void)((d) => conv.push(d));
+    (host.onCwdChange as (cb: (data: unknown) => void) => void)((d) => cwd.push(d));
+    (host.onClientModelChanged as (cb: (data: unknown) => void) => void)((d) => model.push(d));
+    (host._dispatchEvent as (event: string, data: unknown) => void)('conversationChanged', {
+      id: 's1',
+    });
+    (host._dispatchEvent as (event: string, data: unknown) => void)('cwdChange', '/new/path');
+    (host._dispatchEvent as (event: string, data: unknown) => void)('clientModelChanged', {
+      providerId: 'openai',
+    });
+    expect(conv).toHaveLength(1);
+    expect(cwd).toHaveLength(1);
+    expect(model).toHaveLength(1);
+  });
+
+  it('should invoke onStats / onSettingsChanged', () => {
+    const host = makeHost([]);
+    const stats: unknown[] = [];
+    const settings: unknown[] = [];
+    (host.onStats as (cb: (data: unknown) => void) => void)((d) => stats.push(d));
+    (host.onSettingsChanged as (cb: (data: unknown) => void) => void)((d) => settings.push(d));
+    (host._dispatchEvent as (event: string, data: unknown) => void)('stats', { tokens: 100 });
+    (host._dispatchEvent as (event: string, data: unknown) => void)('settingsChanged', {
+      key: 'theme',
+    });
+    expect(stats).toHaveLength(1);
+    expect(settings).toHaveLength(1);
+  });
+
+  it('should not invoke callbacks for unregistered events', () => {
+    const host = makeHost([]);
+    const received: unknown[] = [];
+    (host.onMessage as (cb: (data: unknown) => void) => void)((d) => received.push(d));
+    (host._dispatchEvent as (event: string, data: unknown) => void)('streaming', 'delta');
+    expect(received).toHaveLength(0);
+  });
+
+  it('should remove callbacks on effects.release()', () => {
+    const effects = new PluginEffectStack();
+    const host = createPluginHost(
+      'test',
+      effects,
+      new Map<string, PluginTool>(),
+      new Map<string, PluginCommand>(),
+      extractCapabilities({ apiVersion: 1 }),
+    );
+    const received: unknown[] = [];
+    (host.onMessage as (cb: (data: unknown) => void) => void)((d) => received.push(d));
+    effects.release();
+    (host._dispatchEvent as (event: string, data: unknown) => void)('message', 'after-release');
+    expect(received).toHaveLength(0);
+  });
+
+  it('should isolate callbacks between different plugins', () => {
+    const effects1 = new PluginEffectStack();
+    const effects2 = new PluginEffectStack();
+    const host1 = createPluginHost(
+      'plugin-a',
+      effects1,
+      new Map<string, PluginTool>(),
+      new Map<string, PluginCommand>(),
+      extractCapabilities({ apiVersion: 1 }),
+    );
+    const host2 = createPluginHost(
+      'plugin-b',
+      effects2,
+      new Map<string, PluginTool>(),
+      new Map<string, PluginCommand>(),
+      extractCapabilities({ apiVersion: 1 }),
+    );
+    const received1: unknown[] = [];
+    const received2: unknown[] = [];
+    (host1.onMessage as (cb: (data: unknown) => void) => void)((d) => received1.push(d));
+    (host2.onMessage as (cb: (data: unknown) => void) => void)((d) => received2.push(d));
+    (host1._dispatchEvent as (event: string, data: unknown) => void)('message', 'to-a');
+    (host2._dispatchEvent as (event: string, data: unknown) => void)('message', 'to-b');
+    expect(received1).toEqual(['to-a']);
+    expect(received2).toEqual(['to-b']);
+  });
+
+  it('should not throw when callback throws', () => {
+    const host = makeHost([]);
+    (host.onMessage as (cb: (data: unknown) => void) => void)(() => {
+      throw new Error('callback error');
+    });
+    expect(() =>
+      (host._dispatchEvent as (event: string, data: unknown) => void)('message', 'x'),
+    ).not.toThrow();
+  });
+});

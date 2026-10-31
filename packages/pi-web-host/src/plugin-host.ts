@@ -88,6 +88,8 @@ export interface LoadedPlugin {
   effects: PluginEffectStack;
   tools: Map<string, PluginTool>;
   commands: Map<string, PluginCommand>;
+  /** C 类：向该插件已注册的回调分发事件（server.ts 调用） */
+  dispatchEvent?: (event: string, data: unknown) => void;
   deactivate?: () => void;
 }
 
@@ -106,6 +108,23 @@ export function createPluginHost(
 ): Record<string, unknown> {
   const ctxCwd = hostContext?.cwd ?? process.cwd();
   const ctxAgentDir = hostContext?.agentDir;
+
+  // C 类回调表（on* 注册，dispatchEvent 分发，effects 自动清理）
+  const eventCallbacks = new Map<string, Set<(data: unknown) => void>>();
+  function registerCallback(event: string, cb: (data: unknown) => void): void {
+    if (!eventCallbacks.has(event)) eventCallbacks.set(event, new Set());
+    eventCallbacks.get(event)!.add(cb);
+    effects.add(() => eventCallbacks.get(event)?.delete(cb));
+  }
+  const dispatchEvent = (event: string, data: unknown): void => {
+    eventCallbacks.get(event)?.forEach((cb) => {
+      try {
+        cb(data);
+      } catch {
+        /* ignore callback errors */
+      }
+    });
+  };
   return {
     // ── 工具注册（需 tools 权限） ──
     registerAgentTool(tool: PluginTool): void {
@@ -363,6 +382,26 @@ export function createPluginHost(
     abortRun: (): void => {
       hostContext?.abortRun?.();
     },
+
+    // ── C 类：回调注册（阶段 5b） ──
+    // 插件通过 on* 注册回调；server.ts 通过 dispatchEvent 分发事件。
+    // 回调登记在 effects stack 中，反激活时自动移除。
+    onMessage: (cb: (data: unknown) => void): void => registerCallback('message', cb),
+    onRunEvent: (cb: (data: unknown) => void): void => registerCallback('runEvent', cb),
+    onStreaming: (cb: (data: unknown) => void): void => registerCallback('streaming', cb),
+    onStats: (cb: (data: unknown) => void): void => registerCallback('stats', cb),
+    onToolPre: (cb: (data: unknown) => void): void => registerCallback('toolPre', cb),
+    onToolPost: (cb: (data: unknown) => void): void => registerCallback('toolPost', cb),
+    onConversationChanged: (cb: (data: unknown) => void): void =>
+      registerCallback('conversationChanged', cb),
+    onCwdChange: (cb: (data: unknown) => void): void => registerCallback('cwdChange', cb),
+    onSettingsChanged: (cb: (data: unknown) => void): void =>
+      registerCallback('settingsChanged', cb),
+    onClientModelChanged: (cb: (data: unknown) => void): void =>
+      registerCallback('clientModelChanged', cb),
+
+    // 内部：供 activatePlugin 提取到 LoadedPlugin.dispatchEvent
+    _dispatchEvent: dispatchEvent,
   };
 }
 

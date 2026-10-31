@@ -859,6 +859,22 @@ export async function startPiWebHostServer(
               void bridge?.prompt(text);
             },
             abortRun: () => bridge?.abort(),
+            broadcast: (msg: unknown) => {
+              for (const client of wss.clients) {
+                if (client.readyState === 1) {
+                  client.send(JSON.stringify(msg));
+                }
+              }
+            },
+            sendTo: (_clientId: string, msg: unknown) => {
+              // 简化：无客户端 ID 管理时退化为广播
+              for (const client of wss.clients) {
+                if (client.readyState === 1) {
+                  client.send(JSON.stringify(msg));
+                }
+              }
+            },
+            project: { name: 'pi-web-host', root: currentCwd ?? agentDir ?? process.cwd() },
           };
           void activatePlugin(agentDir, pluginId, llmProvider, hostContext).then((result) => {
             sendJson(ws, {

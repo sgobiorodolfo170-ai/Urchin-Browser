@@ -665,3 +665,95 @@ describe('host C-class: callback registration & dispatch', () => {
     ).not.toThrow();
   });
 });
+
+/* ── 阶段 5c：D 类插件间通信 ── */
+
+describe('host D-class: broadcast / sendTo', () => {
+  it('broadcast calls context broadcast callback', () => {
+    const sent: unknown[] = [];
+    const host = makeHost([], { broadcast: (msg) => sent.push(msg) });
+    (host.broadcast as (msg: unknown) => void)({ type: 'ping' });
+    expect(sent).toEqual([{ type: 'ping' }]);
+  });
+
+  it('sendTo calls context sendTo callback', () => {
+    const sent: { id: string; msg: unknown }[] = [];
+    const host = makeHost([], {
+      sendTo: (id, msg) => sent.push({ id, msg }),
+    });
+    (host.sendTo as (id: string, msg: unknown) => void)('client-1', { type: 'x' });
+    expect(sent).toEqual([{ id: 'client-1', msg: { type: 'x' } }]);
+  });
+
+  it('broadcast is no-op without context', () => {
+    const host = makeHost([]);
+    expect(() => (host.broadcast as (msg: unknown) => void)({})).not.toThrow();
+  });
+
+  it('sendTo is no-op without context', () => {
+    const host = makeHost([]);
+    expect(() => (host.sendTo as (id: string, msg: unknown) => void)('x', {})).not.toThrow();
+  });
+});
+
+describe('host D-class: events bus', () => {
+  it('should emit and receive custom events', () => {
+    const host = makeHost([]);
+    const bus = host.events as {
+      on: (e: string, cb: (d: unknown) => void) => void;
+      emit: (e: string, d: unknown) => void;
+    };
+    const received: unknown[] = [];
+    bus.on('custom', (d) => received.push(d));
+    bus.emit('custom', { value: 42 });
+    expect(received).toEqual([{ value: 42 }]);
+  });
+
+  it('should not cross-talk with unrelated events', () => {
+    const host = makeHost([]);
+    const bus = host.events as {
+      on: (e: string, cb: (d: unknown) => void) => void;
+      emit: (e: string, d: unknown) => void;
+    };
+    const a: unknown[] = [];
+    bus.on('a', (d) => a.push(d));
+    bus.emit('b', 'x');
+    expect(a).toHaveLength(0);
+  });
+
+  it('should remove event listener on effects.release()', () => {
+    const effects = new PluginEffectStack();
+    const host = createPluginHost(
+      'test',
+      effects,
+      new Map<string, PluginTool>(),
+      new Map<string, PluginCommand>(),
+      extractCapabilities({ apiVersion: 1 }),
+    );
+    const bus = host.events as {
+      on: (e: string, cb: (d: unknown) => void) => void;
+      emit: (e: string, d: unknown) => void;
+    };
+    const received: unknown[] = [];
+    bus.on('custom', (d) => received.push(d));
+    effects.release();
+    bus.emit('custom', 'after-release');
+    expect(received).toHaveLength(0);
+  });
+});
+
+describe('host D-class: project', () => {
+  it('should return project info from context', () => {
+    const host = makeHost([], { project: { name: 'my-app', root: '/projects/app' } });
+    const project = host.project as { name: string; root: string };
+    expect(project.name).toBe('my-app');
+    expect(project.root).toBe('/projects/app');
+  });
+
+  it('should return default project info without context', () => {
+    const host = makeHost([], { cwd: '/custom/cwd' });
+    const project = host.project as { name: string; root: string };
+    expect(project.name).toBe('pi-web-host');
+    expect(project.root).toBe('/custom/cwd');
+  });
+});

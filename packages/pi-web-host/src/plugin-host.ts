@@ -44,6 +44,12 @@ export interface HostContext {
   readonly steer?: (text: string) => void;
   /** B 类：中止当前轮（桥接 agent.abort） */
   readonly abortRun?: () => void;
+  /** D 类：广播到所有 WS 连接（server.ts 注入） */
+  readonly broadcast?: (msg: unknown) => void;
+  /** D 类：定向发送到指定客户端 */
+  readonly sendTo?: (clientId: string, msg: unknown) => void;
+  /** D 类：项目信息 */
+  readonly project?: { readonly name: string; readonly root: string };
 }
 
 /** 可逆副作用栈：插件注册的一切都登记，反激活时逆序回卷 */
@@ -402,6 +408,25 @@ export function createPluginHost(
 
     // 内部：供 activatePlugin 提取到 LoadedPlugin.dispatchEvent
     _dispatchEvent: dispatchEvent,
+
+    // ── D 类：插件间通信（阶段 5c） ──
+    broadcast: (msg: unknown): void => {
+      hostContext?.broadcast?.(msg);
+    },
+    sendTo: (clientId: string, msg: unknown): void => {
+      hostContext?.sendTo?.(clientId, msg);
+    },
+    // 事件总线：插件可 emit/on 自定义事件（独立于 C 类宿主事件）
+    events: {
+      on: (event: string, cb: (data: unknown) => void): void => {
+        registerCallback(`bus:${event}`, cb);
+      },
+      emit: (event: string, data: unknown): void => {
+        dispatchEvent(`bus:${event}`, data);
+      },
+    },
+    // 项目信息
+    project: hostContext?.project ?? { name: 'pi-web-host', root: ctxCwd },
   };
 }
 

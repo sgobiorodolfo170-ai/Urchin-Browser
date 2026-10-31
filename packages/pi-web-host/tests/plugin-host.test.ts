@@ -757,3 +757,160 @@ describe('host D-class: project', () => {
     expect(project.root).toBe('/custom/cwd');
   });
 });
+
+/* ── 阶段 5d：高级功能 ── */
+
+describe('host D-class: registerBackgroundTask', () => {
+  it('should call start on registration and stop on release', () => {
+    const effects = new PluginEffectStack();
+    const host = createPluginHost(
+      'test',
+      effects,
+      new Map<string, PluginTool>(),
+      new Map<string, PluginCommand>(),
+      extractCapabilities({ apiVersion: 1 }),
+    );
+    const started: string[] = [];
+    const stopped: string[] = [];
+    (
+      host.registerBackgroundTask as (t: {
+        name: string;
+        start?: () => void;
+        stop?: () => void;
+      }) => void
+    )({
+      name: 'bg-1',
+      start: () => started.push('bg-1'),
+      stop: () => stopped.push('bg-1'),
+    });
+    expect(started).toEqual(['bg-1']);
+    expect(stopped).toHaveLength(0);
+    effects.release();
+    expect(stopped).toEqual(['bg-1']);
+  });
+
+  it('should not throw when start throws', () => {
+    const host = makeHost([]);
+    expect(() =>
+      (host.registerBackgroundTask as (t: { name: string; start?: () => void }) => void)({
+        name: 'fail',
+        start: () => {
+          throw new Error('start error');
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it('should not throw when stop throws on release', () => {
+    const effects = new PluginEffectStack();
+    const host = createPluginHost(
+      'test',
+      effects,
+      new Map<string, PluginTool>(),
+      new Map<string, PluginCommand>(),
+      extractCapabilities({ apiVersion: 1 }),
+    );
+    (
+      host.registerBackgroundTask as (t: {
+        name: string;
+        start?: () => void;
+        stop?: () => void;
+      }) => void
+    )({
+      name: 'fail-stop',
+      stop: () => {
+        throw new Error('stop error');
+      },
+    });
+    expect(() => effects.release()).not.toThrow();
+  });
+
+  it('should handle task without start/stop', () => {
+    const effects = new PluginEffectStack();
+    const host = createPluginHost(
+      'test',
+      effects,
+      new Map<string, PluginTool>(),
+      new Map<string, PluginCommand>(),
+      extractCapabilities({ apiVersion: 1 }),
+    );
+    expect(() =>
+      (host.registerBackgroundTask as (t: { name: string }) => void)({ name: 'minimal' }),
+    ).not.toThrow();
+    expect(() => effects.release()).not.toThrow();
+  });
+});
+
+describe('host D-class: registerMarker', () => {
+  it('should not throw on registration', () => {
+    const host = makeHost([]);
+    expect(() => (host.registerMarker as (name: string) => void)('highlight')).not.toThrow();
+  });
+
+  it('should not throw on multiple markers', () => {
+    const host = makeHost([]);
+    expect(() => {
+      (host.registerMarker as (name: string) => void)('m1');
+      (host.registerMarker as (name: string) => void)('m2');
+      (host.registerMarker as (name: string) => void)('m3');
+    }).not.toThrow();
+  });
+});
+
+describe('host D-class: requestPermission', () => {
+  it('should grant when family is in caps', async () => {
+    const host = makeHost(['tools'], {});
+    const result = await (
+      host.requestPermission as (req: {
+        family: string;
+      }) => Promise<{ granted: boolean; reason?: string }>
+    )({ family: 'tools' });
+    expect(result.granted).toBe(true);
+  });
+
+  it('should deny when family not in caps', async () => {
+    const host = makeHost(['storage'], {});
+    const result = await (
+      host.requestPermission as (req: {
+        family: string;
+      }) => Promise<{ granted: boolean; reason?: string }>
+    )({ family: 'net' });
+    expect(result.granted).toBe(false);
+    expect(result.reason).toContain('net');
+  });
+
+  it('should grant all in legacy mode', async () => {
+    // legacy mode (apiVersion 1) grants all
+    const hostLegacy = createPluginHost(
+      'test',
+      new PluginEffectStack(),
+      new Map<string, PluginTool>(),
+      new Map<string, PluginCommand>(),
+      extractCapabilities({ apiVersion: 1 }),
+    );
+    const result = await (
+      hostLegacy.requestPermission as (req: { family: string }) => Promise<{ granted: boolean }>
+    )({ family: 'net' });
+    expect(result.granted).toBe(true);
+  });
+});
+
+describe('host D-class: route', () => {
+  it('should not throw on route registration', () => {
+    const host = makeHost([]);
+    expect(() =>
+      (host.route as (path: string, handler: (req: unknown) => unknown) => void)(
+        '/api/custom',
+        () => 'ok',
+      ),
+    ).not.toThrow();
+  });
+
+  it('should not throw on multiple routes', () => {
+    const host = makeHost([]);
+    expect(() => {
+      (host.route as (p: string, h: (r: unknown) => unknown) => void)('/a', () => 1);
+      (host.route as (p: string, h: (r: unknown) => unknown) => void)('/b', () => 2);
+    }).not.toThrow();
+  });
+});

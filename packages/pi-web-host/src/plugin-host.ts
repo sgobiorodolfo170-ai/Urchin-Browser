@@ -427,6 +427,58 @@ export function createPluginHost(
     },
     // 项目信息
     project: hostContext?.project ?? { name: 'pi-web-host', root: ctxCwd },
+
+    // ── D 类：高级功能（阶段 5d，按需实现） ──
+    // 后台任务：注册后自动 start，反激活时 stop
+    registerBackgroundTask: (task: {
+      name: string;
+      start?: () => void;
+      stop?: () => void;
+    }): void => {
+      try {
+        task.start?.();
+      } catch {
+        /* ignore start errors */
+      }
+      effects.add(() => {
+        try {
+          task.stop?.();
+        } catch {
+          /* ignore stop errors */
+        }
+      });
+    },
+
+    // 内联标记：简化实现（记录到 effects，反激活时移除）
+    registerMarker: (name: string): void => {
+      void name;
+      effects.add(() => {
+        /* marker removed */
+      });
+    },
+
+    // 动态权限请求：简化为检查 manifest caps（真实实现需前端弹窗交互）
+    requestPermission: (req: {
+      family: string;
+      detail?: string;
+    }): Promise<{ granted: boolean; reason?: string }> => {
+      if (canUse(caps, req.family)) {
+        return Promise.resolve({ granted: true });
+      }
+      return Promise.resolve({
+        granted: false,
+        reason: `${req.family} permission not in manifest`,
+      });
+    },
+
+    // HTTP 路由注册：简化实现（server.ts 暂未支持动态路由，记录到 effects）
+    route: (path: string, handler: (req: unknown) => unknown): void => {
+      void path;
+      void handler;
+      effects.add(() => {
+        /* route removed */
+      });
+    },
   };
 }
 

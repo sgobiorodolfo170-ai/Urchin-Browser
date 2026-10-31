@@ -10,7 +10,9 @@
 > - P1 修复（scm_data 补全/unknown_type 消除/E2E 断言）：✅ 已完成（`ecd64c0d`）
 > - 第四批 D2-D3（fork/delete/edit 会话操作）：✅ 已完成（`ee50c6eb`）
 > - ai.*→pi.* 切割整改：✅ 已完成（`05c1b51c`，见 [AI助手与pi切割整改报告](./AI助手与pi切割整改报告.md)）
-> - 第三批剩余（终端/SSH/插件/DSH/MCP/子代理/Canvas）：❌ 仍未做
+> - 第三批剩余（终端/SSH/插件/DSH/MCP/子代理/Canvas）：✅ 终端+SSH+插件已完成，其余忽略处理
+> - 测试补全（plugin-permissions/session-store/plugin-manager/file-ops/git-ops/plugin-host）：✅ +83 测试，10 文件 115 测试
+> - 阶段 5 host 对象补全规划：见 [pi-web-host-测试覆盖与阶段5规划](./pi-web-host-测试覆盖与阶段5规划.md)
 
 ## 本会话已完成的工作（Loop 1-11）
 

@@ -1,22 +1,40 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/require-await, @typescript-eslint/only-throw-error, @typescript-eslint/no-empty-function -- 测试 vendored pi 边界纯函数：返回类型 Model 为 any（ambient shim），mock streamSimple 用空 async generator 模拟空流 */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call, @typescript-eslint/require-await, @typescript-eslint/only-throw-error, @typescript-eslint/no-empty-function -- 测试 vendored pi 边界：返回类型 Model 为 any（ambient shim），mock streamSimple 用空 async generator，MockAgent 用 any 事件 */
 /**
  * agent-bridge.ts 单元测试
  *
- * 仅覆盖纯函数：normalizeProviderId / resolveModel / extractDeltaForTest /
- * extractAgentEndMeta / getProviderList / createLlmProvider。
+ * 覆盖纯函数（normalizeProviderId / resolveModel / extractDeltaForTest /
+ * extractAgentEndMeta / getProviderList / createLlmProvider）+ createAgentBridge
+ * 事件映射（P3 mock 测试）。
  * vendored pi 模块（@earendil-works/*）经 esbuild 别名打包，vitest 无法直接解析，
- * 故用 vi.mock 替换为可控桩；createAgentBridge 需 mock pi SDK，留待 P3。
+ * 故用 vi.mock 替换为可控桩；MockAgent 的 subscribe 注册到 agentListeners，
+ * 测试通过 emitEvent 模拟 Agent 事件分发。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { getModelMock, getProvidersMock, streamSimpleMock } = vi.hoisted(() => ({
-  getModelMock: vi.fn<(providerId: string, modelId: string) => any>(),
-  getProvidersMock: vi.fn<() => any>(() => []),
-  streamSimpleMock: vi.fn<(...args: any[]) => any>(),
-}));
+const { getModelMock, getProvidersMock, streamSimpleMock, agentListeners, capturedOpts } =
+  vi.hoisted(() => ({
+    getModelMock: vi.fn<(providerId: string, modelId: string) => any>(),
+    getProvidersMock: vi.fn<() => any>(() => []),
+    streamSimpleMock: vi.fn<(...args: any[]) => any>(),
+    agentListeners: [] as ((event: any) => void)[],
+    capturedOpts: { current: null as any },
+  }));
 
 vi.mock('@earendil-works/pi-agent-core', () => ({
-  Agent: vi.fn(),
+  Agent: class MockAgent {
+    constructor(opts: any) {
+      capturedOpts.current = opts;
+    }
+    subscribe(listener: (event: any) => void): () => void {
+      agentListeners.push(listener);
+      return () => {
+        const i = agentListeners.indexOf(listener);
+        if (i >= 0) agentListeners.splice(i, 1);
+      };
+    }
+    async prompt(): Promise<void> {}
+    abort(): void {}
+  },
 }));
 
 vi.mock('@earendil-works/pi-ai/compat', () => ({
@@ -39,6 +57,7 @@ import {
   extractAgentEndMeta,
   createLlmProvider,
   getProviderList,
+  createAgentBridge,
 } from '../src/agent-bridge';
 
 describe('normalizeProviderId', () => {
@@ -380,5 +399,299 @@ describe('createLlmProvider', () => {
     });
     await provider({ prompt: 'hi' });
     expect(getModelMock).toHaveBeenCalledWith('azure', 'm');
+  });
+});
+
+/* ── P3：createAgentBridge 事件映射（mock pi SDK） ── */
+
+function emitEvent(event: any): void {
+  agentListeners.forEach((l) => l(event));
+}
+
+describe('createAgentBridge event mapping', () => {
+  beforeEach(() => {
+    getModelMock.mockReset();
+    streamSimpleMock.mockReset();
+    agentListeners.length = 0;
+    capturedOpts.current = null;
+    getModelMock.mockReturnValue({ id: 'm', provider: 'openai' });
+  });
+
+  it('should map message_update text_delta to stream.chunk', () => {
+    const msgs: any[] = [];
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      (msg) => msgs.push(msg),
+      () => {},
+    );
+    emitEvent({
+      type: 'message_update',
+      assistantMessageEvent: { type: 'text_delta', delta: 'hello' },
+    });
+    expect(msgs).toContainEqual({ type: 'stream.chunk', content: 'hello' });
+    bridge.dispose();
+  });
+
+  it('should skip message_update with empty delta', () => {
+    const msgs: any[] = [];
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      (msg) => msgs.push(msg),
+      () => {},
+    );
+    emitEvent({
+      type: 'message_update',
+      assistantMessageEvent: { type: 'message_start' },
+    });
+    expect(msgs.filter((m) => m.type === 'stream.chunk')).toHaveLength(0);
+    bridge.dispose();
+  });
+
+  it('should map tool_execution_start to stream.chunk + tool_call', () => {
+    const msgs: any[] = [];
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      (msg) => msgs.push(msg),
+      () => {},
+    );
+    emitEvent({ type: 'tool_execution_start', toolName: 'bash' });
+    const chunks = msgs.filter((m) => m.type === 'stream.chunk');
+    expect(chunks[0].content).toContain('bash');
+    const calls = msgs.filter((m) => m.type === 'tool_call');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ type: 'tool_call', toolName: 'bash', status: 'start' });
+    bridge.dispose();
+  });
+
+  it('should map tool_execution_end to tool_call end', () => {
+    const msgs: any[] = [];
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      (msg) => msgs.push(msg),
+      () => {},
+    );
+    emitEvent({ type: 'tool_execution_end', toolName: 'read', isError: false });
+    const calls = msgs.filter((m) => m.type === 'tool_call');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ toolName: 'read', status: 'end' });
+    bridge.dispose();
+  });
+
+  it('should map tool_execution_end error to tool_call error', () => {
+    const msgs: any[] = [];
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      (msg) => msgs.push(msg),
+      () => {},
+    );
+    emitEvent({ type: 'tool_execution_end', toolName: 'bash', isError: true });
+    const calls = msgs.filter((m) => m.type === 'tool_call');
+    expect(calls[0].status).toBe('error');
+    bridge.dispose();
+  });
+
+  it('should map agent_end to stream.end with usage', () => {
+    const msgs: any[] = [];
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      (msg) => msgs.push(msg),
+      () => {},
+    );
+    emitEvent({
+      type: 'agent_end',
+      messages: [{ role: 'assistant', usage: { input: 10, output: 20 } }],
+    });
+    const ends = msgs.filter((m) => m.type === 'stream.end');
+    expect(ends).toHaveLength(1);
+    expect(ends[0].finishReason).toBe('stop');
+    expect(ends[0].usage).toEqual({ promptTokens: 10, completionTokens: 20 });
+    bridge.dispose();
+  });
+
+  it('should call onError when agent_end has error stopReason', () => {
+    const msgs: any[] = [];
+    let errCode = '';
+    let errMsg = '';
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      (msg) => msgs.push(msg),
+      (code, message) => {
+        errCode = code;
+        errMsg = message;
+      },
+    );
+    emitEvent({
+      type: 'agent_end',
+      messages: [{ role: 'assistant', stopReason: 'error', errorMessage: 'boom' }],
+    });
+    expect(errCode).toBe('agent_error');
+    expect(errMsg).toBe('boom');
+    expect(msgs.filter((m) => m.type === 'stream.end')).toHaveLength(0);
+    bridge.dispose();
+  });
+
+  it('should not emit after agent_end (ended flag)', () => {
+    const msgs: any[] = [];
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      (msg) => msgs.push(msg),
+      () => {},
+    );
+    emitEvent({ type: 'agent_end', messages: [] });
+    msgs.length = 0;
+    emitEvent({
+      type: 'message_update',
+      assistantMessageEvent: { type: 'text_delta', delta: 'late' },
+    });
+    expect(msgs).toHaveLength(0);
+    bridge.dispose();
+  });
+
+  it('should ignore unrelated event types', () => {
+    const msgs: any[] = [];
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      (msg) => msgs.push(msg),
+      () => {},
+    );
+    emitEvent({ type: 'turn_start' });
+    emitEvent({ type: 'message_start' });
+    emitEvent({ type: 'tool_execution_update' });
+    expect(msgs).toHaveLength(0);
+    bridge.dispose();
+  });
+
+  it('should attach coding tools when enableTools + toolsCwd', () => {
+    const bridge = createAgentBridge(
+      {
+        apiKey: 'k',
+        providerId: 'openai',
+        modelId: 'm',
+        enableTools: true,
+        toolsCwd: '/workspace',
+      },
+      () => {},
+      () => {},
+    );
+    expect(capturedOpts.current).not.toBeNull();
+    const tools = capturedOpts.current.initialState.tools;
+    expect(Array.isArray(tools)).toBe(true);
+    expect(tools.length).toBeGreaterThanOrEqual(4);
+    bridge.dispose();
+  });
+
+  it('should not attach tools without enableTools', () => {
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      () => {},
+      () => {},
+    );
+    expect(capturedOpts.current.initialState.tools).toHaveLength(0);
+    bridge.dispose();
+  });
+
+  it('should pass extraTools to Agent tools', () => {
+    const extraTool = { name: 'custom', description: 'd', execute: () => Promise.resolve() };
+    const bridge = createAgentBridge(
+      {
+        apiKey: 'k',
+        providerId: 'openai',
+        modelId: 'm',
+        extraTools: [extraTool],
+      },
+      () => {},
+      () => {},
+    );
+    const tools = capturedOpts.current.initialState.tools;
+    expect(tools).toContain(extraTool);
+    bridge.dispose();
+  });
+
+  it('should pass systemPrompt and sessionId to Agent', () => {
+    const bridge = createAgentBridge(
+      {
+        apiKey: 'k',
+        providerId: 'openai',
+        modelId: 'm',
+        systemPrompt: 'be helpful',
+        sessionId: 'sess-42',
+      },
+      () => {},
+      () => {},
+    );
+    expect(capturedOpts.current.initialState.systemPrompt).toBe('be helpful');
+    expect(capturedOpts.current.sessionId).toBe('sess-42');
+    bridge.dispose();
+  });
+
+  it('resolveApproval deny blocks tool call', async () => {
+    const msgs: any[] = [];
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      (msg) => msgs.push(msg),
+      () => {},
+    );
+    const beforeToolCall = capturedOpts.current.beforeToolCall;
+    expect(typeof beforeToolCall).toBe('function');
+    const promise = beforeToolCall(
+      { toolCall: { id: 'tc-1', name: 'bash' }, args: { cmd: 'ls' } },
+      undefined,
+    );
+    const pending = msgs.find((m) => m.type === 'tool_approval_pending');
+    expect(pending).toBeDefined();
+    expect(pending.toolName).toBe('bash');
+    bridge.resolveApproval('tc-1', 'deny');
+    const result = await promise;
+    expect(result).toEqual({ block: true, reason: '用户拒绝执行' });
+    bridge.dispose();
+  });
+
+  it('resolveApproval approve allows tool call', async () => {
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      () => {},
+      () => {},
+    );
+    const beforeToolCall = capturedOpts.current.beforeToolCall;
+    const promise = beforeToolCall({ toolCall: { id: 'tc-2', name: 'read' }, args: {} }, undefined);
+    bridge.resolveApproval('tc-2', 'approve');
+    const result = await promise;
+    expect(result).toBeUndefined();
+    bridge.dispose();
+  });
+
+  it('resolveApproval for unknown id is no-op', () => {
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      () => {},
+      () => {},
+    );
+    expect(() => bridge.resolveApproval('unknown', 'approve')).not.toThrow();
+    bridge.dispose();
+  });
+
+  it('dispose unsubscribes from agent events', () => {
+    const msgs: any[] = [];
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      (msg) => msgs.push(msg),
+      () => {},
+    );
+    bridge.dispose();
+    emitEvent({
+      type: 'message_update',
+      assistantMessageEvent: { type: 'text_delta', delta: 'after dispose' },
+    });
+    expect(msgs).toHaveLength(0);
+  });
+
+  it('abort does not throw', () => {
+    const bridge = createAgentBridge(
+      { apiKey: 'k', providerId: 'openai', modelId: 'm' },
+      () => {},
+      () => {},
+    );
+    expect(() => bridge.abort()).not.toThrow();
+    bridge.dispose();
   });
 });

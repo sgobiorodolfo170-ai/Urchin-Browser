@@ -9,6 +9,8 @@
 
 import { canUse } from './plugin-permissions';
 import { readFile, writeFile, mkdir, readdir } from 'node:fs/promises';
+import { existsSync, watch as fsWatch } from 'node:fs';
+import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 
 /** LLM 提供回调（由 server.ts 注入 streamSimple） */
@@ -16,6 +18,33 @@ export type LlmProvider = (req: {
   prompt: string;
   system?: string;
 }) => Promise<{ ok: boolean; text?: string; error?: string }>;
+
+/**
+ * Host 上下文（阶段 5a：A+B 类 host 方法补全）。
+ * 由 server.ts 在连接时构造，传入路径、会话状态与桥接回调。
+ */
+export interface HostContext {
+  /** agent 数据目录（会话/插件/存储根） */
+  readonly agentDir?: string;
+  /** 当前工作目录 */
+  readonly cwd?: string;
+  /** 当前会话 ID */
+  readonly conversationId?: string;
+  /** 当前消息计数 */
+  readonly messageCount?: number;
+  /** B 类：返回 provider 列表（桥接 agent-bridge getProviderList） */
+  readonly getProviderList?: () => readonly string[];
+  /** B 类：列出会话（桥接 session-store listSessions） */
+  readonly listConversations?: () => Promise<
+    readonly { readonly id: string; readonly firstMessage: string; readonly messageCount: number }[]
+  >;
+  /** B 类：切换会话（桥接 server switch_session） */
+  readonly openSession?: (id: string) => Promise<void>;
+  /** B 类：steer 消息（桥接 agent） */
+  readonly steer?: (text: string) => void;
+  /** B 类：中止当前轮（桥接 agent.abort） */
+  readonly abortRun?: () => void;
+}
 
 /** 可逆副作用栈：插件注册的一切都登记，反激活时逆序回卷 */
 export class PluginEffectStack {
@@ -73,7 +102,10 @@ export function createPluginHost(
   commands: Map<string, PluginCommand>,
   caps: { families: Set<string>; apiVersion: number; netAllowlist: string[] },
   llmProvider?: LlmProvider,
+  hostContext?: HostContext,
 ): Record<string, unknown> {
+  const ctxCwd = hostContext?.cwd ?? process.cwd();
+  const ctxAgentDir = hostContext?.agentDir;
   return {
     // ── 工具注册（需 tools 权限） ──
     registerAgentTool(tool: PluginTool): void {
@@ -200,6 +232,136 @@ export function createPluginHost(
     },
     reloadCatalog: (): void => {
       /* 由 server.ts plugins_reload 处理 */
+    },
+
+    // ── A 类：路径与状态（阶段 5a） ──
+    cwd: ctxCwd,
+    agentDir: ctxAgentDir,
+    dataDir: ctxAgentDir,
+    pluginsDir: ctxAgentDir ? join(ctxAgentDir, 'plugins') : undefined,
+    conversationId: hostContext?.conversationId,
+    getActiveConversation: () => ({
+      id: hostContext?.conversationId ?? '',
+      messageCount: hostContext?.messageCount ?? 0,
+    }),
+
+    // ── A 类：execCommand（需 tools 权限，child_process.execFile） ──
+    execCommand: (
+      cmd: string,
+      args: string[] = [],
+      opts?: { cwd?: string; timeout?: number },
+    ): Promise<{ ok: boolean; stdout?: string; stderr?: string; error?: string }> => {
+      if (!canUse(caps, 'tools')) {
+        return Promise.resolve({ ok: false, error: 'permission denied' });
+      }
+      return new Promise((resolve) => {
+        execFile(
+          cmd,
+          args,
+          { cwd: opts?.cwd ?? ctxCwd, timeout: opts?.timeout ?? 5000, maxBuffer: 1024 * 512 },
+          (err, stdout, stderr) => {
+            if (err) {
+              resolve({ ok: false, error: err.message, stdout, stderr });
+            } else {
+              resolve({ ok: true, stdout, stderr });
+            }
+          },
+        );
+      });
+    },
+
+    // ── A 类：watch（需 fs:read 权限，fs.watch + effects 自动清理） ──
+    watch: (path: string, callback: (event: string, filename: string | null) => void): void => {
+      if (!canUse(caps, 'fs:read')) return;
+      try {
+        const watcher = fsWatch(path, { recursive: false }, (event, filename) => {
+          callback(event, filename ?? null);
+        });
+        effects.add(() => watcher.close());
+      } catch {
+        /* 路径不存在或不可监听 */
+      }
+    },
+
+    // ── A 类：glob（需 fs:read 权限，简化通配符匹配） ──
+    glob: async (pattern: string, baseDir?: string): Promise<string[]> => {
+      if (!canUse(caps, 'fs:read')) return [];
+      const dir = baseDir ?? ctxCwd;
+      const regex = new RegExp(
+        '^' +
+          pattern
+            .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+            .replace(/\*/g, '.*')
+            .replace(/\?/g, '.') +
+          '$',
+      );
+      try {
+        const entries = await readdir(dir);
+        return entries.filter((e) => regex.test(e));
+      } catch {
+        return [];
+      }
+    },
+
+    // ── A 类：ensureDeps（检查 npm 包是否可达） ──
+    ensureDeps: (deps: readonly string[]): { name: string; installed: boolean }[] => {
+      return deps.map((d) => {
+        const pkgPath = ctxAgentDir
+          ? join(ctxAgentDir, 'node_modules', d)
+          : join(process.cwd(), 'node_modules', d);
+        return { name: d, installed: existsSync(pkgPath) };
+      });
+    },
+
+    // ── B 类：scm（桥接 git-ops，需 fs:read 权限） ──
+    scm: {
+      async status() {
+        if (!canUse(caps, 'fs:read')) return { ok: false, error: 'permission denied' };
+        const { getGitStatus } = await import('./git-ops');
+        return getGitStatus(ctxCwd);
+      },
+      async history() {
+        if (!canUse(caps, 'fs:read')) return { ok: false, error: 'permission denied' };
+        const { getGitHistory } = await import('./git-ops');
+        return getGitHistory(ctxCwd);
+      },
+    },
+
+    // ── B 类：models（桥接 agent-bridge getProviderList） ──
+    models: {
+      list: (): readonly string[] => {
+        if (hostContext?.getProviderList) return hostContext.getProviderList();
+        return [];
+      },
+    },
+
+    // ── B 类：conversations（桥接 session-store） ──
+    conversations: {
+      list: async (): Promise<
+        readonly {
+          readonly id: string;
+          readonly firstMessage: string;
+          readonly messageCount: number;
+        }[]
+      > => {
+        if (hostContext?.listConversations) return hostContext.listConversations();
+        return [];
+      },
+      open: async (id: string): Promise<void> => {
+        if (hostContext?.openSession) await hostContext.openSession(id);
+      },
+      current: (): { id: string; messageCount: number } => ({
+        id: hostContext?.conversationId ?? '',
+        messageCount: hostContext?.messageCount ?? 0,
+      }),
+    },
+
+    // ── B 类：steer / abortRun（桥接 agent） ──
+    steer: (text: string): void => {
+      hostContext?.steer?.(text);
+    },
+    abortRun: (): void => {
+      hostContext?.abortRun?.();
     },
   };
 }

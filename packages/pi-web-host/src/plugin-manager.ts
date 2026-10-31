@@ -21,6 +21,7 @@ import {
   type LoadedPlugin,
   type PluginTool,
   type LlmProvider,
+  type HostContext,
 } from './plugin-host';
 import { validatePluginManifest, extractCapabilities } from './plugin-permissions';
 
@@ -320,6 +321,7 @@ export async function activatePlugin(
   agentDir: string,
   pluginId: string,
   llmProvider?: LlmProvider,
+  hostContext?: HostContext,
 ): Promise<{ ok: boolean; error?: string }> {
   if (loadedPlugins.has(pluginId)) {
     return { ok: true };
@@ -363,7 +365,15 @@ export async function activatePlugin(
       string,
       LoadedPlugin['commands'] extends Map<string, infer V> ? V : never
     >();
-    const host = createPluginHost(pluginId, effects, tools, commands, caps, llmProvider);
+    const host = createPluginHost(
+      pluginId,
+      effects,
+      tools,
+      commands,
+      caps,
+      llmProvider,
+      hostContext,
+    );
 
     const mod = await loadPluginEntry(entryPath);
     const activateFn = mod.default as

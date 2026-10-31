@@ -825,7 +825,19 @@ export async function startPiWebHostServer(
                 baseUrl: agentOpts.baseUrl,
               })
             : undefined;
-          void activatePlugin(agentDir, pluginId, llmProvider).then((result) => {
+          const hostContext = {
+            agentDir,
+            cwd: currentCwd ?? agentDir,
+            conversationId: currentSessionId,
+            messageCount,
+            getProviderList: () => getProviderList(),
+            listConversations: async () => listSessions(agentDir),
+            steer: (text: string) => {
+              void bridge?.prompt(text);
+            },
+            abortRun: () => bridge?.abort(),
+          };
+          void activatePlugin(agentDir, pluginId, llmProvider, hostContext).then((result) => {
             sendJson(ws, {
               type: 'plugin_job',
               jobId: `enable-${pluginId}-${Date.now()}`,

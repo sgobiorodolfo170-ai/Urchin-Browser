@@ -3,37 +3,38 @@
 ===G:/pj/pj--ing/111111/Urchin-Browser/===
 .editorconfig[FG3T]: F:全仓库编辑器风格基线(UTF-8/LF/2空格缩进/末尾换行/去尾空格;md保留尾空格) | R:code:.prettierrc.json;code:.gitattributes | A:- | S:与.gitattributes eol=lf共保字节一致;AOCI依赖
 .gitattributes[FG4T]: F:强制text=auto eol=lf保证全平台checkout字节一致,覆盖Windows autocrlf默认 | R:code:.editorconfig | A:- | S:AOCI baselines精确原始字节,autocrlf改写会标记全树stale
-.gitignore[FG4M]: F:忽略node_modules/dist/release/coverage/编辑器/系统/调试脚本/opencode.json等;保留.vscode/extensions.json+settings.json | R:- | A:- | S:opencode.json被gitignore(machine-bound);.aoci运行资产由自身.gitignore管理
-.lintstagedrc.js[XQ5S]: F:lint-staged配置-ts/tsx走eslint--fix+prettier--write;js/cjs/mjs与json/md/yml走prettier--write;过滤.config文件与vendor第三方代码 | R:code:.husky/pre-commit;code:eslint.config.js | A:SC8/03-技术栈§2 | S:eslint9对显式传入被忽略文件报No files matching--用函数过滤config文件只走prettier
-.prettierignore[FG3T]: F:Prettier格式化排除清单-dist/build/out/release/coverage/node_modules/lock/log/pnpm-lock/CHANGELOG/docs/LICENSE/vendor | R:- | A:- | S:-
+.gitignore[FG4M]: F:忽略依赖/构建/打包/测试覆盖/编辑器/系统/调试脚本/本地数据/opencode.json/.workbuddy-ai等 | R:- | A:- | S:opencode.json machine-bound;.aoci运行资产由自身.gitignore;.workbuddy-ai为Agent工作区
+.lintstagedrc.js[XQ5S]: F:lint-staged配置-ts/tsx走eslint--fix+prettier;js/json/md/yml走prettier;过滤config与vendor | R:code:.husky/pre-commit;code:eslint.config.js | A:SC8/03-技术栈§2 | S:eslint9对被忽略文件报No files matching-用函数过滤config只走prettier
+.prettierignore[FG3T]: F:Prettier排除清单-dist/build/release/coverage/node_modules/lock/pnpm-lock/CHANGELOG/docs/LICENSE/vendor/.aoci | R:- | A:- | S:.aoci由aoci生成不参与格式化
 .prettierrc.json[FG4T]: F:Prettier格式化规则-分号/单引号/尾逗号all/2空格/行宽100/LF/箭头函数括号always | R:code:.lintstagedrc.js | A:- | S:endOfLine=lf与.editorconfig/.gitattributes一致
-CHANGELOG.md[SG6S]: F:版本迭代记录-v0.0.1~dev.111逐版本摘要表(SemVer),含验收数字(测试数/覆盖率/性能/产出物) | R:code:README.md;code:RELEASE_NOTES.md;code:agents.md | A:AGENTS.md§四版本迭代记录规范 | S:Prettier忽略;v1.0 API冻结语义见docs/05§3;dev.110-111=X4便携node+launch IPC超时修复
+CHANGELOG.md[SG6S]: F:版本迭代记录-v0.0.1~dev.111+逐版本摘要(SemVer)+验收数字(测试数/覆盖率/性能/产出物) | R:code:README.md;code:RELEASE_NOTES.md;code:AGENTS.md | A:AGENTS.md§四版本迭代规范 | S:Prettier忽略;dev.110-111=X4便携node+launch IPC超时修复
 LICENSE[SG4T]: F:MIT开源许可证,Copyright 2026 Rodolfo Sgobio | R:code:apps/desktop/electron-builder.yml;code:apps/desktop/package.json | A:- | S:Prettier忽略;GenOffice额外LICENSE/NOTICE/THIRD-PARTY-NOTICES随包分发
-README.md[SG7M]: F:项目入口文档-定位(AI原生+开发者友好Electron浏览器)/v0.1功能概览表(M1-M24)/快速开始/开发命令/性能指标/架构亮点/文档导航 | R:code:CHANGELOG.md;code:RELEASE_NOTES.md | A:- | S:当前阶段dev.101(2026-09-22),持续更新
-RELEASE_NOTES.md[SG5M]: F:v0.1.0首发历史快照-功能清单(M1-M23)/性能指标(冷启动1011ms/内存358MB/覆盖率68%)/安装说明/已知限制/v0.2规划 | R:code:README.md;code:CHANGELOG.md | A:- | S:反映发布时点状态,后续迭代见CHANGELOG.md
-agents.md[SG9L]: F:AI Agent全流程开发规范-CRTSE沟通/任务跟踪/版本迭代/自动提交+版本自增/Code Review三步自审/注释规范/测试覆盖阶梯门槛/质量护栏/Loop Engineering/Graph Engineering裁剪;含项目声明(生产级标准+长期迭代承诺)/AOCI仓库认知区块 | R:code:.github/workflows/ci.yml;code:.husky/pre-commit;code:.lintstagedrc.js | A:§八覆盖率门槛/§九质量护栏/§五结构化提交(commitlint强制) | S:修改红线§〇.3保护架构性内容;适配留痕§〇.5;§十一2026-09-24复核(规模<50维持裁剪)
+README.md[SG7M]: F:项目入口文档-定位(AI原生+开发者友好Electron浏览器)/v0.1功能概览(M1-M24+非编号)/快速开始/开发命令/性能指标/架构/文档导航 | R:code:CHANGELOG.md;code:RELEASE_NOTES.md | A:- | S:当前阶段dev.111,持续更新
+RELEASE_NOTES.md[SG5M]: F:v0.1.0首发历史快照-功能清单(M1-M23)/性能指标(冷启动1011ms/内存358MB/覆盖率68%)/安装说明/已知限制/v0.2规划 | R:code:README.md;code:CHANGELOG.md | A:- | S:反映发布时点;后续迭代见CHANGELOG
 commitlint.config.js[XQ5T]: F:commitlint配置-Conventional Commits规则(SC9决策) | R:code:.husky/commit-msg | A:SC9决策/AGENTS.md§五 | S:-
 eslint.config.js[FQ6S]: F:ESLint 9 flat config-@typescript-eslint+react-hooks+测试文件放宽+ignores(config/vendor) | R:code:package.json;code:.lintstagedrc.js | A:03-技术栈§2 | S:-
 package.json[FG8T]: F:根package.json-pnpm monorepo workspace管理+verify/lint/typecheck/test/e2e/package:win脚本+commitlint/husky devDeps+earendil overrides(4×workspace:*+9条pin) | R:code:pnpm-workspace.yaml;code:scripts/package-win.mjs;code:.husky/pre-commit | A:- | S:不可用packageManager字段伪装traversal(pnpm报未知PM);overrides修mcpStructuredContentSchema导出缺失
 pnpm-lock.yaml[FG6L]: F:pnpm lockfile-依赖版本锁定(frozen-lockfile CI校验)+earendil pi系override解析结果 | R:code:package.json;code:pnpm-workspace.yaml | A:- | S:.prettierignore忽略;CI用--frozen-lockfile校验
 pnpm-workspace.yaml[FG5T]: F:pnpm workspace定义-apps/desktop+packages/* workspace包管理 | R:code:package.json | A:- | S:-
 tsconfig.base.json[FG5T]: F:根TypeScript基础配置-strict/noUncheckedIndexedAccess/paths alias共享 | R:code:package.json | A:- | S:-
+AGENTS.md[SG9L]: F:AI Agent全流程开发规范-CRTSE/任务跟踪/版本/自审/注释/测试阶梯/质量护栏/Loop/Graph裁剪;项目声明+AOCI区块 | R:code:.husky/pre-commit;code:.lintstagedrc.js | A:§八覆盖率门槛/§九质量护栏/§五结构化提交+追溯 | S:修改红线§〇.3;§五.3版本自增引用ADR-012+build-version.mjs;§五.6条件化自动push;AOCI区块工具托管
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/.github/workflows/===
-ci.yml[OV7S]: F:CI流水线-push/PR触发typecheck->lint->test:coverage->build->e2e全绿方可合并;Windows-latest+pnpm9+Node22 | R:code:apps/desktop/package.json | A:卡点依据03-技术栈§5/07-立项准备§1.5 | S:全绿方可合并是§九质量护栏CI卡点
+ci.yml[OV7S]: F:CI流水线-push/PR触发typecheck->lint->format:check->check:docs->test:coverage->build->e2e全绿方可合并;Windows-latest+pnpm9+Node22 | R:code:apps/desktop/package.json | A:卡点依据03-技术栈§5/07-立项准备§1.5 | S:pnpm/action-setup不写version(读packageManager)避免Multiple versions失败;全绿方可合并是§九CI卡点
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/.husky/===
-commit-msg[XQ5T]: F:commit-msg hook调用pnpm commitlint--edit校验提交信息符合Conventional Commits(SC9决策) | R:code:commitlint.config.js | A:AGENTS.md§五结构化提交 | S:-
-pre-commit[XQ6T]: F:pre-commit hook调用pnpm lint-staged执行ESLint->Prettier->相关单测(SC8决策,§九提交时卡点) | R:code:.lintstagedrc.js | A:AGENTS.md§九提交时卡点 | S:任一失败阻止提交
+commit-msg[XQ5T]: F:commit-msg hook-commitlint校验Conventional Commits+check-commit-trace校验Model/Trigger/Loop追溯(SC9/G14) | R:code:commitlint.config.js;code:scripts/check-commit-trace.mjs | A:AGENTS.md§五结构化提交+追溯 | S:-
+pre-commit[XQ6T]: F:pre-commit hook调用pnpm lint-staged执行ESLint->Prettier(SC8,§九提交时卡点) | R:code:.lintstagedrc.js | A:AGENTS.md§九提交时卡点 | S:任一失败阻止提交
+pre-push[XQ5T]: F:pre-push hook-调用check-before-push校验内容已verify/未落后远端/工作区干净(G16) | R:code:scripts/check-before-push.mjs | A:AGENTS.md§五.6自动推送前置 | S:禁force;落后即停不自动rebase/merge
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/===
-electron-builder.yml[FV8S]: F:electron-builder打包-NSIS Win x64/GenOffice六编辑器+wasm+xlsx-sidecar+LICENSE放extraResources(asar外)/便携node.exe(X4:dsh直启用)/node_modules asarUnpack/npmRebuild false | R:code:apps/desktop/package.json | A:03-技术栈§1 T4/07-立项准备§1 | S:v0.1无代码签名(CON-07);deleteAppDataOnUninstall全卸(dev.42);产物缺失报错为有意门禁(package:win内置前置)
-package.json[FV8T]: F:@urchin/desktop主Electron应用-入口dist/main/index.js;scripts(dev/build/test/e2e/package:win);deps(Electron43/zod/better-sqlite3/pi-web-ui/dsh/imapflow/nodemailer) | R:code:pnpm-workspace.yaml;code:apps/desktop/electron-builder.yml;code:apps/desktop/ico/build-ico.cjs | A:main字段被electron-builder定位主进程;icon:build生成build/icon.ico | S:build与package:win均先跑icon:build;build/被gitignore
+electron-builder.yml[FV8S]: F:electron-builder打包-NSIS Win x64/GenOffice六编辑器+wasm+xlsx-sidecar+LICENSE放extraResources(asar外)/便携node.exe(X4:dsh)/node_modules asarUnpack/npmRebuild false | R:code:apps/desktop/package.json | A:03-技术栈§1 T4/07-立项准备§1 | S:v0.1无签名(CON-07);deleteAppDataOnUninstall全卸;产物缺失报错为门禁
+package.json[FV8T]: F:@urchin/desktop主Electron应用-入口dist/main;scripts(dev/build/test/e2e/package:win;build先icon+pi-web);deps(Electron43/dsh/electron-updater/zod/better-sqlite3) | R:code:pnpm-workspace.yaml;code:apps/desktop/electron-builder.yml | A:main字段定位主进程 | S:build与package:win均先icon:build+build:pi-web
 playwright.config.ts[TV5T]: F:Playwright E2E配置-testDir tests/e2e/timeout 60s/fullyParallel false/workers 1/CI重试1/trace on-first-retry | R:code:apps/desktop/package.json | A:03-技术栈§7.3/07-立项准备§1.6 | S:用_electron.launch启动真实Electron实例,不mock任何东西
 postcss.config.js[FV4T]: F:PostCSS配置-tailwindcss+autoprefixer两插件 | R:code:apps/desktop/vite.config.ts | A:- | S:-
 tailwind.config.js[FC5S]: F:Tailwind配置-桥接CSS设计令牌到Tailwind工具类并配置[data-theme=dark]暗色模式 | R:code:apps/desktop/src/renderer/styles/tokens.css | A:- | S:-
 tsconfig.json[FV5T]: F:apps/desktop TypeScript配置-strict+noUncheckedIndexedAccess+ES2022 target | R:code:apps/desktop/package.json | A:03-技术栈§2 | S:-
-vite.config.ts[FV7S]: F:Vite多入口配置(SC1)-main/preload(CJS+cjsMarker写type:commonjs标记)+renderer(ESM React);node:sqlite桩别名(undici顶层require崩溃规避)+vendor/pi源码别名 | R:code:apps/desktop/package.json;code:apps/desktop/src/main/stubs/node-sqlite-stub.ts | A:- | S:桩别名须在alias且优先external;pi别名指向src跳过dist build
+vite.config.ts[FV7S]: F:Vite多入口配置(SC1)-main/preload(CJS+cjsMarker写type:commonjs)+renderer(ESM React);node:sqlite桩别名(undici顶层require崩溃规避)+vendor/pi源码别名 | R:code:apps/desktop/package.json;code:apps/desktop/src/main/stubs/node-sqlite-stub.ts | A:- | S:桩别名须在alias且优先external;pi别名指向src跳过dist build
 vitest.config.ts[FQ5T]: F:Vitest配置-coverage v8+include/exclude+jsdom环境 | R:code:apps/desktop/package.json | A:03-技术栈§7 | S:-
 vitest.setup.ts[FQ4T]: F:Vitest setup-@testing-library/jest-dom matchers注册 | R:code:apps/desktop/vitest.config.ts | A:- | S:-
 
@@ -47,19 +48,19 @@ launch.mjs[EV5T]: F:生产模式启动脚本-校验dist三产物存在后带NODE
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/ai/===
 index.ts[EA4T]: F:M13 AI Side Panel模块入口-re-export registerAiHandlers与ProviderConfigStore类型 | R:code:apps/desktop/src/main/ai/register-handlers.ts | A:04-模块全景M13/契约E | S:-
 input-handlers.ts[AA6M]: F:pi加号菜单三项IPC-ai.screenshot(desktopCapturer截屏base64)/ai.uploadFile(文件选择+magic-byte MIME嗅探)/ai.setWorkdir(目录选择) | R:code:packages/ipc-contract/src/server.ts;code:apps/desktop/src/main/ai/register-handlers.ts | A:- | S:截图与文件读取在主进程执行(渲染进程无法访问文件系统/桌面捕获)
-pi-agent-factory.ts[IA7M]: F:pi Agent工厂(方案A)-注入provider配置(apiKey/baseUrl)到pi Agent;resolveModel(内置目录优先/缺失构造OpenAI兼容最小Model);streamFn包装streamSimple;可选coding工具 | R:code:apps/desktop/src/main/ai/register-handlers.ts;code:apps/desktop/src/main/ai/pi-event-bridge.ts | A:契约E§6+ADR-008 | S:安全止血SEC-2026-08-14:主进程内运行,生产IPC强制enableTools=false;OPENAI_COMPATIBLE_API必须为openai-completions非openai
+pi-agent-factory.ts[IA7M]: F:pi Agent工厂(方案A)-注入provider配置;resolveModel(内置优先/缺失构造OpenAI兼容最小Model);streamFn包装streamSimple;可选coding工具 | R:code:apps/desktop/src/main/ai/register-handlers.ts;code:apps/desktop/src/main/ai/pi-event-bridge.ts | A:契约E§6+ADR-008 | S:安全止血SEC-2026-08-14主进程强制enableTools=false;OPENAI_COMPATIBLE_API须openai-completions
 pi-event-bridge.ts[IM6M]: F:pi Agent事件桥接-订阅AgentEvent转StreamMessage经MessagePort推渲染;监听abort转发agent.abort();流结束自动cleanup解绑监听器 | R:code:apps/desktop/src/main/ai/register-handlers.ts;code:apps/desktop/src/main/ai/pi-agent-factory.ts | A:契约I§6 | S:事件映射:message_update->stream.chunk/agent_end->stream.end;与orchestrator/stream.ts StreamMessage格式对齐
-pi-providers-info.ts[IA5M]: F:pi内置43个Provider静态元信息表(id/name/baseUrl/apiKeyEnvVar/supportsOAuth)供设置对话框下拉;精简表避免触发全provider模块加载 | R:code:packages/ipc-contract/src/schemas/ipc-schema.ts;code:apps/desktop/src/main/ai/register-handlers.ts | A:- | S:来源vendor/pi/packages/ai;pi升级需同步新增provider
-register-handlers.ts[AA8L]: F:AI域IPC注册-provider.list/rescan/config.get/set+ai.chat.start/abort(Orchestrator流式)+ai.agent.start/abort(pi Agent模式);MessageChannelMain下发port;dispose abort所有活跃流 | R:code:apps/desktop/src/main/ai/pi-agent-factory.ts;code:apps/desktop/src/main/ai/pi-event-bridge.ts;code:apps/desktop/src/main/ai/input-handlers.ts | A:契约B§3.1/契约E§6/契约I§6/契约A§6 IP8 | S:ai.agent.start强制enableTools=false(主进程止血);pi-agent-factory动态import延迟加载;provider.config.get必须await(Promise经IPC克隆报错)
+pi-providers-info.ts[IA5M]: F:pi内置43个Provider静态元信息表(id/name/baseUrl/apiKeyEnvVar/supportsOAuth);精简表避免触发全provider加载 | R:code:packages/ipc-contract/src/schemas/ipc-schema.ts;code:apps/desktop/src/main/ai/register-handlers.ts | A:- | S:来源vendor/pi/packages/ai;pi升级需同步新增provider
+register-handlers.ts[AA8L]: F:AI域IPC-provider.list/rescan/config.get/set+ai.chat.start/abort+ai.agent.start/abort(pi Agent);MessageChannelMain下发port;dispose abort活跃流 | R:code:apps/desktop/src/main/ai/pi-agent-factory.ts;code:apps/desktop/src/main/ai/pi-event-bridge.ts;code:apps/desktop/src/main/ai/input-handlers.ts | A:契约B§3.1/契约E§6/契约I§6/契约A§6 IP8 | S:ai.agent.start强制enableTools=false;pi-agent-factory动态import延迟加载;provider.config.get须await
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/bookmarks/===
-bookmark-manager.ts[DB7M]: F:M5书签核心类-Map集合;create/list/search/delete(文件夹递归级联删除);事件分发(created/deleted);可选SQLite持久化注入 | R:code:apps/desktop/src/main/bookmarks/types.ts;code:apps/desktop/src/main/bookmarks/register-handlers.ts | A:契约B§3.1 bookmark.* | S:主进程是书签状态唯一权威源;id/type/createdAt readonly不可变;position=同parentId兄弟数追加末尾
+bookmark-manager.ts[DB7M]: F:M5书签核心类-Map集合;create/list/search/update/delete(文件夹递归级联);事件(created/updated/deleted);favicon缓存;可选SQLite持久化 | R:code:apps/desktop/src/main/bookmarks/types.ts;code:apps/desktop/src/main/bookmarks/register-handlers.ts | A:契约B§3.1 bookmark.* | S:主进程唯一权威源;id/type/createdAt readonly;position=同parent兄弟数;folder带url抛错
 index.ts[EB4T]: F:M5 Bookmarks模块入口-re-export BookmarkManager/registerBookmarkHandlers/类型 | R:code:apps/desktop/src/main/bookmarks/bookmark-manager.ts;code:apps/desktop/src/main/bookmarks/register-handlers.ts | A:04-模块全景M5/契约B§3.1 | S:-
-register-handlers.ts[AB5T]: F:bookmark域IPC注册-create/list/search/delete四通道;handler只做协议适配业务委托BookmarkManager;zod自动校验入参出参 | R:code:apps/desktop/src/main/bookmarks/bookmark-manager.ts;code:packages/ipc-contract/src/server.ts | A:契约B§3.1 bookmark.* | S:-
-types.ts[FB5T]: F:M5书签类型-Bookmark(id/parentId/url/title/type/position/createdAt/updatedAt);BookmarkType(bookmark/folder);事件(created/deleted)与监听器 | R:code:apps/desktop/src/main/bookmarks/bookmark-manager.ts;code:apps/desktop/src/main/bookmarks/register-handlers.ts | A:契约B§3.1 bookmark.* | S:id/type/createdAt readonly不可变;parentId/url/title/position可变支持重排
+register-handlers.ts[AB5T]: F:bookmark域IPC-create/list/search/update/delete;favicon仅接受urchin://缓存图标;zod校验委托BookmarkManager | R:code:apps/desktop/src/main/bookmarks/bookmark-manager.ts;code:packages/ipc-contract/src/server.ts | A:契约B§3.1 bookmark.* | S:远程URL拒绝进入面板DOM(仅urchin://favicon|pi-icon|dsh-icon)
+types.ts[FB5T]: F:M5书签类型-Bookmark(id/parentId/url/title/favicon/type/position/createdAt/updatedAt);BookmarkType;事件(created/updated/deleted);BookmarkUpdatePatch(title/url) | R:code:apps/desktop/src/main/bookmarks/bookmark-manager.ts;code:apps/desktop/src/main/bookmarks/register-handlers.ts | A:契约B§3.1 bookmark.* | S:id/type/createdAt readonly;update仅可改title/url
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/context-menu/===
-index.ts[AU6M]: F:原生右键菜单-复制/粘贴/保存网页+划词/整页翻译;buildMenuTemplate按editFlags置灰;BrowserView偏移补偿;经TabManager created事件挂接 | R:code:apps/desktop/src/main/tabs/tab-manager.ts;code:apps/desktop/src/main/tabs/types.ts | A:02-架构设计§4安全边界 | S:保存网页默认目录<数据目录>/saved-pages/独立于下载;urchin://内部页保存置灰;不用preload注入JS(阻塞网页加载)
+index.ts[AU6M]: F:原生右键菜单-复制/粘贴/保存网页+划词/整页翻译;buildMenuTemplate按editFlags置灰;BrowserView偏移补偿;经TabManager created挂接 | R:code:apps/desktop/src/main/tabs/tab-manager.ts;code:apps/desktop/src/main/tabs/types.ts | A:02-架构设计§4 | S:保存网页默认<数据目录>/saved-pages/独立于下载;urchin://内部页置灰;不用preload注入JS
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/downloads/===
 download-manager.ts[DB7M]: F:M23下载核心类-Map集合;create/update/list/cancel/pause/resume/clear;5状态机;事件分发(created/updated/completed/cancelled/removed) | R:code:apps/desktop/src/main/downloads/types.ts;code:apps/desktop/src/main/downloads/register-handlers.ts;code:apps/desktop/src/main/downloads/will-download.ts | A:契约B§3.1 download.* | S:主进程是下载状态唯一权威源;全部方法同步执行(内存操作);id/startTime readonly不可变
@@ -92,7 +93,7 @@ home-store.ts[PE5S]: F:GenOffice Home本地状态存储(recent/starred/defaultSa
 host-channels.ts[AE5S]: F:GenOffice编辑器宿主通道-app:get-theme(主题跟随)/app:get-ai-panel-prefs/set(AI面板布局偏好);createAiPanelPrefsStore带补丁合并 | R:code:apps/desktop/src/main/genoffice/integration.ts | A:阶段2 | S:app:get-language由编辑器main自注册宿主不重复;AI面板偏好阶段2仅内存
 integration.ts[IE8M]: F:GenOffice集成装配-install(注册宿主通道+加载vendor嵌入包+dirty旁路监听)/resolveTabCreate(伪地址分流六kind)/guardTabClose/confirmWindowClose;产物缺失回落 | R:code:apps/desktop/src/main/genoffice/loader.ts;code:apps/desktop/src/main/genoffice/paths.ts;code:apps/desktop/src/main/genoffice/url.ts | A:阶段2 md打样 | S:不import vendor类型(loader暴露最小接口);docs脏状态2s轮询;产物缺失全退化
 loader.ts[IE6S]: F:GenOffice嵌入包加载器-运行时CJS require加载vendor embed包;暴露最小API接口;产物缺失返回null不阻塞启动 | R:code:apps/desktop/src/main/genoffice/paths.ts;code:apps/desktop/src/main/genoffice/integration.ts | A:阶段1/2 | S:嵌入包自包含CJS(React/Tiptap依赖树隔离);缓存进程内只加载一次
-paths.ts[RE5S]: F:GenOffice产物路径解析-开发态vendor/genoffice打包态resources/genoffice;六kinds独立校验;sheets Rust xlsx-sidecar路径;resolveShellRendererRoot(Home视图仅校验renderer) | R:code:apps/desktop/src/main/genoffice/loader.ts;code:apps/desktop/src/main/genoffice/integration.ts | A:- | S:产物由scripts/genoffice-build.mjs生成;各kind独立校验允许阶段性缺失
+paths.ts[RE5S]: F:GenOffice产物路径解析-开发态vendor/genoffice打包态resources/genoffice;六kinds独立校验;sheets Rust xlsx-sidecar路径;resolveShellRendererRoot | R:code:apps/desktop/src/main/genoffice/loader.ts;code:apps/desktop/src/main/genoffice/integration.ts | A:- | S:产物由scripts/genoffice-build.mjs生成;各kind独立校验允许阶段性缺失
 url.ts[KE4T]: F:GenOffice标签伪地址纯函数-build/parseGenOfficeUrl(urchin://genoffice/?kind=&path=);buildFileViewerUrl/buildFileUrl保底;fallbackGenOfficeUrl降级改写 | R:code:apps/desktop/src/main/genoffice/integration.ts | A:阶段2 | S:伪地址不导航(编辑器由genoffice-app://协议加载);仅用于标签快照标识与路由
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/history/===
@@ -104,6 +105,7 @@ types.ts[FB5T]: F:M6历史类型-HistoryEntry(id/url/title/visitedAt/visitCount)
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/===
 index.ts[EA9L]: F:主进程入口-初始化Window/Tab/IPC/GenOffice/pi-web/dsh(X4)/翻译/邮箱/截图/文件关联;单实例锁+生命周期+退出清理(dsh dispose) | R:code:apps/desktop/src/main/windows/window-manager.ts;code:apps/desktop/src/main/tabs/tab-manager.ts;code:apps/desktop/src/main/orchestrator/orchestrator.ts;code:apps/desktop/src/main/deepseek-harness/launcher.ts | A:02-架构设计§1/§6/04-模块全景M1/M2/M17/M18 | S:数据目录DD1决策;GenOffice集成URCHIN_DISABLE_GENOFFICE开关;EPIPE错误风暴防护;事件循环watchdog;dsh双态便携node(X4)+favicon重定向urchin://dsh-icon
 portable.ts[RV5T]: F:检测exe同级portable.dat标记文件进入便携模式重定向userData至软件旁目录 | R:code:apps/desktop/src/main/index.ts | A:- | S:zip分发到任意机器全新档案不读写本机APPDATA
+startup-log.ts[OG2L]: F:启动各阶段耗时JSONL打点诊断(initStartupLog/markStartup) | R:code:apps/desktop/src/main/index.ts | A:- | S:同步追加零依赖;失败静默不阻塞
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/mail/===
 imap-client.ts[IN6M]: F:IMAP客户端封装(imapflow)-connect/fetch/search/IDLE;原始返回转IPC契约类型(ImapFolderInfo/ImapMessageSummary/ImapMessageBody);错误装箱IpcError(UNAVAILABLE/PERMISSION) | R:code:apps/desktop/src/main/mail/mail-manager.ts;code:apps/desktop/src/main/mail/types.ts | A:ADR-010 ML1/ML2/邮箱模块功能规划§2 | S:主进程运行(imapflow用Node net/tls不可渲染进程)
@@ -135,23 +137,11 @@ register-handlers.ts[AA5T]: F:page域IPC-page.extract从指定tab抽取正文返
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/panel/===
 bookmark-panel.ts[AU7L]: F:收藏夹悬浮面板(独立子窗口)悬浮于网页之上提供书签/历史/下载快捷访问 | R:code:apps/desktop/src/main/protocol/index.ts | A:- | S:-
 
-===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/pi-web/===
-auth-placeholder.ts[IE5T]: F:pi auth.json无凭据时注入空白占位隐藏下载pi agent误导引导 | R:code:apps/desktop/src/main/pi-web/launcher.ts | A:- | S:-
-dir-picker.ts[IE5S]: F:为pi页面注入原生目录选择器点击项目路径按钮弹出Windows目录选择对话框 | R:code:apps/desktop/src/main/protocol/index.ts | A:- | S:-
-index.ts[IE6T]: F:pi网页版模块入口聚合导出启动器/handler/占位/目录选择/页面增强 | R:code:apps/desktop/src/main/pi-web/launcher.ts;code:apps/desktop/src/main/pi-web/register-handlers.ts | A:- | S:-
-launcher.ts[IE7M]: F:pi-web-ui启动器-Electron内置Node(ELECTRON_RUN_AS_NODE)直启CLI含--no-browser/空闲端口探测/健康检查60s/状态机/进程树taskkill;依赖预装零运行时下载 | R:code:apps/desktop/src/main/pi-web/register-handlers.ts | A:docs/pi-web-评估.md/DD1决策 | S:包版本钉apps/desktop依赖单一真源;数据落userData/pi不随迁移
-layout.ts[IE6M]: F:为pi页面注入中区布局控制(折叠按钮+分割线拖拽+宽度持久化)适配0.47.0原生拖拽 | R:code:apps/desktop/src/main/pi-web/left-panel.ts;code:apps/desktop/src/main/pi-web/ui-state.ts | A:- | S:-
-left-panel.ts[IE7L]: F:重构pi页面左区为项目配置区+项目管理区经第二条WebSocket收发projects/sessions | R:code:apps/desktop/src/main/pi-web/layout.ts;code:apps/desktop/src/main/pi-web/page-enhance.ts | A:- | S:-
-page-enhance.ts[IE7L]: F:pi页面体验增强注入(不动第三方源码,DOM守卫)-主题直推__ubApplyTheme+2s轮询兜底/删主题按钮/新对话移植/路径提示抑制/版本入口移入关于页;dev.86退役项目删除+设置去重 | R:code:apps/desktop/src/main/pi-web/left-panel.ts;code:apps/desktop/src/main/pi-web/register-handlers.ts | A:用户需求dev.45/48/49/64/86/87/89/104 | S:禁止整页reload(目录拦截失效);亮写key='white'暗移除key
-register-handlers.ts[AE6T]: F:注册piWeb.launch(超时90s)/status/stop域IPC转发launcher;失败抛IpcError;返回dispose终止子进程树 | R:code:apps/desktop/src/main/pi-web/launcher.ts;code:packages/ipc-contract/src/server.ts | A:CHANGELOG dev.111 | S:launch timeoutMs=90_000须>健康检查60s(防默认30s先杀invoke致标签永不出现)
-ui-state.ts[IE5S]: F:提供urchin://pi-ui-state协议端点将pi页面布局/排序状态落盘至userData/pi/ui-state.json | R:code:apps/desktop/src/main/protocol/index.ts | A:- | S:-
-
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/polyfills/===
 worker-threads-polyfill.ts[RR4T]: F:为Electron 32/Node 20补上undici缺失的markAsUncloneable no-op防主进程启动崩溃 | R:code:apps/desktop/src/main/index.ts | A:- | S:副作用模块无导出;必须在所有其他模块之前加载
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/protocol/===
 index.ts[EN8L]: F:注册urchin://特权协议(standard/secure/fetch/BypassCSP,GenOffice经extraSchemes并入)+处理器路由内部页(settings/panel/capture-overlay/file-resource Range/mail-content/pi-pick-dir) | R:code:apps/desktop/src/main/panel/bookmark-panel.ts;code:apps/desktop/src/main/pi-web/ui-state.ts | A:02-架构设计§4/M7 | S:registerSchemesAsPrivileged每进程仅一次;file-resource校验Referer必为urchin://
-settings-page.ts[FC5L]: F:urchin://settings内部设置页HTML(外观/通用/隐私/AI助手分组内联样式无外部依赖) | R:code:apps/desktop/src/main/protocol/index.ts | A:- | S:-
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/screenshots/===
 capture-overlay-html.ts[FU5M]: F:框选截图全屏覆盖窗口HTML(背景铺整屏截图+拖拽框选+四边角缩放+确认取消按钮) | R:code:apps/desktop/src/main/protocol/index.ts;code:apps/desktop/src/main/screenshots/capture-overlay.ts | A:- | S:-
@@ -177,19 +167,14 @@ types.ts[FS7S]: F:M8存储抽象接口-IDatabase/IStatement/ISafeStorage/SecretS
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/stubs/===
 node-sqlite-stub.ts[XS6T]: F:node:sqlite shim为Electron 32/Node 20让undici SqliteCacheStore require成功 | R:code:apps/desktop/src/main/index.ts | A:- | S:vite-aliased到node:sqlite;DatabaseSync throws
 
-===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/summary/===
-index.ts[ZA5T]: F:Summary模块入口-re-export SummaryManager/registerSummaryHandlers | R:code:apps/desktop/src/main/summary/summary-manager.ts;code:apps/desktop/src/main/summary/register-handlers.ts | A:- | S:-
-register-handlers.ts[IA7M]: F:Summary IPC-listTree/run/open/delete;纯本地提取pi隔离 | R:code:apps/desktop/src/main/summary/summary-manager.ts;code:apps/desktop/src/main/tabs/tab-manager.ts;code:packages/ipc-contract/src/server.ts | A:- | S:与pi模块隔离
-summary-manager.ts[CA7S]: F:摘要文档本地文件存储-保存目录管理+树扫描+save/delete(pi隔离I/O) | R:code:apps/desktop/src/main/summary/register-handlers.ts;code:packages/summary-agent/src/extractor.ts | A:- | S:保存目录恒为<数据目录>/summaries(DD1)
-
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/tabs/===
-ad-block-css.ts[CB5T]: F:构建CSS规则隐藏浮动/弹窗广告(仅业界通用精确类名)供webContents.insertCSS注入(DB1);仅display:none!important | R:code:apps/desktop/src/main/tabs/tab-manager.ts | A:DB1决策 | S:严禁子串匹配选择器[id*=]等(2026-10-02误伤教训);纯函数
+ad-block-css.ts[CB5T]: F:构建CSS规则隐藏浮动/弹窗广告(仅业界通用精确类名)供webContents.insertCSS注入(DB1);仅display:none!important | R:code:apps/desktop/src/main/tabs/tab-manager.ts | A:DB1决策 | S:严禁子串匹配选择器[id*=]等(2026-10-02误伤);纯函数
 create-browser-view.ts[FB8S]: F:BrowserView工厂配置M18安全边界(sandbox+contextIsolation)+不注入preload+不透明背景 | R:code:apps/desktop/src/main/tabs/tab-manager.ts;code:apps/desktop/src/main/tabs/types.ts | A:04-模块全景M18 | S:不注入preload(会阻塞网页加载);opaque背景色
 index.ts[FB5T]: F:M2 Tab Manager模块入口-re-export TabManager/createBrowserView/registerTabHandlers/view-integration/类型 | R:code:apps/desktop/src/main/tabs/tab-manager.ts;code:apps/desktop/src/main/tabs/register-handlers.ts | A:04-模块全景M2/契约D | S:-
 register-handlers.ts[AB8M]: F:Tab IPC-create/close/list/setActive/reload/goBack/goForward+GenOffice注入分流 | R:code:apps/desktop/src/main/tabs/tab-manager.ts;code:apps/desktop/src/main/tabs/types.ts;code:packages/ipc-contract/src/server.ts | A:契约D§2 | S:GenOffice集成注入tab.create分流
 tab-manager.ts[CB9L]: F:M2 Tab核心类-tab/window Map状态+激活态+事件分发(created/updated/removed/activated/crashed)+webContents生命周期绑定 | R:code:apps/desktop/src/main/tabs/types.ts;code:apps/desktop/src/main/tabs/ad-block-css.ts | A:契约D§2/04-模块全景M2 | S:主进程Single Source of Truth;TabSnapshot序列化剔除webContents/view;webContents生命周期事件绑定
 types.ts[FB8M]: F:M2 tab类型定义+解耦接口(WebContentsLike/BrowserViewLike/BrowserViewFactory/Tab/TabSnapshot) | R:code:apps/desktop/src/main/tabs/tab-manager.ts;code:apps/desktop/src/main/tabs/register-handlers.ts | A:契约D§2 | S:WebContentsLike/BrowserViewLike抽象便于测试解耦Electron原生依赖
-view-integration.ts[AB8L]: F:BrowserView窗口集成-挂载/切换/卸载+resize bounds+布局状态(左右44px折叠/下48px)+tab事件桥接渲染层;urchin://内部页(settings/ai/mail/newtab/file-viewer/genoffice-home)让位ZERO_BOUNDS | R:code:apps/desktop/src/main/tabs/tab-manager.ts;code:apps/desktop/src/main/windows/window-manager.ts | A:契约D§2/阶段2解耦 | S:AI为独立urchin://ai标签不再有contentViewHidden;默认折叠宽度与App.tsx同步
+view-integration.ts[AB8L]: F:BrowserView窗口集成-挂载/切换/卸载+resize bounds+布局状态(左右44px折叠/下48px)+tab事件桥接渲染层;urchin://内部页让位ZERO_BOUNDS | R:code:apps/desktop/src/main/tabs/tab-manager.ts;code:apps/desktop/src/main/windows/window-manager.ts | A:契约D§2/阶段2解耦 | S:AI为独立urchin://ai标签;默认折叠宽度与App.tsx同步
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/theme/===
 index.ts[RL4T]: F:主题模块入口-re-export背景色常量与currentThemeBackground辅助函数 | R:code:apps/desktop/src/main/theme/native-theme-colors.ts | A:- | S:-
@@ -198,7 +183,7 @@ native-theme-colors.ts[RL6S]: F:亮暗窗口+BrowserView背景色单一真源对
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/translate/engines/===
 google.ts[IN7S]: F:谷歌GTX免费翻译引擎-/translate_a/t批量端点;返回对齐翻译+响应规范化 | R:code:apps/desktop/src/main/translate/engines/types.ts | A:TD2决策 | S:-
 microsoft.ts[IN7M]: F:微软Edge免费翻译引擎(默认)-JWT auth握手+token TTL缓存+zh-CN->zh-Hans映射+批量翻译 | R:code:apps/desktop/src/main/translate/engines/types.ts | A:TD2决策 | S:-
-types.ts[FN7S]: F:翻译引擎抽象层-EngineId(microsoft/google/mymemory)/HttpTransport(net.fetch注入)/TranslateEngine接口+批量常量;引擎可互换双引擎failover;不import electron保可测 | R:code:apps/desktop/src/main/translate/engines/mymemory.ts;code:apps/desktop/src/main/translate/engines/google.ts;code:apps/desktop/src/main/translate/engines/microsoft.ts | A:TD2/TD6决策/网页翻译功能规划§7.1 | S:HttpTransport由装配方注入(生产Electron net.fetch)
+types.ts[FN7S]: F:翻译引擎抽象层-EngineId(microsoft/google/mymemory)/HttpTransport(net.fetch注入)/TranslateEngine接口+批量常量;双引擎failover;不import electron保可测 | R:code:apps/desktop/src/main/translate/engines/mymemory.ts;code:apps/desktop/src/main/translate/engines/google.ts;code:apps/desktop/src/main/translate/engines/microsoft.ts | A:TD2/TD6决策 | S:HttpTransport由装配方注入(生产Electron net.fetch)
 mymemory.ts[IL6S]: F:M24翻译MyMemory免费引擎(2026-09-27)-微软Edge端点404/谷歌国内不可达后的国内直连兜底;GET langpair Autodetect;无批量端点并发2段隔100ms;限流抛rate_limited | R:code:apps/desktop/src/main/translate/engines/types.ts;code:apps/desktop/src/main/translate/translate-manager.ts | A:生产事件2026-09-27/TD2决策 | S:免费匿名配额约5000词/天(quotaFinished/429→rate_limited)
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/translate/===
@@ -224,7 +209,7 @@ index.ts[MU6M]: F:缩放模块-经urchin://zoom特权协议注入Ctrl+滚轮监�
 index.ts[ES8L]: F:Preload脚本-sandbox+contextIsolation下暴露最小typedInvoke/on/onMessagePort API;M18主机安全(chrome-extension/file/urchin://暴露http/https不暴露) | R:code:packages/ipc-contract/src/client.ts | A:04-模块全景M18 | S:外部http/https不暴露;仅暴露内部协议
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/renderer/===
-App.tsx[AU9L]: F:渲染层根组件-三栏布局(左侧栏入口:DeepSeek Harness/pi/文档/邮箱/主页/主题/设置;中列ContentArea+下地址栏;右栏标签列表);urchin://内部页与pi/dsh启动视图路由;tab事件经window.urchin.on订阅 | R:code:apps/desktop/src/renderer/components/ui/button.tsx;code:apps/desktop/src/renderer/pi-web/launcher-view.tsx;code:apps/desktop/src/renderer/mail/MailView.tsx | A:04-模块全景/阶段2解耦 | S:AI为独立urchin://ai标签;左侧栏启动默认折叠(与view-integration同步)
+App.tsx[AU9L]: F:渲染层根组件-三栏布局(左侧栏入口 DeepSeek Harness/pi/文档/邮箱/主页/主题/设置;中列ContentArea+地址栏;右栏标签列表);urchin://内部页与pi/dsh启动视图路由;tab事件经window.urchin.on订阅 | R:code:apps/desktop/src/renderer/components/ui/button.tsx;code:apps/desktop/src/renderer/pi-web/launcher-view.tsx;code:apps/desktop/src/renderer/mail/MailView.tsx | A:04-模块全景/阶段2解耦 | S:AI为独立urchin://ai标签;左侧栏启动默认折叠(与view-integration同步)
 host-impl.ts[IR8M]: F:浏览器核心侧BrowserHostApi适配层-将window.urchin IPC桥接为AI模块host接口(无权限放大) | R:code:packages/browser-host/src/api.ts;code:apps/desktop/src/renderer/lib/current-window.ts | A:- | S:-
 index.html[FR6T]: F:渲染进程HTML入口-严格CSP(self-only+受限img/media/frame/connect白名单)+#root挂载 | R:code:apps/desktop/src/renderer/main.tsx | A:- | S:CSP严格白名单
 main.tsx[EM8T]: F:渲染进程入口-挂载React+ThemeProvider+全局样式并启动运行时错误采集 | R:code:apps/desktop/src/renderer/App.tsx;code:apps/desktop/src/renderer/theme/theme-provider.tsx | A:- | S:-
@@ -235,7 +220,7 @@ confirm-dialog.tsx[LU5S]: F:通用模态确认对话框(固定overlay+面板+动
 input.tsx[CU5S]: F:M19 Input组件-文本/密码/搜索+错误态+前缀/后缀图标 | R:code:apps/desktop/src/renderer/lib/utils.ts | A:04-模块全景M19 | S:-
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/renderer/files/===
-FileViewer.tsx[AU7L]: F:urchin://file-viewer文件查看/文件夹浏览-image/video/audio/pdf/markdown/json/txt渲染+目录网格+同目录连续切换(←/→)+文本编辑(useEditSession) | R:code:apps/desktop/src/renderer/files/read-plan.ts;code:apps/desktop/src/renderer/files/editor/use-edit-session.ts | A:- | S:Markdown禁raw HTML仅放行http/https/mailto/#;json/txt走React文本节点
+FileViewer.tsx[AU7L]: F:urchin://file-viewer文件查看/文件夹浏览-image/video/audio/pdf/markdown/json/txt渲染+目录网格+同目录连续切换+文本编辑(useEditSession) | R:code:apps/desktop/src/renderer/files/read-plan.ts;code:apps/desktop/src/renderer/files/editor/use-edit-session.ts | A:- | S:Markdown禁raw HTML仅放行http/https/mailto/#;json/txt走React文本节点
 read-plan.ts[LD6S]: F:按kind与文件大小决定file.read上限与渲染形态(超阈值降级纯文本截断预览)纯函数 | R:code:apps/desktop/src/renderer/files/FileViewer.tsx | A:- | S:-
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/renderer/files/editor/===
@@ -253,8 +238,8 @@ site-directory.ts[DG4L]: F:内置常见网站目录数据(约1000站按类别分
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/renderer/lib/===
 current-window.ts[RW6S]: F:多窗口支持下经IPC获取并模块级缓存当前渲染进程所属windowId失败回退1 | R:code:apps/desktop/src/renderer/host-impl.ts | A:- | S:-
 edit-guard.ts[SE6S]: F:渲染层编辑离开守卫注册表(单会话槽位按tabId校验)供App关闭/切换标签前查询脏状态 | R:code:apps/desktop/src/renderer/files/editor/use-edit-session.ts;code:apps/desktop/src/renderer/App.tsx | A:- | S:-
-runtime-error-log.ts[OR6M]: F:渲染进程运行时错误日志store(发布订阅+去重计数+localStorage持久化)设置页调试数据源 | R:code:apps/desktop/src/renderer/main.tsx | A:- | S:-
 utils.ts[LU7T]: F:M19主题类名合并工具cn()-clsx+tailwind-merge智能处理Tailwind冲突 | R:code:apps/desktop/src/renderer/components/ui/button.tsx | A:04-模块全景M19 | S:-
+use-drag-scroll.ts[RH4M]: F:侧栏标签列表长按左键上下拖动平移滚动并吞掉平移后click | R:- | A:- | S:长按300ms/位移6px取消;仅标签项生效
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/renderer/mail/===
 AccountSetup.tsx[AB6M]: F:M25邮箱账户配置向导-两步(服务商预设网格/自定义→邮箱+密码,预设自动填IMAP,域名实时识别,高级设置折叠);认证提示按服务商差异化(授权码/密码/OAuth2) | R:code:apps/desktop/src/renderer/mail/provider-presets.ts;code:apps/desktop/src/renderer/mail/MailView.tsx | A:ADR-010/邮箱模块功能规划§5 | S:预设数据与UI分离(provider-presets纯数据)
@@ -270,7 +255,6 @@ ComposeView.tsx[AB6M]: F:M25撰写邮件视图-弹性布局撑满(to/cc/bcc/主�
 build-suggestions.ts[KB5S]: F:M4地址栏补全建议构建纯函数-合并历史+书签结果评分去重排序 | R:code:apps/desktop/src/renderer/omnibox/types.ts | A:OM1决策 | S:-
 omnibox.tsx[AB8L]: F:M4地址栏组件-URL输入解析导航/补全建议/安全状态指示/收藏面板 | R:code:apps/desktop/src/renderer/omnibox/parse-input.ts;code:apps/desktop/src/renderer/omnibox/validate-url.ts;code:apps/desktop/src/renderer/omnibox/build-suggestions.ts | A:04-模块全景M4 | S:-
 parse-input.ts[KB6S]: F:M4输入类型识别纯函数-判断URL/搜索/内部资源/本地文件/空并规范化 | R:code:apps/desktop/src/renderer/omnibox/omnibox.tsx | A:OM1决策 | S:-
-pi-settings-dialog.tsx[AI7M]: F:pi AI模型提供商配置对话框-选择/自定义Provider并经settings.set IPC持久化 | R:code:apps/desktop/src/renderer/components/ui/button.tsx;code:apps/desktop/src/renderer/components/ui/input.tsx | A:- | S:-
 types.ts[FB3T]: F:M4 Omnibox补全建议类型定义(Suggestion/SuggestionType/MatchType) | R:code:apps/desktop/src/renderer/omnibox/build-suggestions.ts;code:apps/desktop/src/renderer/omnibox/omnibox.tsx | A:OM1决策 | S:-
 validate-url.ts[KS5T]: F:M4 URL安全校验纯函数-禁止javascript/data/vbscript危险协议导航 | R:code:apps/desktop/src/renderer/omnibox/omnibox.tsx | A:OM5决策 | S:-
 
@@ -326,25 +310,6 @@ ADR-008-v0.1范围与工期.md[SG5S]: F:ADR-008-v0.1范围与工期(MVP最小闭
 ADR-009-GenOffice编辑器融合.md[SE6S]: F:ADR-009-GenOffice编辑器融合-GF1框架化WebContentsView嵌入/GF2 Electron43/GF3 AI栈隔离/GF4 Tiptap退役(dev.103)/GF5 shell Home/GF6 slides+sheets六编辑器全量(dev.107-108) | R:code:docs/decisions/决策索引.md | A:- | S:GF6:sheets传includeAiHandlers=false防ai:get-settings二次注册冲突
 ADR-010-邮箱模块选型与架构.md[SM6S]: F:ADR-010-邮箱模块选型与架构(imapflow/nodemailer/postal-mime/SQLite缓存) | R:code:docs/decisions/决策索引.md | A:- | S:-
 决策索引.md[SG7L]: F:决策索引-核心46项决策(首轮36+迭代10)+契约内68项+系列ID(D/T/IP/CP/TP/SP/PC/DT/ST/OM/TH/OR/SC/GR/DD/DL/DB/GF) | R:code:docs/00-设计总览.md | A:AGENTS.md§三 | S:新增决策附带否决方案理由并分配系列ID
-
-===G:/pj/pj--ing/111111/Urchin-Browser/packages/ai-extension/===
-package.json[FG5T]: F:packages/ai-extension包定义-AI对话UI扩展(ai-chat-view/conversation-list/stores) | R:code:packages/ai-extension/src/ai-chat-view.tsx;code:pnpm-workspace.yaml | A:- | S:-
-tsconfig.json[FV4T]: F:ai-extension TypeScript配置(strict+moduleResolution bundler) | R:code:packages/ai-extension/package.json | A:- | S:-
-
-===G:/pj/pj--ing/111111/Urchin-Browser/packages/ai-extension/src/===
-ai-chat-view.tsx[AU7L]: F:AI对话视图组件-流式渲染/页面上下文注入/消息列表/输入框 | R:code:packages/ai-extension/src/conversation-list.tsx | A:- | S:-
-conversation-list.tsx[AU5S]: F:AI对话列表组件-会话列表/选中高亮/新建会话 | R:code:packages/ai-extension/src/ai-chat-view.tsx | A:- | S:-
-index.ts[EE4T]: F:ai-extension模块入口-re-export ai-chat-view/stores/ui | R:code:packages/ai-extension/src/ai-chat-view.tsx | A:- | S:-
-
-===G:/pj/pj--ing/111111/Urchin-Browser/packages/ai-extension/src/lib/===
-utils.ts[LU4T]: F:ai-extension cn工具函数(clsx+tailwind-merge) | R:code:packages/ai-extension/src/ui/button.tsx | A:- | S:-
-
-===G:/pj/pj--ing/111111/Urchin-Browser/packages/ai-extension/src/stores/===
-ai-conversation.ts[DA6S]: F:AI对话状态store-会话列表/消息/流式渲染/abort | R:code:packages/ai-extension/src/ai-chat-view.tsx | A:- | S:-
-provider-status.ts[DA5T]: F:Provider状态store-已注册Provider列表/crash事件/warning | R:code:packages/ai-extension/src/ai-chat-view.tsx | A:- | S:-
-
-===G:/pj/pj--ing/111111/Urchin-Browser/packages/ai-extension/src/ui/===
-button.tsx[LU4T]: F:ai-extension Button组件(复用M19设计) | R:code:packages/ai-extension/src/lib/utils.ts | A:- | S:-
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/packages/ai-provider-contract/===
 package.json[FG5T]: F:ai-provider-contract包定义-Provider Plugin API契约v1 | R:code:packages/ai-provider-contract/src/index.ts;code:pnpm-workspace.yaml | A:契约A | S:-
@@ -408,16 +373,6 @@ index.ts[EE4T]: F:provider-sdk模块入口-re-export runner/context/types | R:co
 runner.ts[FE7M]: F:Provider SDK runner-子进程入口消息处理(init/stream/complete/abort/dispose)+heartbeat | R:code:packages/provider-sdk/src/index.ts;code:packages/provider-sdk/src/types.ts | A:契约A/IP2 | S:-
 types.ts[FE5T]: F:Provider SDK类型-子进程消息类型/运行时状态/handshake协议 | R:code:packages/provider-sdk/src/runner.ts;code:packages/provider-sdk/src/index.ts | A:契约A | S:-
 
-===G:/pj/pj--ing/111111/Urchin-Browser/packages/summary-agent/===
-package.json[FG5T]: F:summary-agent包定义-页面摘要提取Agent(extractor/formatter/types) | R:code:packages/summary-agent/src/index.ts;code:pnpm-workspace.yaml | A:- | S:-
-tsconfig.json[FV4T]: F:summary-agent TypeScript配置 | R:code:packages/summary-agent/package.json | A:- | S:-
-
-===G:/pj/pj--ing/111111/Urchin-Browser/packages/summary-agent/src/===
-extractor.ts[KA6M]: F:页面摘要提取器-Readability正文抽取+关键信息提取 | R:code:packages/summary-agent/src/index.ts;code:packages/summary-agent/src/types.ts | A:契约F | S:-
-formatter.ts[KA5S]: F:摘要格式化器-提取结果格式化为prompt可注入文本 | R:code:packages/summary-agent/src/index.ts;code:packages/summary-agent/src/types.ts | A:- | S:-
-index.ts[EE4T]: F:summary-agent模块入口-re-export extractor/formatter/types | R:code:packages/summary-agent/src/extractor.ts;code:packages/summary-agent/src/formatter.ts | A:- | S:-
-types.ts[FE5S]: F:summary-agent类型-ExtractedSummary/SummaryResult/提取选项 | R:code:packages/summary-agent/src/extractor.ts;code:packages/summary-agent/src/formatter.ts | A:- | S:-
-
 ===G:/pj/pj--ing/111111/Urchin-Browser/scripts/===
 clean-release.mjs[XG4T]: F:清理release目录旧打包产物脚本 | R:code:apps/desktop/package.json | A:- | S:-
 fetch-site-icons.mjs[XG4S]: F:拉取内置网站目录图标(public/sites/)脚本 | R:code:apps/desktop/src/renderer/home/site-directory.ts | A:- | S:-
@@ -432,7 +387,73 @@ register-handlers.ts[IA7T]: F:dsh域IPC-deepseekHarness.launch/status/stop注册
 tab-lifecycle.ts[RW5T]: F:dsh标签关闭→停止绑定-tabManager'removed'事件URL前缀匹配当前服务地址则launcher.stop();返回unbind供退出清理 | R:code:apps/desktop/src/main/deepseek-harness/launcher.ts | A:参照genoffice/integration.ts:108 removed模式 | S:与piWeb不同:关前端标签即停dsh后端
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/renderer/components/===
-genoffice-icons.tsx[LU5S]: F:GenOffice文档类型图标inline SVG组件(Word/Excel/PPT/PDF/Folder)-路径取自shell TabBar与首页卡片视觉统一;kind→icon映射对齐KIND_ICON防漂移 | R:code:apps/desktop/src/renderer/home/GenOfficeHome.tsx | A:阶段5(slides/sheets图标) | S:shell SVG不可跨WebContentsView引用故inline复刻
+genoffice-icons.tsx[LU5S]: F:GenOffice文档类型图标inline SVG组件(Word/Excel/PPT/PDF/Folder)-路径取自shell TabBar与首页卡片视觉统一;kind->icon映射对齐KIND_ICON防漂移 | R:code:apps/desktop/src/renderer/home/GenOfficeHome.tsx | A:阶段5(slides/sheets图标) | S:shell SVG不可跨WebContentsView引用故inline复刻
+app-titlebar.tsx[RC3S]: F:Windows无边框窗口自绘标题栏含最小化/最大化/关闭按钮 | R:code:apps/desktop/src/renderer/lib/current-window.ts | A:- | S:最大化状态靠resize同步;按钮须no-drag
 
 ===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/renderer/public/===
 dsh-icon.svg[LU5S]: F:dsh品牌图标SVG(渐变圆角方块+D字形1024x1024)-左侧栏dsh入口经./dsh-icon.svg引用;urchin://dsh-icon协议服务,webRequest重定向dsh网页favicon统一 | R:code:apps/desktop/src/main/protocol/index.ts;code:apps/desktop/src/renderer/App.tsx | A:X4 2026-10-16 | S:渲染层相对引用与协议路由双路径
+
+===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/devtools/===
+cdp-client.ts[IN6T]: F:封装webContents.debugger为可注入CDP会话客户端(TabCdpClient/DebuggerLike/协议1.3) | R:code:apps/desktop/src/main/devtools/devtools-manager.ts;code:apps/desktop/src/main/devtools/index.ts | A:- | S:一实例仅一次attach,detach后不可复用;CDP协议1.3
+devtools-manager.ts[DN8L]: F:按tab维护CDP会话并采集网络/控制台事件批量推送(缓冲1000/200ms合并) | R:code:apps/desktop/src/main/devtools/ring-buffer.ts;code:apps/desktop/src/main/devtools/cdp-client.ts;code:apps/desktop/src/main/devtools/register-handlers.ts | A:- | S:内部页/genoffice拒绝检视;剔除Set-Cookie
+index.ts[EB4T]: F:DevTools模块出口-聚合exports manager/handlers/shortcuts/RingBuffer | R:code:apps/desktop/src/main/devtools/devtools-manager.ts;code:apps/desktop/src/main/devtools/register-handlers.ts | A:- | S:仅re-export无运行逻辑
+install-shortcuts.ts[AB6S]: F:为各tab与主窗口挂F12监听触发DevTools切换 | R:code:apps/desktop/src/main/tabs/tab-manager.ts;code:apps/desktop/src/main/devtools/index.ts | A:- | S:F12主进程拦截;面板输入框按F12会关闭面板
+register-handlers.ts[AB5T]: F:注册devtools.*八个IPC通道;仅协议适配委托manager | R:code:apps/desktop/src/main/devtools/devtools-manager.ts;code:packages/ipc-contract/src/server.ts | A:契约B§3.1 | S:evaluate为唯一异步通道30s超时
+ring-buffer.ts[PU4T]: F:固定容量FIFO环形缓冲+累计淘汰条数(push/size/dropped/toArray/clear) | R:code:apps/desktop/src/main/devtools/devtools-manager.ts | A:- | S:Network不用此泛型(需requestId去重);clear重置dropped
+
+===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/favicons/===
+favicon-service.ts[PN7S]: F:按标签session下载校验favicon并哈希落盘供协议读取(sniffImageMime) | R:code:apps/desktop/src/main/protocol/index.ts;code:apps/desktop/src/main/tabs/tab-manager.ts | A:- | S:拒绝SVG防XSS;单图标≤1MB;TTL7天;缓存≤4096
+
+===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/import/===
+chromium-profiles.ts[IN6S]: F:检测Chrome/Edge profile并解析Bookmarks JSON为导入树 | R:code:apps/desktop/src/main/import/register-handlers.ts;code:apps/desktop/src/main/import/index.ts | A:- | S:仅Windows;Local State失败回退Default;容忍roots缺失
+firefox-profiles.ts[CD7M]: F:检测本机Firefox profile并解析places.sqlite书签树(detectFirefoxBrowsers/parseFirefoxPlacesFromProfile) | R:code:apps/desktop/src/main/import/types.ts;code:apps/desktop/src/main/import/register-handlers.ts | A:- | S:复制临时库只读打开,避开Firefox排它锁
+import-bookmarks.ts[CB4L]: F:将解析出的导入树递归写入BookmarkManager并统计(importTreeIntoBookmarks) | R:code:apps/desktop/src/main/import/types.ts;code:apps/desktop/src/main/bookmarks/index.ts | A:- | S:新建「导入自 来源(日期)」根夹,不去重
+index.ts[EB2M]: F:Import域统一入口-聚合导出解析器/检测器/IPC注册 | R:code:apps/desktop/src/main/index.ts;code:apps/desktop/src/main/import/register-handlers.ts | A:- | S:仅re-export无业务逻辑
+parse-bookmarks-html.ts[KB5L]: F:纯函数解析Netscape书签HTML为导入树(parseNetscapeBookmarksHtml) | R:code:apps/desktop/src/main/import/types.ts;code:apps/desktop/src/main/import/register-handlers.ts | A:- | S:无I/O;容忍Firefox未闭合DT
+register-handlers.ts[AB6M]: F:注册import域三个IPC handler并注入依赖(registerImportHandlers) | R:code:apps/desktop/src/main/import/parse-bookmarks-html.ts;code:apps/desktop/src/main/index.ts | A:契约B§3.1 | S:只做协议适配;路径仅记basename
+types.ts[DB1T]: F:Import域导入树与解析结果类型(ImportTreeNode/ParsedBookmarks/BrowserKind) | R:code:apps/desktop/src/main/import/parse-bookmarks-html.ts;code:apps/desktop/src/main/import/import-bookmarks.ts | A:- | S:纯类型无运行时
+
+===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/pi-web-host/===
+index.ts[EA2M]: F:pi阶段2托管服务模块出口-导出launcher/handlers/类型 | R:code:apps/desktop/src/main/pi-web-host/launcher.ts;code:apps/desktop/src/main/index.ts | A:- | S:仅导出;不import任何pi代码
+launcher.ts[LH8M]: F:以utilityProcess拉起并管理pi-web-host生命周期(解析stdout ready URL/崩溃重启) | R:code:apps/desktop/src/main/pi-web-host/register-handlers.ts;code:apps/desktop/src/main/index.ts | A:- | S:解析stdout ready URL;崩溃可重启
+register-handlers.ts[IH4M]: F:注册piWebHost launch/status/stop三个IPC | R:code:apps/desktop/src/main/pi-web-host/launcher.ts;code:packages/ipc-contract/src/server.ts | A:契约B§3.1 | S:launch超时90s须>冷启动60s
+
+===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/status-bar/===
+status-bar-ball.ts[OW8M]: F:网页区右下角悬浮球透明子窗口及拖动滚动(computeBallBounds) | R:code:apps/desktop/src/main/index.ts;code:apps/desktop/src/main/status-bar/status-bar-overlay.ts | A:- | S:避开滚动条与右侧栏;独立窗口防点击穿透
+status-bar-overlay.ts[AU7L]: F:底部状态栏独立透明子窗口管理器,几何计算与状态转发,主渲染进程为单一真源 | R:code:apps/desktop/src/main/index.ts;code:apps/desktop/src/main/tabs/view-integration.ts | A:- | S:透明BrowserWindow规避Windows DWM/TDR;宽度=中区x0.6;状态权威在主渲染进程
+
+===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/update/===
+index.ts[EB4T]: F:M20更新模块出口-聚合createUpdateService/registerUpdateHandlers/通道常量/事件 | R:code:apps/desktop/src/main/update/update-service.ts;code:apps/desktop/src/main/update/register-handlers.ts | A:ADR-011/012 | S:仅re-export;electron-updater动态import
+register-handlers.ts[AB5T]: F:注册update域四个IPC通道,仅协议适配委托UpdateService | R:code:apps/desktop/src/main/update/update-service.ts;code:packages/ipc-contract/src/server.ts | A:契约B§3.1 | S:update.check放宽60s超时避免慢网30s先杀
+update-service.ts[DR7M]: F:M20自动更新主进程服务-dev/stable双通道状态机与electron-updater懒加载封装 | R:code:apps/desktop/src/main/update/index.ts;code:apps/desktop/src/main/index.ts | A:ADR-011/012 | S:切通道后allowDowngrade=false防降级;autoDownload=false手动确认;开发态disabled
+
+===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/main/workspaces/===
+index.ts[MS3M]: F:工作区模块出口-聚合WorkspaceRegistry/SessionManager/partitionForWorkspace/registerWorkspaceHandlers | R:code:apps/desktop/src/main/workspaces/workspace-registry.ts;code:apps/desktop/src/main/workspaces/register-handlers.ts | A:- | S:仅重导出无逻辑
+register-handlers.ts[MS4M]: F:注册workspace.list/create/update/remove/clearData五个IPC | R:code:apps/desktop/src/main/workspaces/workspace-registry.ts;code:apps/desktop/src/main/workspaces/workspace-sessions.ts | A:契约B§3.1 | S:删除/清空前须无打开标签;变更广播workspace:changed
+workspace-registry.ts[DS5M]: F:工作区元数据单一真源,默认工作区恒在不可删,落盘Settings | R:code:packages/ipc-contract/src/index.ts;code:apps/desktop/src/main/settings/settings-manager.ts | A:- | S:只存非敏感元数据;zod校验防脏数据
+workspace-sessions.ts[MP5M]: F:工作区id解析为Electron分区session并清空Cookie/存储/缓存 | R:code:packages/ipc-contract/src/index.ts | A:- | S:渲染层只传id防越权分区;WeakSet确保幂等配置
+
+===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/renderer/devtools/===
+DevToolsPanel.tsx[RC5S]: F:M15检视列容器-头部状态/开始停止/视图切换/拖宽手柄 | R:code:apps/desktop/src/renderer/devtools/use-devtools.ts;code:apps/desktop/src/renderer/devtools/network-view.tsx;code:apps/desktop/src/renderer/devtools/console-view.tsx | A:04-模块全景M15 | S:宽度260-720;变更须通知主进程同步BrowserView
+console-view.tsx[RC2S]: F:控制台条目按级别着色展示,支持来源标记与堆栈展开 | R:code:packages/ipc-contract/src/index.ts | A:- | S:展示dropped条数提示
+evaluate-box.tsx[RC3S]: F:表达式输入+Runtime.evaluate结果/异常/截断展示 | R:code:apps/desktop/src/renderer/devtools/use-devtools.ts | A:- | S:未attach时禁用输入与执行
+network-view.tsx[RC3S]: F:网络请求列表按状态着色,点击展开类型/MIME/响应头 | R:code:packages/ipc-contract/src/index.ts | A:- | S:依赖content-visibility降低屏外渲染
+use-devtools.ts[XB6S]: F:订阅devtools:event维护Network/Console镜像并提供devtools.* RPC | R:code:packages/ipc-contract/src/index.ts;code:apps/desktop/src/renderer/devtools/DevToolsPanel.tsx | A:- | S:batch按requestId upsert;console按seq去重
+
+===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/renderer/status-bar/===
+status-bar-app.tsx[CU3T]: F:悬浮状态栏子窗口渲染入口,订阅IPC状态快照并经主进程回传动作 | R:code:apps/desktop/src/renderer/status-bar/status-bar.tsx;code:packages/ipc-contract/src/index.ts | A:- | S:透明窗口;面板高度上报主进程
+status-bar-ball.tsx[CU3T]: F:悬浮球子窗口入口,左键拖动滚动网页/右键拖动移动位置 | R:code:apps/desktop/src/renderer/styles/globals.css | A:- | S:摇杆式滚动;灵敏度可配
+status-bar.tsx[CU3T]: F:悬浮地址栏卡片,复用Omnibox并转发导航/刷新/翻译动作 | R:code:apps/desktop/src/renderer/omnibox/omnibox.tsx;code:apps/desktop/src/renderer/components/ui/button.tsx | A:- | S:折叠由悬浮球控制;卡片无折叠按钮
+
+===G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/src/renderer/workspaces/===
+TabCardContextMenu.tsx[CU3T]: F:标签卡片右键菜单,在其它或新工作区打开当前页/关闭标签 | R:code:apps/desktop/src/renderer/workspaces/types.ts | A:- | S:纯展示浮层;Esc与点外部关闭
+WorkspaceBar.tsx[CU3T]: F:工作区选项卡条,色块切换/滚轮循环/右键管理与快速新建 | R:code:apps/desktop/src/renderer/workspaces/types.ts;code:apps/desktop/src/renderer/workspaces/workspace-colors.ts | A:- | S:原生非被动wheel监听避免与容器滚动冲突
+WorkspaceManagerDialog.tsx[CU3T]: F:工作区管理对话框,重命名/换色/清空数据与删除 | R:code:apps/desktop/src/renderer/workspaces/types.ts;code:apps/desktop/src/renderer/workspaces/workspace-colors.ts | A:- | S:默认工作区删除被禁用
+WorkspaceOverviewPage.tsx[CU3T]: F:工作区总览页,整窗截图卡片网格支持切换与新建 | R:code:apps/desktop/src/renderer/workspaces/types.ts;code:apps/desktop/src/renderer/workspaces/workspace-colors.ts | A:- | S:卡片宽高比随窗口resize更新
+WorkspaceSwitcher.tsx[CU3T]: F:折叠态工作区切换器,滚轮循环切换或点击打开总览页 | R:code:apps/desktop/src/renderer/workspaces/types.ts;code:apps/desktop/src/renderer/workspaces/workspace-colors.ts | A:- | S:模式由设置ui.workspaceSwitcherMode决定
+types.ts[TD3T]: F:工作区渲染层类型定义与IPC错误信息解包(Workspace/WorkspaceColor/DEFAULT_WORKSPACE_ID/extractIpcMessage) | R:code:packages/ipc-contract/src/index.ts | A:- | S:须与主进程workspaceSchema对齐
+window-snapshot.ts[FI3T]: F:合成工作区整窗截图,窗口UI截图叠加激活标签网页 | R:- | A:- | S:展示用途;任一失败返回null降级占位
+workspace-colors.ts[FD3T]: F:工作区色板常量/全部色值清单与首字头像工具 | R:code:apps/desktop/src/renderer/workspaces/types.ts | A:- | S:色值须写字面量供Tailwind静态扫描
+
+===G:/pj/pj--ing/111111/Urchin-Browser/apps/pi-web/===
+index.html[XW3M]: F:pi-web阶段2前端HTML壳,挂载#root并加载入口脚本 | R:- | A:- | S:Vite入口;标题pi·Urchin

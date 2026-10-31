@@ -26,7 +26,11 @@
     ".nox",
     "htmlcov"
   ],
-  "exclude_files": ["*.backup.*", "*.bak", ".coverage"],
+  "exclude_files": [
+    "*.backup.*",
+    "*.bak",
+    ".coverage"
+  ],
   "exclude_exts": [],
   "curation_exclude": [],
   "hook_strict": false,
@@ -46,6 +50,18 @@
       "entry_removal_percent": 25
     },
     "rules": [
+      {
+        "rule_id": "exclude-apps-pi-web",
+        "action": "exclude",
+        "pattern": "apps/pi-web",
+        "pattern_kind": "directory",
+        "reason": "pi-web-ui上游前端/服务全量移植(第三方派生),无逐文件可维护语义;Urchin集成代码在main/pi-web-host与packages/pi-web-host;维护者指令排除",
+        "decision_basis": "maintainer_direction",
+        "source": "user",
+        "created_by": "maintainer",
+        "order": 0,
+        "enabled": true
+      },
       {
         "rule_id": "exclude-ico-raster-assets",
         "action": "exclude",
@@ -157,7 +173,9 @@
       }
     ]
   },
-  "installed_agents": ["opencode"],
+  "installed_agents": [
+    "opencode"
+  ],
   "automation": {
     "mode": "auto"
   },

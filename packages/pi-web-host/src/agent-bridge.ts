@@ -285,7 +285,12 @@ export function createAgentBridge(
   };
 }
 
-export { normalizeProviderId, resolveModel, extractDeltaFromEvent as extractDeltaForTest };
+export {
+  normalizeProviderId,
+  resolveModel,
+  extractDeltaFromEvent as extractDeltaForTest,
+  extractAgentEndMeta,
+};
 
 /** M2B-3：返回 pi 内置 provider id 列表（供前端模型目录展示） */
 export function getProviderList(): readonly string[] {

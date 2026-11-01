@@ -7,6 +7,7 @@ import {
   buildVariables,
   composeMarkdown,
   parsePropertyTemplate,
+  propertyLabel,
   renderNoteName,
   renderTemplate,
 } from '../../../src/renderer/clipper/draft';
@@ -61,5 +62,12 @@ describe('clipper draft', () => {
     expect(vars.date).toBe('2026-11-01');
     expect(vars.datetime).toBe('2026-11-01T09:08:07');
     expect(vars.words).toBe('12');
+  });
+
+  it('should map known property keys to Chinese labels and leave unknown keys', () => {
+    expect(propertyLabel('title')).toBe('标题');
+    expect(propertyLabel(' source ')).toBe('来源链接');
+    expect(propertyLabel('created')).toBe('创建日期');
+    expect(propertyLabel('customField')).toBeUndefined();
   });
 });

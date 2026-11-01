@@ -22,6 +22,7 @@ import {
   buildVariables,
   composeMarkdown,
   parsePropertyTemplate,
+  propertyLabel,
   renderNoteName,
   renderTemplate,
   type ClipperPropertyRow,
@@ -284,8 +285,8 @@ export function ClipperPanelApp() {
 
   return (
     <div className="flex h-screen flex-col bg-surface text-text">
-      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
-        <div>
+      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3 [-webkit-app-region:drag]">
+        <div className="min-w-0 pr-3 [-webkit-app-region:drag]">
           <h1 className="text-base font-semibold">剪藏（Clipper）</h1>
           <p className="mt-0.5 truncate text-xs text-text-secondary">
             {extraction?.title ?? page?.title ?? '未命名页面'}
@@ -293,7 +294,7 @@ export function ClipperPanelApp() {
         </div>
         <button
           type="button"
-          className="rounded p-1.5 text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className="shrink-0 rounded p-1.5 text-text-secondary hover:bg-surface-secondary hover:text-text [-webkit-app-region:no-drag]"
           onClick={close}
           aria-label="关闭剪藏面板"
           title="关闭"
@@ -425,21 +426,33 @@ export function ClipperPanelApp() {
               <div className="mb-4">
                 <div className="mb-2 text-xs font-medium text-text-secondary">页面属性</div>
                 <div className="space-y-1.5">
-                  {rows.map((row, index) => (
-                    <div
-                      key={`${row.key}-${index}`}
-                      className="grid grid-cols-[96px_minmax(0,1fr)] gap-2"
-                    >
-                      <div className="truncate rounded-md bg-surface-secondary px-2 py-1.5 text-xs text-text-secondary">
-                        {row.key}
+                  {rows.map((row, index) => {
+                    const label = propertyLabel(row.key);
+                    return (
+                      <div
+                        key={`${row.key}-${index}`}
+                        className="grid grid-cols-[96px_minmax(0,1fr)] gap-2"
+                      >
+                        <div
+                          className="min-w-0 rounded-md bg-surface-secondary px-2 py-1.5"
+                          title={label ? `${label}（${row.key}）` : row.key}
+                        >
+                          <div className="truncate text-xs text-text">{label ?? row.key}</div>
+                          {label && (
+                            <div className="truncate text-[10px] leading-4 text-text-secondary">
+                              {row.key}
+                            </div>
+                          )}
+                        </div>
+                        <Input
+                          className="h-8"
+                          value={row.value}
+                          aria-label={label ? `${label}（${row.key}）` : row.key}
+                          onChange={(e) => updateRow(index, e.target.value)}
+                        />
                       </div>
-                      <Input
-                        className="h-8"
-                        value={row.value}
-                        onChange={(e) => updateRow(index, e.target.value)}
-                      />
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

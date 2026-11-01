@@ -87,6 +87,10 @@ describe('ClipperPanelApp', () => {
     render(<ClipperPanelApp />);
     await screen.findByText('剪藏（Clipper）');
     expect(screen.getByLabelText('文件名')).toHaveValue('测试标题');
+    // 页面属性字段展示中文名 + 原始 key
+    expect(screen.getByText('标题')).toBeInTheDocument();
+    expect(screen.getByText('来源链接')).toBeInTheDocument();
+    expect(screen.getByLabelText('标题（title）')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() =>

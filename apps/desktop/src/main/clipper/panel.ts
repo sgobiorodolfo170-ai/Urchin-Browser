@@ -84,6 +84,8 @@ export class ClipperPanel {
       show: false,
       frame: false,
       resizable: false,
+      /** 允许用户按住标题栏拖动窗口（无边框窗口必须显式允许移动） */
+      movable: true,
       fullscreenable: false,
       minimizable: false,
       maximizable: false,

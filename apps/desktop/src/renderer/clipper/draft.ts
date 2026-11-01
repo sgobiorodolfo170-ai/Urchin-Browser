@@ -19,6 +19,35 @@ export interface ClipperPropertyRow {
   readonly value: string;
 }
 
+/**
+ * 常见页面属性 key 的中文名（面板属性区展示用）。
+ *
+ * 只做展示，不改变 frontmatter 的真实 key；未知字段回退显示原始 key，
+ * 避免用户自定义属性被覆盖或误翻译。
+ */
+const PROPERTY_LABELS: Readonly<Record<string, string>> = {
+  title: '标题',
+  source: '来源链接',
+  url: '链接',
+  author: '作者',
+  published: '发布日期',
+  created: '创建日期',
+  date: '日期',
+  description: '描述',
+  tags: '标签',
+  site: '站点',
+  domain: '域名',
+  language: '语言',
+  words: '字数',
+  image: '封面图',
+  favicon: '站点图标',
+};
+
+/** 返回属性 key 的中文名；未知 key 返回 undefined（调用方回退显示 key） */
+export function propertyLabel(key: string): string | undefined {
+  return PROPERTY_LABELS[key.trim().toLowerCase()];
+}
+
 /** 支持的变量正则：只替换 {{name}}，不解析复杂表达式（首版保持可预测） */
 const VARIABLE_RE = /\{\{\s*([a-zA-Z][\w]*)\s*\}\}/g;
 

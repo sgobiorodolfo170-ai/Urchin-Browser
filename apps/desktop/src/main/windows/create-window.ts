@@ -15,6 +15,7 @@ import { BrowserWindow, Menu, app } from 'electron';
 import { join } from 'node:path';
 import { createLogger } from '@urchin/logger';
 import { currentThemeBackground } from '../theme';
+import { displayNameForLocale } from '../../shared/brand';
 import {
   DEFAULT_WINDOW_WIDTH,
   DEFAULT_WINDOW_HEIGHT,
@@ -75,7 +76,7 @@ export function createBrowserWindow(opts: CreateWindowOptions): BrowserWindowLik
     minHeight: MIN_WINDOW_HEIGHT,
     show: false,
     frame: !useCustomChrome,
-    title: 'Urchin Browser',
+    title: displayNameForLocale(app.getLocale()),
     // 背景跟随主题（dev.50）：硬编码白色在深色模式下会从窗口未覆盖区域/
     // 几何缝隙透出白光；暗色取 --color-surface 同值。切换主题时由
     // ui.theme.set 处理内统一刷新已存在窗口。

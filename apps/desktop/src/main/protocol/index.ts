@@ -17,6 +17,7 @@ import { stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { app } from 'electron';
 import { createLogger } from '@urchin/logger';
+import { displayNameForLocale } from '../../shared/brand';
 import { getBookmarkPanelHtml } from '../panel/bookmark-panel';
 import { getCaptureOverlayHtml } from '../screenshots/capture-overlay-html';
 import { inferMimeType } from '../files/file-kind';
@@ -456,8 +457,9 @@ export function registerUrchinProtocol(
       }
 
       if (host === 'newtab') {
+        const brandName = displayNameForLocale(app.getLocale());
         return new Response(
-          '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>新标签页</title><style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#666;background:#fff}h1{font-weight:300}</style></head><body><h1>Urchin Browser</h1></body></html>',
+          `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>新标签页</title><style>body{font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#666;background:#fff}h1{font-weight:300}</style></head><body><h1>${brandName}</h1></body></html>`,
           { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
         );
       }

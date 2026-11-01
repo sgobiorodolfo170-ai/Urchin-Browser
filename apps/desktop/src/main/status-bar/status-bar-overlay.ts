@@ -47,6 +47,7 @@ export const DEFAULT_STATUS_BAR_STATE: StatusBarState = {
   bookmarkSaved: false,
   bookmarkable: false,
   screenshotDisabled: true,
+  clipDisabled: true,
   translateActive: false,
   translateDisabled: true,
   searchEngine: 'duckduckgo',

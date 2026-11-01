@@ -24,6 +24,7 @@ const DEFAULT_STATE: StatusBarState = {
   bookmarkSaved: false,
   bookmarkable: false,
   screenshotDisabled: true,
+  clipDisabled: true,
   translateActive: false,
   translateDisabled: true,
   searchEngine: 'duckduckgo',

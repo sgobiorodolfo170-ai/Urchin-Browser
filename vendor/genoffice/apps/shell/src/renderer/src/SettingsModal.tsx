@@ -1052,12 +1052,6 @@ export function SettingsModal({
     void window.aiOffice.setAiPanelPrefs(patch).then(setAiPrefs)
   }
 
-  const changeSaveDir = () => {
-    void window.aiOffice.pickDefaultSaveDir?.().then((dir) => {
-      if (dir) setSaveDir(dir)
-    })
-  }
-
   return (
     <div
       className="set-overlay"
@@ -1193,11 +1187,6 @@ export function SettingsModal({
                   label={t('saveLocation')}
                   value={saveDir || '—'}
                   valueTitle={saveDir}
-                  action={
-                    <button className="set-btn" onClick={changeSaveDir}>
-                      {t('setChange')}
-                    </button>
-                  }
                 />
                 <div className="set-field">
                   <div className="set-field-text">

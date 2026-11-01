@@ -62,6 +62,9 @@ const EXT_KIND: Readonly<Record<string, FileKind>> = {
   // HTML
   html: 'html',
   htm: 'html',
+  // MHTML 单文件网页快照（只读查看器打开）
+  mhtml: 'mhtml',
+  mht: 'mhtml',
   // Markdown
   md: 'markdown',
   markdown: 'markdown',
@@ -138,6 +141,8 @@ const EXT_MIME: Readonly<Record<string, string>> = {
   svg: 'image/svg+xml',
   html: 'text/html',
   htm: 'text/html',
+  mhtml: 'multipart/related',
+  mht: 'multipart/related',
   md: 'text/markdown',
   markdown: 'text/markdown',
   json: 'application/json',

@@ -448,6 +448,12 @@ export function App() {
           pptx: 'slides',
           xlsx: 'sheets',
         };
+        // MHTML：文件选择器/拖放入口统一交给主进程只读查看器（禁用 JS、无 preload），
+        // 不再直接 tab.create(file://...)，避免普通 BrowserView 启用 MHTML 内脚本。
+        if (statRes.kind === 'mhtml') {
+          await window.urchin.invoke('clipper.openMhtmlFile', { path });
+          return;
+        }
         const genofficeApp = genofficeAppByKind[statRes.kind];
         const url = statRes.isDir
           ? `urchin://file-viewer/?dir=${encodeURIComponent(path)}`
@@ -520,6 +526,18 @@ export function App() {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setActionToast(`截图失败：${message}`);
+    }
+  }, [activeTabId]);
+
+  // 剪藏当前网页（地址栏剪藏按钮）：主进程弹出独立剪藏面板，
+  // 面板内选择 Markdown / MHTML / PDF / 截图并落盘到 documents/clipper。
+  const handleClip = useCallback(async () => {
+    if (!activeTabId) return;
+    try {
+      await window.urchin.invoke('clipper.open', { tabId: activeTabId });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setActionToast(`剪藏失败：${message}`);
     }
   }, [activeTabId]);
 
@@ -1987,8 +2005,12 @@ export function App() {
   );
 
   // 当前工作区的标签（展开/折叠列表都按工作区过滤，TP7）
+  // 工作区总览页（urchin://workspaces）视为瞬态：点击查看不驻留为侧边栏图标，
+  // 与既有「不持久化 / 不计入最近激活」待遇对齐（main/index.ts 退出过滤、855 行 lastActive 排除）
   const visibleTabs = tabs.filter(
-    (t) => (t.workspaceId ?? DEFAULT_WORKSPACE_ID) === currentWorkspaceId,
+    (t) =>
+      (t.workspaceId ?? DEFAULT_WORKSPACE_ID) === currentWorkspaceId &&
+      !t.url.startsWith('urchin://workspaces'),
   );
 
   // 按住侧边栏空白处拖动窗口（左/右两侧栏共用）
@@ -2099,6 +2121,7 @@ export function App() {
       bookmarkSaved,
       bookmarkable: !isNavDisabledPage && !!activeTab?.url && isBookmarkable(activeTab.url),
       screenshotDisabled: !activeTabId,
+      clipDisabled: !activeTab?.url || !/^https?:\/\//i.test(activeTab.url),
       translateActive,
       translateDisabled: !activeTab?.url || !/^https?:\/\//i.test(activeTab.url),
       searchEngine,
@@ -2156,6 +2179,9 @@ export function App() {
         case 'screenshot':
           void handleScreenshot();
           break;
+        case 'clip':
+          void handleClip();
+          break;
         case 'translate':
           void handleTranslate();
           break;
@@ -2175,6 +2201,7 @@ export function App() {
     handleReload,
     handleSaveBookmark,
     handleScreenshot,
+    handleClip,
     handleTranslate,
     handleSuggestionQuery,
   ]);
@@ -2250,7 +2277,7 @@ export function App() {
 
             {/* 底部：DeepSeek Harness / pi / GenOffice 文档 / 邮箱 / 主页 / 主题切换 / 设置入口
              *（GenOffice 入口打开模块主页：打开文件 / 格式说明 / 原生 AI 设置） */}
-            <div className="flex flex-col items-center gap-1 border-t border-border p-2">
+            <div className="mt-auto flex flex-col items-center gap-1 border-t border-border p-2">
               {/* DeepSeek Harness 入口（用户指令：pi 按钮上方新增） */}
               <button
                 className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"

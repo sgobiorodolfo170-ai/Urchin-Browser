@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Copy, Minus, Square, X } from 'lucide-react';
 import { getCurrentWindowId } from '../lib/current-window';
+import { displayNameForLocale } from '../../shared/brand';
 
 /** 自绘标题栏：品牌区 + 最小化/最大化/关闭按钮。 */
 export function AppTitleBar() {
@@ -84,7 +85,7 @@ export function AppTitleBar() {
           className="h-4 w-4 shrink-0 object-contain"
         />
         <span className="truncate text-[11px] font-medium tracking-wide text-text-secondary">
-          Urchin Browser
+          {displayNameForLocale(navigator.language)}
         </span>
       </div>
 

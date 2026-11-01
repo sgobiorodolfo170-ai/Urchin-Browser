@@ -1,4 +1,4 @@
-# Urchin Browser v0.1.0 Release Notes
+# 顽童浏览器（Urchin Browser）v0.1.0 Release Notes
 
 > **本文件为 v0.1.0 首发（2026-07-29）历史快照**，反映发布时点状态。此后 dev.1–dev.121 的持续迭代（GenOffice 六编辑器融合、pi-web、M24 网页翻译、M15 DevTools、M25 邮箱、多工作区、本地文件查看/编辑等）见 [CHANGELOG.md](./CHANGELOG.md)；项目现状见 [README.md](./README.md)。
 
@@ -7,7 +7,7 @@
 
 ## 概述
 
-Urchin Browser v0.1.0 是首个可安装的里程碑版本，基于 Electron / 完整 Chromium 内核，实现 AI 原生 + 开发者友好的桌面浏览器 MVP。
+顽童浏览器（Urchin Browser）v0.1.0 是首个可安装的里程碑版本，基于 Electron / 完整 Chromium 内核，实现 AI 原生 + 开发者友好的桌面浏览器 MVP。
 
 核心架构亮点：**per-provider 强隔离**——每个 AI Provider 运行在独立子进程（utility process），crash 不影响浏览器主进程，配合安全 warning 流程支持第三方 Provider 加载。
 

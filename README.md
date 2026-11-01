@@ -1,4 +1,4 @@
-# Urchin Browser
+# 顽童浏览器（Urchin Browser）
 
 > AI 原生 + 开发者友好的桌面浏览器，基于 Electron / 完整 Chromium 内核。
 
@@ -129,7 +129,7 @@ pnpm package:win
 - 产品定位与决策记录（[01](./docs/01-愿景与定位.md)）
 - 架构与进程模型（[02](./docs/02-架构设计.md)）
 - 技术栈与覆盖率门槛（[03](./docs/03-技术栈.md)）
-- 模块全景与 v0.1 范围（M1-M25 + 非编号能力，[04](./docs/04-模块全景.md)）
+- 模块全景与 v0.1 范围（M1-M26 + 非编号能力，[04](./docs/04-模块全景.md)）
 - 11 份接口契约（[Provider API / IPC / Chrome 兼容 / Tab Manager 等 A-K](./docs/contracts/)）
 - 决策留痕：7 份关键 ADR + 决策索引（核心 58 项 + 契约内 68 项 = 126 项）（[decisions/](./docs/decisions/决策索引.md)）
 

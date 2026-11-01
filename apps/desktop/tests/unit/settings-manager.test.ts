@@ -92,8 +92,9 @@ describe('SettingsManager', () => {
     //   debug.sidebarHoverDelay/ui.rightSidebarAutoExpand/home.frequentSites/
     //   window.bounds 窗口几何记忆，主进程内部状态/
     //   translate.targetLang/translate.engine/translate.autoTranslate 网页翻译 dev.79/
-    //   ui.workspaceSwitcherMode 折叠态工作区切换模式 TP7） + 自定义 1 项
-    expect(entries).toHaveLength(22);
+    //   ui.workspaceSwitcherMode 折叠态工作区切换模式 TP7/
+    //   clipper.* 剪藏默认格式/清洗/选中优先/懒加载/模板 6 项） + 自定义 1 项
+    expect(entries).toHaveLength(29);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');
@@ -112,6 +113,11 @@ describe('SettingsManager', () => {
     expect(keys).toContain('translate.targetLang');
     expect(keys).toContain('translate.engine');
     expect(keys).toContain('translate.autoTranslate');
+    expect(keys).toContain('clipper.defaultFormat');
+    expect(keys).toContain('clipper.cleanSnapshot');
+    expect(keys).toContain('clipper.selectionPriority');
+    expect(keys).toContain('clipper.properties');
+    expect(keys).toContain('clipper.content');
     expect(keys).toContain('customKey');
   });
 

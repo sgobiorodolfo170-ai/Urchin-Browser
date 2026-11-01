@@ -165,6 +165,30 @@ function FolderIcon({ className }: IconProps) {
   );
 }
 
+/* ── GenOffice 品牌图标（复刻自 genoffice-logo.svg 的 240×240 品牌 mark：
+ *    黑底圆角方块 + 白色重叠圆角矩形构成的 "G" 形。用于主页 tab，区别于文档类型图标）── */
+
+function GenOfficeBrandIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 240 240"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect width="240" height="240" rx="54" fill="black" />
+      <rect x="51" y="46" width="90" height="108" rx="16" fill="white" />
+      <rect x="99" y="86" width="90" height="108" rx="16" fill="white" />
+      <path
+        d="M99 102C99 93.1634 106.163 86 115 86H141V138C141 146.837 133.837 154 125 154H99V102Z"
+        fill="black"
+      />
+    </svg>
+  );
+}
+
 /* ── kind → 图标组件映射（与 genoffice shell TabBar KIND_ICON 对齐）── */
 
 const GENOFFICE_KIND_ICONS: Record<string, ComponentType<IconProps>> = {
@@ -184,7 +208,7 @@ const GENOFFICE_URL_PREFIX = 'urchin://genoffice';
  * 根据 tab URL 解析 genoffice kind 并返回对应图标元素。
  *
  * - `urchin://genoffice/?kind=docs&path=…` → DocIcon
- * - `urchin://genoffice-home` → FolderIcon（对应「打开本地文件」卡片图标）
+ * - `urchin://genoffice-home` → GenOfficeBrandIcon（品牌 mark，区别于文档类型图标）
  * - 其他 genoffice 地址（缺 kind 参数）→ FolderIcon 保底
  * - 非 genoffice 地址 → null（调用方自行处理）
  */
@@ -194,8 +218,8 @@ export function getGenOfficeTabIcon(
 ): ReactElement | null {
   if (!url) return null;
 
-  // genoffice 首页（urchin://genoffice-home）→ 文件夹图标
-  if (url === 'urchin://genoffice-home') return <FolderIcon className={className} />;
+  // genoffice 首页（urchin://genoffice-home）→ 品牌图标（黑底白色 G 形 mark）
+  if (url === 'urchin://genoffice-home') return <GenOfficeBrandIcon className={className} />;
 
   // genoffice 编辑器标签（urchin://genoffice/?kind=<app>&path=…）
   if (url.startsWith(GENOFFICE_URL_PREFIX)) {

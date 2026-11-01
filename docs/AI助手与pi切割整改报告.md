@@ -7,7 +7,7 @@
 
 ### 1.1 问题
 
-Urchin Browser 中「AI 助手」与「pi 对话模块」**命名纠缠、代码纠缠、设置纠缠**：
+顽童浏览器（Urchin Browser）中「AI 助手」与「pi 对话模块」**命名纠缠、代码纠缠、设置纠缠**：
 
 - **命名纠缠**：`ai.*` 设置键命名空间同时服务 pi 对话模块（`ai.providerId/apiKey/model/baseUrl`）和旧 AI 助手（`summary.*`、`ai.providerProfiles`），但两者功能完全独立。
 - **设置纠缠**：`isPiSettingKey = ai.* || summary.*`（`settings-manager.ts:51`）把两者一起路由到 `pi/ai.db` + `pi/secrets`。

@@ -13,12 +13,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const protocolMocks = vi.hoisted(() => ({
   registerSchemesAsPrivileged: vi.fn(),
   handle: vi.fn(),
+  appGetLocale: vi.fn(() => 'en-US'),
 }));
 
 vi.mock('electron', () => ({
   protocol: {
     registerSchemesAsPrivileged: protocolMocks.registerSchemesAsPrivileged,
     handle: protocolMocks.handle,
+  },
+  app: {
+    getLocale: protocolMocks.appGetLocale,
   },
 }));
 
@@ -95,6 +99,16 @@ describe('protocol/index', () => {
 
       expect(res.status).toBe(200);
       expect(body).toContain('Urchin Browser');
+    });
+
+    it('should serve newtab html with Chinese brand name under zh locale', async () => {
+      protocolMocks.appGetLocale.mockReturnValueOnce('zh-CN');
+      registerUrchinProtocol();
+      const res = await getHandler()({ url: 'urchin://newtab' });
+      const body = await res.text();
+
+      expect(res.status).toBe(200);
+      expect(body).toContain('顽童浏览器');
     });
 
     it('should return 404 for unknown host', async () => {

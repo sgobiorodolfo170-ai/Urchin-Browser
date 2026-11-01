@@ -64,8 +64,8 @@ test.describe('v0.1 关键路径', () => {
   test('启动 Electron 并显示主窗口', async () => {
     const { electronApp, window } = await launchApp();
 
-    // 验证窗口标题
-    await expect(window).toHaveTitle(/Urchin Browser/i);
+    // 验证窗口标题（按 locale 显示中文「顽童浏览器」或英文「Urchin Browser」）
+    await expect(window).toHaveTitle(/Urchin Browser|顽童浏览器/i);
 
     // 验证根容器渲染
     await expect(window.locator('#root')).toBeVisible();

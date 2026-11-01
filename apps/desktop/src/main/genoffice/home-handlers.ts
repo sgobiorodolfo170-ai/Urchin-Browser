@@ -109,10 +109,10 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
   const { ipcMain, store } = deps;
   const starredSet = (): Set<string> => new Set(store.get().starred);
 
-  /** 默认保存目录（未设置时用文档根）。 */
+  /** 默认保存目录（始终跟随浏览器数据存储位置：documentsRoot = <数据目录>/documents）。
+   *   用户手动选择已移除（消除绝对路径漂移），defaultSaveDir 字段保留但不读取。 */
   async function defaultSaveDir(): Promise<string> {
-    await store.load();
-    const dir = store.get().defaultSaveDir ?? deps.documentsRoot;
+    const dir = deps.documentsRoot;
     await mkdir(dir, { recursive: true }).catch(() => undefined);
     return dir;
   }
@@ -427,15 +427,9 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
       case 'getDefaultSaveDir':
         return defaultSaveDir();
       case 'pickDefaultSaveDir': {
-        const result = await dialog.showOpenDialog({
-          title: '选择默认保存位置',
-          properties: ['openDirectory', 'createDirectory'],
-        });
-        if (result.canceled || !result.filePaths[0]) return null;
-        const dir = result.filePaths[0];
-        await store.setDefaultSaveDir(dir);
-        broadcastHomeEvent('genoffice:home:event', { type: 'folderChanged', dirs: [dir] });
-        return dir;
+        // 默认保存位置已改为跟随浏览器数据存储位置（documentsRoot），不再支持手动选择。
+        // 返回当前 documentsRoot，保持 IPC 契约可用（调用方拿到正确路径，不漂移）。
+        return defaultSaveDir();
       }
       case 'getAppVersion':
         return deps.getVersion();

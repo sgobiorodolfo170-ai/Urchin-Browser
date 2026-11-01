@@ -67,6 +67,12 @@ describe('classifyFileKind', () => {
     expect(classifyFileKind('page.htm')).toBe('html');
   });
 
+  it('should classify MHTML single-file snapshots', () => {
+    expect(classifyFileKind('page.mhtml')).toBe('mhtml');
+    expect(classifyFileKind('page.MHT')).toBe('mhtml');
+    expect(inferMimeType('page.mhtml')).toBe('multipart/related');
+  });
+
   it('should classify markdown formats', () => {
     expect(classifyFileKind('readme.md')).toBe('markdown');
     expect(classifyFileKind('readme.markdown')).toBe('markdown');

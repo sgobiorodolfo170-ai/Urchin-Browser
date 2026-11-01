@@ -15,6 +15,7 @@
  */
 import type { FileKind } from '@urchin/ipc-contract';
 import { getExtensionsForKind } from '../files/file-kind';
+import { BROWSER_NAME_ZH } from '../../shared/brand';
 
 /** ProgID 前缀（与 appId 语义一致；ext 小写）。 */
 const PROGID_PREFIX = 'UrchinBrowser';
@@ -41,8 +42,8 @@ export const ASSOCIATION_GROUPS: readonly AssociationGroup[] = [
   {
     id: 'documents',
     label: '文档',
-    description: 'PDF / Word / Markdown / 文本 / JSON 等文档文件',
-    kinds: ['pdf', 'docx', 'markdown', 'json', 'text', 'html'],
+    description: 'PDF / Word / Markdown / MHTML / 文本 / JSON 等文档文件',
+    kinds: ['pdf', 'docx', 'markdown', 'json', 'text', 'html', 'mhtml'],
   },
   {
     id: 'images',
@@ -96,7 +97,7 @@ export function buildRegistryEntries(ext: string, exePath: string): readonly Reg
     // .ext 的 OpenWithProgids 子键登记（使本浏览器出现在「打开方式」列表）
     { key: `${extKey}\\OpenWithProgids`, valueName: progId, value: '' },
     // ProgID 默认描述（资源管理器「打开方式」里显示的名称）
-    { key: progIdKey, valueName: '/d', value: 'Urchin Browser' },
+    { key: progIdKey, valueName: '/d', value: BROWSER_NAME_ZH },
     // 打开命令：带引号的 exe 路径 + "%1" 文件参数
     { key: `${progIdKey}\\shell\\open\\command`, valueName: '/d', value: `"${exePath}" "%1"` },
     // 文件类型图标：用 exe 内置图标（模块 0）

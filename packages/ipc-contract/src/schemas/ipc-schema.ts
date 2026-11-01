@@ -659,6 +659,8 @@ export const statusBarStateSchema = z.object({
   bookmarkSaved: z.boolean(),
   bookmarkable: z.boolean(),
   screenshotDisabled: z.boolean(),
+  /** 剪藏按钮是否禁用（无活动标签或非 http/https） */
+  clipDisabled: z.boolean(),
   translateActive: z.boolean(),
   translateDisabled: z.boolean(),
   searchEngine: z.string(),
@@ -687,6 +689,7 @@ export const uiStatusBarActionReqSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('reload') }),
   z.object({ type: z.literal('bookmark-toggle') }),
   z.object({ type: z.literal('screenshot') }),
+  z.object({ type: z.literal('clip') }),
   z.object({ type: z.literal('translate') }),
   z.object({ type: z.literal('suggestion-query'), query: z.string().max(2048) }),
   z.object({ type: z.literal('focus-page') }),
@@ -1006,6 +1009,8 @@ export const fileKindSchema = z.enum([
   'pdf',
   'image',
   'html',
+  /** MHTML 单文件网页快照（只读查看器打开） */
+  'mhtml',
   'markdown',
   'json',
   'text',
@@ -1499,6 +1504,159 @@ export type ScreenshotCancelReq = z.infer<typeof screenshotCancelReqSchema>;
 /** 取消框选响应：空 */
 export const screenshotCancelResSchema = z.object({}).default({});
 export type ScreenshotCancelRes = z.infer<typeof screenshotCancelResSchema>;
+
+// ============================================================================
+// clipper.* —— 地址栏剪藏按钮（Markdown / MHTML / PDF / 截图）
+// ============================================================================
+
+/** 剪藏保存格式（ocr 为预留禁用项） */
+export const clipperFormatSchema = z.enum(['markdown', 'mhtml', 'pdf', 'screenshot', 'ocr']);
+export type ClipperFormat = z.infer<typeof clipperFormatSchema>;
+
+/** 快照方式：clean = 正文清洗后导出；original = 当前页面原样导出 */
+export const clipperSnapshotModeSchema = z.enum(['clean', 'original']);
+export type ClipperSnapshotMode = z.infer<typeof clipperSnapshotModeSchema>;
+
+/** 页面快照中的保护信号（仅用于 UI 提示，不作为安全判定） */
+export const clipperPageSignalsSchema = z.object({
+  /** 页面注册了 copy/selectstart/contextmenu 拦截 */
+  copyBlocked: z.boolean().default(false),
+  /** 页面使用 user-select:none */
+  userSelectNone: z.boolean().default(false),
+  /** 页面存在 canvas（可能只有像素没有 DOM 文本） */
+  hasCanvas: z.boolean().default(false),
+  /** 页面存在开放 Shadow DOM */
+  hasOpenShadow: z.boolean().default(false),
+  /** 页面存在可能无法直接遍历的闭 Shadow DOM（由页面自报） */
+  hasClosedShadow: z.boolean().default(false),
+  /** 子 frame 数量（跨域 iframe 会在主进程补抽） */
+  frameCount: z.number().int().min(0).default(0),
+  /** 图片数量（判断是否偏图文页面） */
+  imageCount: z.number().int().min(0).default(0),
+  /** 页面 body.innerText 长度（粗判正文量） */
+  textLength: z.number().int().min(0).default(0),
+});
+export type ClipperPageSignals = z.infer<typeof clipperPageSignalsSchema>;
+
+/** 打开剪藏面板 */
+export const clipperOpenReqSchema = z.object({
+  tabId: z.number().int().positive(),
+});
+export type ClipperOpenReq = z.infer<typeof clipperOpenReqSchema>;
+export const clipperOpenResSchema = z.object({ ok: z.literal(true) });
+export type ClipperOpenRes = z.infer<typeof clipperOpenResSchema>;
+
+/**
+ * 拉取当前页面快照。
+ *
+ * html 为清理 script/style 后的完整 HTML（Defuddle 在渲染层面板解析）；
+ * selectionHtml 用于“选中优先”剪藏。字符串上限 16MB，防止异常页面耗尽内存。
+ */
+export const clipperPageReqSchema = z.object({
+  tabId: z.number().int().positive(),
+});
+export type ClipperPageReq = z.infer<typeof clipperPageReqSchema>;
+
+export const clipperPageResSchema = z.object({
+  url: z.string().max(16384),
+  title: z.string().max(4096),
+  favicon: z.string().max(16384).optional(),
+  html: z.string().max(16 * 1024 * 1024),
+  selectionHtml: z
+    .string()
+    .max(4 * 1024 * 1024)
+    .default(''),
+  selectionText: z
+    .string()
+    .max(2 * 1024 * 1024)
+    .default(''),
+  signals: clipperPageSignalsSchema,
+});
+export type ClipperPageRes = z.infer<typeof clipperPageResSchema>;
+
+/** 剪藏配置（主进程解析设置默认值后返回） */
+export const clipperConfigReqSchema = z.object({}).default({});
+export type ClipperConfigReq = z.infer<typeof clipperConfigReqSchema>;
+
+export const clipperConfigResSchema = z.object({
+  theme: z.enum(['light', 'dark']),
+  defaultFormat: clipperFormatSchema,
+  cleanSnapshot: z.boolean(),
+  selectionPriority: z.boolean(),
+  loadLazyContent: z.boolean(),
+  noteNameFormat: z.string().max(512),
+  properties: z.string().max(32 * 1024),
+  content: z.string().max(64 * 1024),
+  saveDirLabel: z.string().max(512),
+});
+export type ClipperConfigRes = z.infer<typeof clipperConfigResSchema>;
+
+/** 保存 Markdown（由面板生成完整文件内容，主进程只负责路径与落盘） */
+export const clipperSaveMarkdownReqSchema = z.object({
+  noteName: z.string().min(1).max(512),
+  markdown: z.string().max(20 * 1024 * 1024),
+});
+export type ClipperSaveMarkdownReq = z.infer<typeof clipperSaveMarkdownReqSchema>;
+
+export const clipperSaveMarkdownResSchema = z.object({
+  path: z.string().min(1),
+});
+export type ClipperSaveMarkdownRes = z.infer<typeof clipperSaveMarkdownResSchema>;
+
+/**
+ * 保存快照。
+ *
+ * mode=clean 时必须携带 cleanedHtml（面板用 Defuddle 正文重组）；
+ * mode=original 时主进程直接使用 tab.webContents 导出当前页面。
+ */
+export const clipperSaveSnapshotReqSchema = z.object({
+  /** original 模式必填；clean 模式已由面板生成 HTML，可不依赖 tab 存活 */
+  tabId: z.number().int().positive().optional(),
+  format: z.enum(['mhtml', 'pdf', 'screenshot']),
+  mode: clipperSnapshotModeSchema,
+  noteName: z.string().min(1).max(512),
+  cleanedHtml: z
+    .string()
+    .max(20 * 1024 * 1024)
+    .optional(),
+});
+export type ClipperSaveSnapshotReq = z.infer<typeof clipperSaveSnapshotReqSchema>;
+
+export const clipperSaveSnapshotResSchema = z.object({
+  /** 保存的文件路径；截图超过单张上限时为多段路径 */
+  paths: z.array(z.string().min(1)).min(1),
+  /** 非致命提示（如分段截图、回退视口截图） */
+  warnings: z.array(z.string().max(1024)).default([]),
+});
+export type ClipperSaveSnapshotRes = z.infer<typeof clipperSaveSnapshotResSchema>;
+
+/** 复制 Markdown 到系统剪贴板 */
+export const clipperCopyReqSchema = z.object({
+  text: z.string().max(20 * 1024 * 1024),
+});
+export type ClipperCopyReq = z.infer<typeof clipperCopyReqSchema>;
+export const clipperCopyResSchema = z.object({ ok: z.literal(true) });
+export type ClipperCopyRes = z.infer<typeof clipperCopyResSchema>;
+
+/** 关闭剪藏面板 */
+export const clipperCloseReqSchema = z.object({}).default({});
+export type ClipperCloseReq = z.infer<typeof clipperCloseReqSchema>;
+export const clipperCloseResSchema = z.object({ ok: z.literal(true) });
+export type ClipperCloseRes = z.infer<typeof clipperCloseResSchema>;
+
+/**
+ * 通过宿主只读查看器打开本地 MHTML。
+ *
+ * 渲染层的文件选择器/拖放入口不能直接 tab.create(file://...)：普通 BrowserView
+ * 会启用页面脚本，绕过 MHTML 查看器的 `javascript:false` 安全边界。本通道让
+ * 所有入口统一走主进程 routeLocalFile 的只读查看器分支。
+ */
+export const clipperOpenMhtmlFileReqSchema = z.object({
+  path: z.string().min(1).max(4096),
+});
+export type ClipperOpenMhtmlFileReq = z.infer<typeof clipperOpenMhtmlFileReqSchema>;
+export const clipperOpenMhtmlFileResSchema = z.object({ ok: z.literal(true) });
+export type ClipperOpenMhtmlFileRes = z.infer<typeof clipperOpenMhtmlFileResSchema>;
 
 /** 上传文件请求：弹出原生文件选择器，返回所选文件内容 */
 export const aiUploadFileReqSchema = z
@@ -2482,6 +2640,24 @@ export const ipcSchema = {
   },
   'screenshot.confirm': { req: screenshotConfirmReqSchema, res: screenshotConfirmResSchema },
   'screenshot.cancel': { req: screenshotCancelReqSchema, res: screenshotCancelResSchema },
+  // Clipper 域（地址栏剪藏按钮）：面板 + 页面快照 + Markdown/快照保存
+  'clipper.open': { req: clipperOpenReqSchema, res: clipperOpenResSchema },
+  'clipper.page': { req: clipperPageReqSchema, res: clipperPageResSchema },
+  'clipper.config': { req: clipperConfigReqSchema, res: clipperConfigResSchema },
+  'clipper.saveMarkdown': {
+    req: clipperSaveMarkdownReqSchema,
+    res: clipperSaveMarkdownResSchema,
+  },
+  'clipper.saveSnapshot': {
+    req: clipperSaveSnapshotReqSchema,
+    res: clipperSaveSnapshotResSchema,
+  },
+  'clipper.copy': { req: clipperCopyReqSchema, res: clipperCopyResSchema },
+  'clipper.close': { req: clipperCloseReqSchema, res: clipperCloseResSchema },
+  'clipper.openMhtmlFile': {
+    req: clipperOpenMhtmlFileReqSchema,
+    res: clipperOpenMhtmlFileResSchema,
+  },
   'provider.list': { req: providerListReqSchema, res: providerListResSchema },
   'provider.rescan': { req: providerRescanReqSchema, res: providerRescanResSchema },
   'provider.config.get': { req: providerConfigGetReqSchema, res: providerConfigGetResSchema },

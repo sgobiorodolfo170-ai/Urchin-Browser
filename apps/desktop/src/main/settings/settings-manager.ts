@@ -104,6 +104,26 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   // 标签持久化（TP4）：启动时恢复默认工作区上次打开的标签（默认 ON）。
   // 其他工作区的标签始终保存，切换到该工作区时懒恢复。
   ['startup.restoreTabs', true],
+  // 剪藏（M26）：保存格式、快照清洗、选中优先与模板。
+  // 保存目录固定为 <数据目录>/documents/clipper，不开放配置，避免路径穿越与迁移复杂度。
+  ['clipper.defaultFormat', 'markdown'],
+  ['clipper.cleanSnapshot', true],
+  ['clipper.selectionPriority', true],
+  ['clipper.loadLazyContent', false],
+  ['clipper.noteNameFormat', '{{title}}'],
+  [
+    'clipper.properties',
+    [
+      'title: {{title}}',
+      'source: {{url}}',
+      'author: {{author}}',
+      'published: {{published}}',
+      'created: {{date}}',
+      'description: {{description}}',
+      'tags: clippings',
+    ].join('\n'),
+  ],
+  ['clipper.content', '{{content}}'],
 ] as const;
 
 export class SettingsManager {

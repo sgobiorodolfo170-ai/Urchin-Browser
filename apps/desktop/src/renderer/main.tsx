@@ -13,6 +13,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/globals.css';
+import { displayNameForLocale } from '../shared/brand';
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
@@ -22,6 +23,14 @@ if (!rootEl) {
 const view = new URLSearchParams(location.search).get('view');
 const isStatusBarView = view === 'statusbar';
 const isBallView = view === 'statusbar-ball';
+const isClipperView = view === 'clipper';
+
+// 主窗口入口：按 locale 设置浏览器名标题（子窗口 statusbar/ball/clipper 各自
+// 在组件内设独立标题，不在此处覆盖）。index.html 静态 <title> 为英文保底，
+// React 加载后由此行按系统语言切换为中文。
+if (!isStatusBarView && !isBallView && !isClipperView) {
+  document.title = displayNameForLocale(navigator.language);
+}
 
 void (isStatusBarView
   ? import('./status-bar/status-bar-app').then(({ StatusBarRoot }) =>
@@ -36,14 +45,22 @@ void (isStatusBarView
         // status-bar-ball.tsx 自挂载（动态导入副作用）
         void mod;
       })
-    : import('./App').then(({ App }) =>
-        import('./theme/theme-provider').then(({ ThemeProvider }) =>
+    : isClipperView
+      ? import('./clipper/clipper-panel-app').then(({ ClipperPanelApp }) =>
           createRoot(rootEl).render(
             <StrictMode>
-              <ThemeProvider>
-                <App />
-              </ThemeProvider>
+              <ClipperPanelApp />
             </StrictMode>,
           ),
-        ),
-      ));
+        )
+      : import('./App').then(({ App }) =>
+          import('./theme/theme-provider').then(({ ThemeProvider }) =>
+            createRoot(rootEl).render(
+              <StrictMode>
+                <ThemeProvider>
+                  <App />
+                </ThemeProvider>
+              </StrictMode>,
+            ),
+          ),
+        ));

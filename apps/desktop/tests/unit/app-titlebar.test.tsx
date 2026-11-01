@@ -48,6 +48,18 @@ describe('AppTitleBar', () => {
     expect(mockInvoke).toHaveBeenCalledWith('window.getState', {});
   });
 
+  it('should display Chinese brand name under zh locale', () => {
+    mockWindowState(false);
+    const original = navigator.language;
+    Object.defineProperty(navigator, 'language', { value: 'zh-CN', configurable: true });
+    try {
+      render(<AppTitleBar />);
+      expect(screen.getByText('顽童浏览器')).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(navigator, 'language', { value: original, configurable: true });
+    }
+  });
+
   it('should request minimize when clicking the minimize control', async () => {
     mockWindowState(false);
     render(<AppTitleBar />);

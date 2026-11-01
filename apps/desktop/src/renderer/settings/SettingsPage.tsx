@@ -4,7 +4,7 @@
  * 设计：
  * - 左侧选项卡导航，右侧内容区
  * - 自动保存：字段变更后立即写入（debounce 800ms，与主流浏览器设置页对齐）
- * - 选项卡：通用 / 操作 / AI 助手 / 数据 / 隐私与安全 / 默认应用 / 关于
+ * - 选项卡：通用 / 操作 / AI 助手 / 数据 / 隐私与安全 / 默认应用 / 建议与反馈 / 关于
  *
  * 通过主窗口已有的 window.urchin.invoke('settings.*') 读写设置。
  */
@@ -12,6 +12,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
+import { getCurrentWindowId } from '../lib/current-window';
+import { displayNameForLocale } from '../../shared/brand';
 
 // ───────────────── 类型定义 ─────────────────
 
@@ -24,7 +26,8 @@ type FieldType =
   | 'provider-select'
   | 'provider-name'
   | 'directory'
-  | 'number';
+  | 'number'
+  | 'textarea';
 
 interface SelectOption {
   readonly value: string;
@@ -45,6 +48,8 @@ interface SettingField {
   readonly step?: number;
   /** number 类型专用：单位后缀（如 ms） */
   readonly unit?: string;
+  /** textarea 类型专用：显示行数（默认 4） */
+  readonly rows?: number;
 }
 
 /** 命名提供商配置（设置页保存的「提供商名 → 模型/Key/URL」） */
@@ -90,7 +95,8 @@ interface SettingsEntry {
 }
 
 /** 选项卡定义 */
-type TabKey = 'general' | 'ops' | 'ai' | 'data' | 'privacy' | 'files' | 'about';
+type TabKey =
+  'general' | 'clipper' | 'ops' | 'ai' | 'data' | 'privacy' | 'files' | 'feedback' | 'about';
 
 interface TabDef {
   readonly key: TabKey;
@@ -99,11 +105,13 @@ interface TabDef {
 
 const TABS: readonly TabDef[] = [
   { key: 'general', label: '通用' },
+  { key: 'clipper', label: '剪藏' },
   { key: 'ops', label: '操作' },
   { key: 'ai', label: 'AI 助手' },
   { key: 'data', label: '数据' },
   { key: 'privacy', label: '隐私与安全' },
   { key: 'files', label: '默认应用' },
+  { key: 'feedback', label: '建议与反馈' },
   { key: 'about', label: '关于' },
 ];
 
@@ -216,6 +224,72 @@ const OPS_FIELDS: readonly SettingField[] = [
   },
 ];
 
+const CLIPPER_FIELDS: readonly SettingField[] = [
+  {
+    key: 'clipper.defaultFormat',
+    label: '默认保存格式',
+    desc: '打开剪藏面板时预选的格式。MHTML/PDF/截图用于图文网页存档；OCR 暂未实现',
+    type: 'select',
+    options: [
+      { value: 'markdown', label: 'Markdown（可编辑）' },
+      { value: 'mhtml', label: 'MHTML（图文整页）' },
+      { value: 'pdf', label: 'PDF（打印版）' },
+      { value: 'screenshot', label: '截图（整页 PNG）' },
+    ],
+  },
+  {
+    key: 'clipper.cleanSnapshot',
+    label: '快照默认正文清洗',
+    desc: 'MHTML/PDF/截图默认使用 Defuddle 正文重新排版，去掉广告、导航、侧栏等；关闭则保留原页版式',
+    type: 'toggle',
+  },
+  {
+    key: 'clipper.selectionPriority',
+    label: '优先剪藏选中内容',
+    desc: 'Markdown 剪藏时，如果页面有选中文本则优先使用选中内容；可在面板中临时切换',
+    type: 'toggle',
+  },
+  {
+    key: 'clipper.loadLazyContent',
+    label: '快照前滚动加载懒加载内容',
+    desc: '快照格式保存前先分步滚动页面，尽量加载懒加载图片（最多 20 步，可能较慢）',
+    type: 'toggle',
+  },
+  {
+    key: 'clipper.noteNameFormat',
+    label: '文件名模板',
+    desc: '支持 {{title}} / {{date}} / {{domain}} 等变量；最终文件名由主进程净化',
+    type: 'text',
+  },
+  {
+    key: 'clipper.properties',
+    label: '页面属性模板',
+    desc: '每行一条「key: 值模板」，保存为 YAML frontmatter。留空则不生成属性区。可用变量：{{title}} {{url}} {{author}} {{published}} {{date}} {{description}} {{site}} {{content}} {{selection}}',
+    type: 'textarea',
+    rows: 8,
+  },
+  {
+    key: 'clipper.content',
+    label: '正文模板',
+    desc: 'Markdown 正文模板；{{content}} 为抽取正文，{{selection}} 为选中内容。属性区之外的内容都写在这里',
+    type: 'textarea',
+    rows: 5,
+  },
+];
+
+/** 剪藏保存目录说明（固定路径，不开放修改） */
+function ClipperLocationHint() {
+  return (
+    <div className="mt-4 rounded-md border border-border bg-surface-secondary px-4 py-3 text-xs leading-6 text-text-secondary">
+      <div className="text-sm font-medium text-text">保存位置</div>
+      所有剪藏文件固定保存到 <code className="rounded bg-surface px-1">documents/clipper</code>
+      （用户数据目录下）。Markdown / MHTML / PDF / 截图共用该目录，重名自动追加序号。
+      <br />
+      MHTML 为只读图文快照，可在浏览器 MHTML 查看器中打开；也可从 GenOffice 文档主页打开。
+    </div>
+  );
+}
+
 const DATA_FIELDS: readonly SettingField[] = [
   {
     key: 'data.directory',
@@ -260,6 +334,14 @@ const DEFAULTS: Record<string, unknown> = {
   'translate.engine': 'auto',
   'translate.autoTranslate': false,
   'startup.restoreTabs': true,
+  'clipper.defaultFormat': 'markdown',
+  'clipper.cleanSnapshot': true,
+  'clipper.selectionPriority': true,
+  'clipper.loadLazyContent': false,
+  'clipper.noteNameFormat': '{{title}}',
+  'clipper.properties':
+    'title: {{title}}\nsource: {{url}}\nauthor: {{author}}\npublished: {{published}}\ncreated: {{date}}\ndescription: {{description}}\ntags: clippings',
+  'clipper.content': '{{content}}',
 };
 
 // ───────────────── 工具函数 ─────────────────
@@ -445,6 +527,17 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
               <ImportBookmarksBlock onToast={showToast} />
             </>
           )}
+          {activeTab === 'clipper' && (
+            <>
+              <SettingsSection
+                title="剪藏"
+                fields={CLIPPER_FIELDS}
+                entries={entries}
+                onChange={updateField}
+              />
+              <ClipperLocationHint />
+            </>
+          )}
           {activeTab === 'ops' && <OpsTab entries={entries} onChange={updateField} />}
           {activeTab === 'ai' && (
             <section>
@@ -471,6 +564,7 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
             />
           )}
           {activeTab === 'files' && <FilesTab onToast={showToast} />}
+          {activeTab === 'feedback' && <FeedbackTab />}
           {activeTab === 'about' && <AboutTab />}
         </div>
       </div>
@@ -500,22 +594,39 @@ function SettingsSection({ title, fields, entries, onChange, profileApi }: Setti
     <section>
       <h1 className="mb-6 text-2xl font-semibold">{title}</h1>
       <div className="space-y-1">
-        {fields.map((field) => (
-          <div key={field.key} className="flex items-center justify-between gap-4 py-3">
-            <div className="flex-1">
+        {fields.map((field) =>
+          field.type === 'textarea' ? (
+            <div key={field.key} className="py-3">
               <div className="font-medium">{field.label}</div>
               {field.desc && <div className="mt-0.5 text-xs text-text-secondary">{field.desc}</div>}
+              <div className="mt-2">
+                <FieldControl
+                  field={field}
+                  value={entries[field.key]}
+                  onChange={(v) => onChange(field.key, v)}
+                  profileApi={profileApi}
+                />
+              </div>
             </div>
-            <div className="shrink-0" style={{ minWidth: 240 }}>
-              <FieldControl
-                field={field}
-                value={entries[field.key]}
-                onChange={(v) => onChange(field.key, v)}
-                profileApi={profileApi}
-              />
+          ) : (
+            <div key={field.key} className="flex items-center justify-between gap-4 py-3">
+              <div className="flex-1">
+                <div className="font-medium">{field.label}</div>
+                {field.desc && (
+                  <div className="mt-0.5 text-xs text-text-secondary">{field.desc}</div>
+                )}
+              </div>
+              <div className="shrink-0" style={{ minWidth: 240 }}>
+                <FieldControl
+                  field={field}
+                  value={entries[field.key]}
+                  onChange={(v) => onChange(field.key, v)}
+                  profileApi={profileApi}
+                />
+              </div>
             </div>
-          </div>
-        ))}
+          ),
+        )}
       </div>
     </section>
   );
@@ -666,6 +777,19 @@ function FieldControl({ field, value, onChange, profileApi }: FieldControlProps)
         />
         {field.unit && <span className="text-xs text-text-secondary">{field.unit}</span>}
       </div>
+    );
+  }
+
+  // textarea：长文本设置（剪藏模板），横向占满整行
+  if (field.type === 'textarea') {
+    return (
+      <textarea
+        className="w-full resize-y rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs leading-5 text-text outline-none focus:border-primary"
+        rows={field.rows ?? 4}
+        value={toStr(value)}
+        onChange={(e) => onChange(e.target.value)}
+        spellCheck={false}
+      />
     );
   }
 
@@ -1121,7 +1245,7 @@ function AboutTab() {
       <h1 className="mb-6 text-2xl font-semibold">关于</h1>
       <div className="space-y-4">
         <div className="rounded-md border border-border bg-surface-secondary px-4 py-4">
-          <div className="text-lg font-semibold">Urchin Browser</div>
+          <div className="text-lg font-semibold">{displayNameForLocale(navigator.language)}</div>
           <div className="mt-1 text-sm text-text-secondary">版本 {appVersion}</div>
           <div className="mt-3 text-xs text-text-secondary">
             一款基于 Electron + Chromium 的 AI 浏览器，集成多 Provider AI 助手与隐私保护。
@@ -1151,6 +1275,75 @@ function AboutTab() {
           <div className="mt-2 text-xs text-text-secondary">
             Copyright © 2026 Urchin Browser Contributors
           </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ───────────────── 建议与反馈选项卡 ─────────────────
+
+/** 远程仓库地址（Issues / Discussions 链接以此拼接）。 */
+const REPO_URL = 'https://github.com/sgobiorodolfo170-ai/Urchin-Browser';
+
+/**
+ * 「建议与反馈」选项卡：聚合 GitHub Issues 与 Discussions 入口。
+ *
+ * 点击后在 Urchin 内新开标签页打开对应 GitHub 页面（复用 tab.create，
+ * active:true 让新标签立即获得焦点，自然离开设置面板）。
+ */
+function FeedbackTab() {
+  const [opening, setOpening] = useState<string | null>(null);
+
+  const handleOpen = useCallback(async (url: string) => {
+    setOpening(url);
+    try {
+      const windowId = await getCurrentWindowId();
+      await window.urchin.invoke('tab.create', { windowId, url, active: true });
+    } catch {
+      // 标签创建失败不应中断设置页交互：静默忽略，用户可重试或复制链接手动打开
+    } finally {
+      setOpening(null);
+    }
+  }, []);
+
+  return (
+    <section>
+      <h1 className="mb-2 text-2xl font-semibold">建议与反馈</h1>
+      <p className="mb-6 text-sm text-text-secondary">
+        欢迎通过 GitHub 提交问题、分享想法或参与讨论。点击下方入口会在本浏览器新标签页打开对应页面。
+      </p>
+      <div className="space-y-4">
+        <div className="rounded-md border border-border bg-surface-secondary px-4 py-4">
+          <div className="text-lg font-semibold">问题反馈（Issues）</div>
+          <div className="mt-1 text-sm text-text-secondary">
+            报告 Bug、提出功能请求或查看已知问题。
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-3"
+            disabled={opening === `${REPO_URL}/issues`}
+            onClick={() => void handleOpen(`${REPO_URL}/issues`)}
+          >
+            {opening === `${REPO_URL}/issues` ? '打开中…' : '前往 Issues'}
+          </Button>
+        </div>
+
+        <div className="rounded-md border border-border bg-surface-secondary px-4 py-4">
+          <div className="text-lg font-semibold">讨论区（Discussions）</div>
+          <div className="mt-1 text-sm text-text-secondary">
+            想法交流、使用问答、Show &amp; Tell 与经验分享。
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-3"
+            disabled={opening === `${REPO_URL}/discussions`}
+            onClick={() => void handleOpen(`${REPO_URL}/discussions`)}
+          >
+            {opening === `${REPO_URL}/discussions` ? '打开中…' : '前往 Discussions'}
+          </Button>
         </div>
       </div>
     </section>
@@ -1371,7 +1564,9 @@ function FilesTab({ onToast }: { readonly onToast: (msg: string) => void }) {
       setRegistering(groupId);
       try {
         await window.urchin.invoke('file-association.register', { group: groupId });
-        onToast('已注册。可在系统「打开方式」选择 Urchin Browser 并勾选"始终使用"');
+        onToast(
+          `已注册。可在系统「打开方式」选择 ${displayNameForLocale(navigator.language)} 并勾选"始终使用"`,
+        );
         await loadStatus();
       } catch (e) {
         onToast('注册失败：' + String(e));
@@ -1386,8 +1581,9 @@ function FilesTab({ onToast }: { readonly onToast: (msg: string) => void }) {
     <section>
       <h1 className="mb-2 text-2xl font-semibold">默认应用</h1>
       <p className="mb-6 text-sm text-text-secondary">
-        把 Urchin Browser 设为音视频、文档、图片的打开方式。注册后，双击这类文件
-        即可用本浏览器打开；在系统「打开方式 → 选择其他应用」中勾选「始终使用」， 即可设为永久默认。
+        把 {displayNameForLocale(navigator.language)}{' '}
+        设为音视频、文档、图片的打开方式。注册后，双击这类文件 即可用本浏览器打开；在系统「打开方式
+        → 选择其他应用」中勾选「始终使用」， 即可设为永久默认。
       </p>
 
       {loading && <p className="text-text-secondary">加载中…</p>}

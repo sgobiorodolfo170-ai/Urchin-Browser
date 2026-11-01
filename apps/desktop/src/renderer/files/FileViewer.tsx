@@ -44,6 +44,7 @@ const KIND_LABELS: Readonly<Record<FileKind, string>> = {
   pdf: 'PDF',
   image: '图片',
   html: 'HTML',
+  mhtml: 'MHTML',
   markdown: 'Markdown',
   json: 'JSON',
   text: '文本',

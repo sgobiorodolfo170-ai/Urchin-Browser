@@ -25,6 +25,7 @@ import {
   Bookmark as BookmarkIcon,
   Sparkles,
   Scissors,
+  NotebookPen,
   Languages,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -55,6 +56,10 @@ export interface OmniboxProps {
   readonly onScreenshot?: () => void;
   /** 截图按钮是否禁用（如无活跃网页可截） */
   readonly screenshotDisabled?: boolean;
+  /** 剪藏当前页面回调（弹出剪藏面板） */
+  readonly onClip?: () => void;
+  /** 剪藏按钮是否禁用（无活跃网页或非 http/https） */
+  readonly clipDisabled?: boolean;
   /** 翻译当前页面回调（M24 dev.81：未激活→整页翻译；激活→恢复原文） */
   readonly onTranslate?: () => void;
   /** 当前页面是否处于翻译激活态（按钮高亮 + title 切换） */
@@ -95,6 +100,8 @@ export function Omnibox({
   onBookmarkToggle,
   onScreenshot,
   screenshotDisabled = false,
+  onClip,
+  clipDisabled = false,
   onTranslate,
   translateActive = false,
   translateDisabled = false,
@@ -252,6 +259,18 @@ export function Omnibox({
       >
         {/* -scale-x-100：剪刀图标左右翻转，让剪刀口朝左 */}
         <Scissors className="h-4 w-4 -scale-x-100" />
+      </button>
+
+      {/* 剪藏按钮：截图之后（M26）。点击打开独立剪藏面板，支持 Markdown / MHTML / PDF / 截图 */}
+      <button
+        type="button"
+        className="flex shrink-0 items-center justify-center rounded-md p-1.5 text-text-secondary hover:bg-surface-secondary hover:text-text disabled:opacity-40 disabled:hover:bg-transparent"
+        onClick={() => onClip?.()}
+        disabled={clipDisabled || !onClip}
+        aria-label="剪藏"
+        title="剪藏（Clipper）"
+      >
+        <NotebookPen className="h-4 w-4" />
       </button>
 
       {/* AI 助手按钮（占位 · 待开发） */}

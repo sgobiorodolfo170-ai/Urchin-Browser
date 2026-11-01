@@ -27,6 +27,7 @@ import {
 } from 'electron';
 import { join, basename, resolve } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { createLogger } from '@urchin/logger';
 
 import { PROVIDER_EVENT_CHANNEL, registerHandler, type ProviderEvent } from '@urchin/ipc-contract';
@@ -112,6 +113,10 @@ import {
 } from './workspaces';
 import { CaptureOverlay } from './screenshots/capture-overlay';
 import { registerScreenshotHandlers } from './screenshots/register-handlers';
+import { ClipperPanel } from './clipper/panel';
+import { ClipperStore } from './clipper/store';
+import { registerClipperHandlers } from './clipper/register-handlers';
+import { createMhtmlView } from './clipper/mhtml-viewer';
 import { installTabContextMenu, handleContextMenu } from './context-menu';
 import { installZoomControl, applyZoomByDelta } from './zoom';
 import { TranslateManager, TRANSLATE_PROGRESS_CHANNEL } from './translate/translate-manager';
@@ -306,6 +311,27 @@ const tabManager = new TabManager((workspaceId) =>
 function routeLocalFile(windowId: number, path: string): boolean {
   try {
     const kind = classifyFileKind(basename(path));
+    // MHTML：只读查看器（禁用 JS、无 preload），不进入 GenOffice 文本编辑器。
+    // 从 GenOffice Home / 文件关联 / 文件选择器打开都会走这里。
+    if (kind === 'mhtml') {
+      const view = createMhtmlView(path, {
+        openUrl: (target) => {
+          if (/^https?:\/\//i.test(target)) {
+            tabManager.create({ windowId, url: target, active: true });
+          }
+        },
+        backgroundColor: currentThemeBackground(),
+        autoLoad: false,
+      });
+      tabManager.create({
+        windowId,
+        url: pathToFileURL(path).toString(),
+        active: true,
+        view: view as unknown as BrowserViewLike,
+      });
+      log.info('open local mhtml (reader)', { path });
+      return true;
+    }
     const genofficeAppByKind: Readonly<Record<string, string>> = {
       markdown: 'markdown',
       pdf: 'pdf',
@@ -851,6 +877,50 @@ function registerIpcHandlers(): void {
     dataDir: currentDataDir,
   });
   registerScreenshotHandlers(ipcMain, { overlay: captureOverlay });
+
+  // 剪藏域 handler（地址栏剪藏按钮，M26）：面板 + 页面快照 + 多格式落盘。
+  // 保存目录固定为 <数据目录>/documents/clipper；面板失焦自动关闭。
+  const clipperStore = new ClipperStore({
+    documentsRoot: join(currentDataDir, 'documents'),
+  });
+  const clipperPanel = new ClipperPanel({
+    getParentWindow: () => windowManager.getAllWindows()[0]?.browserWindow ?? null,
+    preloadPath: join(__dirname, '..', 'preload', 'index.js'),
+    getLayout: () => {
+      const state = getLayoutState();
+      return {
+        leftWidth: state.leftWidth,
+        rightWidth: state.rightWidth,
+        bottomHeight: state.bottomHeight,
+      };
+    },
+    onLoad: async (win, tabId) => {
+      const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
+      if (isDev) {
+        const base = process.env.URCHIN_RENDERER_URL ?? 'http://localhost:5173';
+        const u = new URL(base);
+        u.searchParams.set('view', 'clipper');
+        u.searchParams.set('tabId', String(tabId));
+        await win.loadURL(u.toString());
+      } else {
+        await win.loadFile(join(__dirname, '..', 'renderer', 'index.html'), {
+          query: { view: 'clipper', tabId: String(tabId) },
+        });
+      }
+    },
+  });
+  registerClipperHandlers({
+    ipcMain,
+    tabManager,
+    settings: settingsManager,
+    panel: clipperPanel,
+    store: clipperStore,
+    openMhtmlFile: (path) => {
+      if (!routeLocalFile(defaultWindowId(), path)) {
+        throw new Error(`无法打开 MHTML：${path}`);
+      }
+    },
+  });
 
   // dialog 域 handler：原生目录选择器
   // 供设置页「下载位置」「摘要文档保存位置」等路径字段点击选择目录使用。

@@ -17,6 +17,7 @@ const electronMocks = vi.hoisted(() => ({
   isPackaged: false,
   getAppPath: vi.fn().mockReturnValue('C:\\app'),
   resourcesPath: 'C:\\resources',
+  getLocale: vi.fn().mockReturnValue('en-US'),
   /** dev.50：nativeTheme 暗色标志（背景色跟随主题断言用） */
   dark: false,
 }));
@@ -32,6 +33,7 @@ vi.mock('electron', () => ({
     get resourcesPath() {
       return electronMocks.resourcesPath;
     },
+    getLocale: electronMocks.getLocale,
   },
   nativeTheme: {
     get shouldUseDarkColors() {

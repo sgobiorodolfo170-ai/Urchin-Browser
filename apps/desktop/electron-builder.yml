@@ -3,7 +3,7 @@
 # 首版仅 Windows x64
 
 appId: com.urchin.browser
-productName: Urchin Browser
+productName: 顽童浏览器
 copyright: Copyright © 2026 Urchin Browser Contributors
 
 directories:
@@ -115,7 +115,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Urchin Browser
+  shortcutName: 顽童浏览器
   # 卸载即全卸（dev.42 用户原则）：移除 AppData\Roaming\<app>——cookies 与 pi 模块
   # 全部数据（pi/agent 会话、pi/npm-global 沙箱）都在其中；浏览器主数据在软件根
   # data/（DD1），随安装目录删除。

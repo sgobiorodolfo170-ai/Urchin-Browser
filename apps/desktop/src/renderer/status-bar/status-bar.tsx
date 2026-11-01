@@ -97,6 +97,8 @@ export function StatusBar({ state, focused, onAction, onFocusChange }: StatusBar
           onBookmarkToggle={() => onAction({ type: 'bookmark-toggle' })}
           onScreenshot={() => onAction({ type: 'screenshot' })}
           screenshotDisabled={state.screenshotDisabled}
+          onClip={() => onAction({ type: 'clip' })}
+          clipDisabled={state.clipDisabled}
           onTranslate={() => onAction({ type: 'translate' })}
           translateActive={state.translateActive}
           translateDisabled={state.translateDisabled}

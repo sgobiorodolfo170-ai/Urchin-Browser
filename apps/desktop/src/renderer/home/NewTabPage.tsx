@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { displayNameForLocale } from '../../shared/brand';
 import { lookupBuiltinSite, builtinIconUrl } from './site-directory-lookup';
 
 /** 常用网站条目（仅根网址） */
@@ -317,11 +318,11 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
       <div className="flex flex-col items-center">
         <img
           src={BROWSER_ICON}
-          alt="Urchin Browser"
+          alt={displayNameForLocale(navigator.language)}
           className="h-16 w-16 rounded-2xl shadow-lg"
           draggable={false}
         />
-        <h1 className="mt-3 text-2xl font-semibold">Urchin Browser</h1>
+        <h1 className="mt-3 text-2xl font-semibold">{displayNameForLocale(navigator.language)}</h1>
       </div>
 
       {/* 红橙渐变分割线（宽度不到边、留空，高 2px；sticky 吸顶，常用区新增行/页面

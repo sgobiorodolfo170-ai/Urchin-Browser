@@ -5,7 +5,7 @@
 
 ## 决策
 
-Urchin Browser 的 AI 子系统（LLM 调用、Provider 插件加载与执行）跑在**独立的 utility process**，而非主进程。隔离策略为**分阶段迁移**：
+顽童浏览器（Urchin Browser）的 AI 子系统（LLM 调用、Provider 插件加载与执行）跑在**独立的 utility process**，而非主进程。隔离策略为**分阶段迁移**：
 
 - **v0.1 MVP**：LLM API 调用 + Provider 插件加载与执行迁入 utility process。上下文记忆、向量化等推迟到 v0.2+。
 - **v0.1 即上 per-provider 子进程**（IP4 完整版）：每 Provider 独立 utility fork，第三方 Provider 代码 crash 不影响 Orchestrator 与其他 Provider。允许第三方加载（IP8），但 v0.1 不做签名校验，v0.4 引入签名 allowlist（与 NFR-SEC-07 对齐）。

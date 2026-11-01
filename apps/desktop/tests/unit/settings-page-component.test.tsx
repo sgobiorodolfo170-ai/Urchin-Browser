@@ -3,7 +3,7 @@
  *
  * 覆盖：
  * 1. 挂载时加载设置 + Provider 列表
- * 2. 选项卡切换（通用 / 操作 / AI 助手 / 隐私 / 关于）
+ * 2. 选项卡切换（通用 / 操作 / AI 助手 / 隐私 / 建议与反馈 / 关于）
  * 3. 字段修改触发 800ms debounce 自动保存（settings.set + 事件广播 + toast）
  * 4. 重置默认（confirm 确认后写入 DEFAULTS）
  * 5. 加载失败错误分支
@@ -103,6 +103,13 @@ describe('SettingsPage', () => {
     clickTab('隐私与安全');
     expect(screen.getByText('拦截追踪器')).toBeTruthy();
     expect(screen.getByText('请勿追踪')).toBeTruthy();
+
+    // 建议与反馈选项卡（GitHub Issues / Discussions 入口）
+    clickTab('建议与反馈');
+    expect(screen.getByText('问题反馈（Issues）')).toBeTruthy();
+    expect(screen.getByText('讨论区（Discussions）')).toBeTruthy();
+    expect(screen.getByText('前往 Issues')).toBeTruthy();
+    expect(screen.getByText('前往 Discussions')).toBeTruthy();
 
     // 关于（原「更新」内容已移入）
     clickTab('关于');
@@ -246,5 +253,17 @@ describe('SettingsPage', () => {
       key: 'data.directory',
       value: 'D:\\urchin-data',
     });
+  });
+
+  it('should render clipper tab between general and ops with format/template fields', async () => {
+    mockLoadSuccess();
+    render(<SettingsPage />);
+    await waitFor(() => expect(screen.getAllByText('通用').length).toBeGreaterThan(0));
+
+    clickTab('剪藏');
+    expect(screen.getByText('默认保存格式')).toBeTruthy();
+    expect(screen.getByText('快照默认正文清洗')).toBeTruthy();
+    expect(screen.getByText('页面属性模板')).toBeTruthy();
+    expect(screen.getByText('保存位置')).toBeTruthy();
   });
 });

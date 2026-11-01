@@ -5,7 +5,7 @@
 
 ## 决策
 
-Urchin Browser 选用 **Electron** 作为应用框架，使用其内置完整 Chromium（Blink + V8）作为渲染与执行内核。
+顽童浏览器（Urchin Browser）选用 **Electron** 作为应用框架，使用其内置完整 Chromium（Blink + V8）作为渲染与执行内核。
 
 ## 背景
 

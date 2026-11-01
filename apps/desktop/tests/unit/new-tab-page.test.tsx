@@ -56,6 +56,19 @@ describe('NewTabPage', () => {
     expect(screen.getByText('最近浏览')).toBeInTheDocument();
   });
 
+  it('should display Chinese brand name under zh locale', async () => {
+    mockLoad();
+    const original = navigator.language;
+    Object.defineProperty(navigator, 'language', { value: 'zh-CN', configurable: true });
+    try {
+      render(<NewTabPage onNavigate={onNavigate} />);
+      await waitFor(() => expect(screen.getByText('顽童浏览器')).toBeInTheDocument());
+      expect(screen.queryByText('Urchin Browser')).toBeNull();
+    } finally {
+      Object.defineProperty(navigator, 'language', { value: original, configurable: true });
+    }
+  });
+
   it('should derive recent sites from history (root url, dedup, ignore non-http)', async () => {
     mockLoad();
     render(<NewTabPage onNavigate={onNavigate} />);

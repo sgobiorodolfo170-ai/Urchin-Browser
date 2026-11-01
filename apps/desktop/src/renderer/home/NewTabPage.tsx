@@ -322,7 +322,9 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
           className="h-16 w-16 rounded-2xl shadow-lg"
           draggable={false}
         />
-        <h1 className="mt-3 text-2xl font-semibold">{displayNameForLocale(navigator.language)}</h1>
+        <h1 className="mt-3 font-brand text-2xl font-semibold">
+          {displayNameForLocale(navigator.language)}
+        </h1>
       </div>
 
       {/* 红橙渐变分割线（宽度不到边、留空，高 2px；sticky 吸顶，常用区新增行/页面

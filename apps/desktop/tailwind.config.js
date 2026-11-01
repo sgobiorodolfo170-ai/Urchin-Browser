@@ -27,6 +27,7 @@ export default {
       },
       fontFamily: {
         sans: 'var(--font-family)',
+        brand: 'var(--font-family-brand)',
       },
       fontSize: {
         xs: 'var(--font-size-xs)',

@@ -37,6 +37,8 @@
 
   /* 字体（TH7 决策：系统字体栈） */
   --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* 品牌名字体（主页「顽童浏览器」标题）：宋体系衬线栈（SimSun 为主，宋体/Songti SC/STSong 跨平台兜底） */
+  --font-family-brand: SimSun, '宋体', 'Songti SC', STSong, serif;
   --font-size-xs: 12px;
   --font-size-sm: 13px;
   --font-size-base: 14px;

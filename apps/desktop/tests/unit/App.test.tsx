@@ -487,6 +487,36 @@ describe('App (Browser Shell)', () => {
     );
   });
 
+  // ── 笔记 / 便利贴入口：创建 urchin://notebook 标签页（M27） ──
+
+  it('should create notebook tab via left sidebar entry', async () => {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'tab.list') return Promise.resolve({ tabs: [makeTab()] });
+      if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') return Promise.resolve({ value: 300 });
+      if (channel === 'window.getCurrent') return Promise.resolve({ windowId: 1 });
+      if (channel === 'tab.create') {
+        return Promise.resolve({
+          tab: makeTab({ id: 2, url: 'urchin://notebook', title: '笔记' }),
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    fireEvent.click(screen.getByLabelText('笔记'));
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
+        windowId: 1,
+        url: 'urchin://notebook',
+        active: true,
+      }),
+    );
+  });
+
   // ── 书签 toggle：创建 + 删除 ──
 
   it('should create bookmark via star toggle', async () => {

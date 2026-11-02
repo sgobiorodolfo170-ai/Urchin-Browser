@@ -60,11 +60,13 @@ export const SHELL_BOTTOM_INSET = 6;
  *  settings 作为 React 渲染的内部页面；newtab 主页同为 React 渲染；
  *  file-viewer 本地文件查看器同为 React 渲染（文件路径经 ?path= 参数传入）；
  *  genoffice-home 为 GenOffice 文档模块主页（阶段 4.5，React 渲染）。
+ *  notebook 为笔记 / 便利贴页（M27，React 渲染）。
  *  ADR-014：pi 入口不再使用 urchin://ai（已释放给未来原生 AI 助手）；pi 聊天页
  *  是 pi-web-host 托管的普通 http 标签，BrowserView 正常渲染。 */
 const URCHIN_RENDERER_HOSTS = [
   'urchin://settings',
   'urchin://mail',
+  'urchin://notebook',
   'urchin://newtab',
   'urchin://file-viewer',
   'urchin://genoffice-home',

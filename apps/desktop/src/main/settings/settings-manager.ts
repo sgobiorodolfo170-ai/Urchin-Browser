@@ -124,6 +124,10 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
     ].join('\n'),
   ],
   ['clipper.content', '{{content}}'],
+  // M27 笔记 / 便利贴（urchin://notebook）：整体状态 JSON（笔记本/页面/任务/便利贴/
+  // 画布视口/三区分割位置）。默认 null = 首次运行由渲染层种下默认笔记本。
+  // 该键必须登记在此处，SettingsManager 构造时才会从 SQLite 加载已保存状态。
+  ['notebook.state', null],
 ] as const;
 
 export class SettingsManager {

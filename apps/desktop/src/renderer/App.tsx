@@ -29,9 +29,11 @@ import {
   Home,
   FileText,
   Mail as MailIcon,
+  PenLine,
 } from 'lucide-react';
 import { AppTitleBar } from './components/app-titlebar';
 import { MailView } from './mail/MailView';
+import { NotebookView } from './notebook/NotebookView';
 import { SettingsPage } from './settings/SettingsPage';
 import { NewTabPage } from './home/NewTabPage';
 import { GenOfficeHome } from './home/GenOfficeHome';
@@ -162,6 +164,9 @@ function TabFavicon({ tab, className }: { tab: TabSnapshot; className?: string }
   }
   if (tab.url?.startsWith('urchin://mail')) {
     return <MailIcon className={cn('shrink-0 text-text-secondary', className ?? 'h-3 w-3')} />;
+  }
+  if (tab.url?.startsWith('urchin://notebook')) {
+    return <PenLine className={cn('shrink-0 text-text-secondary', className ?? 'h-3 w-3')} />;
   }
   if (tab.url?.startsWith('urchin://genoffice')) {
     const iconClass = cn('shrink-0', className ?? 'h-3 w-3');
@@ -363,6 +368,8 @@ export function App() {
   const contentAreaRef = useRef<HTMLDivElement | null>(null);
   /** 中区内部页缩放倍率（Ctrl+滚轮；网页标签由主进程单独缩放 BrowserView）。 */
   const [contentZoom, setContentZoom] = useState(1);
+  /** 笔记页不参与内容区 Ctrl+滚轮缩放（画布有自己的滚轮缩放），用 ref 在 wheel 闭包里读取。 */
+  const isNotebookTabRef = useRef(false);
   /** M15 DevTools 检视列开关（F12 / 侧栏按钮触发 devtools:toggle）。 */
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
   /** 检视列宽度（0 = 折叠；拖宽时同步主进程 BrowserView bounds）。 */
@@ -380,6 +387,8 @@ export function App() {
     if (!el) return undefined;
     const handleWheel = (e: WheelEvent): void => {
       if (!e.ctrlKey) return;
+      // 笔记页画布自行处理滚轮缩放，且页面整体不应被 Ctrl+滚轮缩放
+      if (isNotebookTabRef.current) return;
       e.preventDefault();
       setContentZoom((prev) => {
         const raw = e.deltaY < 0 ? prev * CONTENT_ZOOM_STEP : prev / CONTENT_ZOOM_STEP;
@@ -1214,6 +1223,33 @@ export function App() {
   }, [tabs, activeTabId]);
 
   /**
+   * 打开笔记 / 便利贴页（M27）：toggle 模式——已存在则激活，否则创建。
+   * 与邮箱一致：urchin://notebook 内部页由 React NotebookView 渲染。
+   */
+  const handleOpenNotebook = useCallback(async () => {
+    const existing = tabs.find((t) => t.url?.startsWith('urchin://notebook'));
+    if (existing) {
+      if (existing.id !== activeTabId) {
+        try {
+          await window.urchin.invoke('tab.setActive', { tabId: existing.id });
+        } catch (e) {
+          console.error('Failed to activate notebook tab:', e);
+        }
+      }
+      return;
+    }
+    try {
+      await window.urchin.invoke('tab.create', {
+        windowId: await getCurrentWindowId(),
+        url: 'urchin://notebook',
+        active: true,
+      });
+    } catch (e) {
+      console.error('Failed to open notebook tab:', e);
+    }
+  }, [tabs, activeTabId]);
+
+  /**
    * 打开 DeepSeek Harness 标签页：启动 dsh web 子进程 → 在浏览器标签页打开前端。
    * 与 piWeb 不同：关闭该标签页后自动停止后端（主进程 tab-lifecycle 绑定）。
    * toggle 语义：已激活则关闭标签（触发后端停止）；未激活则激活；未运行则启动。
@@ -1694,6 +1730,13 @@ export function App() {
   // 所以用 startsWith 判断而非严格相等，避免匹配失败导致组件不渲染。
   const isSettingsTab = !!activeTab?.url?.startsWith('urchin://settings');
   const isMailTab = !!activeTab?.url?.startsWith('urchin://mail');
+  const isNotebookTab = !!activeTab?.url?.startsWith('urchin://notebook');
+  isNotebookTabRef.current = isNotebookTab;
+
+  // 进入笔记页时重置内容区缩放：笔记页不参与 Ctrl+滚轮缩放，避免残留倍率导致三区不铺满。
+  useEffect(() => {
+    if (isNotebookTab) setContentZoom(1);
+  }, [isNotebookTab]);
   const isGenOfficeHomeTab = !!activeTab?.url?.startsWith('urchin://genoffice-home');
   const isNewTab = !!activeTab?.url?.startsWith('urchin://newtab');
   const isWorkspacesTab = !!activeTab?.url?.startsWith('urchin://workspaces');
@@ -1710,6 +1753,7 @@ export function App() {
   const isInternalPage =
     isSettingsTab ||
     isMailTab ||
+    isNotebookTab ||
     isGenOfficeHomeTab ||
     isNewTab ||
     isWorkspacesTab ||
@@ -2342,6 +2386,16 @@ export function App() {
                   aria-hidden
                 />
               </button>
+              {/* 笔记 / 便利贴入口（M27）：位于 pi 与 GenOffice 之间，
+               *  打开 urchin://notebook 内部页（三区：导航 / 笔记任务 / 无限画布） */}
+              <button
+                className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+                onClick={() => void handleOpenNotebook()}
+                aria-label="笔记"
+                title="笔记 / 便利贴"
+              >
+                <PenLine className="h-4 w-4" />
+              </button>
               {/* GenOffice 文档入口（阶段 4.5，用户指令：由「打开文件」按钮改为
                *  嵌入的 GenOffice 前端入口；打开文件动作收敛到主页/Ctrl+O/拖放） */}
               <button
@@ -2420,6 +2474,10 @@ export function App() {
                     /* M25 邮箱模块：IMAP 收信 + 邮件阅读（ADR-010）。
                      * 引擎在主进程（imapflow），UI 在渲染进程，IPC 走 zod 契约。 */
                     <MailView />
+                  ) : isNotebookTab ? (
+                    /* M27 笔记 / 便利贴：三区（导航 / 笔记任务 / 无限画布）。
+                     * 状态持久化到 settings 键 notebook.state。 */
+                    <NotebookView />
                   ) : isGenOfficeHomeTab && !isGenOfficeTab ? (
                     /* GenOffice 文档主页保底（阶段 4.6）：正常情况下主进程以
                      *  GenOffice shell Home 视图承载（viewKind=genoffice，React 留空）；

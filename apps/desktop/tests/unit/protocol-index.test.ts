@@ -109,6 +109,15 @@ describe('protocol/index', () => {
       expect(res.status).toBe(404);
     });
 
+    it('should serve notebook placeholder html for urchin://notebook', async () => {
+      registerUrchinProtocol();
+      const res = await getHandler()({ url: 'urchin://notebook' });
+      const body = await res.text();
+
+      expect(res.status).toBe(200);
+      expect(body).toContain('<title>笔记</title>');
+    });
+
     it('should serve cached favicon bytes with image headers', async () => {
       registerUrchinProtocol({
         getFavicon: (name) =>

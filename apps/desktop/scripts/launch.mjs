@@ -13,6 +13,7 @@ import { closeSync, existsSync, openSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveElectronBinary } from './electron-binary.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(__dirname, '..');
@@ -29,13 +30,7 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-const electronBinary = join(
-  appRoot,
-  'node_modules',
-  'electron',
-  'dist',
-  process.platform === 'win32' ? 'electron.exe' : 'electron',
-);
+const electronBinary = resolveElectronBinary();
 if (!existsSync(electronBinary)) {
   console.error('[launch] 未找到 Electron 可执行文件（pnpm install 是否完成？）:', electronBinary);
   process.exit(1);

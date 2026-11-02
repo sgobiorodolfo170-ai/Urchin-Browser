@@ -155,6 +155,39 @@ describe('registerGenOfficeHomeHandlers', () => {
     expect(listing.files.map((f) => f.name).sort()).toEqual(['doc.md', 'image.png']);
   });
 
+  it('should expose the default folder root and add/remove/drop extra roots', async () => {
+    interface Root {
+      path: string;
+      name: string;
+      usable: boolean;
+      readable: boolean;
+      removable: boolean;
+    }
+    const documents = join(root, 'documents');
+    const extra = join(root, 'extra');
+    mkdirSync(extra, { recursive: true });
+
+    const initial = (await harness.call('folderRoots')) as Root[];
+    expect(initial).toHaveLength(1);
+    expect(initial[0]).toMatchObject({ path: documents, removable: false, readable: true });
+
+    mocks.showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [extra] });
+    const added = (await harness.call('addFolderRoot')) as Root | null;
+    expect(added).toMatchObject({ path: extra, removable: true, readable: true });
+
+    const withExtra = (await harness.call('folderRoots')) as Root[];
+    expect(withExtra.map((r) => r.path)).toEqual([documents, extra]);
+
+    await harness.call('removeFolderRoot', extra);
+    const removed = (await harness.call('folderRoots')) as Root[];
+    expect(removed.map((r) => r.path)).toEqual([documents]);
+
+    const dropped = (await harness.call('dropFolderRoots', [extra])) as Root[];
+    expect(dropped.map((r) => r.path)).toEqual([extra]);
+    const afterDrop = (await harness.call('folderRoots')) as Root[];
+    expect(afterDrop.map((r) => r.path)).toEqual([documents, extra]);
+  });
+
   it('should create/rename/delete folders and move paths with conflict policy', async () => {
     const documents = join(root, 'documents');
     mkdirSync(documents, { recursive: true });

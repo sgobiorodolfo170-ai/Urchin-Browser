@@ -462,3 +462,25 @@ export function requestGenOfficeClose(
     }
   }
 }
+
+// ---- Asset lifecycle re-exports for host-side image localization ----
+//
+// The Urchin host's clipper feature writes clipped Markdown files into a
+// sub-directory of GenOffice's `documents/` root. To keep image assets
+// manageable by GenOffice's own GC (so that deleting a clipped .md from the
+// GenOffice Home page also cleans up its images), the clipper reuses
+// GenOffice's owned-asset APIs rather than reinventing the manifest format.
+//
+// These three functions are re-exported here so the host can call them
+// through the embed bundle without importing vendor source directly:
+//   - writeImageIntoOwnedAssets: write image bytes to assets/ + register manifest
+//   - reconcileOwnedAssets:       GC unreferenced owned files after save / deletion
+//   - extractMarkdownImageSources: parse ![alt](src) sources from markdown text
+//
+// The asset-lifecycle module is already in the bundle's dependency tree
+// (markdown-main imports it), so these re-exports add no extra weight.
+export {
+  writeImageIntoOwnedAssets,
+  reconcileOwnedAssets,
+  extractMarkdownImageSources,
+} from '../../../markdown/src/main/asset-lifecycle'

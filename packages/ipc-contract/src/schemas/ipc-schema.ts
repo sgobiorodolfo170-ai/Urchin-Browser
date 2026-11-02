@@ -1584,6 +1584,8 @@ export const clipperConfigResSchema = z.object({
   cleanSnapshot: z.boolean(),
   selectionPriority: z.boolean(),
   loadLazyContent: z.boolean(),
+  /** CL11：剪藏 Markdown 时是否下载远程图片到本地 assets/ 目录（默认 true） */
+  localizeImages: z.boolean(),
   noteNameFormat: z.string().max(512),
   properties: z.string().max(32 * 1024),
   content: z.string().max(64 * 1024),
@@ -1591,15 +1593,27 @@ export const clipperConfigResSchema = z.object({
 });
 export type ClipperConfigRes = z.infer<typeof clipperConfigResSchema>;
 
-/** 保存 Markdown（由面板生成完整文件内容，主进程只负责路径与落盘） */
+/**
+ * 保存 Markdown（由面板生成完整文件内容，主进程只负责路径与落盘）。
+ *
+ * CL11：pageUrl 可选，用于图片本地化时的 Referer 防盗链；localizeImages
+ * 开启时主进程下载远程图片到 assets/ 并重写 md 中的图片路径。
+ * subDir 可选，指定 clipper 下的子目录（空=根目录）。
+ */
 export const clipperSaveMarkdownReqSchema = z.object({
   noteName: z.string().min(1).max(512),
   markdown: z.string().max(20 * 1024 * 1024),
+  /** 源页面 URL（图片本地化时用于 Referer；不传则不设 Referer） */
+  pageUrl: z.string().max(4096).optional(),
+  /** 保存子目录（空=clipper 根目录；主进程净化后拼接） */
+  subDir: z.string().max(256).optional(),
 });
 export type ClipperSaveMarkdownReq = z.infer<typeof clipperSaveMarkdownReqSchema>;
 
 export const clipperSaveMarkdownResSchema = z.object({
   path: z.string().min(1),
+  /** 非致命警告（如图片下载失败保留原链接） */
+  warnings: z.array(z.string().max(1024)).default([]),
 });
 export type ClipperSaveMarkdownRes = z.infer<typeof clipperSaveMarkdownResSchema>;
 
@@ -1619,6 +1633,8 @@ export const clipperSaveSnapshotReqSchema = z.object({
     .string()
     .max(20 * 1024 * 1024)
     .optional(),
+  /** 保存子目录（空=clipper 根目录；主进程净化后拼接） */
+  subDir: z.string().max(256).optional(),
 });
 export type ClipperSaveSnapshotReq = z.infer<typeof clipperSaveSnapshotReqSchema>;
 
@@ -1629,6 +1645,14 @@ export const clipperSaveSnapshotResSchema = z.object({
   warnings: z.array(z.string().max(1024)).default([]),
 });
 export type ClipperSaveSnapshotRes = z.infer<typeof clipperSaveSnapshotResSchema>;
+
+/** 列出 clipper 目录下的子文件夹（供面板保存路径选择器） */
+export const clipperListSubDirsReqSchema = z.object({}).default({});
+export type ClipperListSubDirsReq = z.infer<typeof clipperListSubDirsReqSchema>;
+export const clipperListSubDirsResSchema = z.object({
+  dirs: z.array(z.string().max(256)).default([]),
+});
+export type ClipperListSubDirsRes = z.infer<typeof clipperListSubDirsResSchema>;
 
 /** 复制 Markdown 到系统剪贴板 */
 export const clipperCopyReqSchema = z.object({
@@ -2654,6 +2678,7 @@ export const ipcSchema = {
   },
   'clipper.copy': { req: clipperCopyReqSchema, res: clipperCopyResSchema },
   'clipper.close': { req: clipperCloseReqSchema, res: clipperCloseResSchema },
+  'clipper.listSubDirs': { req: clipperListSubDirsReqSchema, res: clipperListSubDirsResSchema },
   'clipper.openMhtmlFile': {
     req: clipperOpenMhtmlFileReqSchema,
     res: clipperOpenMhtmlFileResSchema,

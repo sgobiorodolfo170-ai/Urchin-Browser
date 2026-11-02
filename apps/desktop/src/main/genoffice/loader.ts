@@ -42,6 +42,21 @@ export interface GenOfficeEmbedApi {
   /** 阶段 4：docs 脏状态经 close-check 握手查询，故为异步。 */
   genOfficeIsDirty(kind: string, contents: unknown): Promise<boolean>;
   requestGenOfficeClose(kind: string, contents: unknown, parent?: unknown): Promise<boolean>;
+  /**
+   * Clipper 图片本地化（CL11）：复用 GenOffice 的 owned-asset 生命周期。
+   * 三个函数均从 asset-lifecycle re-export，由 urchin-embed 构建产物承载；
+   * 旧版产物可能缺失，调用前须判空。
+   */
+  /** 写图片字节到 assets/ + 注册 .genoffice-assets.json 清单，返回 "assets/<name>" */
+  writeImageIntoOwnedAssets?(
+    documentPath: string,
+    preferredName: string,
+    bytes: Buffer,
+  ): Promise<string>;
+  /** GC：把 pending 转 documents + 清理不再被任何 md 引用的 owned 文件 */
+  reconcileOwnedAssets?(documentPath: string, imageSources: readonly string[]): Promise<unknown>;
+  /** 从 markdown 文本提取所有 ![alt](src) 的 src 列表 */
+  extractMarkdownImageSources?(markdown: string): string[];
 }
 
 /** 依赖注入（单测传 mock require，避免真实加载 vendor 产物）。 */

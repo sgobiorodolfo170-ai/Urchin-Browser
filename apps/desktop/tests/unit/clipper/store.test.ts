@@ -54,4 +54,43 @@ describe('clipper store', () => {
     expect(first).not.toBe(second);
     expect(second).toContain('same (2).md');
   });
+
+  it('should write markdown to a pre-reserved path (CL11 image localization)', async () => {
+    const root = await makeRoot();
+    const store = new ClipperStore({ documentsRoot: root });
+    const path = await store.reservePath('clipped', 'md');
+    await store.writeMarkdownTo(path, '# body with image');
+    await expect(readFile(path, 'utf-8')).resolves.toBe('# body with image');
+  });
+
+  it('should save markdown into a sub-directory', async () => {
+    const root = await makeRoot();
+    const store = new ClipperStore({ documentsRoot: root });
+    const path = await store.saveMarkdown('note', 'body', 'subfolder');
+    expect(path).toContain(join('clipper', 'subfolder'));
+    await expect(readFile(path, 'utf-8')).resolves.toBe('body');
+  });
+
+  it('should list sub-directories (excluding dot-folders and files)', async () => {
+    const root = await makeRoot();
+    const store = new ClipperStore({ documentsRoot: root });
+    // 创建 clipper 根目录下的一些子目录和文件
+    const { mkdir } = await import('node:fs/promises');
+    await mkdir(join(store.clipDir, 'alpha'), { recursive: true });
+    await mkdir(join(store.clipDir, 'beta'), { recursive: true });
+    await mkdir(join(store.clipDir, '.hidden'), { recursive: true });
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(join(store.clipDir, 'afile.md'), '');
+    const dirs = await store.listSubDirs();
+    expect(dirs).toEqual(['alpha', 'beta']);
+  });
+
+  it('should sanitize sub-directory name (reject path traversal)', async () => {
+    const root = await makeRoot();
+    const store = new ClipperStore({ documentsRoot: root });
+    // 路径分隔符 → 下划线，开头点去除，防止路径穿越
+    const path = await store.saveMarkdown('note', 'body', '../evil');
+    expect(path).toContain(join('clipper', '_evil'));
+    expect(path).not.toContain('..');
+  });
 });

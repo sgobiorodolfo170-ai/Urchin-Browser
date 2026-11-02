@@ -40,8 +40,20 @@ const FORMAT_LABELS: Readonly<Record<ClipperFormat, string>> = {
 
 const SNAPSHOT_FORMATS: ReadonlySet<ClipperFormat> = new Set(['mhtml', 'pdf', 'screenshot']);
 
+/** 从 markdown 中移除所有图片引用（取消「剪藏图片」时用） */
+function stripImages(md: string): string {
+  return md
+    .replace(/!\[[^\]]*\]\([^)]*(?:\s+"[^"]*")?\)/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trimEnd();
+}
+
+/** 「新建文件夹」选项的特殊值 */
+const NEW_DIR_SENTINEL = '__new__';
+
 interface SaveResult {
   readonly path: string;
+  readonly warnings?: readonly string[];
 }
 
 interface SnapshotSaveResult {
@@ -72,6 +84,10 @@ export function ClipperPanelApp() {
   const [error, setError] = useState<string | null>(null);
   const [savedPath, setSavedPath] = useState<string | null>(null);
   const [saveWarnings, setSaveWarnings] = useState<readonly string[]>([]);
+  const [clipImages, setClipImages] = useState(true);
+  const [subDirs, setSubDirs] = useState<readonly string[]>([]);
+  const [saveSubDir, setSaveSubDir] = useState('');
+  const [newSubDirInput, setNewSubDirInput] = useState('');
 
   const applyDraft = useCallback(
     (data: ClipperExtraction, cfg: ClipperConfigRes, preferSelection: boolean) => {
@@ -133,6 +149,16 @@ export function ClipperPanelApp() {
         setSnapshotMode(cfg.cleanSnapshot ? 'clean' : 'original');
         setSelectionPriority(cfg.selectionPriority);
 
+        // 获取 clipper 目录下的子文件夹列表（保存路径选择器用）
+        try {
+          const subDirsRes = (await window.urchin.invoke('clipper.listSubDirs', {})) as {
+            dirs: string[];
+          };
+          if (!cancelled) setSubDirs(subDirsRes.dirs ?? []);
+        } catch {
+          // 获取失败不影响主流程
+        }
+
         const data = extractClipperContent(pageRes, cfg.selectionPriority);
         if (cancelled) return;
         setExtraction(data);
@@ -170,7 +196,10 @@ export function ClipperPanelApp() {
   }, [close]);
 
   const isSnapshot = SNAPSHOT_FORMATS.has(format);
-  const markdownContent = useMemo(() => composeMarkdown(rows, body), [rows, body]);
+  const markdownContent = useMemo(() => {
+    const md = composeMarkdown(rows, body);
+    return clipImages ? md : stripImages(md);
+  }, [rows, body, clipImages]);
 
   const handleSelectionPriorityChange = (enabled: boolean): void => {
     setSelectionPriority(enabled);
@@ -212,14 +241,19 @@ export function ClipperPanelApp() {
     setSaveWarnings([]);
     try {
       const name = noteName.trim() || extraction.title || 'untitled';
+      // 解析最终保存子目录：选择"新建"时用输入值，否则用选中值
+      const subDir = saveSubDir === NEW_DIR_SENTINEL ? newSubDirInput.trim() : saveSubDir;
       let saved = '';
       let warnings: readonly string[] = [];
       if (format === 'markdown') {
         const result = (await window.urchin.invoke('clipper.saveMarkdown', {
           noteName: name,
           markdown: markdownContent,
+          ...(page ? { pageUrl: page.url } : {}),
+          ...(subDir ? { subDir } : {}),
         })) as SaveResult;
         saved = result.path;
+        warnings = result.warnings ?? [];
       } else if (isSnapshot) {
         const cleanedHtml =
           snapshotMode === 'clean'
@@ -231,6 +265,7 @@ export function ClipperPanelApp() {
           mode: snapshotMode,
           noteName: name,
           ...(cleanedHtml ? { cleanedHtml } : {}),
+          ...(subDir ? { subDir } : {}),
         })) as SnapshotSaveResult;
         saved = result.paths[0] ?? '';
         warnings = result.warnings ?? [];
@@ -260,6 +295,8 @@ export function ClipperPanelApp() {
     page,
     snapshotMode,
     tabId,
+    saveSubDir,
+    newSubDirInput,
   ]);
 
   if (loading) {
@@ -350,6 +387,37 @@ export function ClipperPanelApp() {
             onChange={(e) => setNoteName(e.target.value)}
             placeholder="剪藏文件名（不含扩展名）"
           />
+
+          <label className="text-xs text-text-secondary" htmlFor="clipper-subdir">
+            保存路径
+          </label>
+          <div className="flex items-center gap-2">
+            <select
+              id="clipper-subdir"
+              className="h-8 min-w-0 flex-1 rounded-md border border-border bg-surface px-2 text-sm text-text outline-none focus:border-primary"
+              value={saveSubDir}
+              onChange={(e) => {
+                setSaveSubDir(e.target.value);
+                if (e.target.value !== NEW_DIR_SENTINEL) setNewSubDirInput('');
+              }}
+            >
+              <option value="">clipper（根目录）</option>
+              {subDirs.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+              <option value={NEW_DIR_SENTINEL}>＋ 新建文件夹…</option>
+            </select>
+            {saveSubDir === NEW_DIR_SENTINEL && (
+              <Input
+                className="h-8 min-w-0 flex-1"
+                value={newSubDirInput}
+                onChange={(e) => setNewSubDirInput(e.target.value)}
+                placeholder="输入新文件夹名"
+              />
+            )}
+          </div>
 
           {isSnapshot && (
             <>
@@ -456,7 +524,18 @@ export function ClipperPanelApp() {
                 </div>
               </div>
             )}
-            <div className="mb-1 text-xs font-medium text-text-secondary">正文 Markdown</div>
+            <div className="mb-1 flex items-center gap-3">
+              <span className="text-xs font-medium text-text-secondary">正文 Markdown</span>
+              <label className="flex items-center gap-1 text-xs text-text-secondary">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 accent-primary"
+                  checked={clipImages}
+                  onChange={(e) => setClipImages(e.target.checked)}
+                />
+                剪藏图片
+              </label>
+            </div>
             <textarea
               className="h-64 w-full resize-y rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs leading-5 text-text outline-none focus:border-primary"
               value={body}
@@ -483,6 +562,11 @@ export function ClipperPanelApp() {
         <div className="flex items-center justify-between gap-2">
           <div className="truncate text-xs text-text-secondary">
             保存到 {config?.saveDirLabel ?? 'documents/clipper'}
+            {saveSubDir === NEW_DIR_SENTINEL && newSubDirInput.trim()
+              ? `/${newSubDirInput.trim()}`
+              : saveSubDir && saveSubDir !== NEW_DIR_SENTINEL
+                ? `/${saveSubDir}`
+                : ''}
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {format === 'markdown' && (

@@ -256,6 +256,12 @@ const CLIPPER_FIELDS: readonly SettingField[] = [
     type: 'toggle',
   },
   {
+    key: 'clipper.localizeImages',
+    label: 'Markdown 剪藏时下载图片到本地',
+    desc: '剪藏为 Markdown 时把远程图片下载到 assets/ 目录，md 中改为本地相对路径。下载失败的图片保留原链接。需 GenOffice 编辑器可用',
+    type: 'toggle',
+  },
+  {
     key: 'clipper.noteNameFormat',
     label: '文件名模板',
     desc: '支持 {{title}} / {{date}} / {{domain}} 等变量；最终文件名由主进程净化',
@@ -338,6 +344,7 @@ const DEFAULTS: Record<string, unknown> = {
   'clipper.cleanSnapshot': true,
   'clipper.selectionPriority': true,
   'clipper.loadLazyContent': false,
+  'clipper.localizeImages': true,
   'clipper.noteNameFormat': '{{title}}',
   'clipper.properties':
     'title: {{title}}\nsource: {{url}}\nauthor: {{author}}\npublished: {{published}}\ncreated: {{date}}\ndescription: {{description}}\ntags: clippings',

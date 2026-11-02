@@ -133,6 +133,20 @@ import { DEVTOOLS_EVENT_CHANNEL, DEVTOOLS_TOGGLE_CHANNEL } from '@urchin/ipc-con
 
 const log = createLogger('main');
 
+// 品牌 exe 的 isPackaged 纠正（`pnpm start` 经 scripts/electron-binary.mjs 复制
+// electron.exe → UrchinBrowser.exe 并注入应用图标，见该脚本注释）：
+// Electron 以可执行文件名判定是否已打包（非 electron.exe 即 true）。改名后
+// GenOffice 会去 process.resourcesPath/genoffice 找产物、数据目录等也会走打包
+// 分支。dev 默认应用（process.defaultApp=true）下把字段纠正回 false，保持与
+// 原 electron.exe 完全一致的运行时语义；真正打包的 exe（defaultApp=false）不受影响。
+if (
+  process.platform === 'win32' &&
+  process.defaultApp &&
+  basename(process.execPath).toLowerCase() !== 'electron.exe'
+) {
+  Object.defineProperty(app, 'isPackaged', { value: false, configurable: true });
+}
+
 /** 书签表行结构（SQLite 存储格式，snake_case） */
 interface BookmarkRow {
   id: string;
@@ -775,6 +789,7 @@ function registerIpcHandlers(): void {
         await genofficeEmbed?.writeBlankPdfFile?.(filePath);
       },
       setLanguage: (lang) => genofficeEmbed?.setGenOfficeLanguage?.(lang),
+      embedApi: genofficeEmbed,
     });
   }
 
@@ -932,6 +947,7 @@ function registerIpcHandlers(): void {
     settings: settingsManager,
     panel: clipperPanel,
     store: clipperStore,
+    embedApi: genofficeEmbed,
     openMhtmlFile: (path) => {
       if (!routeLocalFile(defaultWindowId(), path)) {
         throw new Error(`无法打开 MHTML：${path}`);
@@ -1625,6 +1641,9 @@ function send(msg) {
 `;
 
 // 应用就绪
+// Windows 应用用户模型 ID（任务栏分组 / 通知 / 跳转列表身份）。与
+// electron-builder.yml 的 appId 保持一致；必须在创建窗口前设置。
+if (process.platform === 'win32') app.setAppUserModelId('com.urchin.browser');
 // 模块顶层初始化完成（scheme/lock/data-dir 均就绪；等待 app ready）
 markStartup('main:module-top-done');
 

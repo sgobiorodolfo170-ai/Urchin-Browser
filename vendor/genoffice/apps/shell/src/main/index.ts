@@ -265,6 +265,10 @@ import {
   setMarkdownDocxExportedHook,
   setMarkdownFileSavedHook,
 } from '../../../markdown/src/main/markdown-main'
+// Asset-lifecycle GC for Markdown image cleanup on document deletion.
+// markdown-main imports but does not re-export these, so shell reaches the
+// source module directly. See CL11 / clipper image localization.
+import { reconcileOwnedAssets } from '../../../markdown/src/main/asset-lifecycle'
 import {
   configureHtmlRuntime,
   exportHtmlHeadless,
@@ -5149,6 +5153,19 @@ function registerHomeIpc(): void {
         await shell.trashItem(p)
       } catch {
         // file already gone or trash unavailable; still drop it from the list
+      }
+      // Markdown documents own image assets in a sibling assets/ directory
+      // (tracked by .genoffice-assets.json). After the .md is trashed, run a
+      // reconcile with empty image sources so the deleted document's docKey
+      // is dropped from the manifest and its exclusively-referenced images are
+      // GC'd. Images still referenced by surviving sibling .md files are kept
+      // by siblingMarkdownReferences. Non-.md files have no assets to clean.
+      if (/\.(?:md|markdown)$/i.test(p)) {
+        try {
+          await reconcileOwnedAssets(p, [])
+        } catch {
+          // no manifest / no assets dir / read error — nothing to clean
+        }
       }
     }
     removeRecentFiles(list)

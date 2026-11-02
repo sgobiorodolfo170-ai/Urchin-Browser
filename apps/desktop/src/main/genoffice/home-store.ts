@@ -17,6 +17,11 @@ export interface GenOfficeHomeState {
   starred: string[];
   /** 默认保存目录（Home「文件夹」面板根 + 新文件落点）。 */
   defaultSaveDir?: string;
+  /**
+   * 用户额外添加的文件夹根（不含默认保存目录）。上游 v0.12 的 Home「文件夹」
+   * 面板支持多个根：默认保存目录不可移除，这些可由用户增删。
+   */
+  folderRoots?: string[];
   /** GenOffice UI 语言（默认 zh）。 */
   language?: string;
 }
@@ -39,6 +44,7 @@ function normalize(raw: unknown): GenOfficeHomeState {
     ...(typeof value.defaultSaveDir === 'string' && value.defaultSaveDir.length > 0
       ? { defaultSaveDir: value.defaultSaveDir }
       : {}),
+    folderRoots: paths(value.folderRoots),
     ...(typeof value.language === 'string' && value.language.length > 0
       ? { language: value.language }
       : {}),
@@ -116,6 +122,7 @@ export class GenOfficeHomeStore {
     };
     this.state.recent = this.state.recent.map(rebind);
     this.state.starred = this.state.starred.map(rebind);
+    this.state.folderRoots = this.state.folderRoots?.map(rebind);
     await this.persist();
   }
 
@@ -126,6 +133,7 @@ export class GenOfficeHomeStore {
     const keep = (p: string): boolean => !prefixes.some((prefix) => p.startsWith(prefix));
     this.state.recent = this.state.recent.filter(keep);
     this.state.starred = this.state.starred.filter(keep);
+    this.state.folderRoots = this.state.folderRoots?.filter(keep);
     await this.persist();
   }
 
@@ -133,6 +141,21 @@ export class GenOfficeHomeStore {
   async setDefaultSaveDir(dir: string): Promise<void> {
     await this.load();
     this.state.defaultSaveDir = dir;
+    await this.persist();
+  }
+
+  /** 添加一个用户文件夹根（去重；默认保存目录由调用方单独维护）。 */
+  async addFolderRoot(dir: string): Promise<void> {
+    await this.load();
+    const current = this.state.folderRoots ?? [];
+    if (!current.includes(dir)) this.state.folderRoots = [...current, dir];
+    await this.persist();
+  }
+
+  /** 移除一个用户文件夹根（只移除列表引用，磁盘内容不动）。 */
+  async removeFolderRoot(dir: string): Promise<void> {
+    await this.load();
+    this.state.folderRoots = (this.state.folderRoots ?? []).filter((p) => p !== dir);
     await this.persist();
   }
 

@@ -27,6 +27,7 @@ function createHarness(overrides: Record<string, unknown> = {}) {
         'clipper.cleanSnapshot': true,
         'clipper.selectionPriority': true,
         'clipper.loadLazyContent': false,
+        'clipper.localizeImages': false,
         'clipper.noteNameFormat': '{{title}}',
         'clipper.properties': 'title: {{title}}',
         'clipper.content': '{{content}}',
@@ -38,6 +39,8 @@ function createHarness(overrides: Record<string, unknown> = {}) {
   const panel = { open: vi.fn(), close: vi.fn() };
   const store = {
     saveMarkdown: vi.fn(async () => '/data/documents/clipper/a.md'),
+    reservePath: vi.fn(async () => '/data/documents/clipper/a.md'),
+    writeMarkdownTo: vi.fn(async () => undefined),
   } as unknown as ClipperStore;
   const tabs = new Map<number, { id: number; url: string; webContents: unknown }>();
   tabs.set(1, { id: 1, url: 'https://example.com', webContents: { id: 1 } });
@@ -136,6 +139,7 @@ describe('clipper ipc handlers', () => {
       theme: 'dark',
       defaultFormat: 'markdown',
       cleanSnapshot: true,
+      localizeImages: false,
       saveDirLabel: 'documents/clipper',
     });
   });
@@ -153,7 +157,7 @@ describe('clipper ipc handlers', () => {
     const { handlers, store, saveSnapshot, copyText, panel } = createHarness();
     await expect(
       call(handlers, 'clipper.saveMarkdown', { noteName: 'x', markdown: 'body' }),
-    ).resolves.toMatchObject({ path: '/data/documents/clipper/a.md' });
+    ).resolves.toMatchObject({ path: '/data/documents/clipper/a.md', warnings: [] });
     expect(store.saveMarkdown).toHaveBeenCalled();
 
     await expect(
@@ -177,6 +181,16 @@ describe('clipper ipc handlers', () => {
 
     await expect(call(handlers, 'clipper.close')).resolves.toMatchObject({ ok: true });
     expect(panel.close).toHaveBeenCalled();
+  });
+
+  it('should fall back to saveMarkdown when localizeImages is true but embedApi is unavailable', async () => {
+    // settings 默认 localizeImages=false；此处覆盖为 true，但 harness 不注入 embedApi
+    const { handlers, store } = createHarness({ settings: { 'clipper.localizeImages': true } });
+    await expect(
+      call(handlers, 'clipper.saveMarkdown', { noteName: 'x', markdown: 'body' }),
+    ).resolves.toMatchObject({ path: '/data/documents/clipper/a.md', warnings: [] });
+    expect(store.saveMarkdown).toHaveBeenCalled();
+    expect(store.reservePath).not.toHaveBeenCalled();
   });
 
   it('should reject clean snapshot without cleanedHtml', async () => {

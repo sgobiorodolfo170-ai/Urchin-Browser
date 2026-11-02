@@ -83,6 +83,8 @@ export interface SnapshotExportInput {
   readonly mode: ClipperSnapshotMode;
   readonly noteName: string;
   readonly cleanedHtml?: string;
+  /** 保存子目录（空=clipper 根目录） */
+  readonly subDir?: string;
 }
 
 interface LayoutMetrics {
@@ -210,7 +212,13 @@ export async function exportSnapshot(
 ): Promise<SnapshotExportResult> {
   if (input.mode === 'original') {
     if (!input.tabWebContents) throw new Error('原页快照缺少目标标签页');
-    return exportFromContents(input.tabWebContents, input.format, input.noteName, deps);
+    return exportFromContents(
+      input.tabWebContents,
+      input.format,
+      input.noteName,
+      deps,
+      input.subDir,
+    );
   }
 
   if (!input.cleanedHtml) {
@@ -244,7 +252,13 @@ export async function exportSnapshot(
     });
     await win.loadFile(htmlPath);
     await waitForAssets(win.webContents);
-    return await exportFromContents(win.webContents, input.format, input.noteName, deps);
+    return await exportFromContents(
+      win.webContents,
+      input.format,
+      input.noteName,
+      deps,
+      input.subDir,
+    );
   } finally {
     try {
       if (win && !win.isDestroyed?.()) win.destroy();
@@ -261,16 +275,17 @@ async function exportFromContents(
   format: SnapshotFormat,
   noteName: string,
   deps: SnapshotExportDeps,
+  subDir?: string,
 ): Promise<SnapshotExportResult> {
   if (format === 'mhtml') {
     if (!contents.savePage) throw new Error('当前页面不支持 MHTML 导出');
-    const target = await deps.store.reservePath(noteName, 'mhtml');
+    const target = await deps.store.reservePath(noteName, 'mhtml', subDir);
     await contents.savePage(target, 'MHTML');
     return { paths: [target], warnings: [] };
   }
   if (format === 'pdf') {
     if (!contents.printToPDF) throw new Error('当前页面不支持 PDF 导出');
-    const target = await deps.store.reservePath(noteName, 'pdf');
+    const target = await deps.store.reservePath(noteName, 'pdf', subDir);
     const buffer = await contents.printToPDF(PDF_OPTIONS);
     await (deps.writeFile ?? writeFile)(target, buffer);
     return { paths: [target], warnings: [] };
@@ -280,7 +295,7 @@ async function exportFromContents(
   const paths: string[] = [];
   for (let index = 0; index < screenshot.buffers.length; index += 1) {
     const name = index === 0 ? noteName : `${noteName}-part${index + 1}`;
-    const target = await deps.store.reservePath(name, 'png');
+    const target = await deps.store.reservePath(name, 'png', subDir);
     await (deps.writeFile ?? writeFile)(target, screenshot.buffers[index]!);
     paths.push(target);
   }

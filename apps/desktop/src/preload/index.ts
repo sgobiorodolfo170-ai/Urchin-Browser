@@ -19,7 +19,7 @@
  * - BrowserView 中的外部网页（http/https/file）：不暴露 urchin API，防止恶意网站调用 IPC
  * - BrowserView 中的内部页面（urchin://）：暴露 urchin API，供设置页等应用页面调用
  */
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { createTypedInvoke } from '@urchin/ipc-contract';
 
 /**
@@ -296,12 +296,13 @@ function createGenOfficeHomeBridge(): Record<string, unknown> {
     openCreditUsage: () => Promise.resolve(),
     openGenTeam: () => Promise.resolve(),
     aiGskStatus: () => Promise.resolve({ loggedIn: false }),
-    // 文件夹根（上游 v0.12 改为 folderRoots 复数 + add/remove；宿主文件夹体系由
-    // Urchin 自有侧栏承担，这里返回空 / no-op 让 Home 不崩）
-    folderRoots: () => Promise.resolve([]),
-    addFolderRoot: () => Promise.resolve(),
-    removeFolderRoot: () => Promise.resolve(),
-    dropFolderRoots: () => Promise.resolve(),
+    // 文件夹根（上游 v0.12 Home 的「文件夹」面板：默认保存目录 + 用户添加的
+    // 多个根）。宿主侧由 genoffice:home 的 folderRoots/add/remove/drop 实现，
+    // 与文件树共用同一默认保存目录（app-settings.defaultSaveDir）。
+    folderRoots: () => home('folderRoots'),
+    addFolderRoot: () => home('addFolderRoot'),
+    removeFolderRoot: (path: unknown) => home('removeFolderRoot', path),
+    dropFolderRoots: (paths: unknown) => home('dropFolderRoots', paths),
     starredGroups: () => Promise.resolve([]),
     // ── 文件搜索（宿主实现基础文件名匹配，非全文索引） ──
     searchFiles: (query: unknown) => home('searchFiles', query),
@@ -309,7 +310,15 @@ function createGenOfficeHomeBridge(): Record<string, unknown> {
     getFileSearchSettings: () => home('getFileSearchSettings'),
     setFileSearchSettings: (patch: unknown) => home('setFileSearchSettings', patch),
     testFileSearchRerank: (settings: unknown) => home('testFileSearchRerank', settings),
-    pathForFile: (file: unknown) => (file as { path?: string })?.path ?? '',
+    pathForFile: (file: unknown) => {
+      // Electron 32+ 移除了 File.path；必须经 webUtils 取真实磁盘路径，
+      // 否则 Home 拖入文件夹时得到空路径、dropFolderRoots 永不生效。
+      try {
+        return webUtils.getPathForFile(file as File);
+      } catch {
+        return '';
+      }
+    },
     setStarredGroup: (paths: unknown, group: unknown) => home('setStarredGroup', paths, group),
     // ── 设置面板其余项（返回合理默认值） ──
     getRestoreLastSession: () => home('getRestoreLastSession'),

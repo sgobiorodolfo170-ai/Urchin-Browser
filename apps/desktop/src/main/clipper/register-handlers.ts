@@ -37,6 +37,8 @@ import {
   type DeepExtractWebContents,
 } from './deep-extract';
 import { exportSnapshot, type SnapshotFormat } from './snapshot-export';
+import { localizeMarkdownImages, getAssetLifecycleApi } from './image-localizer';
+import type { GenOfficeEmbedApi } from '../genoffice/loader';
 const log = createLogger('clipper-ipc');
 
 /** 面板最小接口（真实 ClipperPanel / 单测 mock） */
@@ -80,6 +82,8 @@ export interface ClipperHandlerDeps {
   readonly copyText?: (text: string) => void;
   /** 用宿主只读查看器打开本地 MHTML（默认不提供；index.ts 注入 routeLocalFile） */
   readonly openMhtmlFile?: (path: string) => void;
+  /** GenOffice 嵌入包 API（CL11 图片本地化用；可能为 null——加载失败或旧版产物） */
+  readonly embedApi?: GenOfficeEmbedApi | null;
 }
 
 /** 与 IPC schema 一致的 HTML 上限 */
@@ -202,6 +206,7 @@ export function registerClipperHandlers(deps: ClipperHandlerDeps): void {
       cleanSnapshot: getBoolean(settings, 'clipper.cleanSnapshot', true),
       selectionPriority: getBoolean(settings, 'clipper.selectionPriority', true),
       loadLazyContent: getBoolean(settings, 'clipper.loadLazyContent', false),
+      localizeImages: getBoolean(settings, 'clipper.localizeImages', true),
       noteNameFormat: getString(settings, 'clipper.noteNameFormat', '{{title}}'),
       properties: getString(settings, 'clipper.properties', ''),
       content: getString(settings, 'clipper.content', '{{content}}'),
@@ -210,9 +215,30 @@ export function registerClipperHandlers(deps: ClipperHandlerDeps): void {
   });
 
   registerHandler(ipcMain, 'clipper.saveMarkdown', async (req) => {
-    const path = await store.saveMarkdown(req.noteName, req.markdown);
+    const localize = getBoolean(settings, 'clipper.localizeImages', true);
+    const assetApi = getAssetLifecycleApi(deps.embedApi ?? null);
+
+    // CL11 图片本地化：下载远程图片到 assets/ + 重写 md 路径 + 注册 manifest。
+    // assetApi 不可用（加载失败/旧版产物）时跳过，保留原行为。
+    if (localize && assetApi) {
+      const mdPath = await store.reservePath(req.noteName, 'md', req.subDir);
+      const result = await localizeMarkdownImages(req.markdown, {
+        pageUrl: req.pageUrl ?? '',
+        documentPath: mdPath,
+        assetApi,
+      });
+      await store.writeMarkdownTo(mdPath, result.markdown);
+      log.info('clipper markdown saved', {
+        path: mdPath,
+        bytes: Buffer.byteLength(result.markdown, 'utf-8'),
+        warnings: result.warnings.length,
+      });
+      return { path: mdPath, warnings: [...result.warnings] };
+    }
+
+    const path = await store.saveMarkdown(req.noteName, req.markdown, req.subDir);
     log.info('clipper markdown saved', { path, bytes: Buffer.byteLength(req.markdown, 'utf-8') });
-    return { path };
+    return { path, warnings: [] };
   });
 
   registerHandler(ipcMain, 'clipper.saveSnapshot', async (req) => {
@@ -242,6 +268,7 @@ export function registerClipperHandlers(deps: ClipperHandlerDeps): void {
         mode,
         noteName: req.noteName,
         ...(req.cleanedHtml ? { cleanedHtml: req.cleanedHtml } : {}),
+        ...(req.subDir ? { subDir: req.subDir } : {}),
       },
     );
     log.info('clipper snapshot saved', {
@@ -255,6 +282,11 @@ export function registerClipperHandlers(deps: ClipperHandlerDeps): void {
   registerHandler(ipcMain, 'clipper.copy', (req) => {
     copyText(req.text);
     return { ok: true as const };
+  });
+
+  registerHandler(ipcMain, 'clipper.listSubDirs', async () => {
+    const dirs = await store.listSubDirs();
+    return { dirs };
   });
 
   registerHandler(ipcMain, 'clipper.close', () => {

@@ -37,6 +37,7 @@ const CONFIG: ClipperConfigRes = {
   cleanSnapshot: true,
   selectionPriority: true,
   loadLazyContent: false,
+  localizeImages: false,
   noteNameFormat: '{{title}}',
   properties: 'title: {{title}}\nsource: {{url}}',
   content: '{{content}}',
@@ -68,6 +69,7 @@ beforeEach(() => {
   invoke.mockImplementation(async (channel: string) => {
     if (channel === 'clipper.config') return CONFIG;
     if (channel === 'clipper.page') return PAGE;
+    if (channel === 'clipper.listSubDirs') return { dirs: [] };
     if (channel === 'clipper.saveMarkdown') return { path: '/clipper/test.md' };
     if (channel === 'clipper.saveSnapshot') return { paths: ['/clipper/test.mhtml'], warnings: [] };
     if (channel === 'clipper.close') return { ok: true };

@@ -20,6 +20,7 @@ import { basename, dirname, extname, isAbsolute, join } from 'node:path';
 import { createLogger } from '@urchin/logger';
 import { classifyFileKind } from '../files/file-kind';
 import type { GenOfficeAiPanelPrefsStore } from './host-channels';
+import type { GenOfficeEmbedApi } from './loader';
 import type { GenOfficeHomeStore } from './home-store';
 
 const log = createLogger('genoffice-home');
@@ -78,6 +79,8 @@ export interface GenOfficeHomeDeps {
   readonly writeBlankPdf: (filePath: string) => Promise<void>;
   /** 切换 GenOffice UI 语言（主进程字典 + 原生对话框）。 */
   readonly setLanguage: (lang: string) => void;
+  /** GenOffice 嵌入包 API（CL11：删除 md 时触发 assets GC） */
+  readonly embedApi?: GenOfficeEmbedApi | null;
 }
 
 /** 向所有 GenOffice Home 视图推送事件（folderChanged 等）。 */
@@ -145,6 +148,52 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
         : deps.documentsRoot;
     await mkdir(configured, { recursive: true }).catch(() => undefined);
     return configured;
+  }
+
+  /**
+   * 文件夹根（上游 v0.12 Home 的「文件夹」面板支持默认保存目录 + 用户添加的
+   * 多个根）。`removable` 区分：默认保存目录不可移除，用户添加的可移除。
+   */
+  interface HomeFolderRoot {
+    path: string;
+    name: string;
+    usable: boolean;
+    readable: boolean;
+    removable: boolean;
+  }
+
+  /** 探测一个文件夹根：不存在则尝试创建；权限/盘符失效时标记为不可用。 */
+  async function folderRootInfo(path: string, removable: boolean): Promise<HomeFolderRoot> {
+    let usable = false;
+    let readable = false;
+    try {
+      await mkdir(path, { recursive: true });
+      usable = true;
+    } catch {
+      usable = false;
+    }
+    try {
+      const info = await stat(path);
+      readable = info.isDirectory();
+      usable = usable || readable;
+    } catch {
+      readable = false;
+    }
+    return { path, name: basename(path), usable, readable, removable };
+  }
+
+  /** 默认保存目录 + 用户添加的目录（去重，默认根始终在首位）。 */
+  async function listFolderRoots(): Promise<HomeFolderRoot[]> {
+    await store.load();
+    const primary = await defaultSaveDir();
+    const roots = [await folderRootInfo(primary, false)];
+    const known = new Set([primary]);
+    for (const dir of store.get().folderRoots ?? []) {
+      if (known.has(dir)) continue;
+      known.add(dir);
+      roots.push(await folderRootInfo(dir, true));
+    }
+    return roots;
   }
 
   async function toEntry(filePath: string): Promise<HomeEntry> {
@@ -296,19 +345,64 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
           } catch (e) {
             log.warn('trash failed', { path: p, error: String(e) });
           }
+          // CL11：删除 .md 后触发 assets GC。
+          // 传空 imageSources → manifest 删除该 docKey → siblingMarkdownReferences
+          // 扫描同目录存活 md → GC 清理不再被引用的独占图片（共享图片保留）。
+          if (/\.(?:md|markdown)$/i.test(p) && deps.embedApi?.reconcileOwnedAssets) {
+            try {
+              await deps.embedApi.reconcileOwnedAssets(p, []);
+            } catch {
+              // no manifest / no assets dir / read error — nothing to clean
+            }
+          }
         }
         await store.forgetPaths(paths);
         return null;
       }
       case 'folderRoot': {
-        const root = deps.documentsRoot;
-        let usable = true;
-        try {
-          await mkdir(root, { recursive: true });
-        } catch {
-          usable = false;
+        const roots = await listFolderRoots();
+        return roots[0];
+      }
+      case 'folderRoots':
+        return listFolderRoots();
+      case 'addFolderRoot': {
+        const current = await defaultSaveDir();
+        const result = await dialog.showOpenDialog({
+          title: '添加文件夹',
+          defaultPath: current,
+          properties: ['openDirectory', 'createDirectory'],
+        });
+        const selected = result.canceled ? null : (result.filePaths[0] ?? null);
+        if (!selected) return null;
+        await store.load();
+        if (selected !== current) await store.addFolderRoot(selected);
+        return folderRootInfo(selected, selected !== current);
+      }
+      case 'removeFolderRoot': {
+        const dir = strArg(args[0], '');
+        if (!dir) return null;
+        await store.removeFolderRoot(dir);
+        return null;
+      }
+      case 'dropFolderRoots': {
+        const paths = Array.isArray(args[0]) ? (args[0] as string[]) : [];
+        const primary = await defaultSaveDir();
+        const added: HomeFolderRoot[] = [];
+        await store.load();
+        const known = new Set([primary, ...(store.get().folderRoots ?? [])]);
+        for (const dir of paths) {
+          if (typeof dir !== 'string' || dir.length === 0 || known.has(dir)) continue;
+          try {
+            const info = await stat(dir);
+            if (!info.isDirectory()) continue;
+          } catch {
+            continue;
+          }
+          known.add(dir);
+          await store.addFolderRoot(dir);
+          added.push(await folderRootInfo(dir, true));
         }
-        return { path: root, name: basename(root), usable };
+        return added;
       }
       case 'listFolder': {
         const dir = strArg(args[0], deps.documentsRoot);

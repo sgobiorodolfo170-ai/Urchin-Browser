@@ -140,6 +140,36 @@ v0.1.0-dev.91 起（dev.90 为前置的 Electron 43 升级）。
    的 `defaultSaveDir()` 读 app-settings.json（与编辑器的 `configuredDefaultSaveDir(app)`
    同源），`pickDefaultSaveDir` 弹目录选择器并写回 app-settings.json（允许用户自定义）。
    此改动在宿主代码（`apps/desktop`），不受 vendor 升级影响。
+9. **CL11 剪藏图片本地化 · asset-lifecycle re-export + deleteFiles GC**
+   （宿主剪藏功能复用 GenOffice owned-asset 生命周期；详见
+   `docs/decisions/ADR-014-网页剪藏模块.md` CL11）：
+
+   - **`apps/urchin-embed/src/main/index.ts`**：末尾 re-export 三个 asset-lifecycle
+     函数（`writeImageIntoOwnedAssets` / `reconcileOwnedAssets` /
+     `extractMarkdownImageSources`，from `../../../markdown/src/main/asset-lifecycle`）。
+     这三个函数已被 markdown-main import（存在于 bundle 依赖树中），re-export 不增加
+     bundle 体积。宿主剪藏通过 `loadGenOfficeEmbed()` 返回的 API 调用它们，把远程图片
+     下载后写入 `assets/` 并注册 `.genoffice-assets.json` 清单。
+   - **`apps/shell/src/main/index.ts`**：`deleteFiles` handler（`home:delete-files`）
+     在 `shell.trashItem(p)` 后，对 `.md/.markdown` 文件调
+     `reconcileOwnedAssets(p, [])`。传空 imageSources 会从 manifest 删除该文档的
+     docKey，`siblingMarkdownReferences` 扫描同目录存活 md 算引用集，GC 自动清理
+     不再被任何 md 引用的 owned 图片（共享图片保留）。非 .md 文件无 assets 不触发。
+     import 路径：`from '../../../markdown/src/main/asset-lifecycle'`（markdown-main
+     import 但未 re-export，故 shell 直接 import 源模块）。
+   - **⚠ Urchin 实际走 `apps/desktop/src/main/genoffice/home-handlers.ts` 的
+     `deleteFiles` case**（不是 vendor shell 的 `index.ts`）：Urchin 不加载 shell
+     主进程代码，Home 页的 `home:delete-files` IPC 由宿主 `home-handlers.ts` 处理。
+     **vendor shell 的 deleteFiles GC 改动保留**（上游 genoffice 自己的 shell 受益），
+     **但 Urchin 的 GC 在 `home-handlers.ts:deleteFiles` case 中实现**（通过
+     `deps.embedApi?.reconcileOwnedAssets(p, [])` 调用）。两处改动逻辑一致，升级时
+     均须保留。
+
+   **⚠ vendor 升级时必须逐条恢复此补丁**（升级流程第 2 步「对比 git status 逐条恢复
+   本清单改动」）。漏恢复会导致：①宿主剪藏图片本地化功能失效（embedApi 缺方法，
+   保留原远程 URL 行为，不崩但功能退化）；②删除 md 时 assets 图片不被清理（磁盘
+   孤儿，不崩但不清理）。**改 vendor 源码后必须跑 `node scripts/genoffice-build.mjs
+   shell`** 重建 urchin-embed 产物，否则运行时加载旧产物没有新 API。
 
 ## 安装与构建（Urchin 侧）
 

@@ -100,6 +100,10 @@ extraResources:
 
 # Windows 配置
 win:
+  # 显式指定 exe/安装包图标（Windows 任务管理器的每个进程图标都取自 exe 内嵌
+  # 资源；缺省虽会回退 buildResources/icon.ico，但显式声明避免打包资源目录变动
+  # 时静默退回 Electron 原生图标）。
+  icon: build/icon.ico
   target:
     - target: nsis
       arch:

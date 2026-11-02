@@ -120,6 +120,22 @@ console.log(
     `(channel=${info.channel}, releaseType=${info.releaseType})`,
 );
 
+// cwd / preflight 防御（2026-10-27 stable v0.2.0 发布复盘留痕）：
+// spawnSync 若不显式设 cwd，electron-builder 以调用者 cwd 为 projectDir。
+// 经 `pnpm --filter @urchin/desktop package:win` 运行时 pnpm 把 cwd 设为
+// apps/desktop，electron-builder.yml 可被找到；但直接 `node scripts/package-win.mjs`
+// 时 cwd 为仓库根，electron-builder 找不到 yml → config 为空 → --config.publish.*
+// 覆盖使 publish 变裸对象 → schema 拒绝（v0.2.0 发布时一度误判为 CLI 覆盖与
+// electron-builder 26 不兼容，实为 cwd 缺失）。显式 cwd + yml 存在性 preflight
+// 杜绝同类路径事故静默重演——CLI 覆盖机制本身正确（mergePublish 会把覆盖 deepAssign
+// 到 yml publish 数组首元素，合并后仍是合法数组）。
+if (!existsSync(join(desktopDir, 'electron-builder.yml'))) {
+  throw new Error(
+    `[package-win] electron-builder.yml not found in ${desktopDir} — ` +
+      'cwd incorrect; refuse to build to avoid channel/publish misconfiguration.',
+  );
+}
+
 const result = spawnSync(
   'electron-builder',
   [
@@ -132,6 +148,7 @@ const result = spawnSync(
     `--config.publish.releaseType=${info.releaseType}`,
   ],
   {
+    cwd: desktopDir,
     stdio: 'inherit',
     env,
     shell: true,

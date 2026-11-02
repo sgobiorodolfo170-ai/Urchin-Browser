@@ -28,13 +28,9 @@ import {
 } from './auth';
 import { StaticHandler } from './http-static';
 import { handleClientMessage, sendError, sendJson } from './ws-handler';
-import {
-  createAgentBridge,
-  type AgentBridgeHandle,
-  type AgentBridgeOptions,
-  getProviderList,
-  createLlmProvider,
-} from './agent-bridge';
+// ADR-014 B1 懒加载：agent-bridge（pi SDK）、terminal（node-pty）、ssh-client（ssh2）
+// 改为动态 import，使常驻服务空闲时不加载这些重模块，压低内存。仅保留类型导入。
+import type { AgentBridgeHandle, AgentBridgeOptions } from './agent-bridge';
 import {
   persistExchange,
   listSessions,
@@ -45,23 +41,6 @@ import {
 } from './session-store';
 import { handleFileOps } from './file-ops';
 import { getGitStatus, getGitHistory, getGitFileDiff, getGitCommitDetail } from './git-ops';
-import {
-  createTerminal,
-  terminalInput,
-  terminalResize,
-  terminalKill,
-  listTerminals,
-  disposeAllTerminals,
-} from './terminal';
-import {
-  probe as sshProbe,
-  listDir as sshListDir,
-  installTools as sshInstallTools,
-  listProfiles as sshListProfiles,
-  deleteProfile as sshDeleteProfile,
-  saveProfile as sshSaveProfile,
-  disposeAllSsh,
-} from './ssh-client';
 import {
   scanPlugins,
   readCatalog,
@@ -283,6 +262,9 @@ export async function startPiWebHostServer(
     let lastUserText = '';
     let assistantAccumulator = '';
     let currentCwd: string | undefined;
+    // ADR-014 懒加载：terminal/ssh 模块按需动态 import；close 时仅在已加载时 dispose
+    let terminalMod: typeof import('./terminal') | undefined;
+    let sshMod: typeof import('./ssh-client') | undefined;
     // Phase 4：运行时可变的 model/provider（set_model 更新，ensureBridge 使用）
     let currentProviderId = agentOpts?.providerId;
     let currentModelId = agentOpts?.modelId;
@@ -292,13 +274,14 @@ export async function startPiWebHostServer(
       model: agentOpts?.modelId,
     };
 
-    /** 创建/重建 Agent 桥（带当前 sessionId） */
-    const ensureBridge = (): AgentBridgeHandle | null => {
+    /** 创建/重建 Agent 桥（带当前 sessionId）。async：首次调用动态 import agent-bridge（ADR-014 懒加载） */
+    const ensureBridge = async (): Promise<AgentBridgeHandle | null> => {
       if (bridge) return bridge;
       if (!agentOpts?.apiKey) {
         sendError(ws, 'no_api_key', '未配置 API Key（请在 Urchin 设置中配置 AI Provider）');
         return null;
       }
+      const { createAgentBridge } = await import('./agent-bridge');
       bridge = createAgentBridge(
         {
           ...agentOpts,
@@ -345,488 +328,464 @@ export async function startPiWebHostServer(
     };
 
     ws.on('message', (data, isBinary) => {
-      if (isBinary) {
-        sendError(ws, 'bad_message', 'text/JSON only');
-        return;
-      }
-      const text = Buffer.isBuffer(data)
-        ? data.toString('utf8')
-        : ArrayBuffer.isView(data) || data instanceof ArrayBuffer
-          ? Buffer.from(data as ArrayBuffer).toString('utf8')
-          : String(data);
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        sendError(ws, 'bad_message', 'invalid JSON');
-        return;
-      }
-      const msg = parsed as { type?: string };
-      switch (msg?.type) {
-        case 'prompt': {
-          const h = ensureBridge();
-          if (!h) return;
-          const promptText = (parsed as { text?: string }).text ?? '';
-          if (!promptText) {
-            sendError(ws, 'bad_message', 'prompt.text required');
+      void (async (): Promise<void> => {
+        if (isBinary) {
+          sendError(ws, 'bad_message', 'text/JSON only');
+          return;
+        }
+        const text = Buffer.isBuffer(data)
+          ? data.toString('utf8')
+          : ArrayBuffer.isView(data) || data instanceof ArrayBuffer
+            ? Buffer.from(data as ArrayBuffer).toString('utf8')
+            : String(data);
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          sendError(ws, 'bad_message', 'invalid JSON');
+          return;
+        }
+        const msg = parsed as { type?: string };
+        switch (msg?.type) {
+          case 'prompt': {
+            const h = await ensureBridge();
+            if (!h) return;
+            const promptText = (parsed as { text?: string }).text ?? '';
+            if (!promptText) {
+              sendError(ws, 'bad_message', 'prompt.text required');
+              return;
+            }
+            messageCount++;
+            lastUserText = promptText;
+            assistantAccumulator = '';
+            // stream.end 时持久化（在 onMessage 回调中检测）
+            const origDispose = h.dispose.bind(h);
+            h.dispose = () => origDispose();
+            void h
+              .prompt(promptText)
+              .then(() => {
+                // prompt 完成（agent.prompt resolved = agent_end 已触发）；
+                // 持久化本轮对话
+                if (agentDir && lastUserText && assistantAccumulator) {
+                  void persistExchange(
+                    agentDir,
+                    currentSessionId,
+                    lastUserText,
+                    assistantAccumulator,
+                  ).catch(() => {
+                    /* 持久化失败不阻塞对话 */
+                  });
+                }
+              })
+              .catch((e: unknown) =>
+                sendError(ws, 'prompt_failed', e instanceof Error ? e.message : String(e)),
+              );
             return;
           }
-          messageCount++;
-          lastUserText = promptText;
-          assistantAccumulator = '';
-          // stream.end 时持久化（在 onMessage 回调中检测）
-          const origDispose = h.dispose.bind(h);
-          h.dispose = () => origDispose();
-          void h
-            .prompt(promptText)
-            .then(() => {
-              // prompt 完成（agent.prompt resolved = agent_end 已触发）；
-              // 持久化本轮对话
-              if (agentDir && lastUserText && assistantAccumulator) {
-                void persistExchange(
-                  agentDir,
-                  currentSessionId,
-                  lastUserText,
-                  assistantAccumulator,
-                ).catch(() => {
-                  /* 持久化失败不阻塞对话 */
-                });
-              }
-            })
-            .catch((e: unknown) =>
-              sendError(ws, 'prompt_failed', e instanceof Error ? e.message : String(e)),
-            );
-          return;
-        }
-        case 'abort': {
-          bridge?.abort();
-          return;
-        }
-        case 'list_models': {
-          sendJson(ws, { type: 'models', providers: [...getProviderList()] });
-          return;
-        }
-        case 'get_state': {
-          sendJson(ws, {
-            type: 'state',
-            streaming: bridge !== null && messageCount > 0,
-            messageCount,
-          });
-          return;
-        }
-        case 'new_session': {
-          disposeBridge();
-          currentSessionId = generateSessionId();
-          messageCount = 0;
-          lastUserText = '';
-          assistantAccumulator = '';
-          sendJson(ws, { type: 'session_created', sessionId: currentSessionId });
-          return;
-        }
-        case 'list_sessions': {
-          if (!agentDir) {
-            sendJson(ws, { type: 'session_list', sessions: [] });
+          case 'abort': {
+            bridge?.abort();
             return;
           }
-          void listSessions(agentDir)
-            .then((sessions) =>
-              sendJson(ws, {
-                type: 'session_list',
-                sessions: sessions.map((s) => ({
-                  id: s.id,
-                  firstMessage: s.firstMessage,
-                  messageCount: s.messageCount,
-                })),
-              }),
-            )
-            .catch(() => sendJson(ws, { type: 'session_list', sessions: [] }));
-          return;
-        }
-        case 'switch_session': {
-          const targetId = (parsed as { sessionId?: string }).sessionId ?? '';
-          if (!targetId) {
-            sendError(ws, 'bad_message', 'switch_session.sessionId required');
+          case 'list_models': {
+            const { getProviderList } = await import('./agent-bridge');
+            sendJson(ws, { type: 'models', providers: [...getProviderList()] });
             return;
           }
-          disposeBridge();
-          currentSessionId = targetId;
-          messageCount = 0;
-          lastUserText = '';
-          assistantAccumulator = '';
-          dispatchPluginEvent('conversationChanged', { id: targetId });
-          const sendSwitched = (
-            messages: readonly { role: 'user' | 'assistant'; content: string }[],
-          ) => {
-            messageCount = messages.length;
-            sendJson(ws, { type: 'session_switched', sessionId: targetId, messages });
-          };
-          if (!agentDir) {
-            sendSwitched([]);
+          case 'get_state': {
+            sendJson(ws, {
+              type: 'state',
+              streaming: bridge !== null && messageCount > 0,
+              messageCount,
+            });
             return;
           }
-          void loadSessionMessages(agentDir, targetId)
-            .then((msgs) => sendSwitched(msgs))
-            .catch(() => sendSwitched([]));
-          return;
-        }
-        case 'get_compacted_messages': {
-          const compactionMessageId =
-            (parsed as { compactionMessageId?: string }).compactionMessageId ?? '';
-          sendJson(ws, {
-            type: 'compacted_messages_result',
-            compactionMessageId,
-            conversationId: currentSessionId,
-            messages: [],
-            error: 'no compacted history',
-          } as unknown as HostServerMessage);
-          return;
-        }
-        case 'tool_approval_response': {
-          const id = (parsed as { id?: string }).id ?? '';
-          const rawDecision = (parsed as { decision?: string }).decision ?? 'approve';
-          const decision =
-            rawDecision === 'deny' ? 'deny' : rawDecision === 'edit' ? 'edit' : 'approve';
-          bridge?.resolveApproval(id, decision);
-          sendJson(ws, { type: 'tool_approval_resolved', id });
-          return;
-        }
-        case 'set_cwd': {
-          currentCwd = (parsed as { path?: string }).path;
-          dispatchPluginEvent('cwdChange', currentCwd);
-          return;
-        }
-        case 'set_model': {
-          const provider =
-            typeof (parsed as { provider?: string }).provider === 'string'
-              ? (parsed as { provider?: string }).provider
-              : '';
-          const model =
-            typeof (parsed as { model?: string }).model === 'string'
-              ? (parsed as { model?: string }).model
-              : '';
-          if (provider && model) {
-            // 更新当前 model/provider，销毁旧 bridge（下次 prompt 时 ensureBridge 用新值重建）
-            currentProviderId = provider;
-            currentModelId = model;
+          case 'new_session': {
             disposeBridge();
-            dispatchPluginEvent('clientModelChanged', { providerId: provider, modelId: model });
-            // Phase 4：写回主进程 pi.* 键（MessagePort）
-            try {
-              const parentPort =
-                typeof process !== 'undefined' && 'parentPort' in process && process.parentPort;
-              if (
-                parentPort &&
-                typeof (parentPort as { postMessage: unknown }).postMessage === 'function'
-              ) {
-                (parentPort as { postMessage: (msg: unknown) => void }).postMessage({
-                  type: 'piSettingsChanged',
-                  providerId: provider,
-                  modelId: model,
+            currentSessionId = generateSessionId();
+            messageCount = 0;
+            lastUserText = '';
+            assistantAccumulator = '';
+            sendJson(ws, { type: 'session_created', sessionId: currentSessionId });
+            return;
+          }
+          case 'list_sessions': {
+            if (!agentDir) {
+              sendJson(ws, { type: 'session_list', sessions: [] });
+              return;
+            }
+            void listSessions(agentDir)
+              .then((sessions) =>
+                sendJson(ws, {
+                  type: 'session_list',
+                  sessions: sessions.map((s) => ({
+                    id: s.id,
+                    firstMessage: s.firstMessage,
+                    messageCount: s.messageCount,
+                  })),
+                }),
+              )
+              .catch(() => sendJson(ws, { type: 'session_list', sessions: [] }));
+            return;
+          }
+          case 'switch_session': {
+            const targetId = (parsed as { sessionId?: string }).sessionId ?? '';
+            if (!targetId) {
+              sendError(ws, 'bad_message', 'switch_session.sessionId required');
+              return;
+            }
+            disposeBridge();
+            currentSessionId = targetId;
+            messageCount = 0;
+            lastUserText = '';
+            assistantAccumulator = '';
+            dispatchPluginEvent('conversationChanged', { id: targetId });
+            const sendSwitched = (
+              messages: readonly { role: 'user' | 'assistant'; content: string }[],
+            ) => {
+              messageCount = messages.length;
+              sendJson(ws, { type: 'session_switched', sessionId: targetId, messages });
+            };
+            if (!agentDir) {
+              sendSwitched([]);
+              return;
+            }
+            void loadSessionMessages(agentDir, targetId)
+              .then((msgs) => sendSwitched(msgs))
+              .catch(() => sendSwitched([]));
+            return;
+          }
+          case 'get_compacted_messages': {
+            const compactionMessageId =
+              (parsed as { compactionMessageId?: string }).compactionMessageId ?? '';
+            sendJson(ws, {
+              type: 'compacted_messages_result',
+              compactionMessageId,
+              conversationId: currentSessionId,
+              messages: [],
+              error: 'no compacted history',
+            } as unknown as HostServerMessage);
+            return;
+          }
+          case 'tool_approval_response': {
+            const id = (parsed as { id?: string }).id ?? '';
+            const rawDecision = (parsed as { decision?: string }).decision ?? 'approve';
+            const decision =
+              rawDecision === 'deny' ? 'deny' : rawDecision === 'edit' ? 'edit' : 'approve';
+            bridge?.resolveApproval(id, decision);
+            sendJson(ws, { type: 'tool_approval_resolved', id });
+            return;
+          }
+          case 'set_cwd': {
+            currentCwd = (parsed as { path?: string }).path;
+            dispatchPluginEvent('cwdChange', currentCwd);
+            return;
+          }
+          case 'set_model': {
+            const provider =
+              typeof (parsed as { provider?: string }).provider === 'string'
+                ? (parsed as { provider?: string }).provider
+                : '';
+            const model =
+              typeof (parsed as { model?: string }).model === 'string'
+                ? (parsed as { model?: string }).model
+                : '';
+            if (provider && model) {
+              // 更新当前 model/provider，销毁旧 bridge（下次 prompt 时 ensureBridge 用新值重建）
+              currentProviderId = provider;
+              currentModelId = model;
+              disposeBridge();
+              dispatchPluginEvent('clientModelChanged', { providerId: provider, modelId: model });
+              // Phase 4：写回主进程 pi.* 键（MessagePort）
+              try {
+                const parentPort =
+                  typeof process !== 'undefined' && 'parentPort' in process && process.parentPort;
+                if (
+                  parentPort &&
+                  typeof (parentPort as { postMessage: unknown }).postMessage === 'function'
+                ) {
+                  (parentPort as { postMessage: (msg: unknown) => void }).postMessage({
+                    type: 'piSettingsChanged',
+                    providerId: provider,
+                    modelId: model,
+                  });
+                }
+              } catch {
+                /* parentPort 不可用时静默跳过 */
+              }
+            }
+            return;
+          }
+          case 'scm_status': {
+            const reqId = (parsed as { reqId?: number }).reqId ?? 0;
+            const cwd = currentCwd ?? agentDir ?? process.cwd();
+            void getGitStatus(cwd).then((result) => {
+              sendJson(ws, {
+                type: 'scm_data',
+                reqId,
+                kind: 'status',
+                ok: result.ok,
+                error: result.error,
+                notRepo: result.notRepo,
+                branch: result.branch,
+                detached: result.detached,
+                upstream: result.upstream,
+                ahead: result.ahead,
+                behind: result.behind,
+                files: result.files,
+                branches: result.branches,
+              } as unknown as HostServerMessage);
+            });
+            return;
+          }
+          case 'fork_session': {
+            const originalId =
+              (parsed as { conversationId?: string }).conversationId ?? currentSessionId;
+            if (!agentDir) {
+              sendError(ws, 'no_agent_dir', 'agentDir not configured');
+              return;
+            }
+            void forkSession(agentDir, originalId).then((newId) => {
+              sendJson(ws, {
+                type: 'session_created',
+                sessionId: newId,
+              } as unknown as HostServerMessage);
+            });
+            return;
+          }
+          case 'delete_session': {
+            const targetId = (parsed as { path?: string }).path ?? '';
+            if (!agentDir || !targetId) {
+              return;
+            }
+            void deleteSession(agentDir, targetId).then(() => {
+              sendJson(ws, { type: 'session_list', sessions: [] } as unknown as HostServerMessage);
+            });
+            return;
+          }
+          case 'scm_history': {
+            const reqId = (parsed as { reqId?: number }).reqId ?? 0;
+            const cwd = currentCwd ?? agentDir ?? process.cwd();
+            void getGitHistory(cwd).then((result) => {
+              sendJson(ws, {
+                type: 'scm_data',
+                reqId,
+                kind: 'history',
+                ok: result.ok,
+                error: result.error,
+                history: result.history,
+              } as unknown as HostServerMessage);
+            });
+            return;
+          }
+          case 'scm_filediff': {
+            const reqId = (parsed as { reqId?: number }).reqId ?? 0;
+            const filePath = (parsed as { path?: string }).path ?? '';
+            const cwd = currentCwd ?? agentDir ?? process.cwd();
+            void getGitFileDiff(cwd, filePath).then((result) => {
+              sendJson(ws, {
+                type: 'scm_data',
+                reqId,
+                kind: 'filediff',
+                ok: result.ok,
+                error: result.error,
+                stagedText: result.stagedText,
+                worktreeText: result.worktreeText,
+                untracked: result.untracked,
+              } as unknown as HostServerMessage);
+            });
+            return;
+          }
+          case 'scm_commit': {
+            const reqId = (parsed as { reqId?: number }).reqId ?? 0;
+            const hash = (parsed as { hash?: string }).hash ?? '';
+            const cwd = currentCwd ?? agentDir ?? process.cwd();
+            void getGitCommitDetail(cwd, hash).then((result) => {
+              sendJson(ws, {
+                type: 'scm_data',
+                reqId,
+                kind: 'commit',
+                ok: result.ok,
+                error: result.error,
+                stagedText: result.stagedText,
+              } as unknown as HostServerMessage);
+            });
+            return;
+          }
+          case 'scm_commitmsg': {
+            const reqId = (parsed as { reqId?: number }).reqId ?? 0;
+            // AI 生成提交信息需要 LLM 调用，简化为返回空文本
+            sendJson(ws, {
+              type: 'scm_data',
+              reqId,
+              kind: 'commitmsg',
+              ok: true,
+              text: '',
+            } as unknown as HostServerMessage);
+            return;
+          }
+          case 'terminal_create': {
+            const terminalId = (parsed as { terminalId?: string }).terminalId ?? '';
+            const cwd = (parsed as { cwd?: string }).cwd ?? '';
+            const cols = (parsed as { cols?: number }).cols ?? 80;
+            const rows = (parsed as { rows?: number }).rows ?? 24;
+            const title = (parsed as { title?: string }).title;
+            if (!terminalId) return;
+            const term = await import('./terminal');
+            terminalMod = term;
+            const { createTerminal, listTerminals } = term;
+            createTerminal(
+              terminalId,
+              cwd,
+              cols,
+              rows,
+              title,
+              (id, data) =>
+                sendJson(ws, {
+                  type: 'terminal_output',
+                  terminalId: id,
+                  data,
+                } as unknown as HostServerMessage),
+              (id, exitCode) => {
+                sendJson(ws, {
+                  type: 'terminal_exit',
+                  terminalId: id,
+                  exitCode,
+                } as unknown as HostServerMessage);
+                sendJson(ws, {
+                  type: 'terminal_list',
+                  terminals: listTerminals(),
+                } as unknown as HostServerMessage);
+              },
+            );
+            sendJson(ws, {
+              type: 'terminal_list',
+              terminals: listTerminals(),
+            } as unknown as HostServerMessage);
+            return;
+          }
+          case 'terminal_input': {
+            const terminalId = (parsed as { terminalId?: string }).terminalId ?? '';
+            const data = (parsed as { data?: string }).data ?? '';
+            if (terminalId) {
+              const { terminalInput } = await import('./terminal');
+              terminalInput(terminalId, data);
+            }
+            return;
+          }
+          case 'terminal_resize': {
+            const terminalId = (parsed as { terminalId?: string }).terminalId ?? '';
+            const cols = (parsed as { cols?: number }).cols ?? 80;
+            const rows = (parsed as { rows?: number }).rows ?? 24;
+            if (terminalId) {
+              const { terminalResize } = await import('./terminal');
+              terminalResize(terminalId, cols, rows);
+            }
+            return;
+          }
+          case 'terminal_kill': {
+            const terminalId = (parsed as { terminalId?: string }).terminalId ?? '';
+            const { terminalKill, listTerminals } = await import('./terminal');
+            if (terminalId) terminalKill(terminalId);
+            sendJson(ws, {
+              type: 'terminal_list',
+              terminals: listTerminals(),
+            } as unknown as HostServerMessage);
+            return;
+          }
+          case 'remote_ssh_probe': {
+            const params = (parsed as { params?: Record<string, unknown> }).params;
+            if (!params) return;
+            const host = typeof params.host === 'string' ? params.host : '';
+            const port = typeof params.port === 'number' ? params.port : 22;
+            const username = typeof params.username === 'string' ? params.username : '';
+            const auth = params.auth as
+              | { type: 'password'; password?: string }
+              | { type: 'key'; privateKey?: string; passphrase?: string }
+              | { type: 'agent' };
+            const ssh = await import('./ssh-client');
+            sshMod = ssh;
+            const { probe: sshProbe, saveProfile: sshSaveProfile } = ssh;
+            void sshProbe(host, port, username, auth).then((result) => {
+              sendJson(ws, {
+                type: 'remote_ssh_probe_result',
+                ok: result.ok,
+                connectionId: result.connectionId,
+                error: result.error,
+                system: result.system,
+                tools: result.tools,
+              } as unknown as HostServerMessage);
+              if (result.ok && result.connectionId && params.saveProfile && agentDir) {
+                const profileName =
+                  typeof params.profileName === 'string'
+                    ? params.profileName
+                    : `${username}@${host}`;
+                void sshSaveProfile(agentDir, {
+                  name: profileName,
+                  host,
+                  port,
+                  username,
+                  authType:
+                    auth.type === 'password' ? 'password' : auth.type === 'key' ? 'key' : 'agent',
                 });
               }
-            } catch {
-              /* parentPort 不可用时静默跳过 */
-            }
-          }
-          return;
-        }
-        case 'scm_status': {
-          const reqId = (parsed as { reqId?: number }).reqId ?? 0;
-          const cwd = currentCwd ?? agentDir ?? process.cwd();
-          void getGitStatus(cwd).then((result) => {
-            sendJson(ws, {
-              type: 'scm_data',
-              reqId,
-              kind: 'status',
-              ok: result.ok,
-              error: result.error,
-              notRepo: result.notRepo,
-              branch: result.branch,
-              detached: result.detached,
-              upstream: result.upstream,
-              ahead: result.ahead,
-              behind: result.behind,
-              files: result.files,
-              branches: result.branches,
-            } as unknown as HostServerMessage);
-          });
-          return;
-        }
-        case 'fork_session': {
-          const originalId =
-            (parsed as { conversationId?: string }).conversationId ?? currentSessionId;
-          if (!agentDir) {
-            sendError(ws, 'no_agent_dir', 'agentDir not configured');
+            });
             return;
           }
-          void forkSession(agentDir, originalId).then((newId) => {
-            sendJson(ws, {
-              type: 'session_created',
-              sessionId: newId,
-            } as unknown as HostServerMessage);
-          });
-          return;
-        }
-        case 'delete_session': {
-          const targetId = (parsed as { path?: string }).path ?? '';
-          if (!agentDir || !targetId) {
-            return;
-          }
-          void deleteSession(agentDir, targetId).then(() => {
-            sendJson(ws, { type: 'session_list', sessions: [] } as unknown as HostServerMessage);
-          });
-          return;
-        }
-        case 'scm_history': {
-          const reqId = (parsed as { reqId?: number }).reqId ?? 0;
-          const cwd = currentCwd ?? agentDir ?? process.cwd();
-          void getGitHistory(cwd).then((result) => {
-            sendJson(ws, {
-              type: 'scm_data',
-              reqId,
-              kind: 'history',
-              ok: result.ok,
-              error: result.error,
-              history: result.history,
-            } as unknown as HostServerMessage);
-          });
-          return;
-        }
-        case 'scm_filediff': {
-          const reqId = (parsed as { reqId?: number }).reqId ?? 0;
-          const filePath = (parsed as { path?: string }).path ?? '';
-          const cwd = currentCwd ?? agentDir ?? process.cwd();
-          void getGitFileDiff(cwd, filePath).then((result) => {
-            sendJson(ws, {
-              type: 'scm_data',
-              reqId,
-              kind: 'filediff',
-              ok: result.ok,
-              error: result.error,
-              stagedText: result.stagedText,
-              worktreeText: result.worktreeText,
-              untracked: result.untracked,
-            } as unknown as HostServerMessage);
-          });
-          return;
-        }
-        case 'scm_commit': {
-          const reqId = (parsed as { reqId?: number }).reqId ?? 0;
-          const hash = (parsed as { hash?: string }).hash ?? '';
-          const cwd = currentCwd ?? agentDir ?? process.cwd();
-          void getGitCommitDetail(cwd, hash).then((result) => {
-            sendJson(ws, {
-              type: 'scm_data',
-              reqId,
-              kind: 'commit',
-              ok: result.ok,
-              error: result.error,
-              stagedText: result.stagedText,
-            } as unknown as HostServerMessage);
-          });
-          return;
-        }
-        case 'scm_commitmsg': {
-          const reqId = (parsed as { reqId?: number }).reqId ?? 0;
-          // AI 生成提交信息需要 LLM 调用，简化为返回空文本
-          sendJson(ws, {
-            type: 'scm_data',
-            reqId,
-            kind: 'commitmsg',
-            ok: true,
-            text: '',
-          } as unknown as HostServerMessage);
-          return;
-        }
-        case 'terminal_create': {
-          const terminalId = (parsed as { terminalId?: string }).terminalId ?? '';
-          const cwd = (parsed as { cwd?: string }).cwd ?? '';
-          const cols = (parsed as { cols?: number }).cols ?? 80;
-          const rows = (parsed as { rows?: number }).rows ?? 24;
-          const title = (parsed as { title?: string }).title;
-          if (!terminalId) return;
-          createTerminal(
-            terminalId,
-            cwd,
-            cols,
-            rows,
-            title,
-            (id, data) =>
+          case 'remote_ssh_list_dir': {
+            const connectionId = (parsed as { connectionId?: string }).connectionId ?? '';
+            const dirPath = (parsed as { path?: string }).path ?? '.';
+            const { listDir: sshListDir } = await import('./ssh-client');
+            void sshListDir(connectionId, dirPath).then((result) => {
               sendJson(ws, {
-                type: 'terminal_output',
-                terminalId: id,
-                data,
-              } as unknown as HostServerMessage),
-            (id, exitCode) => {
-              sendJson(ws, {
-                type: 'terminal_exit',
-                terminalId: id,
-                exitCode,
+                type: 'remote_ssh_list_dir_result',
+                ok: result.ok,
+                error: result.error,
+                items: result.items,
               } as unknown as HostServerMessage);
-              sendJson(ws, {
-                type: 'terminal_list',
-                terminals: listTerminals(),
-              } as unknown as HostServerMessage);
-            },
-          );
-          sendJson(ws, {
-            type: 'terminal_list',
-            terminals: listTerminals(),
-          } as unknown as HostServerMessage);
-          return;
-        }
-        case 'terminal_input': {
-          const terminalId = (parsed as { terminalId?: string }).terminalId ?? '';
-          const data = (parsed as { data?: string }).data ?? '';
-          if (terminalId) terminalInput(terminalId, data);
-          return;
-        }
-        case 'terminal_resize': {
-          const terminalId = (parsed as { terminalId?: string }).terminalId ?? '';
-          const cols = (parsed as { cols?: number }).cols ?? 80;
-          const rows = (parsed as { rows?: number }).rows ?? 24;
-          if (terminalId) terminalResize(terminalId, cols, rows);
-          return;
-        }
-        case 'terminal_kill': {
-          const terminalId = (parsed as { terminalId?: string }).terminalId ?? '';
-          if (terminalId) terminalKill(terminalId);
-          sendJson(ws, {
-            type: 'terminal_list',
-            terminals: listTerminals(),
-          } as unknown as HostServerMessage);
-          return;
-        }
-        case 'remote_ssh_probe': {
-          const params = (parsed as { params?: Record<string, unknown> }).params;
-          if (!params) return;
-          const host = typeof params.host === 'string' ? params.host : '';
-          const port = typeof params.port === 'number' ? params.port : 22;
-          const username = typeof params.username === 'string' ? params.username : '';
-          const auth = params.auth as
-            | { type: 'password'; password?: string }
-            | { type: 'key'; privateKey?: string; passphrase?: string }
-            | { type: 'agent' };
-          void sshProbe(host, port, username, auth).then((result) => {
-            sendJson(ws, {
-              type: 'remote_ssh_probe_result',
-              ok: result.ok,
-              connectionId: result.connectionId,
-              error: result.error,
-              system: result.system,
-              tools: result.tools,
-            } as unknown as HostServerMessage);
-            if (result.ok && result.connectionId && params.saveProfile && agentDir) {
-              const profileName =
-                typeof params.profileName === 'string' ? params.profileName : `${username}@${host}`;
-              void sshSaveProfile(agentDir, {
-                name: profileName,
-                host,
-                port,
-                username,
-                authType:
-                  auth.type === 'password' ? 'password' : auth.type === 'key' ? 'key' : 'agent',
-              });
-            }
-          });
-          return;
-        }
-        case 'remote_ssh_list_dir': {
-          const connectionId = (parsed as { connectionId?: string }).connectionId ?? '';
-          const dirPath = (parsed as { path?: string }).path ?? '.';
-          void sshListDir(connectionId, dirPath).then((result) => {
-            sendJson(ws, {
-              type: 'remote_ssh_list_dir_result',
-              ok: result.ok,
-              error: result.error,
-              items: result.items,
-            } as unknown as HostServerMessage);
-          });
-          return;
-        }
-        case 'remote_ssh_install_tools': {
-          const connectionId = (parsed as { connectionId?: string }).connectionId ?? '';
-          const tools = (parsed as { tools?: string[] }).tools ?? [];
-          void sshInstallTools(connectionId, tools).then((result) => {
-            sendJson(ws, {
-              type: 'remote_ssh_install_result',
-              ok: result.ok,
-              error: result.error,
-            } as unknown as HostServerMessage);
-          });
-          return;
-        }
-        case 'remote_ssh_list_profiles': {
-          if (!agentDir) {
-            sendJson(ws, {
-              type: 'remote_ssh_profiles_result',
-              profiles: [],
-            } as unknown as HostServerMessage);
+            });
             return;
           }
-          void sshListProfiles(agentDir).then((profiles) => {
-            sendJson(ws, {
-              type: 'remote_ssh_profiles_result',
-              profiles,
-            } as unknown as HostServerMessage);
-          });
-          return;
-        }
-        case 'remote_ssh_delete_profile': {
-          const name = (parsed as { name?: string }).name ?? '';
-          if (agentDir && name) void sshDeleteProfile(agentDir, name);
-          return;
-        }
-        case 'plugins_reload': {
-          if (!agentDir) return;
-          disposeBridge();
-          void scanPlugins(agentDir).then((plugins) => {
-            sendJson(ws, {
-              type: 'plugins',
-              plugins,
-              epoch: Date.now(),
-            } as unknown as HostServerMessage);
-          });
-          return;
-        }
-        case 'plugin_install': {
-          const source = (parsed as { source?: string }).source ?? '';
-          const pluginId = (parsed as { id?: string }).id ?? '';
-          if (!agentDir || !source || !pluginId) return;
-          void installPlugin(agentDir, source, pluginId).then((result) => {
-            sendJson(ws, {
-              type: 'plugin_job',
-              jobId: `install-${pluginId}-${Date.now()}`,
-              action: 'install',
-              pluginId,
-              phase: 'done',
-              ok: result.ok,
-              error: result.error,
-            } as unknown as HostServerMessage);
-            if (result.ok) {
-              void scanPlugins(agentDir).then((plugins) => {
-                sendJson(ws, {
-                  type: 'plugins',
-                  plugins,
-                  epoch: Date.now(),
-                } as unknown as HostServerMessage);
-              });
+          case 'remote_ssh_install_tools': {
+            const connectionId = (parsed as { connectionId?: string }).connectionId ?? '';
+            const tools = (parsed as { tools?: string[] }).tools ?? [];
+            const { installTools: sshInstallTools } = await import('./ssh-client');
+            void sshInstallTools(connectionId, tools).then((result) => {
+              sendJson(ws, {
+                type: 'remote_ssh_install_result',
+                ok: result.ok,
+                error: result.error,
+              } as unknown as HostServerMessage);
+            });
+            return;
+          }
+          case 'remote_ssh_list_profiles': {
+            if (!agentDir) {
+              sendJson(ws, {
+                type: 'remote_ssh_profiles_result',
+                profiles: [],
+              } as unknown as HostServerMessage);
+              return;
             }
-          });
-          return;
-        }
-        case 'plugin_uninstall': {
-          const pluginId = (parsed as { id?: string }).id ?? '';
-          if (!agentDir || !pluginId) return;
-          void uninstallPlugin(agentDir, pluginId).then(() => {
-            sendJson(ws, {
-              type: 'plugin_job',
-              jobId: `uninstall-${pluginId}-${Date.now()}`,
-              action: 'uninstall',
-              pluginId,
-              phase: 'done',
-              ok: true,
-            } as unknown as HostServerMessage);
+            const { listProfiles: sshListProfiles } = await import('./ssh-client');
+            void sshListProfiles(agentDir).then((profiles) => {
+              sendJson(ws, {
+                type: 'remote_ssh_profiles_result',
+                profiles,
+              } as unknown as HostServerMessage);
+            });
+            return;
+          }
+          case 'remote_ssh_delete_profile': {
+            const name = (parsed as { name?: string }).name ?? '';
+            if (agentDir && name) {
+              const { deleteProfile: sshDeleteProfile } = await import('./ssh-client');
+              void sshDeleteProfile(agentDir, name);
+            }
+            return;
+          }
+          case 'plugins_reload': {
+            if (!agentDir) return;
+            disposeBridge();
             void scanPlugins(agentDir).then((plugins) => {
               sendJson(ws, {
                 type: 'plugins',
@@ -834,72 +793,107 @@ export async function startPiWebHostServer(
                 epoch: Date.now(),
               } as unknown as HostServerMessage);
             });
-          });
-          return;
-        }
-        case 'plugin_enable': {
-          const pluginId = (parsed as { id?: string }).id ?? '';
-          if (!agentDir || !pluginId) return;
-          const llmProvider = agentOpts?.apiKey
-            ? createLlmProvider({
+            return;
+          }
+          case 'plugin_install': {
+            const source = (parsed as { source?: string }).source ?? '';
+            const pluginId = (parsed as { id?: string }).id ?? '';
+            if (!agentDir || !source || !pluginId) return;
+            void installPlugin(agentDir, source, pluginId).then((result) => {
+              sendJson(ws, {
+                type: 'plugin_job',
+                jobId: `install-${pluginId}-${Date.now()}`,
+                action: 'install',
+                pluginId,
+                phase: 'done',
+                ok: result.ok,
+                error: result.error,
+              } as unknown as HostServerMessage);
+              if (result.ok) {
+                void scanPlugins(agentDir).then((plugins) => {
+                  sendJson(ws, {
+                    type: 'plugins',
+                    plugins,
+                    epoch: Date.now(),
+                  } as unknown as HostServerMessage);
+                });
+              }
+            });
+            return;
+          }
+          case 'plugin_uninstall': {
+            const pluginId = (parsed as { id?: string }).id ?? '';
+            if (!agentDir || !pluginId) return;
+            void uninstallPlugin(agentDir, pluginId).then(() => {
+              sendJson(ws, {
+                type: 'plugin_job',
+                jobId: `uninstall-${pluginId}-${Date.now()}`,
+                action: 'uninstall',
+                pluginId,
+                phase: 'done',
+                ok: true,
+              } as unknown as HostServerMessage);
+              void scanPlugins(agentDir).then((plugins) => {
+                sendJson(ws, {
+                  type: 'plugins',
+                  plugins,
+                  epoch: Date.now(),
+                } as unknown as HostServerMessage);
+              });
+            });
+            return;
+          }
+          case 'plugin_enable': {
+            const pluginId = (parsed as { id?: string }).id ?? '';
+            if (!agentDir || !pluginId) return;
+            const ab = await import('./agent-bridge');
+            let llmProvider: ReturnType<typeof ab.createLlmProvider> | undefined;
+            if (agentOpts?.apiKey) {
+              llmProvider = ab.createLlmProvider({
                 apiKey: agentOpts.apiKey,
                 providerId: currentProviderId ?? agentOpts.providerId,
                 modelId: currentModelId ?? agentOpts.modelId,
                 baseUrl: agentOpts.baseUrl,
-              })
-            : undefined;
-          const hostContext = {
-            agentDir,
-            cwd: currentCwd ?? agentDir,
-            conversationId: currentSessionId,
-            messageCount,
-            getProviderList: () => getProviderList(),
-            listConversations: async () => listSessions(agentDir),
-            steer: (text: string) => {
-              void bridge?.prompt(text);
-            },
-            abortRun: () => bridge?.abort(),
-            broadcast: (msg: unknown) => {
-              for (const client of wss.clients) {
-                if (client.readyState === 1) {
-                  client.send(JSON.stringify(msg));
+              });
+            }
+            const hostContext = {
+              agentDir,
+              cwd: currentCwd ?? agentDir,
+              conversationId: currentSessionId,
+              messageCount,
+              getProviderList: () => ab.getProviderList(),
+              listConversations: async () => listSessions(agentDir),
+              steer: (text: string) => {
+                void bridge?.prompt(text);
+              },
+              abortRun: () => bridge?.abort(),
+              broadcast: (msg: unknown) => {
+                for (const client of wss.clients) {
+                  if (client.readyState === 1) {
+                    client.send(JSON.stringify(msg));
+                  }
                 }
-              }
-            },
-            sendTo: (_clientId: string, msg: unknown) => {
-              // 简化：无客户端 ID 管理时退化为广播
-              for (const client of wss.clients) {
-                if (client.readyState === 1) {
-                  client.send(JSON.stringify(msg));
+              },
+              sendTo: (_clientId: string, msg: unknown) => {
+                // 简化：无客户端 ID 管理时退化为广播
+                for (const client of wss.clients) {
+                  if (client.readyState === 1) {
+                    client.send(JSON.stringify(msg));
+                  }
                 }
-              }
-            },
-            project: { name: 'pi-web-host', root: currentCwd ?? agentDir ?? process.cwd() },
-          };
-          void activatePlugin(agentDir, pluginId, llmProvider, hostContext).then((result) => {
-            sendJson(ws, {
-              type: 'plugin_job',
-              jobId: `enable-${pluginId}-${Date.now()}`,
-              action: 'install',
-              pluginId,
-              phase: 'done',
-              ok: result.ok,
-              error: result.error,
-            } as unknown as HostServerMessage);
-            void scanPlugins(agentDir).then((plugins) => {
+              },
+              project: { name: 'pi-web-host', root: currentCwd ?? agentDir ?? process.cwd() },
+            };
+            void activatePlugin(agentDir, pluginId, llmProvider, hostContext).then((result) => {
               sendJson(ws, {
-                type: 'plugins',
-                plugins,
-                epoch: Date.now(),
+                type: 'plugin_job',
+                jobId: `enable-${pluginId}-${Date.now()}`,
+                action: 'install',
+                pluginId,
+                phase: 'done',
+                ok: result.ok,
+                error: result.error,
               } as unknown as HostServerMessage);
-            });
-          });
-          return;
-        }
-        case 'plugin_disable': {
-          const pluginId = (parsed as { id?: string }).id ?? '';
-          if (agentDir && pluginId) {
-            void deactivatePlugin(agentDir, pluginId).then(() => {
               void scanPlugins(agentDir).then((plugins) => {
                 sendJson(ws, {
                   type: 'plugins',
@@ -908,123 +902,138 @@ export async function startPiWebHostServer(
                 } as unknown as HostServerMessage);
               });
             });
-          }
-          return;
-        }
-        case 'plugin_catalog_add': {
-          if (!agentDir) return;
-          const entry = parsed as {
-            id?: string;
-            name?: string;
-            source?: string;
-            description?: string;
-            icon?: string;
-          };
-          if (entry.id && entry.name && entry.source) {
-            void addCatalogEntry(agentDir, {
-              id: entry.id,
-              name: entry.name,
-              source: entry.source,
-              description: entry.description,
-              icon: entry.icon,
-              builtin: false,
-            }).then(() => {
-              void readCatalog(agentDir).then((catalog) => {
-                sendJson(ws, {
-                  type: 'plugin_catalog',
-                  entries: catalog,
-                  epoch: Date.now(),
-                } as unknown as HostServerMessage);
-              });
-            });
-          }
-          return;
-        }
-        case 'plugin_catalog_remove': {
-          const id = (parsed as { id?: string }).id ?? '';
-          if (agentDir && id) {
-            void removeCatalogEntry(agentDir, id).then(() => {
-              void readCatalog(agentDir).then((catalog) => {
-                sendJson(ws, {
-                  type: 'plugin_catalog',
-                  entries: catalog,
-                  epoch: Date.now(),
-                } as unknown as HostServerMessage);
-              });
-            });
-          }
-          return;
-        }
-        case 'plugin_grants': {
-          if (!agentDir) {
-            sendJson(ws, { type: 'plugin_grants', grants: [] } as unknown as HostServerMessage);
             return;
           }
-          void listGrants(agentDir).then((grants) => {
-            sendJson(ws, {
-              type: 'plugin_grants',
-              grants: grants.map((g) => ({ pluginId: g.pluginId, paths: g.paths })),
-            } as unknown as HostServerMessage);
-          });
-          return;
-        }
-        case 'plugin_permissions': {
-          if (!agentDir) {
-            sendJson(ws, {
-              type: 'plugin_permissions',
-              grants: [],
-            } as unknown as HostServerMessage);
-            return;
-          }
-          void listPermissions(agentDir).then((perms) => {
-            sendJson(ws, {
-              type: 'plugin_permissions',
-              grants: perms,
-            } as unknown as HostServerMessage);
-          });
-          return;
-        }
-        case 'plugin_path_response': {
-          const pluginId = (parsed as { pluginId?: string }).pluginId ?? '';
-          const path = (parsed as { path?: string }).path ?? '';
-          const granted = (parsed as { granted?: boolean }).granted === true;
-          if (agentDir && pluginId && path && granted) {
-            void grantDirAccess(agentDir, pluginId, path);
-          }
-          return;
-        }
-        case 'plugin_permission_response': {
-          const pluginId = (parsed as { pluginId?: string }).pluginId ?? '';
-          const family = (parsed as { family?: string }).family ?? '';
-          const granted = (parsed as { granted?: boolean }).granted === true;
-          if (agentDir && pluginId && family === 'net' && granted) {
-            const hosts = (parsed as { hosts?: string[] }).hosts ?? [];
-            for (const host of hosts) {
-              void grantNetHost(agentDir, pluginId, host);
+          case 'plugin_disable': {
+            const pluginId = (parsed as { id?: string }).id ?? '';
+            if (agentDir && pluginId) {
+              void deactivatePlugin(agentDir, pluginId).then(() => {
+                void scanPlugins(agentDir).then((plugins) => {
+                  sendJson(ws, {
+                    type: 'plugins',
+                    plugins,
+                    epoch: Date.now(),
+                  } as unknown as HostServerMessage);
+                });
+              });
             }
+            return;
           }
-          return;
+          case 'plugin_catalog_add': {
+            if (!agentDir) return;
+            const entry = parsed as {
+              id?: string;
+              name?: string;
+              source?: string;
+              description?: string;
+              icon?: string;
+            };
+            if (entry.id && entry.name && entry.source) {
+              void addCatalogEntry(agentDir, {
+                id: entry.id,
+                name: entry.name,
+                source: entry.source,
+                description: entry.description,
+                icon: entry.icon,
+                builtin: false,
+              }).then(() => {
+                void readCatalog(agentDir).then((catalog) => {
+                  sendJson(ws, {
+                    type: 'plugin_catalog',
+                    entries: catalog,
+                    epoch: Date.now(),
+                  } as unknown as HostServerMessage);
+                });
+              });
+            }
+            return;
+          }
+          case 'plugin_catalog_remove': {
+            const id = (parsed as { id?: string }).id ?? '';
+            if (agentDir && id) {
+              void removeCatalogEntry(agentDir, id).then(() => {
+                void readCatalog(agentDir).then((catalog) => {
+                  sendJson(ws, {
+                    type: 'plugin_catalog',
+                    entries: catalog,
+                    epoch: Date.now(),
+                  } as unknown as HostServerMessage);
+                });
+              });
+            }
+            return;
+          }
+          case 'plugin_grants': {
+            if (!agentDir) {
+              sendJson(ws, { type: 'plugin_grants', grants: [] } as unknown as HostServerMessage);
+              return;
+            }
+            void listGrants(agentDir).then((grants) => {
+              sendJson(ws, {
+                type: 'plugin_grants',
+                grants: grants.map((g) => ({ pluginId: g.pluginId, paths: g.paths })),
+              } as unknown as HostServerMessage);
+            });
+            return;
+          }
+          case 'plugin_permissions': {
+            if (!agentDir) {
+              sendJson(ws, {
+                type: 'plugin_permissions',
+                grants: [],
+              } as unknown as HostServerMessage);
+              return;
+            }
+            void listPermissions(agentDir).then((perms) => {
+              sendJson(ws, {
+                type: 'plugin_permissions',
+                grants: perms,
+              } as unknown as HostServerMessage);
+            });
+            return;
+          }
+          case 'plugin_path_response': {
+            const pluginId = (parsed as { pluginId?: string }).pluginId ?? '';
+            const path = (parsed as { path?: string }).path ?? '';
+            const granted = (parsed as { granted?: boolean }).granted === true;
+            if (agentDir && pluginId && path && granted) {
+              void grantDirAccess(agentDir, pluginId, path);
+            }
+            return;
+          }
+          case 'plugin_permission_response': {
+            const pluginId = (parsed as { pluginId?: string }).pluginId ?? '';
+            const family = (parsed as { family?: string }).family ?? '';
+            const granted = (parsed as { granted?: boolean }).granted === true;
+            if (agentDir && pluginId && family === 'net' && granted) {
+              const hosts = (parsed as { hosts?: string[] }).hosts ?? [];
+              for (const host of hosts) {
+                void grantNetHost(agentDir, pluginId, host);
+              }
+            }
+            return;
+          }
+          default:
+            // 文件操作 / 设置：交给 file-ops 处理；未命中则走无状态 handler
+            if (agentDir) {
+              void handleFileOps(parsed as Record<string, unknown>, agentDir)
+                .then((result) => {
+                  if (result) sendJson(ws, result as unknown as Parameters<typeof sendJson>[1]);
+                  else handleClientMessage(ws, text, ctx);
+                })
+                .catch(() => handleClientMessage(ws, text, ctx));
+            } else {
+              handleClientMessage(ws, text, ctx);
+            }
         }
-        default:
-          // 文件操作 / 设置：交给 file-ops 处理；未命中则走无状态 handler
-          if (agentDir) {
-            void handleFileOps(parsed as Record<string, unknown>, agentDir)
-              .then((result) => {
-                if (result) sendJson(ws, result as unknown as Parameters<typeof sendJson>[1]);
-                else handleClientMessage(ws, text, ctx);
-              })
-              .catch(() => handleClientMessage(ws, text, ctx));
-          } else {
-            handleClientMessage(ws, text, ctx);
-          }
-      }
+      })();
     });
 
     ws.on('close', () => {
       bridge?.dispose();
       bridge = null;
-      disposeAllTerminals();
-      disposeAllSsh();
+      terminalMod?.disposeAllTerminals();
+      sshMod?.disposeAllSsh();
       if (agentDir) void deactivateAllPlugins(agentDir);
     });
   });

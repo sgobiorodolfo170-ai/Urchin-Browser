@@ -81,8 +81,8 @@ export function formatBrowserPageError(op: string, error: string): string {
   return [
     `browser_page "${op}" failed: ${error}`,
     `browser_page "${op}" 失败：${error}`,
-    'Next: make sure a pi-web-ui page is open with the page-picker extension enabled and paired, then try op:"pages" to see which pages are available. If the target page is not allowed yet, ask the user to allow it in the extension.',
-    '下一步：确认 pi-web-ui 页面已打开、page-picker 扩展已启用并与该页面配对，再用 op:"pages" 看有哪些可操作页面；若目标页面尚未授权，请让用户先在扩展里授权。',
+    'Next: make sure a pi-web page is open with the page-picker extension enabled and paired, then try op:"pages" to see which pages are available. If the target page is not allowed yet, ask the user to allow it in the extension.',
+    '下一步：确认 pi-web 页面已打开、page-picker 扩展已启用并与该页面配对，再用 op:"pages" 看有哪些可操作页面；若目标页面尚未授权，请让用户先在扩展里授权。',
   ].join('\n');
 }
 
@@ -119,7 +119,7 @@ export function makeBrowserPageTool(
     name: BROWSER_PAGE_TOOL_NAME,
     label: 'Browser page',
     description: [
-      "Read or act on a page in the USER'S OWN browser via the pi-web-ui page-picker extension (the server only forwards).",
+      "Read or act on a page in the USER'S OWN browser via the pi-web page-picker extension (the server only forwards).",
       "Only the parameters below exist — an op option that is not a field here (e.g. type's submit) is unavailable.",
       'ops: pages | read (what? selector? all?) | click (selector? index?) | type (selector text) | scroll (selector?) | goto (url) | wait (selector? text? timeoutMs?) | eval (code) | shot (maxEdge?)',
     ].join('\n'),

@@ -262,16 +262,12 @@ export function createHostFromUrchin(): BrowserHostApi {
         return Promise.resolve({ ok: true } as const);
       },
       onEvent(handler) {
-        // v0.1 简化实现：通过 tab 事件推导生命周期
-        // 真实生命周期事件可在阶段6 由主进程显式下发
+        // ADR-014：pi 入口不再使用 urchin://ai，无内部页挂载事件需要推导。
+        // 保留订阅以维持 unsubscribe 契约；阶段6 可由主进程显式下发生命周期事件。
+        void handler;
         const u = getUrchin();
-        const unsubscribe = u.on('tab:event', (payload) => {
-          const evt = payload as TabEvent;
-          if (evt.type === 'activated' && evt.snapshot.url.startsWith('urchin://ai')) {
-            handler('activate');
-          } else if (evt.type === 'updated' && evt.snapshot.url.startsWith('urchin://ai')) {
-            handler('mount');
-          }
+        const unsubscribe = u.on('tab:event', () => {
+          /* no-op */
         });
         return unsubscribe;
       },

@@ -2786,7 +2786,7 @@ export class GoalService {
       'exec-gone':
         '执行对话已被移出或服务重启，执行者记忆已丢失，目标循环已暂停（不会自己重新派活）。',
       quiesce:
-        '服务器正在排空存量工作（quiesce），不再派发新一轮，目标循环已暂停。用 pi-web-ui server unquiesce 恢复后可重新设定目标继续。',
+        '服务器正在排空存量工作（quiesce），不再派发新一轮，目标循环已暂停。用 pi-web server unquiesce 恢复后可重新设定目标继续。',
       'review-timeout': '审查回合超时，未收到结论。',
       'review-gone': '审查对话已不可用，未收到结论。',
       'review-invalid': '审查回合没有给出约定的 JSON 结论（重试一次仍未通过）。',
@@ -2800,7 +2800,7 @@ export class GoalService {
       'exec-gone':
         'The executor conversation is gone (dismissed or the server restarted); its memory is lost and the loop is paused (it will not dispatch again by itself).',
       quiesce:
-        'The server is draining (quiesce); no new rounds will be dispatched and the goal loop is paused. Resume with pi-web-ui server unquiesce, then set the goal again to continue.',
+        'The server is draining (quiesce); no new rounds will be dispatched and the goal loop is paused. Resume with pi-web server unquiesce, then set the goal again to continue.',
       'review-timeout': 'The review round timed out without a verdict.',
       'review-gone': 'The reviewer conversation is unavailable; no verdict was received.',
       'review-invalid':

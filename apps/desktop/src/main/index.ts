@@ -609,8 +609,6 @@ let unbindDshTabClose: (() => void) | null = null;
  * dispose() 终止 utility 子进程。阶段 1（pi-web-ui）已于 M2C 退役。
  */
 let piWebHostLauncher: PiWebHostLauncher | null = null;
-/** pi 阶段 2 标签关闭→停止 unbind 函数（performCleanup 调用；对齐 dsh 语义） */
-let unbindPiWebHostTabClose: (() => void) | null = null;
 /**
  * 全局 StorageLayer 引用（在 whenReady 中赋值）。
  * 退出时需调用 close() 以释放 better-sqlite3 原生句柄，
@@ -1101,12 +1099,9 @@ function registerIpcHandlers(): void {
     },
   });
   registerPiWebHostHandlers(ipcMain, piWebHostLauncher);
-  unbindPiWebHostTabClose = bindTabCloseToStop(tabManager, piWebHostLauncher);
 
-  // dev.48：pi 模块内打开的网页（window.open 新标签）右侧栏图标钉定为 π——
-  // 来源 tab URL 命中当前 pi 服务地址时返回钉定图标（端口随机，读实时状态）
-  // dev.122：改为 origin 匹配（protocol+host+port），兼容页面导航后 token 丢失、
-  // 路径变化等场景；同时在 tab-manager.create 中调用以覆盖主标签（非仅 window.open）
+  // dev.122（ADR-014）：pi 服务改为应用级常驻——关 pi 标签不再停止后端，
+  // 服务活到应用退出（performCleanup 调 dispose）。仅 dsh 保留「关标签停后端」。
   tabManager.setPiIconPinner((sourceUrl) => {
     try {
       const origin = new URL(sourceUrl).origin;
@@ -2292,6 +2287,9 @@ void app.whenReady().then(() => {
     if (restoreDefault && defaultTabs.length > 0) {
       let activeTabId: number | undefined;
       for (const tab of defaultTabs) {
+        // ADR-014：丢弃遗留的 urchin://ai 启动器标签（pi 入口已改为直接打开
+        // pi-web-host 托管的 http 页，urchin://ai 路由已释放）。避免旧会话恢复出 404 页。
+        if (tab.url.startsWith('urchin://ai')) continue;
         const created = tabManager.create({
           windowId: mainWindow.id,
           url: tab.url,
@@ -2368,9 +2366,7 @@ async function performCleanup(): Promise<void> {
       aiHandlersDispose = null;
     }
 
-    // 0.52 终止 pi 阶段 2 托管服务 utility 子进程 + 解绑标签关闭监听
-    unbindPiWebHostTabClose?.();
-    unbindPiWebHostTabClose = null;
+    // 0.52 终止 pi 阶段 2 托管服务 utility 子进程（ADR-014：常驻服务随应用退出终止）
     if (piWebHostLauncher) {
       try {
         await piWebHostLauncher.dispose();

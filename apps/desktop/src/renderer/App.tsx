@@ -8,11 +8,12 @@
  * - 左右侧栏夹住下侧地址栏
  *
  * 阶段2 解耦决策：
- * - AI 模块改为独立标签页（urchin://ai），不再融合到地址栏
+ * - pi 模块作为独立标签页（pi-web-host 托管的 http 页），不再融合到地址栏
  * - 地址栏回归纯 URL 输入职责
- * - 左侧栏底部新增 AI 入口按钮，点击创建/激活 urchin://ai 标签页
- * - 移除右侧栏的 AI 会话选项卡（会话列表将在阶段3 重构为 AI 标签页内的左区）
+ * - 左侧栏底部 pi 入口按钮，点击确保服务运行并直接打开 pi 聊天页
+ * - 移除右侧栏的 AI 会话选项卡（会话列表将在阶段3 重构为 pi 标签页内的左区）
  * - 移除 contentViewHidden / omniboxMode / aiStreaming 状态
+ * - ADR-014：pi 服务应用级常驻（关标签不停服务）；urchin://ai 释放给未来原生 AI 助手
  *
  * 事件订阅：通过 window.urchin.on('tab:event', ...) 接收主进程推送的 tab 状态变更
  */
@@ -30,7 +31,6 @@ import {
   Mail as MailIcon,
 } from 'lucide-react';
 import { AppTitleBar } from './components/app-titlebar';
-import { PiWebLauncherView } from './pi-web/launcher-view';
 import { MailView } from './mail/MailView';
 import { SettingsPage } from './settings/SettingsPage';
 import { NewTabPage } from './home/NewTabPage';
@@ -135,7 +135,7 @@ function isBookmarkable(url: string): boolean {
 }
 
 /** 标签页图标（展开态与折叠态共用）：
- *  加载中 → spinner；崩溃 → 红叉；urchin://ai → π 品牌图标；urchin://settings → 齿轮；
+ *  加载中 → spinner；崩溃 → 红叉；urchin://settings → 齿轮；
  *  普通网页 → 优先封装库内置图标（site-directory 命中 → 本地 /sites/<key>.png，离线可用），
  *  未命中内置 → 网页真实 favicon（主进程 page-favicon-updated 抓取）；
  *  图标加载失败逐级回退，皆不可用 → 灰点占位。 */
@@ -152,17 +152,6 @@ function TabFavicon({ tab, className }: { tab: TabSnapshot; className?: string }
   }
   if (tab.crashed) {
     return <X className={cn('shrink-0 text-error', className ?? 'h-3 w-3')} />;
-  }
-  if (tab.url?.startsWith('urchin://ai')) {
-    // dev.45：pi 模块标签统一使用品牌 π 图标（与左侧栏入口一致，public/pi-icon.png）
-    return (
-      <img
-        src="./pi-icon.png"
-        alt=""
-        draggable={false}
-        className={cn('shrink-0 rounded object-contain', className ?? 'h-3 w-3')}
-      />
-    );
   }
   if (tab.url?.startsWith('urchin://settings')) {
     return <SettingsIcon className={cn('shrink-0 text-text-secondary', className ?? 'h-3 w-3')} />;
@@ -352,6 +341,11 @@ export function App() {
   // DeepSeek Harness 启动中标记：用于显示启动过程中的持久提示，
   // 启动完成（成功/失败）后再消失。
   const [dshStarting, setDshStarting] = useState(false);
+  // pi 托管服务状态（ADR-014：常驻服务，侧栏 π 按钮状态灯依据）
+  // stopped=熄灭 / starting=黄 / running=绿 / error=红
+  const [piServiceState, setPiServiceState] = useState<
+    'stopped' | 'starting' | 'running' | 'error'
+  >('stopped');
   // 编辑器轻提示（保存失败等）：稳定引用（useEditSession 依赖稳定性需要）。
   // showEditorToast / editorGuardAsk / handleCloseTab / handleSelectTab 声明于
   // 上方「编辑守卫」区（tab 事件订阅 effect 之前，供事件路径守卫引用）。
@@ -612,6 +606,38 @@ export function App() {
     window.addEventListener('urchin:settings-changed', onSettingsChanged);
     return () => {
       window.removeEventListener('urchin:settings-changed', onSettingsChanged);
+    };
+  }, []);
+
+  // ADR-014：轮询 pi 托管服务状态（2s），驱动侧栏 π 按钮状态灯。
+  // 服务状态变化不频繁，但需捕获崩溃/外部退出；IPC 本地调用开销可忽略。
+  useEffect(() => {
+    let alive = true;
+    const tick = async (): Promise<void> => {
+      try {
+        const s = (await window.urchin.invoke('piWebHost.status', {})) as {
+          state?: string;
+        };
+        if (alive) {
+          setPiServiceState(
+            s.state === 'running'
+              ? 'running'
+              : s.state === 'starting'
+                ? 'starting'
+                : s.state === 'error'
+                  ? 'error'
+                  : 'stopped',
+          );
+        }
+      } catch {
+        if (alive) setPiServiceState('error');
+      }
+    };
+    void tick();
+    const t = setInterval(() => void tick(), 2000);
+    return () => {
+      alive = false;
+      clearInterval(t);
     };
   }, []);
 
@@ -1077,82 +1103,88 @@ export function App() {
     }
   }, [tabs]);
 
-  // 打开 pi 模块（dev.39 一键直达）：pi 已运行 → 直接开/复用 pi 网页标签；
-  // 未运行 → 打开启动器标签页（挂载即自动启动并跳转，无需再点「启动」按钮）。
-  // 阶段2 解耦：AI 模块作为独立标签页（urchin://ai），不再融合到地址栏
-  const handleOpenAi = useCallback(async () => {
-    // 1. 查询 piWebHost 服务状态：running 则直达 pi 网页标签（toggle 语义：已激活则关闭标签）
+  // 打开 pi 模块（ADR-014）：确保服务运行 → 直接打开/聚焦 pi 聊天页（http 标签）。
+  // 服务常驻——关 pi 标签不停服务；无启动器中间页；无 toggle 关闭语义。
+  // origin 匹配复用标签（兼容页面导航后 token 丢失、URL 变化）。
+  const handleOpenPi = useCallback(async () => {
     let piUrl: string | null = null;
+    let piState: string | undefined;
     try {
       const s = (await window.urchin.invoke('piWebHost.status', {})) as {
         state?: string;
         url?: string;
       };
+      piState = s.state;
       if (s.state === 'running' && typeof s.url === 'string') piUrl = s.url;
     } catch {
-      // 状态查询失败（如 IPC 未就绪）：回落到启动器页展示错误
-    }
-    if (piUrl) {
-      const piTab = tabs.find((t) => t.url === piUrl);
-      if (piTab) {
-        if (piTab.id === activeTabId) {
-          try {
-            await window.urchin.invoke('tab.close', { tabId: piTab.id });
-          } catch (e) {
-            console.error('Failed to close pi tab:', e);
-          }
-        } else {
-          try {
-            await window.urchin.invoke('tab.setActive', { tabId: piTab.id });
-          } catch (e) {
-            console.error('Failed to activate pi tab:', e);
-          }
-        }
-        return;
-      }
-      try {
-        await window.urchin.invoke('tab.create', {
-          windowId: await getCurrentWindowId(),
-          url: piUrl,
-          active: true,
-        });
-      } catch (e) {
-        console.error('Failed to open pi tab:', e);
-      }
+      // IPC 未就绪：提示错误
+      setActionToast('pi 服务状态查询失败');
+      setPiServiceState('error');
       return;
     }
 
-    // 2. pi 未运行：打开/复用启动器标签页（进入即自动启动）
-    const existing = tabs.find((t) => t.url?.startsWith('urchin://ai'));
+    // starting：服务正在启动，提示等待
+    if (piState === 'starting') {
+      setActionToast('正在启动 pi…');
+      return;
+    }
+
+    // stopped / error：启动服务（launch 幂等，error 态会重启）
+    if (!piUrl) {
+      setPiServiceState('starting');
+      setActionToast('正在启动 pi…');
+      try {
+        const res = (await window.urchin.invoke('piWebHost.launch', {})) as {
+          url?: string;
+        };
+        if (typeof res.url === 'string') {
+          piUrl = res.url;
+        } else {
+          throw new Error('launch returned no url');
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setActionToast(`pi 启动失败：${msg}`);
+        setPiServiceState('error');
+        return;
+      }
+    }
+
+    // 服务就绪：按 origin 复用/新建 pi 标签
+    const targetOrigin = (() => {
+      try {
+        return piUrl ? new URL(piUrl).origin : null;
+      } catch {
+        return null;
+      }
+    })();
+    const existing = targetOrigin
+      ? tabs.find((t) => {
+          try {
+            return t.url && new URL(t.url).origin === targetOrigin;
+          } catch {
+            return false;
+          }
+        })
+      : undefined;
     if (existing) {
-      if (existing.id === activeTabId) {
-        // 当前启动器页已激活：关闭它（toggle 行为）
-        try {
-          await window.urchin.invoke('tab.close', { tabId: existing.id });
-        } catch (e) {
-          console.error('Failed to close ai tab:', e);
-        }
-      } else {
-        // 启动器页存在但未激活：激活它
-        try {
-          await window.urchin.invoke('tab.setActive', { tabId: existing.id });
-        } catch (e) {
-          console.error('Failed to activate ai tab:', e);
-        }
+      try {
+        await window.urchin.invoke('tab.setActive', { tabId: existing.id });
+      } catch (e) {
+        console.error('Failed to activate pi tab:', e);
       }
       return;
     }
-    // 没有启动器标签页，创建新的
     try {
       await window.urchin.invoke('tab.create', {
         windowId: await getCurrentWindowId(),
-        url: 'urchin://ai',
+        url: piUrl,
         active: true,
       });
     } catch (e) {
-      console.error('Failed to open ai tab:', e);
+      console.error('Failed to open pi tab:', e);
     }
-  }, [tabs, activeTabId]);
+  }, [tabs]);
 
   /**
    * 打开邮箱标签页（M25）：toggle 模式——已存在则激活，否则创建。
@@ -1249,22 +1281,6 @@ export function App() {
       setDshStarting(false);
     }
   }, [tabs, activeTabId]);
-
-  /**
-   * 打开 pi 网页版 URL（阶段 1 启动器视图回调）：新开标签页加载。
-   * 启动器标签页（urchin://ai）保持打开,随时可返回停止服务。
-   */
-  const handleOpenPiWebUrl = useCallback(async (url: string) => {
-    try {
-      await window.urchin.invoke('tab.create', {
-        windowId: await getCurrentWindowId(),
-        url,
-        active: true,
-      });
-    } catch (e) {
-      console.error('Failed to open pi web tab:', e);
-    }
-  }, []);
 
   // doCloseTab / doSelectTab / handleCloseTab / handleSelectTab / editorGuardAsk /
   // beforeunload 兜底声明于上方「编辑守卫」区（tab 事件订阅 effect 之前）。
@@ -1674,10 +1690,9 @@ export function App() {
   }, [devtoolsOpen, devtoolsWidth, leftWidth, rightWidth, notifyLayout]);
 
   // 中区内容判断
-  // 注意：urchin://settings / urchin://ai 会被 Electron URL 规范化为带末尾斜杠，
+  // 注意：urchin://settings 会被 Electron URL 规范化为带末尾斜杠，
   // 所以用 startsWith 判断而非严格相等，避免匹配失败导致组件不渲染。
   const isSettingsTab = !!activeTab?.url?.startsWith('urchin://settings');
-  const isAiTab = !!activeTab?.url?.startsWith('urchin://ai');
   const isMailTab = !!activeTab?.url?.startsWith('urchin://mail');
   const isGenOfficeHomeTab = !!activeTab?.url?.startsWith('urchin://genoffice-home');
   const isNewTab = !!activeTab?.url?.startsWith('urchin://newtab');
@@ -1686,15 +1701,14 @@ export function App() {
   // GenOffice 编辑器标签（阶段 2）：视图由主进程 WebContentsView 覆盖渲染，
   // React 中区留空、底部地址栏隐藏（编辑器自带工具条与保存流程）
   const isGenOfficeTab = activeTab?.viewKind === 'genoffice';
-  // 渲染优先级：设置页 > AI 页 > GenOffice 主页 > 主页 > 文件查看器 > 普通网页
-  // settings / ai / genoffice-home / newtab / file-viewer 都由 React 组件渲染，
-  // BrowserView 让出空间（ZERO_BOUNDS）
+  // 渲染优先级：设置页 > GenOffice 主页 > 主页 > 文件查看器 > 普通网页
+  // settings / genoffice-home / newtab / file-viewer 都由 React 组件渲染，
+  // BrowserView 让出空间（ZERO_BOUNDS）；pi 聊天页是 http 标签，BrowserView 正常渲染
 
-  // 内部页面（settings / ai / genoffice-home / newtab / file-viewer / genoffice）
+  // 内部页面（settings / mail / genoffice-home / newtab / file-viewer / genoffice）
   // 下，导航按钮无意义，禁用
   const isInternalPage =
     isSettingsTab ||
-    isAiTab ||
     isMailTab ||
     isGenOfficeHomeTab ||
     isNewTab ||
@@ -2098,8 +2112,8 @@ export function App() {
   // 状态栏为独立透明子窗口（main/status-bar/status-bar-overlay.ts），主渲染进程
   // 仍是 tab/建议/书签/toast/主题 的单一真源；此处组装快照并同步给主进程转发。
   const statusBarState = useMemo<StatusBarState>(() => {
-    // 除 AI 外所有页面（含 GenOffice）用悬浮地址栏；GenOffice 前进后退控制项目内导航
-    const statusBarVisible = !isAiTab;
+    // 所有页面（含 GenOffice 与 pi 聊天页）均用悬浮地址栏
+    const statusBarVisible = true;
     // 导航禁用页面（设置/邮件/主页/工作区/文件查看器）：后退/前进/刷新无意义
     const isNavDisabledPage = isInternalPage && !isGenOfficeTab && !isGenOfficeHomeTab;
     // toast 优先级：DeepSeek Harness 启动 > 截图/翻译 > 书签
@@ -2131,7 +2145,6 @@ export function App() {
       collapsed: false, // 折叠态由主进程管理，App 恒发 false
     };
   }, [
-    isAiTab,
     isGenOfficeTab,
     isGenOfficeHomeTab,
     isInternalPage,
@@ -2292,12 +2305,20 @@ export function App() {
                   className="h-5 w-5 rounded object-contain"
                 />
               </button>
-              {/* pi 入口（与 GenOffice 文档入口互换位置，用户指令） */}
+              {/* pi 入口（ADR-014：点击确保服务运行并直接打开 pi 聊天页；服务常驻） */}
               <button
-                className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-                onClick={() => void handleOpenAi()}
-                aria-label="AI 助手"
-                title="AI 助手"
+                className="relative flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+                onClick={() => void handleOpenPi()}
+                aria-label="pi"
+                title={
+                  piServiceState === 'running'
+                    ? 'pi（运行中）'
+                    : piServiceState === 'starting'
+                      ? 'pi（启动中…）'
+                      : piServiceState === 'error'
+                        ? 'pi（故障）'
+                        : 'pi（未启动）'
+                }
               >
                 {/* pi 模块入口图标（用户指定素材，public/pi-icon.png，白底深蓝 π 方形图标） */}
                 <img
@@ -2305,6 +2326,20 @@ export function App() {
                   alt=""
                   draggable={false}
                   className="h-5 w-5 rounded object-contain"
+                />
+                {/* ADR-014 状态灯：运行绿/启动黄/故障红/未启动熄灭 */}
+                <span
+                  className={cn(
+                    'absolute right-1 top-1 h-2 w-2 rounded-full border border-surface',
+                    piServiceState === 'running'
+                      ? 'bg-green-500'
+                      : piServiceState === 'starting'
+                        ? 'bg-amber-500'
+                        : piServiceState === 'error'
+                          ? 'bg-red-500'
+                          : 'bg-transparent',
+                  )}
+                  aria-hidden
                 />
               </button>
               {/* GenOffice 文档入口（阶段 4.5，用户指令：由「打开文件」按钮改为
@@ -2380,13 +2415,6 @@ export function App() {
                     <SettingsPage
                       key={settingsInitialTab ?? 'settings'}
                       initialTab={settingsInitialTab}
-                    />
-                  ) : isAiTab ? (
-                    /* AI 页：pi 网页版启动器（piWebHost 自研托管服务 + WebSocket + token 鉴权）。
-                     * 本页仅作入口（启动/停止/打开），pi 对话前端由 pi-web-host 托管。 */
-                    <PiWebLauncherView
-                      autoStart
-                      onOpenUrl={(url) => void handleOpenPiWebUrl(url)}
                     />
                   ) : isMailTab ? (
                     /* M25 邮箱模块：IMAP 收信 + 邮件阅读（ADR-010）。
@@ -2515,7 +2543,7 @@ export function App() {
              * 定位用右键菜单同款窗口相对坐标（已含 BrowserView 偏移补偿），防溢出夹边。
              * 注意：BrowserView 在网页标签时覆盖主窗口 React，此卡仅在落入底部状态栏区域或
              * 内部 React 页面时可见；网页中部命中时层级受限是既有行为，本次不改变。 */}
-            {!isAiTab && !isGenOfficeTab && !isGenOfficeHomeTab && selectionCard && (
+            {!isGenOfficeTab && !isGenOfficeHomeTab && selectionCard && (
               <div
                 className="fixed z-50 max-w-md rounded-lg border border-border bg-surface p-3 shadow-dropdown"
                 style={{

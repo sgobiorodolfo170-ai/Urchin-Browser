@@ -13,8 +13,8 @@
  *
  * 阶段2 解耦决策：
  * 移除 AI 模式（mode 切换 / onAiSend / aiStreaming / submitAi）。
- * AI 模块改为独立标签页（urchin://ai），不再融合到地址栏。
- * 地址栏回归纯 URL 输入职责，简化逻辑、避免与 AI 模块耦合。
+ * pi 模块作为独立标签页（pi-web-host 托管的 http 页），不再融合到地址栏。
+ * 地址栏回归纯 URL 输入职责，简化逻辑、避免与 pi 模块耦合。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {

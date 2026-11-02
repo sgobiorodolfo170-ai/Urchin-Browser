@@ -83,15 +83,6 @@ describe('protocol/index', () => {
       expect(body).toContain('<title>设置</title>');
     });
 
-    it('should serve ai html for urchin://ai', async () => {
-      registerUrchinProtocol();
-      const res = await getHandler()({ url: 'urchin://ai' });
-      const body = await res.text();
-
-      expect(res.status).toBe(200);
-      expect(body).toContain('<title>AI 助手</title>');
-    });
-
     it('should serve newtab html for urchin://newtab', async () => {
       registerUrchinProtocol();
       const res = await getHandler()({ url: 'urchin://newtab' });

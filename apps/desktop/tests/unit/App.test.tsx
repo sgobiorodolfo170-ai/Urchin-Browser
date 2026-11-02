@@ -397,17 +397,19 @@ describe('App (Browser Shell)', () => {
     });
   });
 
-  // ── AI 入口：创建 urchin://ai 标签页 ──
+  // ── pi 入口：确保服务运行并打开 pi 聊天页（http 标签） ──
 
-  it('should create ai tab via left sidebar AI button', async () => {
+  it('should open pi tab directly when service running via left sidebar pi button', async () => {
+    const piUrl = 'http://127.0.0.1:64096/?token=test-token-123';
     mockInvoke.mockImplementation((channel: string) => {
       if (channel === 'tab.list') return Promise.resolve({ tabs: [makeTab()] });
       if (channel === 'bookmark.list') return Promise.resolve({ bookmarks: [] });
       if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
       if (channel === 'settings.get') return Promise.resolve({ value: 300 });
       if (channel === 'window.getCurrent') return Promise.resolve({ windowId: 1 });
+      if (channel === 'piWebHost.status') return Promise.resolve({ state: 'running', url: piUrl });
       if (channel === 'tab.create') {
-        return Promise.resolve({ tab: makeTab({ id: 2, url: 'urchin://ai', title: 'AI 助手' }) });
+        return Promise.resolve({ tab: makeTab({ id: 2, url: piUrl, title: 'pi' }) });
       }
       return Promise.resolve({});
     });
@@ -415,11 +417,11 @@ describe('App (Browser Shell)', () => {
     renderApp();
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
 
-    fireEvent.click(screen.getByLabelText('AI 助手'));
+    fireEvent.click(screen.getByLabelText('pi'));
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
         windowId: 1,
-        url: 'urchin://ai',
+        url: piUrl,
         active: true,
       }),
     );

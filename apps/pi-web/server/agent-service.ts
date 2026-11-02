@@ -7128,7 +7128,7 @@ export class ClientSession {
       if (this.pendingPageCalls.delete(id)) {
         resolve({
           ok: false,
-          error: `${Math.round(timeoutMs / 1000)} 秒内没有收到浏览器响应（timeout ${timeoutMs}ms）。请确认 pi-web-ui 页面已打开且 page-picker 扩展已启用。`,
+          error: `${Math.round(timeoutMs / 1000)} 秒内没有收到浏览器响应（timeout ${timeoutMs}ms）。请确认 pi-web 页面已打开且 page-picker 扩展已启用。`,
         });
       }
     }, timeoutMs);
@@ -7148,7 +7148,7 @@ export class ClientSession {
         resolve({
           ok: false,
           error:
-            '没有已连接的 pi-web-ui 页面（no browser connected）。请打开 pi-web-ui 页面，并确认 page-picker 扩展已启用且已与该页面配对。',
+            '没有已连接的 pi-web 页面（no browser connected）。请打开 pi-web 页面，并确认 page-picker 扩展已启用且已与该页面配对。',
         });
         return;
       }
@@ -9969,9 +9969,9 @@ export class ClientSession {
     this.emit({
       type: 'notice',
       level: 'error',
-      text: '服务器正在排空存量工作（quiesce），已拒绝新的对话/消息/编辑。存量运行会继续跑完；用 pi-web-ui server unquiesce 可恢复。',
+      text: '服务器正在排空存量工作（quiesce），已拒绝新的对话/消息/编辑。存量运行会继续跑完；用 pi-web server unquiesce 可恢复。',
       textEn:
-        'Server is draining (quiesce) and rejected the new chat/message/edit. Existing runs continue; resume with pi-web-ui server unquiesce.',
+        'Server is draining (quiesce) and rejected the new chat/message/edit. Existing runs continue; resume with pi-web server unquiesce.',
     });
     this.flushSnapshot();
     return true;

@@ -65,7 +65,7 @@ function defaultWorkspace(): Workspace {
   return {
     id: DEFAULT_WORKSPACE_ID,
     name: '默认工作区',
-    color: 'blue',
+    color: 'amber',
     isDefault: true,
     createdAt: 0,
   };
@@ -87,7 +87,7 @@ function normalizeStored(raw: unknown): WorkspaceStoredRecord {
   const byId = new Map<string, Workspace>();
   for (const ws of input) {
     if (ws.id === DEFAULT_WORKSPACE_ID) {
-      byId.set(DEFAULT_WORKSPACE_ID, { ...ws, isDefault: true });
+      byId.set(DEFAULT_WORKSPACE_ID, { ...ws, isDefault: true, color: 'amber' });
     } else if (!byId.has(ws.id)) {
       byId.set(ws.id, { ...ws, isDefault: false });
     }

@@ -374,13 +374,13 @@ export function BarItem({
       >
         <img
           className="brand-logo bar-item-brand-logo bar-item-icon"
-          src={appUrl('/icons/icon-192.png')}
-          alt="pi-web-ui"
+          src={appUrl('/pi-icon.png')}
+          alt="pi-web"
           width={26}
           height={26}
           draggable={false}
         />
-        <span className="brand-name bar-item-text">{named('pi-web-ui')}</span>
+        <span className="brand-name bar-item-text">{named('pi-web')}</span>
       </span>
     );
   }

@@ -100,10 +100,10 @@ function SiteFavicon({ url, className }: { url: string; className?: string }) {
     }
   })();
 
-  // dev.45：pi 模块统一 π 品牌图标——urchin://ai 内部页与 pi 本机服务页
-  // （127.0.0.1/localhost）不走外部 favicon 服务（Google 服务对 localhost
-  // 也取不到图标），直接用与左侧栏入口一致的本地 π 图标
-  if (url.startsWith('urchin://ai') || host === '127.0.0.1' || host === 'localhost') {
+  // dev.45：pi 模块统一 π 品牌图标——pi 本机服务页（127.0.0.1/localhost）
+  // 不走外部 favicon 服务（Google 服务对 localhost 也取不到图标），
+  // 直接用与左侧栏入口一致的本地 π 图标
+  if (host === '127.0.0.1' || host === 'localhost') {
     return (
       <img
         src="./pi-icon.png"

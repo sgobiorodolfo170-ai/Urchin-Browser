@@ -334,18 +334,15 @@ describe('view-integration', () => {
   });
 
   describe('internal urls', () => {
-    it.each(['urchin://settings', 'urchin://settings/', 'urchin://ai', 'urchin://ai/'])(
-      'should zero bounds for %s',
-      (url) => {
-        const tab = makeTab({ id: 10, windowId: 1, url });
-        tabManager.register(tab);
-        install();
+    it.each(['urchin://settings', 'urchin://settings/'])('should zero bounds for %s', (url) => {
+      const tab = makeTab({ id: 10, windowId: 1, url });
+      tabManager.register(tab);
+      install();
 
-        fireTab('created', tab);
+      fireTab('created', tab);
 
-        expect(tab.view.setBounds).toHaveBeenCalledWith({ x: 0, y: 0, width: 0, height: 0 });
-      },
-    );
+      expect(tab.view.setBounds).toHaveBeenCalledWith({ x: 0, y: 0, width: 0, height: 0 });
+    });
   });
 
   describe('browserViewHidden', () => {

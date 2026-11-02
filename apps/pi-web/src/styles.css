@@ -16603,6 +16603,10 @@
   .tpl-modal-backdrop {
     z-index: 301;
   }
+  /* MCP 服务器编辑/删除弹窗：与 tpl-modal-backdrop 同级，盖在设置弹窗之上 */
+  .modal-backdrop.sub-modal {
+    z-index: 301;
+  }
   /* 插件能力授权 / 目录访问顶层浮层：盖在设置等弹窗之上（z-index: 350） */
   .perm-modal-backdrop {
     z-index: 350;
@@ -16877,6 +16881,10 @@
     box-shadow:
       0 24px 64px rgba(0, 0, 0, 0.7),
       0 0 0 1px var(--border-soft);
+    /* 移除 .modal 基类的 transform: translateZ(0)，避免设置弹窗成为 position:fixed
+     * 后代的 containing block——否则子弹窗（tpl-modal / mcp-edit-modal）的
+     * modal-backdrop 被约束在设置弹窗矩形内而非全视口，导致遮罩区域异常。 */
+    transform: none;
   }
   .settings-modal .modal-head,
   .settings-modal > .modal-close {

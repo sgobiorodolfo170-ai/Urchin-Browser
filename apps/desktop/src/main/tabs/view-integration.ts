@@ -15,9 +15,10 @@
  *
  * 阶段2 解耦决策：
  * 移除 contentViewHidden 状态（不再有 AI 模式切换）。
- * AI 模块作为独立标签页（urchin://ai）存在，与 settings 一样由 React 渲染。
+ * ADR-014：pi 聊天页是 pi-web-host 托管的普通 http 标签（BrowserView 正常渲染），
+ * 不再使用 urchin://ai（已释放给未来原生 AI 助手）。
  * 通过 URL 判断决定 BrowserView 是否让出空间：
- * - urchin://settings / urchin://ai → ZERO_BOUNDS（React 渲染内部页面）
+ * - urchin://settings 等 React 渲染的内部页 → ZERO_BOUNDS
  * - 其他 URL → 非零 bounds（BrowserView 显示外部网页）
  */
 import type { TabManager } from './tab-manager';
@@ -56,12 +57,13 @@ export const WINDOW_TITLEBAR_HEIGHT = USE_CUSTOM_CHROME ? 32 : 0;
 export const SHELL_BOTTOM_INSET = 6;
 
 /** 由渲染进程 React 组件渲染的内部 URL 前缀（不显示 BrowserView）。
- *  阶段2 解耦：settings 和 ai 都作为 React 渲染的内部页面；newtab 主页同为 React 渲染；
+ *  settings 作为 React 渲染的内部页面；newtab 主页同为 React 渲染；
  *  file-viewer 本地文件查看器同为 React 渲染（文件路径经 ?path= 参数传入）；
- *  genoffice-home 为 GenOffice 文档模块主页（阶段 4.5，React 渲染）。 */
+ *  genoffice-home 为 GenOffice 文档模块主页（阶段 4.5，React 渲染）。
+ *  ADR-014：pi 入口不再使用 urchin://ai（已释放给未来原生 AI 助手）；pi 聊天页
+ *  是 pi-web-host 托管的普通 http 标签，BrowserView 正常渲染。 */
 const URCHIN_RENDERER_HOSTS = [
   'urchin://settings',
-  'urchin://ai',
   'urchin://mail',
   'urchin://newtab',
   'urchin://file-viewer',
@@ -254,7 +256,7 @@ export function installTabViewIntegration(
 
   /** 为指定窗口的活跃 tab 设置 BrowserView bounds。
    *  优先级（从高到低）：
-   *  1. isRendererManagedUrl（urchin://settings / urchin://ai）→ ZERO_BOUNDS（让 React 渲染内部页面）
+   *  1. isRendererManagedUrl（urchin://settings 等 React 内部页）→ ZERO_BOUNDS（让 React 渲染内部页面）
    *  2. 其他 URL（外部网页 + 未识别的内部 URL）→ 非零 bounds
    *
    *  性能优化：通过 lastBoundsUrlPerTab 跟踪上次处理 URL，避免相同 URL 重复 setBounds。
@@ -370,7 +372,7 @@ export function installTabViewIntegration(
   /** 各 tab 上次的 HTML5 全屏态（全屏切换需强制刷新 bounds，URL 去重会跳过） */
   const lastFullscreenPerTab = new Map<number, boolean>();
   const onUpdated = (snapshot: TabSnapshot): void => {
-    // URL 变更可能影响 BrowserView 可见性（如切换到/离开 urchin://settings / urchin://ai）
+    // URL 变更可能影响 BrowserView 可见性（如切换到/离开 urchin://settings 等 React 内部页）
     if (snapshot.active) {
       const tab = tabManager.getTab(snapshot.id);
       // htmlFullscreen 变化时强制刷新：否则 URL 去重跳过，全屏/退出全屏不生效

@@ -1240,6 +1240,15 @@ function AboutTab() {
     return { electron: '-', chrome: '-', node: '-', platform: '-' };
   }, []);
 
+  const handleOpenRepo = useCallback(async () => {
+    try {
+      const windowId = await getCurrentWindowId();
+      await window.urchin.invoke('tab.create', { windowId, url: REPO_URL, active: true });
+    } catch {
+      // 标签创建失败不中断设置页交互：静默忽略
+    }
+  }, []);
+
   return (
     <section>
       <h1 className="mb-6 text-2xl font-semibold">关于</h1>
@@ -1271,7 +1280,13 @@ function AboutTab() {
 
         <div className="rounded-md border border-border px-4 py-3">
           <div className="mb-2 text-sm font-medium">作者</div>
-          <div className="text-xs text-text-secondary">Urchin Browser Contributors</div>
+          <button
+            type="button"
+            className="break-all text-left text-xs text-primary hover:underline"
+            onClick={() => void handleOpenRepo()}
+          >
+            {REPO_URL}
+          </button>
           <div className="mt-2 text-xs text-text-secondary">
             Copyright © 2026 Urchin Browser Contributors
           </div>

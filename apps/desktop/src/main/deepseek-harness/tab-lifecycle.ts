@@ -1,8 +1,9 @@
 /**
  * DeepSeek Harness · 标签关闭→停止后端绑定
  *
- * 与 piWeb 不同（piWeb 的启动器标签保持打开作控制面板，关网页标签不停后端），
- * dsh 要求「web 前端关闭后，deepseek-harness 项目关闭」。
+ * ADR-014：仅 dsh 使用本绑定——dsh 要求「web 前端关闭后，deepseek-harness 项目关闭」。
+ * pi 托管服务（piWebHost）已改为应用级常驻：关 pi 标签不停后端，服务活到应用退出
+ * （performCleanup 调 piWebHostLauncher.dispose()）。
  *
  * 实现：在 tabManager 'removed' 事件上挂监听，被关标签的 URL 匹配当前 dsh
  * 服务地址（http://127.0.0.1:<port> 前缀）时调 launcher.stop()。

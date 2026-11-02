@@ -392,7 +392,8 @@ describe('createHostFromUrchin', () => {
       expect(await host.lifecycle.ready()).toEqual({ ok: true });
     });
 
-    it('onEvent should emit activate for urchin://ai activated tab', () => {
+    // ADR-014：pi 入口不再使用 urchin://ai，onEvent 为 no-op 监听（不再推导 mount/activate）
+    it('onEvent should not emit for any tab event (urchin://ai route released)', () => {
       const handler = vi.fn();
       const host = createHostFromUrchin();
 
@@ -401,32 +402,7 @@ describe('createHostFromUrchin', () => {
         payload: unknown,
       ) => void;
       cb({ type: 'activated', snapshot: makeTab({ url: 'urchin://ai' }) });
-
-      expect(handler).toHaveBeenCalledWith('activate');
-    });
-
-    it('onEvent should emit mount for updated urchin://ai tab', () => {
-      const handler = vi.fn();
-      const host = createHostFromUrchin();
-
-      host.lifecycle.onEvent(handler);
-      const cb = mockOn.mock.calls.find((c) => (c[0] as string) === 'tab:event')?.[1] as (
-        payload: unknown,
-      ) => void;
-      cb({ type: 'updated', snapshot: makeTab({ url: 'urchin://ai' }) });
-
-      expect(handler).toHaveBeenCalledWith('mount');
-    });
-
-    it('onEvent should ignore non-urchin://ai tabs', () => {
-      const handler = vi.fn();
-      const host = createHostFromUrchin();
-
-      host.lifecycle.onEvent(handler);
-      const cb = mockOn.mock.calls.find((c) => (c[0] as string) === 'tab:event')?.[1] as (
-        payload: unknown,
-      ) => void;
-      cb({ type: 'activated', snapshot: makeTab({ url: 'https://web.dev' }) });
+      cb({ type: 'updated', snapshot: makeTab({ url: 'http://127.0.0.1:9999/' }) });
 
       expect(handler).not.toHaveBeenCalled();
     });

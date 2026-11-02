@@ -91,8 +91,7 @@ export async function queryBrowserControl(): Promise<BrowserControlStatus> {
     return {
       available: false,
       pages: [],
-      error:
-        '宿主页面桥不可用：这个 pi-web-ui 页面还没装上扩展桥（装/启用 page-picker 后刷新本页）',
+      error: '宿主页面桥不可用：这个 pi-web 页面还没装上扩展桥（装/启用 page-picker 后刷新本页）',
     };
   }
   try {

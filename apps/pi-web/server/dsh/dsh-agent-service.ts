@@ -2278,9 +2278,9 @@ export class DshClientSession {
     this.emit({
       type: 'notice',
       level: 'error',
-      text: '服务器正在排空存量工作（quiesce），已拒绝新的对话/消息/编辑。存量运行会继续跑完；用 pi-web-ui server unquiesce 可恢复。',
+      text: '服务器正在排空存量工作（quiesce），已拒绝新的对话/消息/编辑。存量运行会继续跑完；用 pi-web server unquiesce 可恢复。',
       textEn:
-        'Server is draining (quiesce); new chats/messages/edits rejected. Existing runs continue; resume with pi-web-ui server unquiesce.',
+        'Server is draining (quiesce); new chats/messages/edits rejected. Existing runs continue; resume with pi-web server unquiesce.',
     });
     this.flushSnapshot();
     return true;

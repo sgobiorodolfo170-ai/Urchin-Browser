@@ -232,6 +232,17 @@ export class TabManager {
       view,
     };
 
+    // dev.122：pi-web-host / dsh 主标签创建时即钉定品牌图标——
+    // piIconPinner 以 origin 匹配当前运行的服务端口，命中则设 favicon + piIconPinned，
+    // 此后 did-start-navigation 不清空、page-favicon-updated 不覆盖。
+    // 此前仅 window.open 新标签走此路径，主标签依赖 webRequest + favicon resolver
+    // 链路（哈希路径 / session 隔离导致不稳定）。
+    const pinnedIcon = this.piIconPinner?.(url);
+    if (pinnedIcon) {
+      tab.favicon = pinnedIcon;
+      tab.piIconPinned = true;
+    }
+
     // 绑定 webContents 事件
     this.bindWebContentsEvents(tab);
 

@@ -858,7 +858,7 @@ export function createPluginHostApi(deps: PluginHostDeps): PluginHostApi {
         return {
           ok: false,
           error:
-            '桌面版（Electron 外壳）不支持 browser_page：窗口里没有 Chrome 扩展运行时。请让用户改用系统浏览器打开同一个 pi-web-ui 地址（网页版）再试。/ The desktop app cannot run browser_page (no Chrome extension runtime); ask the user to open the same pi-web-ui address in a regular browser instead.',
+            '桌面版（Electron 外壳）不支持 browser_page：窗口里没有 Chrome 扩展运行时。请让用户改用系统浏览器打开同一个 pi-web 地址（网页版）再试。/ The desktop app cannot run browser_page (no Chrome extension runtime); ask the user to open the same pi-web address in a regular browser instead.',
         };
       }
       const bridge = await waitForPageBridge(deps.bridgeWaitMs ?? 3000);

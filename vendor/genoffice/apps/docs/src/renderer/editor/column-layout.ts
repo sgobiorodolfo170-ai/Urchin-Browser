@@ -68,6 +68,7 @@ export interface ColumnBlockSpec {
   /** owning section's character-grid letter-spacing delta (pt) in docs whose
    *  sections disagree on docGrid charSpace (doc-charspace-block) */
   charSpacePt?: number
+  charSpaceSbPt?: number
   /** translate; dy < 0 pulls content up over vacated column space */
   dx: number
   dy: number
@@ -78,6 +79,8 @@ export interface ColumnBlockSpec {
   /** paragraph straddling two columns of different widths: a leading float
    *  (doc-col-split-float) rewraps the head or the tail at the narrower width */
   split?: ColumnSplitShape
+  /** first block of a page-opening section (doc-sect-page-start: clear floats) */
+  sectionPageStart?: true
 }
 
 const SPLIT_CLASS = 'doc-col-split-float'
@@ -102,6 +105,7 @@ const PATCH_PROPS = [
   '--doc-margin-top',
   '--doc-grid-pitch',
   '--doc-char-space',
+  '--doc-char-space-sb',
   '--vert-mb',
 ]
 
@@ -115,6 +119,7 @@ const PATCH_CLASSES = [
   'doc-vert-tbRl',
   'doc-vert-tbRlV',
   'doc-vert-btLr',
+  'doc-sect-page-start',
 ]
 
 /** pitch/charSpace-only specs get an inert marker class: .doc-col-block's
@@ -127,7 +132,8 @@ function specClass(spec: ColumnBlockSpec): string {
   const varsOnly =
     (spec.gridPitchPt !== undefined ||
       spec.charSpacePt !== undefined ||
-      spec.marginTopPx !== undefined) &&
+      spec.marginTopPx !== undefined ||
+      spec.sectionPageStart) &&
     spec.widthPx === undefined &&
     spec.contentWPx === undefined &&
     spec.dx === 0 &&
@@ -136,6 +142,7 @@ function specClass(spec: ColumnBlockSpec): string {
   let cls = varsOnly ? 'doc-grid-block' : 'doc-col-block'
   if (spec.gridPitchPt === 0) cls += ' doc-grid-nosnap'
   if (spec.charSpacePt !== undefined) cls += ' doc-charspace-block'
+  if (spec.sectionPageStart) cls += ' doc-sect-page-start'
   if (spec.vertical) {
     cls += ` doc-vert-block doc-vert-${spec.vertical.mode}`
     if (spec.vertical.firstOnPage) cls += ' doc-vert-first'
@@ -174,6 +181,9 @@ export function setColumnLayout(
         ? `--doc-grid-pitch:${spec.gridPitchPt > 0 ? `${round2(spec.gridPitchPt)}pt` : '0.0001px'};`
         : '') +
       (spec.charSpacePt !== undefined ? `--doc-char-space:${round4(spec.charSpacePt)}pt;` : '') +
+      (spec.charSpaceSbPt !== undefined
+        ? `--doc-char-space-sb:${round4(spec.charSpaceSbPt)}pt;`
+        : '') +
       (spec.pageDx ? `--page-cx:${round2(spec.pageDx)}px;` : '') +
       (spec.vertical ? `--vert-mb:${round2(spec.vertical.marginBottomPx)}px;` : '') +
       `--col-dx:${round2(spec.dx)}px;--col-dy:${round2(spec.dy)}px`

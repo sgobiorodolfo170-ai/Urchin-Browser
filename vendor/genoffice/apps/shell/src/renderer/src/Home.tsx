@@ -1,32 +1,46 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { DragEvent as ReactDragEvent, ReactElement } from 'react'
-import logoLockup from './assets/genoffice-logo.svg'
-import iconDocx from './assets/file-docx.svg'
-import iconXlsx from './assets/file-xlsx.svg'
-import iconPptx from './assets/file-pptx.svg'
-import iconPdf from './assets/file-pdf.svg'
-import iconMd from './assets/file-md.svg'
-import iconHtml from './assets/file-html.svg'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type {
+  DragEvent as ReactDragEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactElement,
+} from 'react'
+import logoLockup from './assets/genoffice-logo.svg'
+import { KbAskPanel } from './KbAskPanel'
+import { FileBadge } from './file-badge'
+import { placeFolderMenu } from './folder-menu-position'
+import type {
+  AccountStatus,
+  CloudProjectKind,
+  CloudProjectsSnapshot,
   FolderEntry,
   FolderListing,
   FolderRoot,
   HomeApi,
   MoveConflictPolicy,
   RecentEntry,
+  FileSearchHit,
+  FileSearchPage,
+  FileSearchRerank,
 } from '../../shared/home-api'
 import type { IntegrationsApi } from '../../shared/integrations-api'
+import { markText } from '../../shared/text-marks'
 import { useDismissablePopover } from '@genoffice/ui'
-import { fileCountKey, visiblePageCount } from './counts'
+import { fileCountLabel, visiblePageCount } from './counts'
 import { useI18n } from './locale'
 import type { I18n, StringKey } from './locale'
 import { SettingsModal } from './SettingsModal'
+import type { SettingsTarget } from './SettingsModal'
 import { skillUpdateDue } from './IntegrationsPane'
+import { onFilesChanged } from './file-events'
+
+import type { ProjectApi } from '@genoffice/project-store'
 
 declare global {
   interface Window {
     aiOffice: HomeApi
     aiOfficeIntegrations?: IntegrationsApi
+    /** Optional: a build without the project bridge keeps the panel in memory. */
+    projectApi?: ProjectApi
   }
 }
 
@@ -43,22 +57,11 @@ const GREET_ASK_KEYS = [
   'greetAsk6',
 ] as const satisfies readonly StringKey[]
 
-const FILE_ICONS: Record<string, string> = {
-  docx: iconDocx,
-  xlsx: iconXlsx,
-  xlsm: iconXlsx,
-  pptx: iconPptx,
-  pdf: iconPdf,
-  md: iconMd,
-  markdown: iconMd,
-  html: iconHtml,
-  htm: iconHtml,
-}
-
 /* Formats the open-local card advertises. Too long for the card at any window
    width, so it ellipsizes and a hover ScreenTip carries the full list. Keep in
    sync with the main-process open-dialog filter (OPEN_DIALOG_EXTENSIONS). */
-const OPEN_LOCAL_EXTENSIONS = '.docx / .xlsx / .xlsm / .xls / .csv / .pptx / .pdf / .md / .html'
+const OPEN_LOCAL_EXTENSIONS =
+  '.docx / .odt / .ott / .xlsx / .xlsm / .xls / .csv / .tsv / .ods / .ots / .pptx / .odp / .otp / .pdf / .md / .html'
 
 /** drag payload of home file/folder rows (JSON array of absolute paths) */
 const DRAG_PATHS_MIME = 'application/x-genoffice-paths'
@@ -66,30 +69,28 @@ const DRAG_PATHS_MIME = 'application/x-genoffice-paths'
 const DRAG_EXPAND_DELAY_MS = 600
 /** expanded folders survive a home reload; the selection is per session */
 const TREE_STATE_KEY = 'home.folderTree'
+/** user-dragged sidebar width; unset keeps the stylesheet's default (genoffice#2169) */
+const SIDEBAR_WIDTH_KEY = 'home.sidebarWidth'
+const SIDEBAR_MIN_WIDTH = 180
+const SIDEBAR_MAX_WIDTH = 480
 
-function FileBadge({ ext, size }: { ext: string; size: number }) {
-  const icon = FILE_ICONS[ext]
-  if (icon) {
-    return <img src={icon} width={size} height={size} alt="" aria-hidden="true" />
+function readSidebarWidth(): number | null {
+  try {
+    const n = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY))
+    return n >= SIDEBAR_MIN_WIDTH && n <= SIDEBAR_MAX_WIDTH ? n : null
+  } catch {
+    return null
   }
-  const label = ext ? ext[0].toUpperCase() : '?'
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="7.5" fill="#98a2b3" />
-      <text
-        x="16"
-        y="16.5"
-        textAnchor="middle"
-        dominantBaseline="central"
-        fill="#fff"
-        fontSize={17}
-        fontWeight="700"
-        fontFamily="system-ui, -apple-system, 'Segoe UI', sans-serif"
-      >
-        {label}
-      </text>
-    </svg>
-  )
+}
+
+/**
+ * Width of the viewport that `position: fixed` elements anchor to. The layout
+ * engine owns this coordinate system, so documentElement's client rect is the
+ * value to compute menu offsets from; window.innerWidth can disagree on scaled
+ * Linux desktops, which pushed row menus past the window's left edge (genoffice#1946).
+ */
+function fixedViewportWidth(): number {
+  return document.documentElement.clientWidth
 }
 
 function FolderIcon({ size = 16, open = false }: { size?: number; open?: boolean }) {
@@ -103,17 +104,6 @@ function FolderIcon({ size = 16, open = false }: { size?: number; open?: boolean
         fill={open ? 'currentColor' : 'none'}
         fillOpacity={open ? 0.12 : 0}
       />
-    </svg>
-  )
-}
-
-/** Windows 系统默认风格文件夹图标（金黄色），仅用于「打开本地文件」卡片辨识图标。 */
-function WindowsFolderIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-      <path d="M2 8C2 6.9 2.9 6 4 6h7.5c.6 0 1.1.2 1.5.6L15 8.5h12c1.1 0 2 .9 2 2v1.5H2V8z" fill="#D4A017" />
-      <path d="M2 11h27v13c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V11z" fill="#FFD83B" />
-      <path d="M2 11h27v1.5H2V11z" fill="#E8B923" fillOpacity="0.5" />
     </svg>
   )
 }
@@ -197,10 +187,20 @@ function baseName(entry: RecentEntry): string {
   return entry.ext ? entry.name.slice(0, -(entry.ext.length + 1)) : entry.name
 }
 
-/** "Clients / Contracts" for a file under the root; the parent folder name elsewhere */
-function locationLabel(path: string, root: FolderRoot | null): string {
+/** the root that holds `path`; the deepest one when roots nest */
+function rootOf(path: string, roots: readonly FolderRoot[]): FolderRoot | null {
+  let best: FolderRoot | null = null
+  for (const root of roots) {
+    if (isUnder(root.path, path) && (!best || root.path.length > best.path.length)) best = root
+  }
+  return best
+}
+
+/** "Clients / Contracts" for a file under a root; the parent folder name elsewhere */
+function locationLabel(path: string, roots: readonly FolderRoot[]): string {
   const dir = dirOf(path)
-  if (root && isUnder(root.path, dir)) {
+  const root = rootOf(dir, roots)
+  if (root) {
     if (dir === root.path) return root.name
     return splitPath(dir.slice(root.path.length)).join(' / ')
   }
@@ -232,16 +232,31 @@ const FILTERS: { key: string; label: StringKey }[] = [
 
 /** sidebar filter keys that stand for a family of extensions (mirrors recent-files.ts) */
 const FILTER_FAMILY: Record<string, readonly string[]> = {
-  docx: ['docx', 'doc'],
-  xlsx: ['xlsx', 'xlsm', 'xls', 'csv'],
-  pptx: ['pptx', 'ppt'],
-  md: ['md', 'markdown'],
+  docx: ['docx', 'doc', 'odt', 'ott'],
+  xlsx: ['xlsx', 'xlsm', 'xls', 'csv', 'tsv', 'ods', 'ots'],
+  pptx: ['pptx', 'ppt', 'odp', 'otp'],
+  md: ['md', 'markdown', 'txt', 'json'],
   html: ['html', 'htm'],
 }
 
 function matchesFilter(entry: RecentEntry, filter: string): boolean {
   if (filter === 'all') return true
   return (FILTER_FAMILY[filter] ?? [filter]).includes(entry.ext)
+}
+
+/** wrap every matched fragment of a name or folder label in the shared search-hit mark */
+function highlightText(text: string, needles: readonly string[]): ReactElement[] | string {
+  const marks = markText(text, needles)
+  if (!marks.some((m) => m.hit)) return text
+  return marks.map((m, i) =>
+    m.hit ? (
+      <mark key={i} className="search-hit">
+        {m.text}
+      </mark>
+    ) : (
+      <span key={i}>{m.text}</span>
+    ),
+  )
 }
 
 /** Check glyph marking the selected sort option; invisible on the others so labels stay aligned */
@@ -360,7 +375,7 @@ function useFolderListings() {
 // ── Move-to-folder picker ────────────────────────────────
 
 interface FolderPickerProps {
-  root: FolderRoot
+  roots: readonly FolderRoot[]
   /** folders the moved items already live in (greyed, not selectable) */
   currentDirs: ReadonlySet<string>
   /** folders being moved: they and their descendants cannot be targets */
@@ -371,7 +386,7 @@ interface FolderPickerProps {
 }
 
 function FolderPicker({
-  root,
+  roots,
   currentDirs,
   movingDirs,
   count,
@@ -380,7 +395,9 @@ function FolderPicker({
 }: FolderPickerProps) {
   const { t } = useI18n()
   const { listings, load } = useFolderListings()
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set([root.path]))
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(
+    () => new Set(roots.map((r) => r.path)),
+  )
   const [picked, setPicked] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [creatingIn, setCreatingIn] = useState<string | null>(null)
@@ -399,7 +416,9 @@ function FolderPicker({
   }, [onCancel])
 
   const disabledDir = (dir: string) =>
-    currentDirs.has(dir) || movingDirs.some((m) => isUnder(m, dir))
+    currentDirs.has(dir) ||
+    movingDirs.some((m) => isUnder(m, dir)) ||
+    rootOf(dir, roots)?.usable === false
 
   // Enter or blur commits, Escape cancels; the blur an unmount may fire reads
   // the edit from a ref mirrored during render, so a finished edit is a no-op
@@ -507,7 +526,7 @@ function FolderPicker({
     for (const listing of listings.values()) {
       for (const f of listing.folders) {
         if (f.name.toLowerCase().includes(needle)) {
-          hits.push({ path: f.path, name: f.name, rel: locationLabel(f.path + '/x', root) })
+          hits.push({ path: f.path, name: f.name, rel: locationLabel(f.path + '/x', roots) })
         }
         if (!listings.has(f.path)) load(f.path)
       }
@@ -561,13 +580,18 @@ function FolderPicker({
           onChange={(e) => setQuery(e.target.value)}
         />
         <div className="picker-tree">
-          {needle ? renderSearch() : <ul role="tree">{renderNode(root, 0)}</ul>}
+          {needle ? (
+            renderSearch()
+          ) : (
+            <ul role="tree">{roots.map((root) => renderNode(root, 0))}</ul>
+          )}
         </div>
         <div className="modal-buttons picker-buttons">
           <button
             className="btn btn-secondary picker-new"
             onClick={() => {
-              const parent = picked ?? root.path
+              const parent = picked ?? roots.find((r) => r.usable)?.path
+              if (!parent) return
               setExpanded((prev) => new Set([...prev, parent]))
               setCreatingIn(parent)
               setNewName('')
@@ -649,6 +673,102 @@ function ConflictPrompt({ names, onChoose }: ConflictPromptProps) {
   )
 }
 
+// ── Starred-group picker ─────────────────────────────────
+
+interface GroupPickerProps {
+  /** existing group names (a group exists while it has at least one file) */
+  groups: readonly string[]
+  count: number
+  onCancel: () => void
+  /** put the files into an existing group */
+  onPick: (group: string) => void
+  /** create a group named `name` and put the files into it */
+  onCreate: (name: string) => void
+  /** take the files out of their group (back to the unfiltered list) */
+  onRemove: () => void
+}
+
+/** Modal moving starred files into a named group. Deliberately minimal: no
+ *  group rename/delete — a group is just a label its entries carry, and it
+ *  vanishes when its last member leaves (via this dialog's remove action,
+ *  an unstar, or a deleted file). */
+function GroupPicker({ groups, count, onCancel, onPick, onCreate, onRemove }: GroupPickerProps) {
+  const { t } = useI18n()
+  const [name, setName] = useState('')
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onCancel])
+
+  const create = () => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    setName('')
+    onCreate(trimmed)
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onCancel}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('moveToGroupTitle')}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3>{t('moveToGroupTitle')}</h3>
+        <p>{t('selectedCount', { n: count })}</p>
+        {groups.length > 0 && (
+          <ul className="group-picker-list">
+            {groups.map((group) => (
+              <li key={group}>
+                <button
+                  className="group-picker-row"
+                  onClick={() => {
+                    setName('')
+                    onPick(group)
+                  }}
+                >
+                  <FolderIcon size={16} />
+                  <span className="group-picker-name">{group}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="group-picker-new">
+          <input
+            className="folder-rename-input"
+            placeholder={t('groupNamePlaceholder')}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation()
+              if (e.nativeEvent.isComposing) return
+              if (e.key === 'Enter') create()
+            }}
+          />
+          <button className="btn btn-secondary" disabled={!name.trim()} onClick={create}>
+            {t('newGroup')}
+          </button>
+        </div>
+        <div className="modal-buttons">
+          <button className="btn btn-secondary" onClick={onRemove}>
+            {t('removeFromGroup')}
+          </button>
+          <button className="btn btn-secondary" autoFocus onClick={onCancel}>
+            {t('cancel')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Account entry (bottom-left) ──────────────────────────
 // Currently the Genspark (gsk) login entry; to be upgraded to a signup/account system later.
 // Clicking it opens the settings modal directly (SettingsModal.tsx), which hosts
@@ -658,17 +778,52 @@ const LOGIN_POLL_MS = 2500
 /** fallback deadline when the CLI does not report expires_in (device codes live ~300s) */
 const LOGIN_MAX_WAIT_MS = 300_000
 
-/**
- * 设置入口（Urchin 定制，见 VENDOR.md）：上游此槽位为账号/登录入口；
- * 本项目不接入 GenOffice 账号体系，改为纯设置按钮，打开无账号面板的设置弹窗。
- * 技能更新红点与账号无关（集成 CLI 版本对比），保留在设置弹窗导航上。
- */
-function SettingsEntry() {
+function AccountEntry({
+  onStatusChange,
+  onFileSearchSettingsChange,
+  openRequest,
+}: {
+  onStatusChange?: (status: AccountStatus | null) => void
+  onFileSearchSettingsChange?: () => void
+  /** a fresh object per request: the home list asks to open the modal on a given block */
+  openRequest?: SettingsTarget | null
+}) {
   const { t } = useI18n()
+  const [status, setStatus] = useState<AccountStatus | null>(null)
+
+  useEffect(() => {
+    onStatusChange?.(status)
+  }, [status, onStatusChange])
+  const [waiting, setWaiting] = useState(false)
+  // incremented on login retry, resetting the polling timer
+  const [loginNonce, setLoginNonce] = useState(0)
+  const [loginError, setLoginError] = useState<
+    'timeout' | 'launch' | 'network' | 'expired' | 'failed' | null
+  >(null)
+  // auth URL reported by the login CLI — rescue entry when the browser did not open
+  const [authUrl, setAuthUrl] = useState<string | null>(null)
+  const [urlCopied, setUrlCopied] = useState(false)
+  const loginDeadline = useRef(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [skillUpdate, setSkillUpdate] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
+  // bumped on logout so an in-flight status refresh (which can still
+  // report logged-in) is discarded instead of resurrecting the UI
+  const statusSeq = useRef(0)
 
-  // 技能更新红点：设置弹窗关闭时重新探测（与上游 AccountEntry 一致）
+  // query login state once on mount
+  useEffect(() => {
+    let alive = true
+    void window.aiOffice.accountStatus?.().then((s) => {
+      if (alive) setStatus(s)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // the skill state is a few file reads; re-probe after the modal closes so an
+  // update done inside it clears the dot
   useEffect(() => {
     if (settingsOpen) return
     let alive = true
@@ -680,24 +835,194 @@ function SettingsEntry() {
     }
   }, [settingsOpen])
 
+  // login progress pushed from main (gsk login CLI output)
+  useEffect(() => {
+    const off = window.aiOffice.onAccountLogin?.((ev) => {
+      if (ev.phase === 'url') {
+        if (ev.url) setAuthUrl(ev.url)
+        if (ev.expiresInSec) loginDeadline.current = Date.now() + ev.expiresInSec * 1000
+      } else if (ev.phase === 'success') {
+        void window.aiOffice.accountStatus().then((s) => {
+          if (s.loggedIn) {
+            setStatus(s)
+            setWaiting(false)
+            setAuthUrl(null)
+          }
+        })
+      } else if (ev.phase === 'error') {
+        setWaiting(false)
+        setAuthUrl(null)
+        setLoginError(
+          ev.error === 'network' ? 'network' : ev.error === 'expired' ? 'expired' : 'failed',
+        )
+      }
+    })
+    return off
+  }, [])
+
+  // config-file polling stays as the fallback success path (works even if progress events are lost)
+  useEffect(() => {
+    if (!waiting) return
+    const timer = setInterval(() => {
+      void window.aiOffice.accountStatus().then((s) => {
+        if (s.loggedIn) {
+          setStatus(s)
+          setWaiting(false)
+          setAuthUrl(null)
+        } else if (Date.now() > loginDeadline.current) {
+          setWaiting(false)
+          setAuthUrl(null)
+          setLoginError('timeout')
+        }
+      })
+    }, LOGIN_POLL_MS)
+    return () => clearInterval(timer)
+  }, [waiting, loginNonce])
+
+  const loggedIn = status?.loggedIn ?? false
+  const email = status?.email ?? ''
+  const initial = email ? email[0].toUpperCase() : loggedIn ? 'G' : '?'
+  const errorText = loginError
+    ? {
+        timeout: t('loginTimeout'),
+        launch: t('loginLaunchFailed'),
+        network: t('loginNetworkError'),
+        expired: t('loginExpired'),
+        failed: t('loginFailed'),
+      }[loginError]
+    : null
+
+  const doLogout = () => {
+    setLoggingOut(true)
+    statusSeq.current++
+    void window.aiOffice.accountLogout().then(() => {
+      setLoggingOut(false)
+      setStatus({ loggedIn: false })
+    })
+  }
+
+  const startLogin = () => {
+    // clicking again while waiting = relaunch the login (main kills the stale CLI, so the new device code is the live one)
+    setLoginError(null)
+    setWaiting(true)
+    setAuthUrl(null)
+    setUrlCopied(false)
+    loginDeadline.current = Date.now() + LOGIN_MAX_WAIT_MS
+    setLoginNonce((n) => n + 1)
+    void window.aiOffice.accountLogin().then((launched) => {
+      if (!launched) {
+        setWaiting(false)
+        setLoginError('launch')
+      }
+    })
+  }
+
+  const openLoginUrl = () => void window.aiOffice.openLoginUrl?.()
+
+  const copyLoginUrl = () => {
+    if (!authUrl) return
+    void navigator.clipboard.writeText(authUrl).then(() => {
+      setUrlCopied(true)
+      window.setTimeout(() => setUrlCopied(false), 2000)
+    })
+  }
+
+  const [target, setTarget] = useState<SettingsTarget | null>(null)
+  const openSettings = useCallback((to: SettingsTarget | null) => {
+    // refresh the login state / credit balance; drop the response
+    // when a logout happened while it was in flight
+    const seq = statusSeq.current
+    void window.aiOffice.accountStatus?.().then((s) => {
+      if (seq === statusSeq.current) setStatus(s)
+    })
+    setTarget(to)
+    setSettingsOpen(true)
+  }, [])
+  const handleClick = () => openSettings(null)
+  useEffect(() => {
+    if (openRequest) openSettings(openRequest)
+  }, [openRequest, openSettings])
+
   return (
     <div className="account-entry">
       {settingsOpen && (
         <SettingsModal
+          status={status}
+          loggingOut={loggingOut}
+          loginWaiting={waiting}
+          loginUrl={authUrl}
+          urlCopied={urlCopied}
+          onOpenLoginUrl={openLoginUrl}
+          onCopyLoginUrl={copyLoginUrl}
           onClose={() => setSettingsOpen(false)}
+          onFileSearchChange={onFileSearchSettingsChange}
+          onLogin={() => {
+            setSettingsOpen(false)
+            startLogin()
+          }}
+          onLogout={doLogout}
           skillUpdateDue={skillUpdate}
           onSkillUpdateDue={setSkillUpdate}
+          target={target}
         />
+      )}
+      {!settingsOpen && waiting && authUrl && (
+        <div className="login-hint" role="status">
+          <button className="login-hint-open" onClick={openLoginUrl}>
+            {t('loginOpenShort')}
+          </button>
+          <button
+            className={`login-hint-copy${urlCopied ? ' copied' : ''}`}
+            onClick={copyLoginUrl}
+            // static tip: screentips are suppressed from pointerdown until the pointer
+            // leaves the control, so a swapped-in "copied" tip would never show — the
+            // check-mark icon is the visible feedback
+            data-tip={t('loginCopyUrl')}
+            aria-label={urlCopied ? t('loginCopied') : t('loginCopyUrl')}
+          >
+            {urlCopied ? (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="m3.5 8.5 3 3 6-7"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <rect
+                  x="5.5"
+                  y="5.5"
+                  width="7"
+                  height="7"
+                  rx="1.5"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                />
+                <path
+                  d="M3.5 10.5V5a1.5 1.5 0 0 1 1.5-1.5h5.5"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                />
+              </svg>
+            )}
+          </button>
+        </div>
       )}
       <button
         className="account-btn"
-        onClick={() => setSettingsOpen(true)}
+        onClick={handleClick}
         aria-haspopup="dialog"
         aria-expanded={settingsOpen}
         data-tip={t('settings')}
         aria-label={t('settings')}
       >
-        <span className="account-avatar">
+        <span
+          className="account-avatar"
+        >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path
               d="M8 1.8 9.5 6l4.2 1.5L9.5 9 8 13.2 6.5 9 2.3 7.5 6.5 6 8 1.8Z"
@@ -712,9 +1037,17 @@ function SettingsEntry() {
               strokeLinecap="round"
             />
           </svg>
+          {skillUpdate && (
+            <span className="account-badge" role="img" aria-label={t('intgUpdateDue')} />
+          )}
         </span>
         <span className="account-text">
-          <span className="account-name">{t('settings')}</span>
+          <span className="account-name">
+            {t('settings')}
+          </span>
+          {!loggedIn && !waiting && errorText && (
+            <span className="account-sub error">{errorText}</span>
+          )}
         </span>
         <svg
           className="account-chevron"
@@ -736,6 +1069,322 @@ function SettingsEntry() {
     </div>
   )
 }
+
+// ── Cloud (Genspark web) projects view ──────────────────
+
+/** kind filter segments; labels shared with the recents type filter */
+const CLOUD_FILTERS = [
+  { key: 'all', label: 'filterAll' },
+  { key: 'docs', label: 'filterDocs' },
+  { key: 'sheets', label: 'filterSheets' },
+  { key: 'slides', label: 'filterSlides' },
+] as const satisfies readonly { key: 'all' | CloudProjectKind; label: StringKey }[]
+
+/** module kind → file icon extension */
+const CLOUD_KIND_EXT: Record<string, string> = { docs: 'docx', sheets: 'xlsx', slides: 'pptx' }
+
+/** rows revealed per "load more" step; purely client-side over the local snapshot */
+const CLOUD_REVEAL_STEP = 100
+
+function CloudProjectsView() {
+  const i18n = useI18n()
+  const { t } = i18n
+  const [snapshot, setSnapshot] = useState<CloudProjectsSnapshot | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
+  const [loginWaiting, setLoginWaiting] = useState(false)
+  const [kind, setKind] = useState<'all' | CloudProjectKind>('all')
+  const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<'recent' | 'oldest'>('recent')
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
+  const [revealed, setRevealed] = useState(CLOUD_REVEAL_STEP)
+  const sortRef = useRef<HTMLDivElement>(null)
+
+  // the local store paints instantly; a background sync replaces it when done.
+  // a failed sync keeps whatever is shown; with nothing shown the
+  // !snapshot && !loading branch below renders the retry state
+  const startSync = () => {
+    setSyncing(true)
+    void window.aiOffice.cloudProjectsSync?.().then((synced) => {
+      setSyncing(false)
+      setLoading(false)
+      if (synced) setSnapshot(synced)
+    })
+  }
+  const startSyncRef = useRef(startSync)
+  startSyncRef.current = startSync
+
+  useEffect(() => {
+    let cancelled = false
+    void window.aiOffice.cloudProjectsCached?.().then((stored) => {
+      if (cancelled || !stored) return
+      setSnapshot((prev) => prev ?? stored)
+      setLoading(false)
+    })
+    startSyncRef.current()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // the sign-in button reuses the account login flow; sync once it lands
+  useEffect(() => {
+    const off = window.aiOffice.onAccountLogin?.((ev) => {
+      if (ev.phase === 'success') {
+        setLoginWaiting(false)
+        startSyncRef.current()
+      } else if (ev.phase === 'error') {
+        setLoginWaiting(false)
+      }
+    })
+    return off
+  }, [])
+
+  // unified dismissal: outside press, window blur, chrome press (tab strip / window drag)
+  useDismissablePopover(sortMenuOpen, () => setSortMenuOpen(false), {
+    inside: () => [sortRef.current],
+  })
+
+  const startLogin = () => {
+    setLoginWaiting(true)
+    void window.aiOffice.accountLogin?.().then((ok) => {
+      if (!ok) setLoginWaiting(false)
+    })
+  }
+
+  const changeKind = (k: 'all' | CloudProjectKind) => {
+    if (k === kind) return
+    setKind(k)
+    setRevealed(CLOUD_REVEAL_STEP)
+  }
+
+  const openProject = (projectUrl: string) => {
+    void window.aiOffice.openCloudProject?.(projectUrl)
+  }
+
+  // filter / search / sort are all local over the snapshot — no requests
+  const q = query.trim().toLowerCase()
+  let list = snapshot?.projects.filter((proj) => kind === 'all' || proj.kind === kind) ?? []
+  if (q) list = list.filter((proj) => proj.title.toLowerCase().includes(q))
+  if (sort === 'oldest') list = [...list].reverse()
+  const visible = list.slice(0, revealed)
+
+  const renderRows = () => {
+    const items: ReactElement[] = []
+    for (const proj of visible) {
+      items.push(
+        <li key={proj.projectId}>
+          <button
+            className="cloud-row"
+            data-tip={t('cloudOpenInBrowser')}
+            data-tip-anchor=".cloud-row-external"
+            data-tip-place="right"
+            onClick={() => openProject(proj.projectUrl)}
+          >
+            <FileBadge ext={CLOUD_KIND_EXT[proj.kind] ?? ''} size={24} />
+            <span className="cloud-row-main">
+              <span className="cloud-row-title">{proj.title || t('untitled')}</span>
+              <svg
+                className="cloud-row-external"
+                width="13"
+                height="13"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M6.5 3.5H4a1.5 1.5 0 0 0-1.5 1.5v7A1.5 1.5 0 0 0 4 13.5h7A1.5 1.5 0 0 0 12.5 12V9.5M9.5 2.5h4v4M13 3l-5.5 5.5"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <span className="cloud-row-time">
+              {proj.ctimeMs ? formatModified(proj.ctimeMs, i18n) : ''}
+            </span>
+          </button>
+        </li>,
+      )
+    }
+    return items
+  }
+
+  const renderBody = () => {
+    if (snapshot && !snapshot.available) {
+      return (
+        <p className="empty proj-empty">
+          <span className="empty-hint">{t('cloudLoginHint')}</span>
+          <button className="btn btn-secondary" disabled={loginWaiting} onClick={startLogin}>
+            {loginWaiting ? t('waitingShort') : t('loginGenspark')}
+          </button>
+        </p>
+      )
+    }
+    if (!snapshot) {
+      if (loading || syncing) {
+        return (
+          <div className="load-more" aria-hidden="true">
+            <span className="load-more-spinner" />
+          </div>
+        )
+      }
+      return (
+        <p className="empty proj-empty">
+          <span className="empty-hint">{t('cloudError')}</span>
+          <button className="btn btn-secondary" onClick={() => startSync()}>
+            {t('cloudRetry')}
+          </button>
+        </p>
+      )
+    }
+    if (list.length === 0) {
+      return (
+        <p className="empty proj-empty">
+          <span className="empty-hint">
+            {t(q ? 'cloudNoResults' : kind === 'all' ? 'cloudEmpty' : 'emptyFiltered')}
+          </span>
+        </p>
+      )
+    }
+    return (
+      <div className="cloud-scroll">
+        <div className="cloud-table">
+          <div className="cloud-columns">
+            <span className="col-name">{t('colName')}</span>
+            <div className="cloud-col-sort" ref={sortRef}>
+              <button
+                className="cloud-col-sort-btn"
+                aria-haspopup="menu"
+                aria-expanded={sortMenuOpen}
+                onClick={() => setSortMenuOpen((o) => !o)}
+              >
+                {t('colModified')}
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                  style={sort === 'oldest' ? { transform: 'rotate(180deg)' } : undefined}
+                >
+                  <path
+                    d="M8 3v10M4.5 9.5L8 13l3.5-3.5"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              {sortMenuOpen && (
+                <div className="cloud-sort-menu" role="menu">
+                  {(['recent', 'oldest'] as const).map((key) => (
+                    <button
+                      key={key}
+                      className={sort === key ? 'active' : ''}
+                      role="menuitemradio"
+                      aria-checked={sort === key}
+                      onClick={() => {
+                        setSort(key)
+                        setSortMenuOpen(false)
+                        setRevealed(CLOUD_REVEAL_STEP)
+                      }}
+                    >
+                      <SortCheck visible={sort === key} />
+                      {t(key === 'recent' ? 'cloudSortRecent' : 'cloudSortOldest')}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <ul className="cloud-list">{renderRows()}</ul>
+        </div>
+        {list.length > revealed && (
+          <div className="load-more">
+            <button
+              className="btn btn-secondary"
+              onClick={() => setRevealed((n) => n + CLOUD_REVEAL_STEP)}
+            >
+              {t('cloudLoadMore')}
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <main className="content">
+      <section className="cloud-projects" aria-label={t('navCloud')}>
+        <header className="cloud-hero">
+          <div className="cloud-hero-top">
+            <h1 className="cloud-title">{t('navCloud')}</h1>
+          </div>
+          <p className="cloud-subtitle">{t('cloudSubtitle')}</p>
+          {snapshot?.available && (
+            <div className="cloud-controls">
+              <div className="cloud-seg" role="tablist" aria-label={t('filterAria')}>
+                {CLOUD_FILTERS.map((f) => (
+                  <button
+                    key={f.key}
+                    className={kind === f.key ? 'active' : ''}
+                    role="tab"
+                    aria-selected={kind === f.key}
+                    onClick={() => changeKind(f.key)}
+                  >
+                    {t(f.label)}
+                  </button>
+                ))}
+              </div>
+              <button
+                className={`cloud-refresh-btn${syncing ? ' syncing' : ''}`}
+                data-tip={t('cloudRefresh')}
+                aria-label={t('cloudRefresh')}
+                disabled={syncing}
+                onClick={() => startSync()}
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path
+                    d="M13.6 8a5.6 5.6 0 1 1-1.64-3.96M13.6 2.4v3.2h-3.2"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <div className="cloud-search">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <circle cx="7" cy="7" r="4.6" stroke="currentColor" strokeWidth="1.4" />
+                  <path
+                    d="M10.5 10.5L14 14"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <input
+                  value={query}
+                  placeholder={t('cloudSearchPlaceholder', { n: snapshot.projects.length })}
+                  onChange={(e) => {
+                    setQuery(e.target.value)
+                    setRevealed(CLOUD_REVEAL_STEP)
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </header>
+        {renderBody()}
+      </section>
+    </main>
+  )
+}
+
+// ── Drop-to-open overlay ────────────────────────────────
 
 /**
  * Full-window affordance while OS files hover over Home. Purely visual — the
@@ -820,8 +1469,40 @@ export function Home() {
   /** sidebar Recent / Starred counts under the active type filter */
   const [navCounts, setNavCounts] = useState({ recent: 0, starred: 0 })
   const [loadingMore, setLoadingMore] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth)
+  const sidebarRef = useRef<HTMLElement>(null)
   const [view, setView] = useState<'recent' | 'starred'>('recent')
+  // Genspark web projects take over the content area (like a selected folder)
+  const [cloudMode, setCloudMode] = useState(false)
+  // the knowledge-base ask panel takes over the content area the same way
+  const [askMode, setAskMode] = useState(false)
   const [filter, setFilter] = useState('all')
+  // ── Starred groups (named buckets the Starred view can filter on) ──
+  // groups that currently have at least one starred file (drives the pills)
+  const [starredGroups, setStarredGroups] = useState<string[]>([])
+  // the group pill filtering the Starred list; null shows every group
+  const [groupFilter, setGroupFilter] = useState<string | null>(null)
+  // starred rows being moved to a group (GroupPicker modal)
+  const [groupPicker, setGroupPicker] = useState<string[] | null>(null)
+  // ── File search (names + indexed content); active while the box has text ──
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchPage, setSearchPage] = useState<FileSearchPage | null>(null)
+  const [rerank, setRerank] = useState<{ key: string; result: FileSearchRerank } | null>(null)
+  // bumped when the Jev settings change so the current results are judged again (or the order dropped)
+  const [rerankSettingsTick, setRerankSettingsTick] = useState(0)
+  const [settingsRequest, setSettingsRequest] = useState<SettingsTarget | null>(null)
+  useEffect(
+    () =>
+      window.aiOffice.onOpenSettings?.((target) =>
+        setSettingsRequest({ section: target.section as SettingsTarget['section'] }),
+      ),
+    [],
+  )
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  // IME composition: wait for the committed text instead of searching each keystroke
+  const composingRef = useRef(false)
+  const searchSeq = useRef(0)
+  const searchActive = searchQuery.trim().length > 0
   // modified-column sort (WPS-style header popover), shared by the global and folder tables
   const [fileSort, setFileSort] = useState<'recent' | 'oldest'>('recent')
   const [fileSortMenuOpen, setFileSortMenuOpen] = useState(false)
@@ -834,12 +1515,30 @@ export function Home() {
   const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null)
   // unavailable recent entry (missing flag) the user clicked — offer list removal
   const [confirmMissing, setConfirmMissing] = useState<RecentEntry | null>(null)
+  // name in the greeting; omitted when logged out
+  const [accountName, setAccountName] = useState('')
+  // Genspark Projects is web-account data, so its nav entry only shows when logged in
+  const [loggedIn, setLoggedIn] = useState(false)
+  // single source of account state: AccountEntry reports every change (initial
+  // load, login, logout), keeping the greeting name and the nav entry in sync
+  const handleAccountStatus = useCallback((s: AccountStatus | null) => {
+    const on = s?.loggedIn ?? false
+    setLoggedIn(on)
+    if (!on) setCloudMode(false)
+    const name = on ? (s?.email ?? '').split('@')[0] : ''
+    setAccountName(name ? name[0].toUpperCase() + name.slice(1) : '')
+  }, [])
   const [greetAskKey] = useState(
     () => GREET_ASK_KEYS[Math.floor(Math.random() * GREET_ASK_KEYS.length)]!,
   )
 
   // ── Folder tree state ──
-  const [root, setRoot] = useState<FolderRoot | null>(null)
+  // the default save folder first, then the folders the user added; `root` is the default one
+  const [roots, setRoots] = useState<FolderRoot[]>([])
+  const root = roots[0] ?? null
+  const canMove = roots.some((r) => r.usable)
+  const editableAt = (path: string) => rootOf(path, roots)?.usable !== false
+  const [panelDrop, setPanelDrop] = useState(false)
   const [treeState] = useState(readTreeState)
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(treeState.expanded))
@@ -857,12 +1556,15 @@ export function Home() {
   const [folderMenu, setFolderMenu] = useState<{
     path: string
     where: 'tree' | 'table'
-    top: number
-    right: number
+    x: number
+    y: number
+    above: number
+    align: 'start' | 'end'
   } | null>(null)
   const menuOpenAt = (where: 'tree' | 'table', path: string) =>
     folderMenu?.where === where && folderMenu.path === path
   const folderMenuWrapRef = useRef<HTMLDivElement>(null)
+  const folderMenuPopRef = useRef<HTMLDivElement>(null)
   const [folderRenaming, setFolderRenaming] = useState<{
     path: string
     where: 'tree' | 'table'
@@ -880,13 +1582,18 @@ export function Home() {
   const dragExpandTimer = useRef<number | null>(null)
 
   const loadRoot = useCallback(() => {
-    void window.aiOffice.folderRoot().then((next) => {
-      setRoot((prev) => {
-        if (prev && prev.path !== next.path) {
+    void window.aiOffice.folderRoots().then((next) => {
+      setRoots((prev) => {
+        if (prev[0] && prev[0].path !== next[0]?.path) {
           // the default save folder changed in settings: the old tree is meaningless
           resetFolders()
           setSelectedFolder(null)
-          setExpanded(new Set([next.path]))
+          setExpanded(new Set(next.map((r) => r.path)))
+        } else if (prev.length > 0) {
+          // a folder just added opens so its contents show right away
+          const known = new Set(prev.map((r) => r.path))
+          const added = next.filter((r) => !known.has(r.path)).map((r) => r.path)
+          if (added.length > 0) setExpanded((e) => new Set([...e, ...added]))
         }
         return next
       })
@@ -904,13 +1611,13 @@ export function Home() {
     if (seededRoot.current !== root.path) {
       seededRoot.current = root.path
       if (treeState.root !== root.path) {
-        // a layout saved for another root is not ours: start from just the root
-        setExpanded(new Set([root.path]))
+        // a layout saved for another root is not ours: start from the root rows
+        setExpanded(new Set(roots.map((r) => r.path)))
         return
       }
     }
     for (const dir of expanded) loadFolder(dir)
-  }, [root, expanded, loadFolder, treeState])
+  }, [root, roots, expanded, loadFolder, treeState])
 
   useEffect(() => {
     if (selectedFolder) loadFolder(selectedFolder)
@@ -918,15 +1625,16 @@ export function Home() {
 
   // a remembered selection that no longer exists (deleted in Finder) falls back to the root
   useEffect(() => {
-    if (!root?.usable || !selectedFolder) return
-    if (!isUnder(root.path, selectedFolder)) {
+    if (!selectedFolder || roots.length === 0) return
+    const owner = rootOf(selectedFolder, roots)
+    if (!owner?.readable) {
       setSelectedFolder(null)
       return
     }
     if (listings.get(selectedFolder)?.missing) {
-      setSelectedFolder(selectedFolder === root.path ? null : dirOf(selectedFolder))
+      setSelectedFolder(selectedFolder === owner.path ? null : dirOf(selectedFolder))
     }
-  }, [root, selectedFolder, listings])
+  }, [roots, selectedFolder, listings])
 
   useEffect(() => {
     return window.aiOffice.onFolderChanged((dirs) => {
@@ -944,10 +1652,13 @@ export function Home() {
   const reload = (keepCount: boolean) => {
     const seq = ++requestSeq.current
     const ext = filter === 'all' ? undefined : filter
+    // the group pills only scope the Starred view's own list; the sidebar
+    // counters and the other view stay group-agnostic
+    const group = view === 'starred' && groupFilter ? groupFilter : undefined
     const limit = keepCount ? Math.max(entriesLen.current, PAGE_SIZE) : PAGE_SIZE
     const primary = view === 'recent' ? window.aiOffice.recents : window.aiOffice.starred
     const secondary = view === 'recent' ? window.aiOffice.starred : window.aiOffice.recents
-    void primary({ offset: 0, limit, ext }).then((page) => {
+    void primary({ offset: 0, limit, ext, group }).then((page) => {
       if (seq !== requestSeq.current) return
       setEntries(page.entries)
       setListTotal(page.total)
@@ -966,6 +1677,14 @@ export function Home() {
           : { ...prev, recent: visiblePageCount(page) },
       )
     })
+    // the group pills live on the renderer, so their list rides along with
+    // every reload; a vanished group (last file unstarred/ungrouped) clears
+    // the filter instead of showing a silently empty list
+    void window.aiOffice.starredGroups().then((groups) => {
+      if (seq !== requestSeq.current) return
+      setStarredGroups(groups)
+      setGroupFilter((cur) => (cur && !groups.includes(cur) ? null : cur))
+    })
   }
   const reloadRef = useRef(reload)
   reloadRef.current = reload
@@ -981,13 +1700,75 @@ export function Home() {
 
   useEffect(() => {
     reloadRef.current(false)
-  }, [view, filter])
+  }, [view, filter, groupFilter])
+
+  const q = searchQuery.trim()
+  useEffect(() => {
+    if (!q) {
+      searchSeq.current++
+      setSearchPage(null)
+      return
+    }
+    let timer = 0
+    const run = () => {
+      if (composingRef.current) {
+        timer = window.setTimeout(run, 150)
+        return
+      }
+      const seq = ++searchSeq.current
+      const ext = filter === 'all' ? undefined : filter
+      void window.aiOffice.searchFiles({ q, ext, limit: 100 }).then((page) => {
+        if (seq !== searchSeq.current) return
+        setSearchPage(page)
+        // results grow while the background index catches up
+        if (page.index.pending > 0 || page.index.scanning) timer = window.setTimeout(run, 1500)
+      })
+    }
+    timer = window.setTimeout(run, 150)
+    return () => window.clearTimeout(timer)
+  }, [q, filter])
+
+  // Jev judges the top local hits once they settle; the main process answers null when reranking is off.
+  // The key changes only with the query, filter or candidate set, so index polls do not restart the timer.
+  const rerankKey =
+    q && searchPage && searchPage.hits.length >= 2
+      ? [q, filter, ...searchPage.hits.slice(0, 20).map((h) => h.path)].join('\n')
+      : ''
+  useEffect(() => {
+    if (!rerankKey) return
+    const key = rerankKey
+    const paths = key.split('\n').slice(2)
+    const timer = window.setTimeout(() => {
+      void window.aiOffice.rerankSearch({ q, paths }).then((result) => {
+        if (result) setRerank({ key, result })
+        else setRerank((cur) => (cur && cur.key === key ? null : cur))
+      })
+    }, 600)
+    return () => window.clearTimeout(timer)
+  }, [q, filter, rerankKey, rerankSettingsTick])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return
+      if (event.key !== 'f' && event.key !== 'p') return
+      const input = searchInputRef.current
+      if (!input) return
+      event.preventDefault()
+      input.focus()
+      input.select()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   useEffect(() => {
     const onFocus = () => refreshRef.current()
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [])
+
+  // a rename from the tab strip happens while this renderer already has focus
+  useEffect(() => onFilesChanged(() => refreshRef.current()), [])
 
   const hasMore = entries.length < listTotal
 
@@ -1048,6 +1829,18 @@ export function Home() {
     const close = () => setFolderMenu(null)
     window.addEventListener('scroll', close, true)
     return () => window.removeEventListener('scroll', close, true)
+  }, [folderMenu])
+  // open to the right of the anchor, flipped above when short of room below, clamped to the viewport
+  useLayoutEffect(() => {
+    const el = folderMenuPopRef.current
+    if (!folderMenu || !el) return
+    const { left, top } = placeFolderMenu(
+      folderMenu,
+      { width: el.offsetWidth, height: el.offsetHeight },
+      { width: fixedViewportWidth(), height: document.documentElement.clientHeight },
+    )
+    el.style.left = `${left}px`
+    el.style.top = `${top}px`
   }, [folderMenu])
 
   // Escape closes the row menu and the confirm dialogs
@@ -1137,8 +1930,11 @@ export function Home() {
   const changeView = (next: 'recent' | 'starred') => {
     setView(next)
     setSelectedFolder(null)
+    setCloudMode(false)
+    setAskMode(false)
     setSelected(new Set())
     setRowMenu(null)
+    setGroupFilter(null)
   }
 
   const changeFilter = (key: string) => {
@@ -1147,8 +1943,16 @@ export function Home() {
     setRowMenu(null)
   }
 
+  const changeGroupFilter = (group: string | null) => {
+    setGroupFilter(group)
+    setSelected(new Set())
+    setRowMenu(null)
+  }
+
   const selectFolder = (dir: string) => {
     setSelectedFolder(dir)
+    setCloudMode(false)
+    setAskMode(false)
     setSelected(new Set())
     setRowMenu(null)
     setFolderMenu(null)
@@ -1164,10 +1968,11 @@ export function Home() {
   }
 
   const expandTo = (dir: string) => {
-    if (!root) return
+    const owner = rootOf(dir, roots)
+    if (!owner) return
     setExpanded((prev) => {
       const next = new Set(prev)
-      for (const crumb of crumbsOf(root, dir)) next.add(crumb.path)
+      for (const crumb of crumbsOf(owner, dir)) next.add(crumb.path)
       return next
     })
   }
@@ -1197,6 +2002,21 @@ export function Home() {
     setRowMenu(null)
     setSelected(new Set())
     void window.aiOffice.removeRecent(paths).then(refresh)
+  }
+
+  /** the Starred view's bulk action: drop the stars, keep the recents entries */
+  const unstarSelected = (paths: string[]) => {
+    setRowMenu(null)
+    setSelected(new Set())
+    void window.aiOffice.unstarPaths(paths).then(refresh)
+  }
+
+  /** put rows into a group (null = out of their group); the pills list and
+   *  the filtered list come back with the refresh */
+  const assignGroup = (paths: string[], group: string | null) => {
+    setGroupPicker(null)
+    setRowMenu(null)
+    void window.aiOffice.setStarredGroup(paths, group).then(refresh)
   }
 
   const deleteFiles = (paths: string[]) => {
@@ -1359,6 +2179,7 @@ export function Home() {
 
   const folderDropProps = (dir: string, { autoExpand }: { autoExpand: boolean }) => ({
     onDragOver: (event: ReactDragEvent) => {
+      if (rootOf(dir, roots)?.usable === false) return
       if (!event.dataTransfer.types.includes(DRAG_PATHS_MIME)) return
       event.preventDefault()
       event.dataTransfer.dropEffect = 'move'
@@ -1388,7 +2209,9 @@ export function Home() {
 
   // ── New file (lands in the selected folder) ──
   const newFileOpts =
-    selectedFolder && root && selectedFolder !== root.path ? { dir: selectedFolder } : undefined
+    selectedFolder && root && selectedFolder !== root.path && rootOf(selectedFolder, roots)?.usable
+      ? { dir: selectedFolder }
+      : undefined
 
   const NEW_ITEMS = [
     {
@@ -1438,7 +2261,7 @@ export function Home() {
           data-tip={OPEN_LOCAL_EXTENSIONS}
         >
           <span className="quick-folder">
-            <WindowsFolderIcon size={18} />
+            <FolderIcon size={18} />
           </span>
           <span className="quick-text">
             <span className="quick-title-row">
@@ -1465,7 +2288,47 @@ export function Home() {
 
   // ── Sidebar folder tree ──
 
-  const renderFolderMenu = (entry: { path: string; name: string }, isRoot: boolean) => (
+  const addFolderRoot = () => {
+    void window.aiOffice.addFolderRoot().then((added) => {
+      if (added) loadRoot()
+    })
+  }
+
+  /** the folder leaves the list only; whatever it held on disk stays where it is */
+  const removeFolderRoot = (path: string) => {
+    setFolderMenu(null)
+    if (selectedFolder && isUnder(path, selectedFolder)) setSelectedFolder(null)
+    setExpanded((prev) => new Set([...prev].filter((dir) => !isUnder(path, dir))))
+    void window.aiOffice.removeFolderRoot(path).then(loadRoot)
+  }
+
+  // folders dragged in from the OS join the tree in place; documents open as they do anywhere else
+  const panelDropProps = {
+    onDragOver: (event: ReactDragEvent) => {
+      if (!event.dataTransfer.types.includes('Files')) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'link'
+      if (!panelDrop) setPanelDrop(true)
+    },
+    onDragLeave: (event: ReactDragEvent) => {
+      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+      setPanelDrop(false)
+    },
+    onDrop: (event: ReactDragEvent) => {
+      if (!event.dataTransfer.types.includes('Files')) return
+      event.preventDefault()
+      setPanelDrop(false)
+      const paths = Array.from(event.dataTransfer.files)
+        .map((file) => window.aiOffice.pathForFile(file))
+        .filter(Boolean)
+      if (paths.length === 0) return
+      void window.aiOffice.dropFolderRoots(paths).then((added) => {
+        if (added.length > 0) loadRoot()
+      })
+    },
+  }
+
+  const renderFolderMenu = (entry: { path: string; name: string }, rootEntry?: FolderRoot) => (
     <div
       className="folder-menu-wrap"
       ref={menuOpenAt('tree', entry.path) ? folderMenuWrapRef : undefined}
@@ -1484,42 +2347,44 @@ export function Home() {
           setFolderMenu({
             path: entry.path,
             where: 'tree',
-            top: rect.bottom + 4,
-            right: window.innerWidth - rect.right,
+            x: rect.right,
+            y: rect.bottom + 4,
+            above: rect.top - 4,
+            align: 'end',
           })
         }}
       >
         <MoreDots />
       </button>
       {folderMenu && menuOpenAt('tree', entry.path) && (
-        <div
-          className="folder-menu"
-          role="menu"
-          style={{ top: folderMenu.top, right: folderMenu.right }}
-        >
-          <button role="menuitem" onClick={() => startCreateFolder(entry.path)}>
-            {t('newSubfolder')}
-          </button>
-          {!isRoot && (
+        <div className="folder-menu" role="menu" ref={folderMenuPopRef}>
+          {editableAt(entry.path) && (
+            <button role="menuitem" onClick={() => startCreateFolder(entry.path)}>
+              {t('newSubfolder')}
+            </button>
+          )}
+          {!rootEntry && editableAt(entry.path) && (
             <button role="menuitem" onClick={() => startRenameFolder(entry, 'tree')}>
               {t('rename')}
             </button>
           )}
-          {!isRoot && (
+          {!rootEntry && editableAt(entry.path) && (
             <button role="menuitem" onClick={() => startMove([entry.path])}>
               {t('moveToFolder')}
             </button>
           )}
-          <button
-            role="menuitem"
-            onClick={() => {
-              setFolderMenu(null)
-              void window.aiOffice.revealPath(entry.path)
-            }}
-          >
-            {t('revealInFolder')}
-          </button>
-          {!isRoot && (
+          {(rootEntry?.readable ?? true) && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                setFolderMenu(null)
+                void window.aiOffice.revealPath(entry.path)
+              }}
+            >
+              {t('revealInFolder')}
+            </button>
+          )}
+          {!rootEntry && editableAt(entry.path) && (
             <>
               <div className="row-menu-divider" />
               <button
@@ -1531,6 +2396,14 @@ export function Home() {
                 }}
               >
                 {t('deleteFolder')}
+              </button>
+            </>
+          )}
+          {rootEntry?.removable && (
+            <>
+              <div className="row-menu-divider" />
+              <button role="menuitem" onClick={() => removeFolderRoot(entry.path)}>
+                {t('removeFolderRoot')}
               </button>
             </>
           )}
@@ -1571,24 +2444,29 @@ export function Home() {
     entry: { path: string; name: string; hasSubfolders: boolean },
     depth: number,
   ): ReactElement {
-    const isRoot = root !== null && entry.path === root.path
-    const isOpen = expanded.has(entry.path)
+    const rootEntry = roots.find((r) => r.path === entry.path)
+    const isRoot = rootEntry !== undefined
+    const unavailable = rootEntry !== undefined && !rootEntry.readable
+    const isOpen = expanded.has(entry.path) && !unavailable
     const children = listings.get(entry.path)?.folders ?? []
     const isActive = selectedFolder === entry.path
     const isRenaming = folderRenaming?.where === 'tree' && folderRenaming.path === entry.path
-    const showChevron = isRoot || entry.hasSubfolders || children.length > 0
+    const showChevron = !unavailable && (isRoot || entry.hasSubfolders || children.length > 0)
     return (
       <li key={entry.path} className="tree-item">
         <div
-          className={`tree-row${isActive ? ' active' : ''}${dropTarget === entry.path ? ' drop-target' : ''}`}
+          className={`tree-row${isActive ? ' active' : ''}${dropTarget === entry.path ? ' drop-target' : ''}${unavailable ? ' unavailable' : ''}`}
           style={{ paddingLeft: 8 + depth * 14 }}
           role="treeitem"
           aria-selected={isActive}
           aria-expanded={showChevron ? isOpen : undefined}
           tabIndex={0}
-          onClick={() => selectFolder(entry.path)}
+          title={isRoot ? entry.path : undefined}
+          onClick={() => {
+            if (!unavailable) selectFolder(entry.path)
+          }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') selectFolder(entry.path)
+            if (e.key === 'Enter' && !unavailable) selectFolder(entry.path)
             if (e.key === 'ArrowRight' && !isOpen) toggleExpanded(entry.path)
             if (e.key === 'ArrowLeft' && isOpen) toggleExpanded(entry.path)
           }}
@@ -1597,8 +2475,10 @@ export function Home() {
             setFolderMenu({
               path: entry.path,
               where: 'tree',
-              top: e.clientY + 2,
-              right: window.innerWidth - e.clientX,
+              x: e.clientX + 2,
+              y: e.clientY + 2,
+              above: e.clientY + 2,
+              align: 'start',
             })
           }}
           draggable={!isRoot && !isRenaming}
@@ -1641,7 +2521,8 @@ export function Home() {
           ) : (
             <span className="tree-name">{entry.name}</span>
           )}
-          {renderFolderMenu(entry, isRoot)}
+          {unavailable && <span className="tree-hint">{t('rootUnavailable')}</span>}
+          {renderFolderMenu(entry, rootEntry)}
         </div>
         {isOpen && (children.length > 0 || creating?.parent === entry.path) && (
           <ul className="tree-children" role="group">
@@ -1654,43 +2535,76 @@ export function Home() {
   }
 
   function renderFolderPanel() {
+    const createIn = selectedFolder ?? root?.path
+    const canCreate = createIn !== undefined && rootOf(createIn, roots)?.usable === true
     return (
-      <div className="folder-panel">
+      <div className={`folder-panel${panelDrop ? ' drop-target' : ''}`} {...panelDropProps}>
         <div className="folder-panel-head">
           <span className="folder-panel-title">{t('folders')}</span>
-          {root?.usable && (
-            <button
-              className="folder-add-btn"
-              data-tip={t('newFolder')}
-              aria-label={t('newFolder')}
-              onClick={() => startCreateFolder(selectedFolder ?? root.path)}
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <path
-                  d="M7 1v12M1 7h12"
+          <div className="folder-panel-actions">
+            {roots.length > 0 && (
+              <button
+                className="folder-add-btn folder-add-root-btn"
+                data-tip={t('addFolderRoot')}
+                aria-label={t('addFolderRoot')}
+                onClick={addFolderRoot}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
                   stroke="currentColor"
-                  strokeWidth="1.7"
+                  strokeWidth="2.4"
                   strokeLinecap="round"
-                />
-              </svg>
-            </button>
-          )}
-        </div>
-        {root && !root.usable ? (
-          <div className="folder-unusable">
-            <p>{t('rootUnusable')}</p>
-            <button
-              className="btn btn-secondary"
-              onClick={() => void window.aiOffice.pickDefaultSaveDir().then(() => loadRoot())}
-            >
-              {t('pickSaveDir')}
-            </button>
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1" />
+                  <path d="M2 13h10" />
+                  <path d="m9 16 3-3-3-3" />
+                </svg>
+              </button>
+            )}
+            {canCreate && (
+              <button
+                className="folder-add-btn folder-new-btn"
+                data-tip={t('newFolder')}
+                aria-label={t('newFolder')}
+                onClick={() => startCreateFolder(createIn)}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                  <path
+                    d="M7 1v12M1 7h12"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            )}
           </div>
-        ) : (
-          <ul className="tree" role="tree">
-            {root && renderTreeNode({ path: root.path, name: root.name, hasSubfolders: true }, 0)}
-          </ul>
-        )}
+        </div>
+        <ul className="tree" role="tree">
+          {root && !root.usable ? (
+            <li className="folder-unusable">
+              <p>{t('rootUnusable')}</p>
+              <button
+                className="btn btn-secondary"
+                onClick={() => void window.aiOffice.pickDefaultSaveDir().then(() => loadRoot())}
+              >
+                {t('pickSaveDir')}
+              </button>
+            </li>
+          ) : (
+            root && renderTreeNode({ path: root.path, name: root.name, hasSubfolders: true }, 0)
+          )}
+          {roots
+            .slice(1)
+            .map((r) =>
+              renderTreeNode({ path: r.path, name: r.name, hasSubfolders: r.readable }, 0),
+            )}
+        </ul>
       </div>
     )
   }
@@ -1699,6 +2613,7 @@ export function Home() {
 
   function renderFileRow(entry: RecentEntry, context: 'global' | 'folder') {
     const isRenaming = renaming?.path === entry.path
+    const editable = editableAt(entry.path)
     const canDelete =
       context === 'folder' ? folderSelectedPaths.length === 0 : selectedPaths.length === 0
     return (
@@ -1753,7 +2668,7 @@ export function Home() {
             <span className="recent-name">{entry.name}</span>
           )}
           <span className="recent-path" title={dirOf(entry.path)}>
-            {locationLabel(entry.path, root)}
+            {locationLabel(entry.path, roots)}
           </span>
           <span className="recent-time">
             {entry.missing ? '—' : formatModified(entry.mtimeMs, i18n)}
@@ -1823,7 +2738,7 @@ export function Home() {
                 >
                   {t('copyPath')}
                 </button>
-                {root?.usable && !entry.missing && (
+                {canMove && editable && !entry.missing && (
                   <>
                     <div className="row-menu-divider" />
                     <button role="menuitem" onClick={() => startMove([entry.path])}>
@@ -1831,28 +2746,55 @@ export function Home() {
                     </button>
                   </>
                 )}
-                <div className="row-menu-divider" />
-                <button role="menuitem" onClick={() => startRename(entry)}>
-                  {t('rename')}
-                </button>
-                <button role="menuitem" onClick={() => duplicateFile(entry.path)}>
-                  {t('duplicate')}
-                </button>
-                {canDelete && (
+                {editable && (
                   <>
                     <div className="row-menu-divider" />
-                    {context === 'global' && (
-                      <button role="menuitem" onClick={() => removeRecent([entry.path])}>
-                        {t('removeFromList')}
-                      </button>
-                    )}
+                    <button role="menuitem" onClick={() => startRename(entry)}>
+                      {t('rename')}
+                    </button>
+                    <button role="menuitem" onClick={() => duplicateFile(entry.path)}>
+                      {t('duplicate')}
+                    </button>
+                  </>
+                )}
+                {entry.starred && (
+                  <>
+                    <div className="row-menu-divider" />
                     <button
                       role="menuitem"
-                      className="danger"
-                      onClick={() => deleteFiles([entry.path])}
+                      onClick={() => {
+                        setRowMenu(null)
+                        setGroupPicker([entry.path])
+                      }}
                     >
-                      {t('deleteFiles')}
+                      {t('moveToGroup')}
                     </button>
+                  </>
+                )}
+                {canDelete && (context === 'global' || editable) && (
+                  <>
+                    <div className="row-menu-divider" />
+                    {context === 'global' &&
+                      // same root cause as the selection bar: in the Starred
+                      // view "remove from list" must unstar, not drop recents
+                      (view === 'starred' ? (
+                        <button role="menuitem" onClick={() => unstarSelected([entry.path])}>
+                          {t('unstar')}
+                        </button>
+                      ) : (
+                        <button role="menuitem" onClick={() => removeRecent([entry.path])}>
+                          {t('removeFromList')}
+                        </button>
+                      ))}
+                    {editable && (
+                      <button
+                        role="menuitem"
+                        className="danger"
+                        onClick={() => deleteFiles([entry.path])}
+                      >
+                        {t('deleteFiles')}
+                      </button>
+                    )}
                   </>
                 )}
               </div>
@@ -1866,6 +2808,7 @@ export function Home() {
   /** sub-folder row in the folder view's table: enter on click, same … menu as the tree */
   function renderSubfolderRow(entry: FolderEntry) {
     const isRenaming = folderRenaming?.where === 'table' && folderRenaming.path === entry.path
+    const editable = editableAt(entry.path)
     return (
       <li className="recent-row" key={entry.path}>
         <div
@@ -1891,8 +2834,10 @@ export function Home() {
             setFolderMenu({
               path: entry.path,
               where: 'table',
-              top: e.clientY + 2,
-              right: window.innerWidth - e.clientX,
+              x: e.clientX + 2,
+              y: e.clientY + 2,
+              above: e.clientY + 2,
+              align: 'start',
             })
           }}
         >
@@ -1943,19 +2888,17 @@ export function Home() {
                 setFolderMenu({
                   path: entry.path,
                   where: 'table',
-                  top: rect.bottom + 4,
-                  right: window.innerWidth - rect.right,
+                  x: rect.right,
+                  y: rect.bottom + 4,
+                  above: rect.top - 4,
+                  align: 'end',
                 })
               }}
             >
               <MoreDots />
             </button>
             {folderMenu && menuOpenAt('table', entry.path) && (
-              <div
-                className="folder-menu"
-                role="menu"
-                style={{ top: folderMenu.top, right: folderMenu.right }}
-              >
+              <div className="folder-menu" role="menu" ref={folderMenuPopRef}>
                 <button
                   role="menuitem"
                   onClick={() => {
@@ -1966,12 +2909,16 @@ export function Home() {
                 >
                   {t('open')}
                 </button>
-                <button role="menuitem" onClick={() => startRenameFolder(entry, 'table')}>
-                  {t('rename')}
-                </button>
-                <button role="menuitem" onClick={() => startMove([entry.path])}>
-                  {t('moveToFolder')}
-                </button>
+                {editable && (
+                  <>
+                    <button role="menuitem" onClick={() => startRenameFolder(entry, 'table')}>
+                      {t('rename')}
+                    </button>
+                    <button role="menuitem" onClick={() => startMove([entry.path])}>
+                      {t('moveToFolder')}
+                    </button>
+                  </>
+                )}
                 <button
                   role="menuitem"
                   onClick={() => {
@@ -1981,17 +2928,21 @@ export function Home() {
                 >
                   {t('revealInFolder')}
                 </button>
-                <div className="row-menu-divider" />
-                <button
-                  role="menuitem"
-                  className="danger"
-                  onClick={() => {
-                    setFolderMenu(null)
-                    setConfirmDeleteFolder(entry.path)
-                  }}
-                >
-                  {t('deleteFolder')}
-                </button>
+                {editable && (
+                  <>
+                    <div className="row-menu-divider" />
+                    <button
+                      role="menuitem"
+                      className="danger"
+                      onClick={() => {
+                        setFolderMenu(null)
+                        setConfirmDeleteFolder(entry.path)
+                      }}
+                    >
+                      {t('deleteFolder')}
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </span>
@@ -2027,8 +2978,164 @@ export function Home() {
 
   // ── Folder view ────────────────────────────────────────
 
+  const clearSearch = () => {
+    setSearchQuery('')
+    searchInputRef.current?.focus()
+  }
+
+  const renderSearchSettingsButton = () => (
+    <button
+      className="file-search-settings"
+      title={t('searchJevSettings')}
+      aria-label={t('searchJevSettings')}
+      onClick={() => setSettingsRequest({ section: 'aiMedia', block: 'rerank' })}
+    >
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 20V4M12 4l-4 4M12 4l4 4" />
+        <path d="M3 12h6M3 16h5M3 20h4" />
+      </svg>
+    </button>
+  )
+
+  const renderSearchBox = () => (
+    <div className={`file-search${searchActive ? ' active' : ''}`}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+        <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+      <input
+        ref={searchInputRef}
+        type="search"
+        value={searchQuery}
+        placeholder={t('searchFilesPlaceholder')}
+        aria-label={t('searchFilesPlaceholder')}
+        spellCheck={false}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        onCompositionStart={() => {
+          composingRef.current = true
+        }}
+        onCompositionEnd={(e) => {
+          composingRef.current = false
+          setSearchQuery(e.currentTarget.value)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && searchQuery) {
+            e.stopPropagation()
+            clearSearch()
+          }
+        }}
+      />
+      {searchQuery && (
+        <button className="file-search-clear" aria-label={t('searchClear')} onClick={clearSearch}>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path
+              d="M2 2l8 8M10 2l-8 8"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      )}
+    </div>
+  )
+
+  const renderSearchRow = (hit: FileSearchHit) => (
+    <li
+      key={hit.path}
+      className="search-row"
+      role="button"
+      tabIndex={0}
+      onClick={() => void window.aiOffice.openPath(hit.path)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') void window.aiOffice.openPath(hit.path)
+      }}
+    >
+      <span className="recent-icon">
+        <FileBadge ext={hit.ext} size={24} />
+      </span>
+      <div className="search-main">
+        <div className="search-head">
+          <span className="search-name">{highlightText(hit.name, hit.needles)}</span>
+          <span className="search-path" title={dirOf(hit.path)}>
+            {highlightText(locationLabel(hit.path, roots), hit.needles)}
+          </span>
+        </div>
+        {hit.snippet && (
+          <p className="search-snippet">
+            {hit.snippet.map((part, i) =>
+              part.hit ? (
+                <mark key={i} className="search-hit">
+                  {part.text}
+                </mark>
+              ) : (
+                <span key={i}>{part.text}</span>
+              ),
+            )}
+          </p>
+        )}
+      </div>
+      <span className="search-time">{formatModified(hit.mtimeMs, i18n)}</span>
+    </li>
+  )
+
+  const renderSearchResults = () => {
+    const page = searchPage
+    const busy = !!page && (page.index.pending > 0 || page.index.scanning)
+    return (
+      <div className="search-results" aria-live="polite">
+        {busy && (
+          <div className="search-status">
+            <span className="load-more-spinner" />
+            {t('searchIndexing', { n: page.index.pending })}
+          </div>
+        )}
+        {page && page.hits.length === 0 && !busy
+          ? renderEmpty(t('searchNoResults', { q }))
+          : page && (
+              <ul className="search-list">{orderedSearchHits(page.hits).map(renderSearchRow)}</ul>
+            )}
+      </div>
+    )
+  }
+
+  const rerankApplied = rerank && rerank.key === rerankKey ? rerank.result : null
+
+  /** judged hits in Jev's order, then the rest in local order */
+  const orderedSearchHits = (hits: readonly FileSearchHit[]): FileSearchHit[] => {
+    if (!rerankApplied) return [...hits]
+    const rank = new Map(rerankApplied.order.map((path, i) => [path, i]))
+    return [...hits].sort((a, b) => (rank.get(a.path) ?? Infinity) - (rank.get(b.path) ?? Infinity))
+  }
+
+  const renderSearchHeading = () => {
+    const total = searchPage?.total ?? 0
+    return (
+      <div className="recents-heading">
+        {rerankApplied && (
+          <span className="search-rerank-badge" title={t('searchRerankedBy')}>
+            Jev
+          </span>
+        )}
+        <span className="file-count">
+          {t(total === 1 ? 'searchResultCountOne' : 'searchResultCount', { n: total })}
+        </span>
+      </div>
+    )
+  }
+
   function renderFolderContent() {
-    if (!root) return null
+    if (roots.length === 0) return null
     const total = folderSubfolders.length + folderFiles.length
     const sortedFiles = fileSort === 'oldest' ? [...folderFiles].reverse() : folderFiles
     return (
@@ -2047,15 +3154,22 @@ export function Home() {
                 <span className="selection-count">
                   {t('selectedCount', { n: folderSelectedPaths.length })}
                 </span>
-                <button className="selection-action" onClick={() => startMove(folderSelectedPaths)}>
-                  {t('moveToFolder')}
-                </button>
-                <button
-                  className="selection-action danger"
-                  onClick={() => deleteFiles(folderSelectedPaths)}
-                >
-                  {t('deleteFiles')}
-                </button>
+                {selectedFolder && editableAt(selectedFolder) && (
+                  <>
+                    <button
+                      className="selection-action"
+                      onClick={() => startMove(folderSelectedPaths)}
+                    >
+                      {t('moveToFolder')}
+                    </button>
+                    <button
+                      className="selection-action danger"
+                      onClick={() => deleteFiles(folderSelectedPaths)}
+                    >
+                      {t('deleteFiles')}
+                    </button>
+                  </>
+                )}
                 <button className="selection-action" onClick={() => setSelected(new Set())}>
                   {t('cancel')}
                 </button>
@@ -2073,14 +3187,24 @@ export function Home() {
                 ))}
               </div>
             )}
-            <div className="recents-heading folder-heading">
-              <span className="file-count">
-                {t(total === 1 ? 'itemCountOne' : 'itemCount', { n: total })}
-              </span>
+            <div className="file-search-group">
+              {renderSearchBox()}
+              {renderSearchSettingsButton()}
             </div>
+            {searchActive ? (
+              renderSearchHeading()
+            ) : (
+              <div className="recents-heading folder-heading">
+                <span className="file-count">
+                  {t(total === 1 ? 'itemCountOne' : 'itemCount', { n: total })}
+                </span>
+              </div>
+            )}
           </div>
 
-          {total === 0 ? (
+          {searchActive ? (
+            renderSearchResults()
+          ) : total === 0 ? (
             renderEmpty(filter === 'all' ? t('emptyFolder') : t('emptyFiltered'))
           ) : (
             <div
@@ -2128,7 +3252,7 @@ export function Home() {
             ? 'greetAfternoon'
             : 'greetEvening'
     const cjk = lang === 'zh' || lang === 'zh-TW' || lang === 'ja'
-    const greeting = `${t(greetKey)}${cjk ? '。' : '. '}`
+    const greeting = `${t(greetKey)}${accountName ? (cjk ? '，' : ', ') + accountName : ''}${cjk ? '。' : '. '}`
     return (
       <main className="content">
         <section className="quick-start" aria-label={t('secQuickStart')}>
@@ -2151,14 +3275,26 @@ export function Home() {
                 <span className="selection-count">
                   {t('selectedCount', { n: selectedPaths.length })}
                 </span>
-                {root?.usable && (
+                {canMove && (
                   <button className="selection-action" onClick={() => startMove(selectedPaths)}>
                     {t('moveToFolder')}
                   </button>
                 )}
-                <button className="selection-action" onClick={() => removeRecent(selectedPaths)}>
-                  {t('removeFromList')}
-                </button>
+                {view === 'starred' ? (
+                  // every Starred-view row is a favorite, so the selection
+                  // action unstars; removeRecent there kept the stars and the
+                  // rows came straight back on refresh
+                  <button
+                    className="selection-action"
+                    onClick={() => unstarSelected(selectedPaths)}
+                  >
+                    {t('unstar')}
+                  </button>
+                ) : (
+                  <button className="selection-action" onClick={() => removeRecent(selectedPaths)}>
+                    {t('removeFromList')}
+                  </button>
+                )}
                 <button
                   className="selection-action danger"
                   onClick={() => deleteFiles(selectedPaths)}
@@ -2170,27 +3306,60 @@ export function Home() {
                 </button>
               </div>
             ) : (
-              <div className="filter-pills" role="tablist" aria-label={t('filterAria')}>
-                {FILTERS.map((f) => (
-                  <button
-                    key={f.key}
-                    className={`filter-pill${filter === f.key ? ' active' : ''}`}
-                    onClick={() => changeFilter(f.key)}
-                  >
-                    {t(f.label)}
-                  </button>
-                ))}
+              <div className="toolbar-filters">
+                <div className="filter-pills" role="tablist" aria-label={t('filterAria')}>
+                  {FILTERS.map((f) => (
+                    <button
+                      key={f.key}
+                      className={`filter-pill${filter === f.key ? ' active' : ''}`}
+                      onClick={() => changeFilter(f.key)}
+                    >
+                      {t(f.label)}
+                    </button>
+                  ))}
+                </div>
+                {view === 'starred' && starredGroups.length > 0 && (
+                  // the group pills refine the Starred view further; the type
+                  // pills above them keep working on the group-scoped list
+                  <div className="filter-pills" role="tablist" aria-label={t('groupFilterAria')}>
+                    <button
+                      className={`filter-pill${groupFilter === null ? ' active' : ''}`}
+                      onClick={() => changeGroupFilter(null)}
+                    >
+                      {t('filterAll')}
+                    </button>
+                    {starredGroups.map((g) => (
+                      <button
+                        key={g}
+                        className={`filter-pill${groupFilter === g ? ' active' : ''}`}
+                        onClick={() => changeGroupFilter(g)}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
-            <div className="recents-heading">
-              <span className="section-label">
-                {view === 'recent' ? t('secRecent') : t('secStarred')}
-              </span>
-              <span className="file-count">{t(fileCountKey(listTotal), { n: listTotal })}</span>
+            <div className="file-search-group">
+              {renderSearchBox()}
+              {renderSearchSettingsButton()}
             </div>
+            {searchActive ? (
+              renderSearchHeading()
+            ) : (
+              <div className="recents-heading">
+                <span className="section-label">
+                  {view === 'recent' ? t('secRecent') : t('secStarred')}
+                </span>
+                <span className="file-count">{fileCountLabel(listTotal, lang, t)}</span>
+              </div>
+            )}
           </div>
 
-          {entries.length === 0 ? (
+          {searchActive ? (
+            renderSearchResults()
+          ) : entries.length === 0 ? (
             renderEmpty(
               view === 'starred'
                 ? t('emptyStarred')
@@ -2241,15 +3410,49 @@ export function Home() {
       return parent?.folders.some((f) => f.path === p) ?? false
     })
 
+  const activeNav = !selectedFolder && !cloudMode ? (askMode ? 'ask' : view) : null
+
+  const onSidebarResizeStart = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const startX = e.clientX
+    const startW = sidebarRef.current?.getBoundingClientRect().width ?? SIDEBAR_MIN_WIDTH
+    const sign = getComputedStyle(e.currentTarget).direction === 'rtl' ? -1 : 1
+    const el = e.currentTarget
+    el.setPointerCapture(e.pointerId)
+    let next = startW
+    const move = (ev: PointerEvent) => {
+      next = Math.min(
+        SIDEBAR_MAX_WIDTH,
+        Math.max(SIDEBAR_MIN_WIDTH, startW + sign * (ev.clientX - startX)),
+      )
+      setSidebarWidth(next)
+    }
+    const up = () => {
+      el.removeEventListener('pointermove', move)
+      el.removeEventListener('pointerup', up)
+      try {
+        localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(next)))
+      } catch {
+        // quota / private mode: the width lasts for this session only
+      }
+    }
+    el.addEventListener('pointermove', move)
+    el.addEventListener('pointerup', up)
+  }
+
   return (
     <div className="home">
-      <aside className="sidebar">
+      <aside
+        className="sidebar"
+        ref={sidebarRef}
+        style={sidebarWidth === null ? undefined : { width: sidebarWidth }}
+      >
         <div className="sidebar-logo">
           <img className="logo-lockup" src={logoLockup} alt="GenOffice" />
         </div>
         <nav className="sidebar-nav">
           <button
-            className={`nav-item${view === 'recent' && !selectedFolder ? ' active' : ''}`}
+            className={`nav-item${activeNav === 'recent' ? ' active' : ''}`}
+            aria-current={activeNav === 'recent' ? 'page' : undefined}
             onClick={() => changeView('recent')}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -2265,7 +3468,8 @@ export function Home() {
             <span className="nav-count">{navCounts.recent}</span>
           </button>
           <button
-            className={`nav-item${view === 'starred' && !selectedFolder ? ' active' : ''}`}
+            className={`nav-item${activeNav === 'starred' ? ' active' : ''}`}
+            aria-current={activeNav === 'starred' ? 'page' : undefined}
             onClick={() => changeView('starred')}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -2279,13 +3483,91 @@ export function Home() {
             <span className="nav-label">{t('navStarred')}</span>
             <span className="nav-count">{navCounts.starred}</span>
           </button>
+          <button
+            className={`nav-item${activeNav === 'ask' ? ' active' : ''}`}
+            aria-current={activeNav === 'ask' ? 'page' : undefined}
+            onClick={() => {
+              setAskMode(true)
+              setSelectedFolder(null)
+              setCloudMode(false)
+              setSelected(new Set())
+              setRowMenu(null)
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M14 10.5c0 .9-.7 1.6-1.6 1.6H5.4L2 14.5V3.6C2 2.7 2.7 2 3.6 2h8.8c.9 0 1.6.7 1.6 1.6z"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M5 6.2h6M5 8.6h4"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+              />
+            </svg>
+            <span className="nav-label">{t('navAsk')}</span>
+          </button>
+          {loggedIn && (
+            <button
+              className={`nav-item${cloudMode && !selectedFolder ? ' active' : ''}`}
+              onClick={() => {
+                setCloudMode(true)
+                setAskMode(false)
+                setSelectedFolder(null)
+                setSelected(new Set())
+                setRowMenu(null)
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M8 1.8l1.55 4.65L14.2 8l-4.65 1.55L8 14.2 6.45 9.55 1.8 8l4.65-1.55z"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span className="nav-label">{t('navCloud')}</span>
+              <svg
+                className="nav-external"
+                width="13"
+                height="13"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M6.5 3.5H4a1.5 1.5 0 0 0-1.5 1.5v7A1.5 1.5 0 0 0 4 13.5h7A1.5 1.5 0 0 0 12.5 12V9.5M9.5 2.5h4v4M13 3l-5.5 5.5"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          )}
         </nav>
         <div className="sidebar-divider" />
         {renderFolderPanel()}
-        <SettingsEntry />
+        <AccountEntry
+          onStatusChange={handleAccountStatus}
+          onFileSearchSettingsChange={() => setRerankSettingsTick((n) => n + 1)}
+          openRequest={settingsRequest}
+        />
       </aside>
-      {selectedFolder && root?.usable ? (
+      <div className="sidebar-resizer" onPointerDown={onSidebarResizeStart} />
+      {selectedFolder && rootOf(selectedFolder, roots)?.readable ? (
         renderFolderContent()
+      ) : askMode ? (
+        <KbAskPanel
+          onOpenPath={(path) => void window.aiOffice.openPath(path)}
+          onGoToRecents={() => changeView('recent')}
+          onOpenModelSettings={() => setSettingsRequest({ section: 'aiModel' })}
+        />
+      ) : cloudMode ? (
+        <CloudProjectsView />
       ) : (
         renderGlobalContent()
       )}
@@ -2391,14 +3673,25 @@ export function Home() {
         </div>
       )}
 
-      {movePicker && root?.usable && (
+      {movePicker && canMove && (
         <FolderPicker
-          root={root}
+          roots={roots}
           currentDirs={new Set(movePicker.map(dirOf))}
           movingDirs={movingDirs(movePicker)}
           count={movePicker.length}
           onCancel={() => setMovePicker(null)}
           onPick={(dir) => void doMove(movePicker, dir, 'ask')}
+        />
+      )}
+
+      {groupPicker && (
+        <GroupPicker
+          groups={starredGroups}
+          count={groupPicker.length}
+          onCancel={() => setGroupPicker(null)}
+          onPick={(group) => assignGroup(groupPicker, group)}
+          onCreate={(name) => assignGroup(groupPicker, name)}
+          onRemove={() => assignGroup(groupPicker, null)}
         />
       )}
 

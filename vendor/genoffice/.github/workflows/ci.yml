@@ -48,6 +48,17 @@ jobs:
         with:
           workspaces: apps/sheets/native/xlsx-engine
 
+      # electron's postinstall downloads its binary from GitHub Releases on every
+      # fresh install; a cache hit skips the download (and its 5xx flakes)
+      - name: Cache electron binaries
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/electron
+          # own prefix: the build workflows' electron-* entries also hold
+          # ~/.cache/electron-builder, and a saved key is never updated
+          key: electron-bin-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-bin-${{ runner.os }}-
+
       - name: Install dependencies
         run: npm ci
 
@@ -82,6 +93,33 @@ jobs:
           fi
           npm run check:theme-colors
 
+      # Line-metric numbers (fonts.css size-adjust/overrides, knownLineFactor)
+      # must cite the Word measurement they came from.
+      - name: Check font-metric provenance
+        env:
+          FORMAT_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            FORMAT_BASE_REF=$(git rev-parse HEAD^1)
+          fi
+          npm run check:font-metrics-provenance
+
+      # fonts.generated.css / line-factors.generated.ts must match the measurement
+      # manifest; metric values are never hand-written outside it.
+      - name: Check generated font metrics
+        env:
+          FORMAT_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            FORMAT_BASE_REF=$(git rev-parse HEAD^1)
+          fi
+          npm run check:generated-fonts
+
+      # docs/word-truths-index.json and the coverage doc must match the fixtures;
+      # a recently dated truths section needs a fixture or a prose-only marker.
+      - name: Check Word truths coverage
+        run: npm run check:word-truths
+
       # skills/*/SKILL.md ship to users' agent directories; a body change
       # without a metadata.version bump would never be offered as an update.
       - name: Check skill versions
@@ -92,6 +130,13 @@ jobs:
             FORMAT_BASE_REF=$(git rev-parse HEAD^1)
           fi
           npm run check:skill-version
+
+      # Whole-tree, not changed-files: every one of the manual's 21 languages
+      # has to match the English article's structure. A language that quietly
+      # falls behind is exactly what no reviewer sees, and it is invisible in a
+      # diff — the change that causes it looks like an ordinary translation.
+      - name: Check manual language coverage
+        run: npm run check:help-langs
 
       # Added lines only: Han text outside locale tables, review-tool tags,
       # feedback-ledger ids, sample-corpus ids, internal PR numbers, personal
@@ -132,7 +177,7 @@ jobs:
       # pptx-engine's OOXML schema gate validates saved decks with xmllint
       # (tools/ooxml-validate); the runner image is not guaranteed to have it.
       - name: Install xmllint
-        run: sudo apt-get install -y --no-install-recommends libxml2-utils
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
 
       - name: Test
         run: npm test
@@ -169,6 +214,17 @@ jobs:
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: apps/sheets/native/xlsx-engine
+
+      # electron's postinstall downloads its binary from GitHub Releases on every
+      # fresh install; a cache hit skips the download (and its 5xx flakes)
+      - name: Cache electron binaries
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/electron
+          # own prefix: the build workflows' electron-* entries also hold
+          # ~/.cache/electron-builder, and a saved key is never updated
+          key: electron-bin-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-bin-${{ runner.os }}-
 
       - name: Install dependencies
         run: npm ci
@@ -208,7 +264,7 @@ jobs:
       - name: Install Chromium for layout tests
         run: npx playwright install chromium
 
-      - name: Markdown opt-in round-trip browser tests
+      - name: Markdown browser tests
         run: npx playwright test --config apps/markdown/playwright.config.ts
 
       # Electron needs a display server on Linux runners. DEBUG=pw:browser
@@ -221,7 +277,7 @@ jobs:
 
       - name: Upload E2E artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-artifacts
           path: |

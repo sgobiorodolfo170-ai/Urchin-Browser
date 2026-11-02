@@ -40,6 +40,7 @@ const DEFAULT_NAMES = [
   'create_session',
   'get_app_info',
   'insert_content',
+  'insert_picture',
   'open_documents',
   'open_in_genoffice',
   'read_deck',
@@ -275,6 +276,19 @@ describe('MCP surface over Streamable HTTP (/mcp)', () => {
         'xlsm',
         'xls',
         'csv',
+        'tsv',
+        'ods',
+        'ots',
+      ])
+      expect(infoJson.families.find((f) => f.family === 'docx')!.editor.open).toEqual([
+        'docx',
+        'odt',
+        'ott',
+      ])
+      expect(infoJson.families.find((f) => f.family === 'pptx')!.editor.open).toEqual([
+        'pptx',
+        'odp',
+        'otp',
       ])
 
       // ── 3. read_docx error paths ──────────────────────────────────────────

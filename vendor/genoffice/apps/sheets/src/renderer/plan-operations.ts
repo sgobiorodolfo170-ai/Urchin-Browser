@@ -49,6 +49,7 @@ import {
   normalizeLinkTarget,
   protectSheetGuard,
 } from './univer-sync'
+import { SharedFormulaLookup, indexedFormulas, sharedFormulaText } from './shared-formula-index'
 import { CLOSURE_MAX_CELLS, type LazyWorkbookState, type UniverRuntime } from './univer-state'
 import { convertibleType } from './WorkbookVisuals'
 
@@ -166,13 +167,14 @@ export function proposeOperations(
           }
           // Save-time chart patching fails closed on non-convertible plots;
           // reject here so the user never sees Apply succeed and ⌘S fail.
+          // Combos convert by collapsing onto the target family.
           if (
             operation.chartType !== undefined &&
             (!visual.chart || convertibleType(visual.chart) === null)
           ) {
             return {
               ok: false,
-              error: `Chart ${operation.chartPath} cannot be converted to another type (only single-plot column/bar/line/area/pie/doughnut charts can).`,
+              error: `Chart ${operation.chartPath} cannot be converted to another type (single-plot column/bar/line/area/pie/doughnut charts and bar+line combos can).`,
             }
           }
           if (
@@ -366,7 +368,12 @@ export function proposeOperations(
           continue
         }
         if (operation.op === 'protect_sheet') {
-          const guard = protectSheetGuard(state, operation.sheetId, operation.protected)
+          const guard = protectSheetGuard(
+            state,
+            operation.sheetId,
+            operation.protected,
+            operation.password !== undefined,
+          )
           if (guard) return { ok: false, error: guard }
           continue
         }
@@ -1050,12 +1057,8 @@ export function lazyGateFailure(
               'Filter changes need the fully-loaded mode — this workbook is too large and streams partially, so filters cannot be edited.',
           }
     }
-    if (state.filterOrigins.get(sheetId)?.origin === 'table') {
-      return {
-        reason: "This sheet's auto-filter belongs to a table — table filters cannot be edited yet.",
-        messageKey: 'appTableFilterNoEdit',
-      }
-    }
+    // Table filters are no longer gated here: the save routes them into the
+    // table part (applyRoutedFilterState in the gateway).
     return null
   }
   if (
@@ -1356,8 +1359,10 @@ export async function structuralDeleteFormulaError(
         return null
       }
       if (result.truncated || !result.indexingComplete) return null
-      for (const cell of result.cells) {
-        if (!cell.formula) continue
+      for (const cell of indexedFormulas(
+        result.cells,
+        new SharedFormulaLookup(result.sharedGroups),
+      )) {
         // Only a CONTENT overwrite supersedes the file's formula text — a
         // style-only journal entry leaves the formula in force.
         const entry = journalCells?.get(`${cell.row}:${cell.column}`)
@@ -1432,6 +1437,11 @@ export function structuralDeleteFormulaErrorSync(
           texts.push(text)
         }
       }
+      state.sharedFormulaGroups.get(sheetId)?.forEachFollower((row, column, group) => {
+        const entry = journalCells?.get(`${row}:${column}`)
+        if (entry && (entry.hasValue || entry.formula)) return
+        texts.push(sharedFormulaText(group, row, column))
+      })
     }
     const error = deletedSpanTextError(texts, spec, sheetId !== operation.sheetId)
     if (error) return error

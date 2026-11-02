@@ -11,6 +11,7 @@ import type { WorkbookChartEdit, WorkbookVisualEdit } from '../shared/edit-schem
 import type { SheetFilterState } from './xlsx-filter'
 import type { DefinedNamesState } from './xlsx-defined-names'
 import type { SheetPageSetupState } from './xlsx-page-setup'
+import type { SheetRedactionState } from './xlsx-redaction'
 import type {
   CellEdit,
   BulkConstantFill,
@@ -23,12 +24,15 @@ import type {
   SheetNoteState,
   SheetProtectedRangesState,
   SheetProtectionState,
+  SheetTabColorState,
   SheetPivotAddition,
   SheetSparklineAddition,
   SheetStructuralOps,
   SheetTableAddition,
+  SheetTableEdit,
   SheetVisualAddition,
   SheetFormulaValues,
+  SheetCellImageAddition,
 } from './xlsx-gateway'
 import { planCellEditsToXlsx, syncFileBestEffort } from './xlsx-gateway'
 import { normalizeOoxmlPartPrefix } from './xlsx-namespace'
@@ -96,6 +100,9 @@ export interface StreamingSaveRequest {
   readonly pageSetupStates?: readonly SheetPageSetupState[] | undefined
   readonly noteStates?: readonly SheetNoteState[] | undefined
   readonly tableAdditions?: readonly SheetTableAddition[] | undefined
+  readonly tableEdits?: readonly SheetTableEdit[] | undefined
+  /// Session-created pictures in cells ("Place in Cell").
+  readonly cellImageAdditions?: readonly SheetCellImageAddition[] | undefined
   readonly pivotAdditions?: readonly SheetPivotAddition[] | undefined
   readonly pivotCacheRefreshPaths?: readonly string[] | undefined
   readonly pivotRefreshUpdates?: readonly PivotRefreshUpdate[] | undefined
@@ -106,6 +113,9 @@ export interface StreamingSaveRequest {
   readonly themeState?: WorkbookThemeState | null | undefined
   readonly workbookProtectionState?: { readonly lockStructure: boolean } | null | undefined
   readonly protectedRangeStates?: readonly SheetProtectedRangesState[] | undefined
+  readonly tabColorStates?: readonly SheetTabColorState[] | undefined
+  /** null/undefined = the caller does not know the marks; the part is left as it is */
+  readonly redactionStates?: readonly SheetRedactionState[] | null | undefined
 }
 
 export interface StreamingSaveResult {
@@ -141,7 +151,10 @@ export async function saveWorkbookViaSidecar(
   request: StreamingSaveRequest,
 ): Promise<StreamingSaveResult> {
   const workDir = await mkdtemp(join(tmpdir(), 'ai-excel-save-'))
-  const temporaryTarget = join(dirname(request.targetPath), `.${randomUUID()}.tmp.xlsx`)
+  const temporaryTarget = join(
+    dirname(request.targetPath),
+    `${basename(request.targetPath)}.${randomUUID()}.tmp`,
+  )
   try {
     const manifest = manifestResultSchema.parse(
       await request.client.archiveManifest(request.sourcePath),
@@ -173,6 +186,10 @@ export async function saveWorkbookViaSidecar(
       request.workbookProtectionState ?? null,
       request.protectedRangeStates ?? [],
       request.bulkConstantFills ?? [],
+      request.tabColorStates ?? [],
+      request.tableEdits ?? [],
+      request.cellImageAdditions ?? [],
+      request.redactionStates ?? null,
     )
 
     const replacements = await writePlanContents(workDir, 'replace', plan.replaced)

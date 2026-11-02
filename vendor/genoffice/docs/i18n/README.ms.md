@@ -19,10 +19,11 @@ Fail Word, Excel, PowerPoint dan PDF, disunting oleh anda dan AI anda, disimpan 
   <a href="https://github.com/genspark-ai/genoffice/stargazers"><img src="https://img.shields.io/github/stars/genspark-ai/genoffice?style=flat" alt="GitHub stars"></a>
 </p>
 
-<p align="center"><a href="../../README.md">English</a> · <a href="README.es.md">Español</a> · <a href="README.pt-BR.md">Português (Brasil)</a> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ko.md">한국어</a> · <a href="README.ja.md">日本語</a> · <a href="README.ar.md">العربية</a> · <a href="README.ru.md">Русский</a> · <a href="README.it.md">Italiano</a> · <a href="README.nl.md">Nederlands</a> · <a href="README.pl.md">Polski</a> · <a href="README.cs.md">Čeština</a> · <a href="README.id.md">Bahasa Indonesia</a> · <b>Bahasa Melayu</b> · <a href="README.th.md">ไทย</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.he.md">עברית</a></p>
+<p align="center"><a href="../../README.md">English</a> · <a href="README.es.md">Español</a> · <a href="README.pt-BR.md">Português (Brasil)</a> · <a href="README.de.md">Deutsch</a> · <a href="README.fr.md">Français</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.zh-TW.md">繁體中文</a> · <a href="README.ko.md">한국어</a> · <a href="README.ja.md">日本語</a> · <a href="README.ar.md">العربية</a> · <a href="README.ru.md">Русский</a> · <a href="README.it.md">Italiano</a> · <a href="README.nl.md">Nederlands</a> · <a href="README.pl.md">Polski</a> · <a href="README.cs.md">Čeština</a> · <a href="README.id.md">Bahasa Indonesia</a> · <b>Bahasa Melayu</b> · <a href="README.th.md">ไทย</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.he.md">עברית</a> · <a href="README.vi.md">Tiếng Việt</a> · <a href="README.tr.md">Türkçe</a></p>
 
 <p align="center">
   <a href="#download"><b>Muat Turun</b></a> ·
+  <a href="#skills"><b>Skill</b></a> ·
   <a href="#command-line-and-agent-skill"><b>CLI</b></a> ·
   <a href="#mcp-server"><b>MCP</b></a> ·
   <a href="https://genoffice.ai/"><b>Laman Web</b></a> ·
@@ -35,7 +36,10 @@ untuk macOS, Windows dan Linux. Ia membuka dan menyimpan fail asli `.docx`,
 `.xlsx` dan `.pptx`, menyunting PDF, Markdown dan HTML, serta meletakkan agen
 AI di sebelah setiap dokumen — bukan sekadar kotak sembang yang ditampal di
 tepi, tetapi editor yang membaca fail, membuat perubahan itu, dan menunjukkan
-kepada anda dengan tepat apa yang disentuhnya.
+kepada anda dengan tepat apa yang disentuhnya. Fail ODF (`.odt`, `.ods`,
+`.odp` dan templat `.ott`/`.ots`/`.otp`) dibuka sebagai salinan OOXML yang
+boleh disunting; pengimportan hanya untuk membuka — penyimpanan menulis
+OOXML, tidak pernah ODF.
 
 - **Format sebenar, terpelihara bit demi bit.** Hanya bahagian yang anda
   sunting akan ditulis semula. Selebihnya dalam fail terus terpelihara
@@ -44,7 +48,12 @@ kepada anda dengan tepat apa yang disentuhnya.
 - **AI yang boleh anda semak.** Suntingan tiba sebagai perubahan yang dijejak
   (tracked changes) dan diff dengan rollback satu klik. Hamparan mendapat
   formula langsung, bukan nombor yang ditampal. Deck dan halaman dijana terus
-  pada kanvas dan kekal boleh disunting sepenuhnya.
+  pada kanvas dan kekal boleh disunting sepenuhnya. Sembunyikan pilihan dalam
+  Docs atau julat sel dalam Sheets daripada model dan AI hanya melihat
+  pemegang tempat yang dinamakan; perkataan asal kekal dalam fail dan kembali
+  semula. Penyembunyian ini meliputi AI dalam aplikasi ini sahaja — CLI, alat
+  MCP dan eksport headless membaca fail secara terus dan masih melihat
+  perkataan-perkataan ini.
 - **Setempat mengikut reka bentuk.** Fail dibuka, disunting, disimpan dan
   ditukar terus pada mesin anda. PDF → Word / Excel / PowerPoint, Markdown →
   Word dan HTML → Word semuanya berjalan di peranti sendiri. Hanya panggilan
@@ -79,8 +88,8 @@ oleh gesaan yang boleh anda baca dalam panel.
 <td width="50%"><img src="../assets/readme/docs-ai.webp" alt="GenOffice Docs: gambaran keseluruhan syarikat dengan imej sepanduk; AI memadatkan bahagian Overview dan menyisipkan bahagian berbulet baharu, dan panel menawarkan rollback satu klik"></td>
 </tr>
 <tr>
-<td><b>Membuka fail sepertimana Word menyusun aturnya</b> — bahagian dua lajur, imej sepenuh muka, jadual berlorek, pengepala dan pengaki, penomboran halaman berdasarkan metrik baris Word. Gaya, komen, perubahan yang dijejak, persamaan dan tulisan dakwat kekal utuh selepas pergi-balik.</td>
-<td><b>Minta suntingan itu</b> — AI membaca blok yang diperlukannya, menulis semula bahagian Overview dan menyisipkan bahagian berbulet baharu. Setiap pusingan AI ialah snapshot yang boleh anda rollback; dengan <b>Track changes</b> dihidupkan, suntingan tiba sebagai semakan bergaya Word.</td>
+<td><b>Membuka fail sepertimana Word menyusun aturnya</b> — bahagian dua lajur, imej sepenuh muka, jadual berlorek, pengepala dan pengaki, penomboran halaman berdasarkan metrik baris Word. Gaya, komen, perubahan yang dijejak, persamaan, tulisan dakwat dan kawalan kandungan (content controls) kekal utuh selepas pergi-balik. Tab <b>Mailings</b> menjadikan dokumen itu templat gabungan (merge template): pilih senarai penerima <code>.xlsx</code> atau <code>.csv</code>, sisipkan <code>MERGEFIELD</code> sebenar, pratonton rekod demi rekod, dan gabungkan kepada satu dokumen atau satu <code>.docx</code> bagi setiap rekod.</td>
+<td><b>Minta suntingan itu</b> — AI membaca blok yang diperlukannya, menulis semula bahagian Overview dan menyisipkan bahagian berbulet baharu. Setiap pusingan AI ialah snapshot yang boleh anda rollback; dengan <b>Track changes</b> dihidupkan, suntingan tiba sebagai semakan bergaya Word. Minta peta minda sebagai gantinya dan jawapannya ialah rajah interaktif untuk keseluruhan dokumen: cawangan yang boleh dilipat, zum dan anjakan, klik pada nod mengajukan soalan susulan, dan rujukan melompat kembali ke blok asalnya.</td>
 </tr>
 </table>
 
@@ -93,7 +102,7 @@ oleh gesaan yang boleh anda baca dalam panel.
 </tr>
 <tr>
 <td><b>Bina ia</b> — daripada satu ayat, agen menambah helaian Summary dengan <code>SUMIF</code> sebenar mengikut wilayah dan kategori, menyisipkan carta lajur, dan melaksanakan 43 perubahan itu sebagai satu kelompok yang boleh dibuat asal.</td>
-<td><b>Tanya ia</b> — soalan tentang buku kerja itu dijawab dengan penaakulan serta sel sebenar yang digunakan sebagai rujukan yang boleh diklik. Di sebaliknya: enjin <code>.xlsx</code> Rust buatan sendiri, jadual pangsi, penghiris, pemformatan bersyarat dan penyusuran formula.</td>
+<td><b>Tanya ia</b> — soalan tentang buku kerja itu dijawab dengan penaakulan serta sel sebenar yang digunakan sebagai rujukan yang boleh diklik. Di sebaliknya: enjin <code>.xlsx</code> Rust buatan sendiri, jadual pangsi, penghiris, pemformatan bersyarat, penyusuran formula, dan gambar yang dibenamkan dalam sel sebagai rich value native Excel — Excel membukanya semula dan ia masih berada dalam sel itu.</td>
 </tr>
 </table>
 
@@ -108,9 +117,14 @@ oleh gesaan yang boleh anda baca dalam panel.
 </tr>
 <tr>
 <td><b>Satu baris masuk</b> — "Create a 10-slide investor pitch deck for Aurora Home…". GenOffice merancang jalan cerita, menyelidik angka-angka itu, dan merangka setiap slaid terus pada kanvas sebagai `.pptx` sebenar.</td>
-<td><b>Deck siap keluar</b> — sebelas slaid yang direka dengan tipografi, imej yang konsisten dan seruan tindakan penutup; teruskan menyunting dengan induk (masters), susun atur, garis pandu pintar dan pemangkasan tidak merosakkan, atau minta panel menggayakan semula, menulis semula dan menyusun semula.</td>
+<td><b>Deck siap keluar</b> — sebelas slaid yang direka dengan tipografi, imej yang konsisten dan seruan tindakan penutup; teruskan menyunting dengan induk (masters), susun atur, garis pandu pintar dan pemangkasan tidak merosakkan, atau minta panel menggayakan semula, menulis semula dan menyusun semula. Sisipkan <code>.glb</code> dan ia menjadi model 3D sebenar: putarkannya dengan menyeret dalam editor, disimpan dengan cara PowerPoint menyimpan 3D, dan masih 3D dalam PowerPoint.</td>
 </tr>
 </table>
+
+**Slide Show → Record** merakamkan narasi bagi deck itu slaid demi slaid,
+dengan jeda dan sambung semula. Narasi itu serta masa peralihan automatik
+yang diukurnya disimpan ke dalam `.pptx`, dan PowerPoint memainkannya semula
+dengan cara yang sama.
 
 ### 4 · PDF — sunting teks PDF di tempatnya, tukar PDF ke Word di peranti sendiri
 
@@ -166,6 +180,12 @@ gaya — sebelum membina satu fail `.html` mandiri berdasarkan token-token itu.
 <td><b>Dipaparkan, disimpan sebagai Markdown biasa</b> — tajuk, senarai, jadual, imej, blok kod dan gambar rajah Mermaid dalam editor blok Tiptap, ditulis semula sebagai `.md` biasa, dengan eksport <b>Markdown → Word</b> yang sepenuhnya setempat.</td>
 </tr>
 </table>
+
+**Nota berpaut, seperti cara Obsidian melakukannya.** `[[wiki links]]` boleh
+diklik untuk melompat ke nota yang dinamakannya, menaip `[[` menawarkan
+pelengkap nama nota, dan `![[…]]` membenamkan nota atau gambar secara
+sebaris. Panel **Backlinks** menyenaraikan setiap nota yang menunjuk kepada
+nota yang sedang dibuka, dan paparan **Graph** memetakan pautan seluruh vault.
 
 ### 7 · CLI — agen pengekodan anda memandu GenOffice, pada mesin anda
 
@@ -229,6 +249,7 @@ tab editor yang kelihatan sementara anda memerhati.
   sistem untuk hasil imbasan.
 - **Markdown dan HTML juga**, dengan panel AI yang sama dan eksport setempat
   ke Word.
+- **Skill.** Skill sedia ada atau `SKILL.md` anda sendiri, dilampirkan dari menu **+** di mana-mana panel AI.
 - **Boleh dijalankan melalui skrip.** Baris arahan `genoffice`, skill agen
   dan pelayan MCP meletakkan setiap enjin di bawah khidmat Claude Code,
   Claude Desktop, Codex, Cursor dan agen lain, masih di peranti sendiri.
@@ -246,13 +267,27 @@ Gemini, DeepSeek, Kimi, GLM, Qwen, Doubao, MiniMax, Grok, Mistral, OpenRouter, R
 dan OpenCode Zen/Go, ditambah slot tersuai untuk mana-mana titik akhir yang
 serasi dengan OpenAI (URL asas + kunci), termasuk pelayan model setempat.
 Carian dan media mempunyai pembekal tersendiri mengikut keupayaan di bawah
-**AI Media & Search**: Serper atau Tavily untuk carian web, dan OpenAI,
-Gemini, Doubao/Seedream, GLM, Grok, Qwen, MiniMax atau mana-mana titik akhir
-imej serasi OpenAI untuk penjanaan imej dan analisis imej/video.
+**AI Media & Search**: Serper, Serply, Tavily, Parallel, Keenable, Exa atau
+Firecrawl untuk carian web — Keenable juga boleh digunakan tanpa kunci, kunci
+hanya meningkatkan had kadar; dan OpenAI, Gemini, Doubao/Seedream, GLM, Grok,
+Qwen, MiniMax atau mana-mana titik akhir imej serasi OpenAI untuk penjanaan
+imej dan analisis imej/video.
 
 Keseluruhan rangkaian ini disertakan dengan tema terang, gelap dan sistem.
 Tema hanya mengubah apa yang dipaparkan pada skrin: eksport, cetakan dan fail
 yang disimpan sentiasa mengekalkan warna sebenar dokumen itu.
+
+<a id="skills"></a>
+
+## Skill
+
+Skill ialah fail `SKILL.md` yang memberitahu AI cara melakukan satu tugas dengan baik: laporan mingguan, NDA, rancangan pengajaran.
+GenOffice menyertakan satu set skill dan menerima skill anda sendiri, dalam format yang sama digunakan oleh agen pengekodan.
+
+- **Tetapan → Skill.** **Pasang** skill yang disyorkan, atau **Import** folder, zip atau satu fail `SKILL.md`. Tiada apa-apa dijalankan semasa import.
+- **Dalam sembang.** Buka menu **+** di sebelah kotak mesej mana-mana panel AI, pilih **Skill**, tandakan satu, lalu hantar. Skill hanya disertakan dengan mesej itu.
+
+---
 
 <a id="command-line-and-agent-skill"></a>
 
@@ -289,10 +324,11 @@ menyuntingnya, dan cara menyemak hasil kerjanya sendiri.
 ```bash
 genoffice --version
 genoffice info report.docx --json                  # headings and blocks; or sheets, slides, pages
-genoffice convert report.md --to pdf               # md/html/docx/xlsx/pptx → pdf, pdf → docx/xlsx/pptx, …
+genoffice convert report.md --to pdf               # md/html/docx/xlsx/pptx → pdf, pdf → docx/xlsx/pptx/md/html, odt/ods/odp → docx/xlsx/pptx, …
 genoffice create --type docx --from notes.md --out notes.docx
 genoffice create --type xlsx --from table.json --out sales.xlsx   # "=SUM(B2:B9)" cells stay live formulas
 genoffice docs read report.docx --range 0-9 --json # then `docs apply --ops edits.json` edits in place
+genoffice docs compare original.docx revised.docx --out redline.docx   # the differences as tracked Word revisions
 genoffice render report.docx --out shots/          # one PNG per page, to look at what you made
 genoffice open sales.xlsx                          # hand the result to the editor
 ```
@@ -542,6 +578,17 @@ MiniMax, Grok, Mistral, OpenRouter, Requesty dan OpenCode Zen/Go, ditambah mana-
 titik akhir serasi OpenAI — termasuk pelayan model setempat. Carian,
 penjanaan imej dan analisis imej/video memerlukan kunci tersendiri di bawah
 Settings → AI Media & Search.
+
+</details>
+
+<details>
+<summary><b>Bolehkah saya mematikan panel AI?</b></summary>
+
+Ya. Settings → AI mempunyai suis **Show the AI sidebar**. Apabila dimatikan,
+setiap editor menyembunyikan bar sisi itu; dokumen baharu berhenti membukanya
+secara sendiri. Tindakan AI yang eksplisit — butang ribbon atau item menu —
+masih membuka panel itu bagi dokumen tersebut, dan menutupnya mengembalikan
+keadaan tersembunyi.
 
 </details>
 

@@ -93,6 +93,7 @@ describe('genoffice mcp --http', () => {
     const names = tools.map((t) => t.name)
     expect(names).toContain('docs_apply')
     expect(names).not.toContain('open')
+    expect(names).not.toContain('selection')
     const create = tools.find((t) => t.name === 'create_docx')!
     expect(create.inputSchema.required ?? []).not.toContain('out')
     const props = create.inputSchema.properties as Record<string, { description?: string }>
@@ -100,6 +101,10 @@ describe('genoffice mcp --http', () => {
     const info = tools.find((t) => t.name === 'info')!
     const infoProps = info.inputSchema.properties as Record<string, { description?: string }>
     expect(infoProps.file?.description).toContain('http(s) URL')
+    const apply = tools.find((t) => t.name === 'docs_apply')!
+    const ops = (apply.inputSchema.properties as Record<string, { items?: { anyOf?: unknown[] } }>)
+      .ops!
+    expect(ops.items?.anyOf?.length).toBeGreaterThan(40)
   })
 
   it('reads an uploaded file through its URL', async () => {
@@ -260,6 +265,9 @@ describe('file store and fetch guard', () => {
     expect(safeName('../../etc/passwd')).toBe('passwd')
     expect(safeName('C:\\Users\\me\\Q3 report (final).docx')).toBe('Q3 report (final).docx')
     expect(safeName('   ', 'upload.bin')).toBe('upload.bin')
+    const long = safeName(`${'a'.repeat(300)}.txt`)
+    expect(long.length).toBeLessThanOrEqual(128)
+    expect(long.endsWith('.txt')).toBe(true)
     const store = new FileStore(join(tempDir(), 'store'), 1000)
     const target = store.uploadTarget('a.txt')
     writeFileSync(target, 'hi')

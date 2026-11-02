@@ -10,7 +10,8 @@ v0.1.0-dev.91 起（dev.90 为前置的 Electron 43 升级）。
 | 项         | 值                                                                       |
 | ---------- | ------------------------------------------------------------------------ |
 | 上游仓库   | `https://github.com/genspark-ai/genoffice`                               |
-| 固定 commit | `ad1b303431eb4d3571f0485d046141ca26e748da`（2026-09-20 取源）           |
+| 固定版本   | `v0.12.446`（commit `36a509e8fc16ace85ed7afa3c37acb7b9c441ad1`，2026-10-30；2026-11-02 取源） |
+| 上一基线   | `ad1b303`（2026-09-20 取源，对应 `@genoffice/shell@0.10.0` / Electron 43.3.0；该 commit 已被上游 snapshot-sync 历史重写抹除，不可复现，故本次起改为按 tag 锁定） |
 | 许可证     | Apache-2.0（根 `LICENSE`）；`NOTICE` 与第三方声明随源保留                |
 | 特殊许可   | `ee/` 目录为企业许可（当前无代码）；`packages/pptx-engine/src/vendor/mtx` 为 MPL-2.0；`packages/ui/src/fonts` 为 OFL-1.1 |
 
@@ -28,7 +29,7 @@ v0.1.0-dev.91 起（dev.90 为前置的 Electron 43 升级）。
 1. **新增 `apps/urchin-embed/`**（本仓自研，非上游）：宿主嵌入层。
    - `src/main/index.ts`：`GENOFFICE_SCHEME_PRIVILEGES`（特权 scheme 数据，
      由宿主并入自己的 `registerSchemesAsPrivileged` 单次调用，含 html 的
-     html-preview/html-asset）、`initGenOfficeEmbed()`（六编辑器运行时装配
+     html-preview/html-asset、以及 v0.12 新增的 `genoffice-slide-media`）、`initGenOfficeEmbed()`（六编辑器运行时装配
      markdown/pdf/html/docs/slides/sheets + docs 的 `registerDocsIpc` 一次性注册；
      `extraRendererRoots` 供宿主挂载 shell Home 渲染产物）、`initGenOfficeAi()`
      （ai:*/project:* 与 `genoffice:ai-catalogs`）、`createGenOfficeView()`、
@@ -78,7 +79,7 @@ v0.1.0-dev.91 起（dev.90 为前置的 Electron 43 升级）。
    原因：`docs-main` 导入该模块后，strict 工程（含上游 `apps/shell`）在
    TS 5.9 下报 TS2769（`(string|undefined)[]` 不可赋给 `Iterable<string>`）；
    修复后 `apps/urchin-embed` 与上游 shell 的 typecheck 均恢复绿色。
-   逻辑不变，可直接回馈上游。
+   逻辑不变，可直接回馈上游。（v0.12.446 升级复核：上游 HEAD 仍未修，补丁继续保留。）
 4. **移除 GenOffice 原生账号/登录体系**（Urchin 不接入原项目账号；用户指令）：
 
    涉及文件：
@@ -125,11 +126,20 @@ v0.1.0-dev.91 起（dev.90 为前置的 Electron 43 升级）。
 6. **`apps/urchin-embed/src/main/env.d.ts`**（slides 接入伴随的 type shim）：
    slides 的 `fonts.ts`/`shaped-metrics.ts` 用了 electron-vite 的 `?asset`
    后缀导入（字体/wasm 文件路径）与 harfbuzzjs 深路径 factory，纯 `tsc --noEmit`
-   不识别。本仓在 embed 下新建 `src/main/env.d.ts`，仅声明 `*?asset` 与
+   不识别。本仓在 embed 下新增 `src/main/env.d.ts`，仅声明 `*?asset` 与
    `*/harfbuzzjs/dist/harfbuzz.js` 两个模块（**不含** `bidi-js`——让
    `packages/pdf2docx/src/bidi-js.d.ts` 的完整声明生效，避免与 slides 自带
    `env.d.ts` 的简化版 bidi-js 冲突）。embed tsconfig 的 include 改指向此
    本地文件（而非 `../slides/src/main/env.d.ts` 整文件）。
+7. **`apps/shell/src/renderer/src/Home.tsx`**（卡片顺序）：`renderQuickCards()`
+   中「打开本地文件」卡片置于 `{NEW_ITEMS.map(...)}` **之前**（最左），而非
+   上游默认的最右。升级时需复核此顺序。
+8. **默认保存目录对齐**（宿主侧，非 vendor 补丁）：`apps/desktop/src/main/index.ts`
+   启动时将 `<userData>/app-settings.json` 的 `defaultSaveDir` 键写入
+   `<数据目录>/documents`（仅在未设置时写入，不覆盖用户自定义）。`home-handlers.ts`
+   的 `defaultSaveDir()` 读 app-settings.json（与编辑器的 `configuredDefaultSaveDir(app)`
+   同源），`pickDefaultSaveDir` 弹目录选择器并写回 app-settings.json（允许用户自定义）。
+   此改动在宿主代码（`apps/desktop`），不受 vendor 升级影响。
 
 ## 安装与构建（Urchin 侧）
 
@@ -159,3 +169,55 @@ vendor/genoffice/apps/<app>/out/preload/index.js              # 编辑器 preloa
 3. `npm install` 更新锁文件 → `pnpm genoffice:build` → Urchin 全量验证
    （typecheck/lint/单测/e2e + 手工打开各格式）；
 4. 更新 CHANGELOG 与 `docs/pi-web-评估` 类似的上游变更审计留痕。
+
+## v0.12.446 升级状态（2026-11-02，Phase A）
+
+本次从 `ad1b303`（2026-09-20，shell 0.10.0 / Electron 43.3.0）升级到
+`v0.12.446`（2026-10-30，shell 0.12.0 / Electron 43.8.3）。上游采用
+"Sync snapshot" 周期性 squash 发布，旧 commit `ad1b303` 已被历史重写抹除
+（GitHub 返回 422），故本次起改为按 **tag** 锁定，并记录取源日期。
+
+### 已落地的改动
+
+- **scheme-privileges**：`genoffice-slide-media` 加入 `GENOFFICE_SCHEME_PRIVILEGES`
+  （上游 v0.11+ 新增；不加则 slides 的归档图片从 secure 页加载失败）。
+  `scheme-privileges.json` 现含 5 个 scheme。
+- **html2docx 类型守卫**：补丁 #3 重新落地（上游仍未修）。
+- **SettingsModal AI catalog 异步适配**（补丁 #5）：上游 v0.12 的
+  `AiModelPane`/`AiMediaPane` 仍用 `useState(() => window.aiOffice.getAiProviders?.())`
+  假定同步数组；Urchin preload 返回 Promise。已改为 `useState([])` + `Promise.all`
+  在 effect 内加载 catalog + settings。
+- **账号/云项目方法桩**（补丁 #4 的 Phase A 替代）：v0.12 的 Home `AccountEntry`
+  在 mount 时调用 `accountStatus?.().then(...)` 等；若 preload 缺该方法则
+  `.then` 崩溃。Phase A 未做 Home.tsx 的 AccountEntry 删除（上游 Home 改动大，
+  三方合并风险高），改为在宿主 preload（`apps/desktop/src/preload/index.ts`）
+  桩化 account/cloud/folder-root 方法（返回已登出/空的 Promise），Home 可正常
+  渲染、`.account-entry` 入口可见（显示"登录"但不可用）。
+
+### 已知遗留（Phase B）
+
+- **HomeApi 缺项方法**：宿主 preload 仅实现约 50/120 个 HomeApi 方法。v0.12 新增的
+  恢复上次会话/自动更新检查/默认应用/skills/附件/kb* 等方法以桩或 `?.` 静默跳过。
+  Phase B 按优先级逐步接入或明确隐藏对应 UI。
+- **Electron 版本**：vendor node_modules 仍 43.3.0（满足 embed 的 `^43.3.0`）；
+  宿主用 43.7.3。上游 shell 要求 43.8.3，但 embed 构建不依赖 vendor 的 electron
+  二进制，运行时由宿主提供，暂不影响。Phase B 可对齐到 43.8.x。
+
+### Phase B 已落地（2026-11-02）
+
+- **AccountEntry → 设置入口**：Home.tsx 的 AccountEntry 按钮文案/图标/tooltip 从
+  "登录 Genspark"改为"设置"+齿轮图标（保留 className="account-entry" 复用上游
+  CSS）。按钮行为不变（打开 SettingsModal）。登录 hint 块因 stub（waiting=false）
+  不显示。SettingsModal 默认区段从 `'account'` 改为 `'aiModel'`，并从 SECTIONS 导航
+  移除 `'account'`（打开设置即 AI 模型面板，不再显示账号登录面板）。
+- **genoffice e2e 9/9 全绿**：BYOK 测试此前因默认区段为 `'account'`（测试在账号面板
+  找不到 `.gs-dd-btn`）失败；改为 `'aiModel'` 后通过。
+- **HomeApi 全补齐（零缺项）**：宿主 preload 现覆盖 Home 所有 `window.aiOffice.*`
+  调用（120+ 方法）。文件搜索 `searchFiles` 实现基础文件名递归搜索；`unstarPaths`
+  实现批量取消星标；设置面板 14 个 `?.` 方法返回合理默认值（restoreLastSession/
+  autoUpdateCheck/tabSleep/authorName/documentTheme/defaultApp/updateState 等）；
+  订阅类 `onAiSettingsChanged`/`onOpenSettings`/`onDocumentThemeChanged`/
+  `onUpdateStateChanged` 返回空 unsubscribe；账号/云/folder-root 方法返回已登出/空桩。
+- **Electron 对齐**：声明从 `^43.7.3`/`^43.3.0` 改为 `^43.8.0`（已安装 43.8.0，
+  上游 43.8.3 仅差 patch）。
+- **verify 全绿**（1345 测试，覆盖率达标）。

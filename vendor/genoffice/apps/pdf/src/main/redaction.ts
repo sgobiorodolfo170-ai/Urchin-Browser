@@ -93,16 +93,35 @@ function collectImageHashes(
   return hasImage
 }
 
-/** PDFium 2.15.1 edits a shared image stream in place. Allow a single-instance
- * image, but reject a selected shared image or an image-bearing Form XObject whose
- * child transform cannot be inspected through this API. */
-function assertImageRedactionIsSafe(
+/** Boolean-only walk of a Form XObject's children: an image anywhere inside makes
+ *  the form unsafe to redact through. Same traversal as collectImageHashes, but it
+ *  skips the fingerprinting — the census already read every image's bytes. */
+function formContainsImage(
+  m: Awaited<ReturnType<typeof loadPdfium>>,
+  object: number,
+  seen: Set<number>,
+): boolean {
+  if (!object || seen.has(object)) return false
+  seen.add(object)
+  const type = m._FPDFPageObj_GetType(object)
+  if (type === FPDF_PAGEOBJ_IMAGE) return true
+  if (type !== FPDF_PAGEOBJ_FORM) return false
+  for (let i = 0; i < m._FPDFFormObj_CountObjects(object); i++) {
+    if (formContainsImage(m, m._FPDFFormObj_GetObject(object, i), seen)) return true
+  }
+  return false
+}
+
+/**
+ * One census per apply: fingerprint every image object in the document once,
+ * counting content repeats so the shared-image gate can tell a private image
+ * from a placed-many one. The document is not mutated until after the census
+ * and every region check pass, so one walk answers for all regions.
+ */
+function censusImageHashes(
   m: Awaited<ReturnType<typeof loadPdfium>>,
   doc: number,
-  page: number,
-  rect: readonly number[],
-  pageIndex: number,
-): void {
+): Map<string, number> {
   const hashes = new Map<string, number>()
   for (let p = 0; p < m._FPDF_GetPageCount(doc); p++) {
     const candidate = m._FPDF_LoadPage(doc, p)
@@ -115,6 +134,19 @@ function assertImageRedactionIsSafe(
       m._FPDF_ClosePage(candidate)
     }
   }
+  return hashes
+}
+
+/** PDFium 2.15.1 edits a shared image stream in place. Allow a single-instance
+ * image, but reject a selected shared image or an image-bearing Form XObject whose
+ * child transform cannot be inspected through this API. */
+function assertImageRedactionIsSafe(
+  m: Awaited<ReturnType<typeof loadPdfium>>,
+  hashes: Map<string, number>,
+  page: number,
+  rect: readonly number[],
+  pageIndex: number,
+): void {
   for (let i = 0; i < m._FPDFPage_CountObjects(page); i++) {
     const object = m._FPDFPage_GetObject(page, i)
     const bounds = objectBounds(m, object)
@@ -129,7 +161,7 @@ function assertImageRedactionIsSafe(
     }
     if (
       m._FPDFPageObj_GetType(object) === FPDF_PAGEOBJ_FORM &&
-      collectImageHashes(m, object, new Map(), new Set())
+      formContainsImage(m, object, new Set())
     ) {
       throw new Error(
         `redaction intersects an image Form XObject on page ${pageIndex + 1}; refusing unsafe image mutation`,
@@ -206,55 +238,96 @@ function removeHitAnnotations(
 
 const MAX_FLOAT32 = 3.402823466e38
 
+function opLabel(index: number): string {
+  return `redaction ${index + 1}`
+}
+
+function formatRect(rect: unknown): string {
+  try {
+    return JSON.stringify(rect) ?? String(rect)
+  } catch {
+    return String(rect)
+  }
+}
+
+/** Shared page-index gate: integer and non-negative. Upper-bound range is checked later with pageCount. */
+function checkPageIndex(pageIndex: unknown, label: string): number {
+  if (typeof pageIndex !== 'number' || !Number.isInteger(pageIndex)) {
+    throw new Error(
+      `${label}: redaction page index must be an integer (got ${formatRect(pageIndex)})`,
+    )
+  }
+  if (pageIndex < 0) {
+    throw new Error(`${label}: redaction page index ${pageIndex} is out of range (must be >= 0)`)
+  }
+  return pageIndex
+}
+
+/** Shared rectangle gate: four finite coords inside PDFium range and nonempty. */
+function checkRect(
+  rect: unknown,
+  label: string,
+  pageIndex: number,
+): [number, number, number, number] {
+  const where = `${label} on page ${pageIndex + 1}`
+  if (!Array.isArray(rect) || rect.length !== 4 || !rect.every(Number.isFinite)) {
+    throw new Error(
+      `${where}: redaction rectangle must contain four finite coordinates (got ${formatRect(rect)})`,
+    )
+  }
+  const [x1, y1, x2, y2] = rect as [number, number, number, number]
+  if (rect.some((n) => Math.abs(n) > MAX_FLOAT32)) {
+    throw new Error(
+      `${where}: redaction rectangle is outside PDFium coordinate range (got ${formatRect(rect)})`,
+    )
+  }
+  if (!(x1 !== x2 && y1 !== y2)) {
+    throw new Error(`${where}: redaction rectangle must be nonempty (got ${formatRect(rect)})`)
+  }
+  return [x1, y1, x2, y2]
+}
+
+/** Max redaction rects per request: prevents 100k-rect DoS on native redact. */
+export const MAX_REDACTION_REGIONS = 500
+
 export function validateRedactionRegions(value: unknown): RedactionRegion[] {
   if (!Array.isArray(value) || value.length === 0)
     throw new Error('at least one redaction rectangle is required')
-  return value.map((region) => {
-    if (!region || typeof region !== 'object') throw new Error('invalid redaction region')
+  if (value.length > MAX_REDACTION_REGIONS) {
+    throw new Error(`too many redaction rectangles (${value.length}, cap ${MAX_REDACTION_REGIONS})`)
+  }
+  return value.map((region, index) => {
+    const label = opLabel(index)
+    if (!region || typeof region !== 'object')
+      throw new Error(`${label}: invalid redaction region (got ${formatRect(region)})`)
     const input = region as Partial<RedactionRegion>
-    if (typeof input.pageIndex !== 'number' || !Number.isInteger(input.pageIndex)) {
-      throw new Error('redaction page index must be an integer')
-    }
-    if (
-      !Array.isArray(input.rect) ||
-      input.rect.length !== 4 ||
-      !input.rect.every(Number.isFinite)
-    ) {
-      throw new Error('redaction rectangle must contain four finite coordinates')
-    }
-    if (input.rect.some((n) => Math.abs(n) > MAX_FLOAT32)) {
-      throw new Error('redaction rectangle is outside PDFium coordinate range')
-    }
-    const [x1, y1, x2, y2] = input.rect
-    if (!(x1 !== x2 && y1 !== y2)) throw new Error('redaction rectangle must be nonempty')
-    return { pageIndex: input.pageIndex, rect: [x1, y1, x2, y2] }
+    const pageIndex = checkPageIndex(input.pageIndex, label)
+    const rect = checkRect(input.rect, label, pageIndex)
+    return { pageIndex, rect }
   })
 }
 
 function checkedRegion(
   region: RedactionRegion,
   pageCount: number,
+  index = 0,
 ): [number, number, number, number] {
-  if (
-    !Number.isInteger(region.pageIndex) ||
-    region.pageIndex < 0 ||
-    region.pageIndex >= pageCount
-  ) {
-    throw new Error(`redaction page index ${region.pageIndex} is out of range`)
+  const label = opLabel(index)
+  const pageIndex = checkPageIndex(region.pageIndex, label)
+  if (pageIndex >= pageCount) {
+    throw new Error(
+      `${label}: redaction page index ${pageIndex} is out of range (pages 1-${pageCount}, got rect ${formatRect(region.rect)})`,
+    )
   }
-  if (
-    !Array.isArray(region.rect) ||
-    region.rect.length !== 4 ||
-    !region.rect.every(Number.isFinite)
-  ) {
-    throw new Error('redaction rectangle must contain four finite coordinates')
-  }
-  const [x1, y1, x2, y2] = region.rect
+  const [x1, y1, x2, y2] = checkRect(region.rect, label, pageIndex)
   const left = Math.min(x1, x2)
   const bottom = Math.min(y1, y2)
   const right = Math.max(x1, x2)
   const top = Math.max(y1, y2)
-  if (!(right > left && top > bottom)) throw new Error('redaction rectangle must be nonempty')
+  if (!(right > left && top > bottom))
+    throw new Error(
+      `${label} on page ${pageIndex + 1}: redaction rectangle must be nonempty (got ${formatRect(region.rect)})`,
+    )
   return [left, top, right, bottom]
 }
 
@@ -276,17 +349,20 @@ export function redactPdf(bytes: Uint8Array, regions: RedactionRegion[]): Promis
       const pageCount = m._FPDF_GetPageCount(doc)
       // Validate the complete request before constructing a single annotation, so an
       // invalid trailing region cannot yield a partially-redacted output buffer.
-      const checked = validRegions.map((region) => ({
+      const checked = validRegions.map((region, index) => ({
         ...region,
-        nativeRect: checkedRegion(region, pageCount),
+        nativeRect: checkedRegion(region, pageCount, index),
       }))
       // Do every fail-closed check before creating annotations, preserving all-or-nothing
       // behavior even when one later page contains a shared image placement.
+      // One census for the whole apply: nothing is mutated until after it and the
+      // region checks, so N rectangles cost one document walk instead of N.
+      const hashes = censusImageHashes(m, doc)
       for (const region of checked) {
         const page = m._FPDF_LoadPage(doc, region.pageIndex)
         if (!page) throw new Error(`PDFium could not load redaction page ${region.pageIndex + 1}`)
         try {
-          assertImageRedactionIsSafe(m, doc, page, region.nativeRect, region.pageIndex)
+          assertImageRedactionIsSafe(m, hashes, page, region.nativeRect, region.pageIndex)
           assertFormRedactionIsSafe(m, page, region.nativeRect, region.pageIndex)
         } finally {
           m._FPDF_ClosePage(page)

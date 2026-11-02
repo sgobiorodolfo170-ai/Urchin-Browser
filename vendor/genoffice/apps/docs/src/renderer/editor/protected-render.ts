@@ -4,34 +4,58 @@ import type { EditorView } from '@tiptap/pm/view'
 import {} from '@tiptap/pm/tables'
 import { WORDART_PRESETS, wordArtStrokePx } from '@genoffice/ui'
 import {
-  autospaceBoundaries,
+  autospaceLatinFirst,
+  autospaceMode,
   autospacePadBetween,
+  autospacePadClass,
+  autospacePadScale,
+  autospaceSeams,
+  latinAutospaceGapEm,
   codePointLengthAt,
-  cjkDeclaredLineFactor,
+  type AutospaceMode,
   cssAutoLineMult,
   cssCsFontFamily,
+  hangulSpaceOffsets,
+  hangulSpaceWideningOn,
+  krNoBreakOffsets,
+  cjkDeclaredLineFactor,
   cssFontFamily,
   cssRunFontFamily,
+  cutAdjustedAlias,
   cssGridLineBase,
-  cssGridSpacingPt,
   cssLineHeight,
   isCjk,
-  isCjkFontName,
   lineHeightFactor,
-  paraLineFactorCss,
   runLetterSpacingCss,
   fontKerningCss,
-  strutFontCss,
-  textHasCjk,
   textHasComplexScript,
   textHasHangul,
-  WORD_AUTO_SPACING_PT,
   SPACE_ONLY_RE,
 } from '../line-metrics'
-import { custGeomBackgroundCss, shapeBackgroundCss, shapeTextInsetsPx } from './shape-svg'
+import {
+  custGeomBackgroundCss,
+  shapeBackgroundCss,
+  shapePaths,
+  shapeTextInsetsPx,
+} from './shape-svg'
 import { pictureTransformFns, quarterTurnInsetPx, quarterTurnMarginCss } from './image-rotation'
-import { DK_SIDE, dkBackground, dkBorder, dkColor, type DkBorderSide } from './dark-page'
-import { hfCellGeometry, hfCellParaStyle, hfRowStyle } from './hf-dom'
+import {
+  DK_SIDE,
+  dkBackground,
+  dkBackgroundImage,
+  dkBorder,
+  dkColor,
+  type DkBorderSide,
+} from './dark-page'
+import { hfCellGeometry, hfCellParaBox, hfRowStyle } from './hf-dom'
+import {
+  resolveAnchor,
+  tableFloatAnchor,
+  tableFloatCss,
+  tableFloatDistancePx,
+  textboxAnchor,
+} from './anchor-geometry'
+import { fromRuns, wrapsLtrRuns } from './para-layout-spec'
 import { INLINE_RULE_CLASS, inlineRuleDecls } from './inline-rule'
 import { fillInk } from './shading-ink'
 import { textColorDecls } from './text-color'
@@ -54,6 +78,7 @@ import {
   type TableParagraph,
   type TextboxDisplay,
   type TextboxParaDisplay,
+  type AutoSpace,
 } from '@genoffice/docx-engine'
 
 /**
@@ -71,17 +96,29 @@ import {
   cellClipStyle,
   borderWidthPx,
   cellPadCss,
+  asciiFamilyResolver,
+  type AsciiFamilyOf,
+  type ListNumberingStorage,
+  modelEdgeBorders,
   outerBorderPx,
   cellVAlignGridCss,
   cellWritingMode,
   preventProtectedLineBreak,
   protectedText,
   rowHeightCss,
-  rtlStartMarginCss,
+  rowPadVarsCss,
   tableBordersCss,
   tableRowEatCss,
 } from './extensions'
-import { cellClipTwips, inferredBidi } from './convert'
+import {
+  cellClipTwips,
+  cellSpacingBorderPx,
+  cellSpacingGridSharesTwips,
+  collapsedCellBw,
+} from './convert'
+import { modelWidthInput, tablePositionCss, tableWidthCss } from './table-geometry'
+import { cellDiagonalCss, cellPadPx } from './border-metrics'
+import { effectiveRPrCss } from './effective-css'
 
 // Word: links and TOC entries jump on modifier+click only
 const jumpHint = () =>
@@ -97,6 +134,11 @@ const TOC_LEADER_GLYPH: Record<NonNullable<FieldDisplay['leader']>, string> = {
   middleDot: '\u00b7',
 }
 
+/** a direct exact/atLeast rule pins the field line's auto multiple to 1 (autoLineMultOf) */
+function fixedLineRule(field: FieldDisplay): boolean {
+  return (field.lineRule === 'exact' && !!field.lineRawTwips) || field.lineRule === 'atLeast'
+}
+
 /** Rendering of a field result; safe visible text becomes editable on double-click. */
 export function renderFieldSpec(field: FieldDisplay): DomSpec | null {
   if (field.kind === 'tocLine') {
@@ -110,14 +152,18 @@ export function renderFieldSpec(field: FieldDisplay): DomSpec | null {
     if (field.runStyleId) titleAttrs['data-style'] = field.runStyleId
     // direct pPr/run metrics of the entry paragraph beat the inherited body size
     const tocStyles: string[] = []
-    if (field.szHalfPoints) tocStyles.push(`font-size:${field.szHalfPoints / 2}pt`)
     if (field.fontFamily) {
-      tocStyles.push(
-        `--doc-line-factor:${lineHeightFactor(field.fontFamily)}`,
-        `font-family:${cssFontFamily(field.fontFamily)}`,
+      // a CJK run behind a Latin leading run ("1.1 " + KaiTi title) still sets
+      // the line: Word meters it by the tallest face on it (36pt, not 18pt, on
+      // an 18pt grid)
+      const ea = field.eaFontFamily
+      const factor = Math.max(
+        lineHeightFactor(field.fontFamily),
+        ea ? (cjkDeclaredLineFactor(ea) ?? lineHeightFactor(ea)) : 0,
       )
+      tocStyles.push(`--doc-line-factor:${factor}`)
     }
-    if (field.bold) tocStyles.push('font-weight:bold')
+    tocStyles.push(...effectiveRPrCss({ sizeHalfPoints: field.szHalfPoints, ...field }))
     const tocLh = cssLineHeight(field.lineRule, field.lineRawTwips, field.lineSpacing)
     // an own face needs its own strut: the inherited computed line-height
     // would carry the body face's factor; the inherited multiple still applies
@@ -130,10 +176,12 @@ export function renderFieldSpec(field: FieldDisplay): DomSpec | null {
     // --doc-line-max reads the multiple from this var on the same element
     const tocMult = cssAutoLineMult(field.lineRule, field.lineRawTwips, field.lineSpacing)
     if (tocMult && tocMult !== 1) tocStyles.push(`--doc-line-mult:${tocMult}`)
+    else if (fixedLineRule(field)) tocStyles.push('--doc-line-fixed:1')
     if (tocStyles.length > 0) attrs.style = tocStyles.join(';')
-    const num: DomSpec[] = field.num
-      ? [['span', { class: 'doc-toc-num', contenteditable: 'false' }, field.num]]
-      : []
+    const numAttrs: Record<string, string> = { class: 'doc-toc-num', contenteditable: 'false' }
+    if (field.indentLeftTwips != null)
+      (field.num ? numAttrs : titleAttrs).style = `padding-left:${field.indentLeftTwips / 20}pt`
+    const num: DomSpec[] = field.num ? [['span', numAttrs, field.num]] : []
     return [
       'div',
       attrs,
@@ -155,20 +203,17 @@ export function renderFieldSpec(field: FieldDisplay): DomSpec | null {
   if (field.kind === 'pageBreak') {
     return ['div', { class: 'doc-field-pagebreak' }, ['span', {}, t('editorPageBreak')]]
   }
-  if (field.kind === 'text' && field.left) {
+  if (field.kind === 'text' && (field.left || field.emptyLine)) {
     // carry the result runs' face/size: the passthrough div otherwise inherits
     // the document default and mis-snaps on a typed line grid. Spaces must
     // survive inline: prosemirror-view injects a higher-specificity
     // `.ProseMirror [contenteditable=false] { white-space: normal }`
     const styles: string[] = ['white-space:pre-wrap']
-    if (field.szHalfPoints) styles.push(`font-size:${field.szHalfPoints / 2}pt`)
     if (field.align) styles.push(`text-align:${field.align}`)
-    if (field.fontFamily) {
-      styles.push(
-        `--doc-line-factor:${lineHeightFactor(field.fontFamily)}`,
-        `font-family:${cssFontFamily(field.fontFamily)}`,
-      )
-    }
+    if (field.fontFamily) styles.push(`--doc-line-factor:${lineHeightFactor(field.fontFamily)}`)
+    styles.push(
+      ...effectiveRPrCss({ sizeHalfPoints: field.szHalfPoints, fontFamily: field.fontFamily }),
+    )
     if (field.szHalfPoints || field.fontFamily || field.lineRule) {
       // explicit w:spacing beats the single-spacing snap; either way the line
       // strut must recompute from the field's own size/face, not the
@@ -178,6 +223,7 @@ export function renderFieldSpec(field: FieldDisplay): DomSpec | null {
       )
       const mult = cssAutoLineMult(field.lineRule, field.lineRawTwips, field.lineSpacing)
       if (mult && mult !== 1) styles.push(`--doc-line-mult:${mult}`)
+      else if (fixedLineRule(field)) styles.push('--doc-line-fixed:1')
     }
     const attrs: Record<string, string> = {
       class: 'doc-field-text',
@@ -187,6 +233,7 @@ export function renderFieldSpec(field: FieldDisplay): DomSpec | null {
     // formatted result runs (italic citations, a drop-cap letter before body
     // text); the wrapper keeps the dominant size for the line strut
     // EQ layouts: the MathML host is empty in the spec; buildProtectedDom fills it
+    if (field.emptyLine) return ['div', attrs, '\u00a0']
     if (field.runs)
       return [
         'div',
@@ -208,9 +255,11 @@ export function renderFieldSpec(field: FieldDisplay): DomSpec | null {
 }
 
 export function renderFormulaSpec(formula: FormulaDisplay): DomSpec {
+  const sizeCss = effectiveRPrCss(formula)
+  const size: Record<string, string> = sizeCss.length ? { style: sizeCss.join(';') } : {}
   const tokenStrip: DomSpec = [
     'span',
-    { class: 'doc-formula' + (formula.mathml ? ' doc-formula-has-math' : '') },
+    { class: 'doc-formula' + (formula.mathml ? ' doc-formula-has-math' : ''), ...size },
     ...formula.tokens.map((token, index): DomSpec => [
       'span',
       {
@@ -227,7 +276,7 @@ export function renderFormulaSpec(formula: FormulaDisplay): DomSpec {
   return [
     'span',
     { class: 'doc-formula-wrap' },
-    ['span', { class: 'doc-formula-math', contenteditable: 'false' }],
+    ['span', { class: 'doc-formula-math', contenteditable: 'false', ...size }],
     tokenStrip,
   ]
 }
@@ -255,6 +304,28 @@ function seriesColor(chart: ChartDisplay, s: number): string {
 function pointColor(chart: ChartDisplay, s: number, i: number): string {
   const explicit = chart.series[s]?.pointColors?.[i]
   return explicit ? `#${explicit}` : chartColor(chart, i)
+}
+
+/**
+ * Iterative max/min, for arrays whose length comes from the document. A chart
+ * part may declare up to MAX_CHART_CACHE_POINTS cached points while carrying a
+ * handful of <c:pt>, and cachePoints densifies the array to the declared count,
+ * so `categories` and the series `values` reach this file a million long.
+ * Spreading one of those into a Math.max/Math.min call overflows the argument
+ * limit (V8 throws at roughly 200k arguments). `seed` carries the extra value
+ * the spread call mixed in, and keeps the empty-array results of a bare
+ * Math.max() / Math.min() (-Infinity / Infinity).
+ */
+function maxNum(values: ArrayLike<number>, seed: number): number {
+  let out = seed
+  for (let i = 0; i < values.length; i++) out = Math.max(out, values[i])
+  return out
+}
+
+function minNum(values: ArrayLike<number>, seed: number): number {
+  let out = seed
+  for (let i = 0; i < values.length; i++) out = Math.min(out, values[i])
+  return out
 }
 
 /**
@@ -296,7 +367,10 @@ export function renderChartSpec(chart: ChartDisplay): DomSpec {
     ],
   ]
 
-  const colCount = Math.max(chart.categories.length, ...chart.series.map((s) => s.values.length))
+  const colCount = maxNum(
+    chart.series.map((s) => s.values.length),
+    chart.categories.length,
+  )
   const headCells: DomSpec[] = [['th', { class: 'doc-chart-corner' }, '\u00a0']]
   for (let c = 0; c < colCount; c++) {
     headCells.push([
@@ -516,7 +590,7 @@ export function drawChartSvg(dom: HTMLElement, chart: ChartDisplay | null): void
   // horizontal bars put category labels on the y axis; reserve room for the longest one
   const catLabelPx = (s: string) => chartTextPx(s, labelPx)
   const legendTextPx = (s: string) => chartTextPx(s, legendPx)
-  const maxCatPx = Math.max(0, ...chart.categories.map(catLabelPx))
+  const maxCatPx = maxNum(chart.categories.map(catLabelPx), 0)
   const width = chartPlotWidth(chart)
   // l/r/tr legends stack vertically in a side gutter, like Word; other
   // positions (and legacy models without legendPos) keep the bottom row
@@ -524,7 +598,7 @@ export function drawChartSvg(dom: HTMLElement, chart: ChartDisplay | null): void
     showLegend && (chart.legendPos === 'l' || chart.legendPos === 'r' || chart.legendPos === 'tr')
   const topLegend = showLegend && chart.legendPos === 't'
   const legendW = sideLegend
-    ? Math.min(Math.round(width * 0.35), 20 + Math.max(0, ...legendNames.map(legendTextPx)))
+    ? Math.min(Math.round(width * 0.35), 20 + maxNum(legendNames.map(legendTextPx), 0))
     : 0
   // bottom legends wrap into centered rows when the entries overflow the width, like Word
   const legendEntryW = (i: number) => 14 + legendTextPx(legendNames[i]) + 12
@@ -582,9 +656,9 @@ export function drawChartSvg(dom: HTMLElement, chart: ChartDisplay | null): void
   if (cartesian && !(chart.kind === 'bar' && chart.horizontal) && !geom.noCatLabels) {
     const cols = Math.max(chart.categories.length, 1)
     const slotW = (geom.width - geom.left - geom.right) / cols
-    const lines = Math.max(
+    const lines = maxNum(
+      chart.categories.map((c) => wrapChartText(c, slotW - 4, labelPx).length),
       1,
-      ...chart.categories.map((c) => wrapChartText(c, slotW - 4, labelPx).length),
     )
     geom.bottom += (lines - 1) * Math.round(labelPx * 1.2)
   }
@@ -762,7 +836,10 @@ function drawDataTable(
   table: NonNullable<ChartDisplay['dataTable']>,
   rowH: number,
 ): void {
-  const cols = Math.max(chart.categories.length, ...chart.series.map((s) => s.values.length), 1)
+  const cols = maxNum(
+    chart.series.map((s) => s.values.length),
+    Math.max(chart.categories.length, 1),
+  )
   const x0 = 4
   const x1 = geom.left
   const xEnd = geom.width - geom.right
@@ -859,7 +936,10 @@ function stackSums(
 
 /** bar / line / area charts share the same axes and scale */
 function drawAxes(svg: SVGElement, chart: ChartDisplay, geom: ChartGeom): void {
-  const cols = Math.max(chart.categories.length, ...chart.series.map((s) => s.values.length), 1)
+  const cols = maxNum(
+    chart.series.map((s) => s.values.length),
+    Math.max(chart.categories.length, 1),
+  )
   const stacked =
     (chart.kind === 'bar' || chart.kind === 'area' || chart.kind === 'line') &&
     chart.grouping !== undefined
@@ -872,8 +952,8 @@ function drawAxes(svg: SVGElement, chart: ChartDisplay, geom: ChartGeom): void {
     ? [...sums!.pos.map(norm), ...sums!.neg.map(norm)]
     : chart.series.flatMap((s) => s.values).filter((v): v is number => v !== null)
   // "nice" axis bounds (1/2/5×10ⁿ step, integer-friendly labels like Word/LO)
-  const rawMax = Math.max(0, ...values)
-  const rawMin = Math.min(0, ...values)
+  const rawMax = maxNum(values, 0)
+  const rawMin = minNum(values, 0)
   const step = niceStep((rawMax - rawMin) / 5 || 1)
   const min = Math.floor(rawMin / step) * step
   // Word/LO leave headroom: the top tick sits strictly above the data maximum
@@ -1083,10 +1163,13 @@ function drawAxes(svg: SVGElement, chart: ChartDisplay, geom: ChartGeom): void {
 
 /** radar: one spoke per category, polygon rings at the value steps, series as closed outlines (filled: opaque) */
 function drawRadar(svg: SVGElement, chart: ChartDisplay, geom: ChartGeom): void {
-  const cols = Math.max(chart.categories.length, ...chart.series.map((s) => s.values.length), 1)
+  const cols = maxNum(
+    chart.series.map((s) => s.values.length),
+    Math.max(chart.categories.length, 1),
+  )
   const values = chart.series.flatMap((s) => s.values).filter((v): v is number => v !== null)
-  const rawMax = Math.max(0, ...values)
-  const rawMin = Math.min(0, ...values)
+  const rawMax = maxNum(values, 0)
+  const rawMin = minNum(values, 0)
   const step = niceStep((rawMax - rawMin) / 5 || 1)
   const min = Math.floor(rawMin / step) * step
   let max = Math.ceil(rawMax / step) * step || step
@@ -1225,8 +1308,8 @@ function drawScatter(svg: SVGElement, chart: ChartDisplay, geom: ChartGeom): voi
   const all = pts.flat()
   if (all.length === 0) return
   const axis = (vals: number[]) => {
-    let rawMax = Math.max(...vals)
-    let rawMin = Math.min(...vals)
+    let rawMax = maxNum(vals, -Infinity)
+    let rawMin = minNum(vals, Infinity)
     // Excel-style auto minimum: anchor at 0 unless the data sits far above it
     // (date-serial x values must not squash the points against the right edge)
     if (rawMin > 0 && rawMin <= rawMax - rawMin) rawMin = 0
@@ -1310,7 +1393,10 @@ function drawScatter(svg: SVGElement, chart: ChartDisplay, geom: ChartGeom): voi
     })
   }
 
-  const maxSize = Math.max(0, ...all.map((p) => p.size ?? 0))
+  const maxSize = maxNum(
+    all.map((p) => p.size ?? 0),
+    0,
+  )
   const rMax = Math.min(plotW, plotH) * 0.125
   pts.forEach((points, s) => {
     const color = seriesColor(chart, s)
@@ -1345,7 +1431,10 @@ function drawScatter(svg: SVGElement, chart: ChartDisplay, geom: ChartGeom): voi
 /** horizontal bar charts (c:barDir="bar"): value axis on x, categories on y,
  * first category in the bottom row and series 1 at the bottom of each group, like Word */
 function drawAxesHorizontal(svg: SVGElement, chart: ChartDisplay, geom: ChartGeom): void {
-  const rows = Math.max(chart.categories.length, ...chart.series.map((s) => s.values.length), 1)
+  const rows = maxNum(
+    chart.series.map((s) => s.values.length),
+    Math.max(chart.categories.length, 1),
+  )
   const stacked = chart.grouping !== undefined
   const pct = chart.grouping === 'percentStacked'
   const sums = stacked ? stackSums(chart, rows) : null
@@ -1354,8 +1443,8 @@ function drawAxesHorizontal(svg: SVGElement, chart: ChartDisplay, geom: ChartGeo
   const values = stacked
     ? [...sums!.pos.map(norm), ...sums!.neg.map(norm)]
     : chart.series.flatMap((s) => s.values).filter((v): v is number => v !== null)
-  const rawMax = Math.max(0, ...values)
-  const rawMin = Math.min(0, ...values)
+  const rawMax = maxNum(values, 0)
+  const rawMin = minNum(values, 0)
   const step = niceStep((rawMax - rawMin) / 5 || 1)
   const min = Math.floor(rawMin / step) * step
   let max = Math.ceil(rawMax / step) * step || step
@@ -1633,38 +1722,25 @@ export function textboxIsFilled(box: TextboxDisplay): boolean {
   return Boolean(box.fill || box.fillImageDataUrl)
 }
 
-export function textboxBoxStyle(box: TextboxDisplay, opts?: { inCell?: boolean }): string {
-  const boxW = box.widthPx ?? 189
-  const boxH = box.heightPx ?? 113
-  // Word keeps shape text inside the preset's text rectangle (e.g. the
-  // ellipse's inscribed rect); bodyPr insets apply within that rect
-  const geomInset = box.prst ? shapeTextInsetsPx(box.prst, boxW, boxH) : null
-  const pad = (v: number, geom: number): number => Math.round((v + geom) * 100) / 100
-  const insetTop = pad(box.insetTopPx ?? 4.8, geomInset?.t ?? 0)
-  const insetRight = pad(box.insetRightPx ?? 9.6, geomInset?.r ?? 0)
-  const insetBottom = pad(box.insetBottomPx ?? 4.8, geomInset?.b ?? 0)
-  const insetLeft = pad(box.insetLeftPx ?? 9.6, geomInset?.l ?? 0)
-  // preset/custom geometry renders as an SVG background so the border follows
-  // the outline (a clip-path would clip a CSS outline away with the box corners)
-  const geomCss = box.pathData
-    ? custGeomBackgroundCss(box.pathData, boxW, boxH, box.fill, box.borderColor)
-    : box.prst
-      ? shapeBackgroundCss(box.prst, boxW, boxH, box.fill, box.borderColor, {
-          diag: box.lineDiag,
-          flipH: box.flipH,
-          flipV: box.flipV,
-        })
-      : null
-  const waStyle = box.wordArtId ? WORDART_CSS[box.wordArtId] : undefined
-  // picture fill (photo boxes / a:blipFill): tiles repeat at natural size,
-  // stretch fills cover the whole box. Document data, hence inline.
-  const fillImage = box.fillImageDataUrl
-    ? `background-image:url("${box.fillImageDataUrl}");` +
-      (box.fillTile
-        ? 'background-repeat:repeat'
-        : 'background-repeat:no-repeat;background-size:100% 100%')
-    : ''
-  const transforms = [box.rotDeg ? `rotate(${box.rotDeg}deg)` : '']
+/**
+ * Word-floating placement of a box as inline CSS (position + left/top slot).
+ * Word keeps floating drawing objects on the page: a column-relative X that
+ * would hang past a paper edge is pulled back on (Word-authored files carry
+ * far-negative posOffsets; drawn literally the box leaves the page and cuts
+ * across the body text). The floor is the page left edge (a float may sit in
+ * the margin), the cap the page right edge; a box wider than the page pins at
+ * the left edge like Word. Page-frame offsets (pagePinned / pageRelX) already
+ * measure from the page and stay raw, and the authored offset is never
+ * rewritten — the clamp is display-only. Cell-anchored boxes resolve against
+ * the zero-width .doc-cell-boxes strut (100% = 0px collapses the cap below the
+ * floor, pinning every in-cell float at the page edge) and position from the
+ * cell anyway: no clamp.
+ *
+ * The editor's chrome rotator mirrors this slot (the box itself goes static
+ * inside it), so a turned shape pivots about its own centre.
+ */
+export function textboxFloatPlacement(box: TextboxDisplay, opts?: { inCell?: boolean }): string {
+  if (!box.floating) return ''
   // Word keeps floating drawing objects on the page: a column-relative X that
   // would hang past a paper edge is pulled back on (Word-authored files carry
   // far-negative posOffsets; drawn literally the box leaves the page and cuts
@@ -1676,22 +1752,84 @@ export function textboxBoxStyle(box: TextboxDisplay, opts?: { inCell?: boolean }
   // Cell-anchored boxes resolve against the zero-width .doc-cell-boxes strut
   // (100% = 0px collapses the cap below the floor, pinning every in-cell
   // float at the page edge) and position from the cell anyway: no clamp.
-  const rawLeftPx = ((box.offsetXEmu ?? 0) / 9525).toFixed(1)
+  const geom = resolveAnchor(textboxAnchor(box), {}, TEXTBOX_CTX)
+  const rawLeftPx = (geom.x ?? 0).toFixed(1)
   const leftCss =
     box.widthPx && !box.pagePinned && !box.pageRelX && !opts?.inCell
       ? `clamp(calc(0px - var(--doc-margin-left,0px)), ${rawLeftPx}px, ` +
         `calc(var(--doc-content-w,100%) - ${box.widthPx}px + var(--doc-margin-right,0px)))`
       : `${rawLeftPx}px`
-  const floatPos = box.floating
-    ? `position:absolute;left:${leftCss};top:${((box.offsetYEmu ?? 0) / 9525).toFixed(1)}px`
+  return `position:absolute;left:${leftCss};top:${(geom.y ?? 0).toFixed(1)}px`
+}
+
+export function textboxBoxStyle(
+  box: TextboxDisplay,
+  opts?: { inCell?: boolean; editorChrome?: boolean },
+): string {
+  const boxW = box.widthPx ?? 189
+  const boxH = box.heightPx ?? 113
+  // Word keeps shape text inside the preset's text rectangle (e.g. the
+  // ellipse's inscribed rect); bodyPr insets apply within that rect
+  const geomInset = box.prst ? shapeTextInsetsPx(box.prst, boxW, boxH) : null
+  const pad = (v: number, geom: number): number => Math.round((v + geom) * 100) / 100
+  const insetTop = pad(box.insetTopPx ?? 4.8, geomInset?.t ?? 0)
+  const insetRight = pad(box.insetRightPx ?? 9.6, geomInset?.r ?? 0)
+  const insetBottom = pad(box.insetBottomPx ?? 4.8, geomInset?.b ?? 0)
+  const insetLeft = pad(box.insetLeftPx ?? 9.6, geomInset?.l ?? 0)
+  // a translucent solid fill rides along as an 8-digit hex (svg and css alike)
+  const fill =
+    box.fill && box.fillAlpha !== undefined
+      ? box.fill +
+        Math.round(box.fillAlpha * 255)
+          .toString(16)
+          .padStart(2, '0')
+      : box.fill
+  // preset/custom geometry renders as an SVG background so the border follows
+  // the outline (a clip-path would clip a CSS outline away with the box corners)
+  // a picture drawn in a preset geometry (pic:spPr prstGeom) is the photo
+  // clipped to the outline, not a shape under a rectangular photo
+  const picClip =
+    box.fillImageDataUrl && box.prst && !box.pathData
+      ? (shapePaths(box.prst, boxW, boxH)?.main ?? null)
+      : null
+  const geomCss = picClip
+    ? null
+    : box.pathData
+      ? custGeomBackgroundCss(box.pathData, boxW, boxH, fill, box.borderColor, box.borderWidthPx)
+      : box.prst
+        ? shapeBackgroundCss(
+            box.prst,
+            boxW,
+            boxH,
+            fill,
+            box.borderColor,
+            { diag: box.lineDiag, flipH: box.flipH, flipV: box.flipV },
+            box.borderWidthPx,
+          )
+        : null
+  const waStyle = box.wordArtId ? WORDART_CSS[box.wordArtId] : undefined
+  // picture fill (photo boxes / a:blipFill): tiles repeat at natural size,
+  // stretch fills cover the whole box. Document data, hence inline.
+  const fillImage = box.fillImageDataUrl
+    ? `background-image:url("${box.fillImageDataUrl}");` +
+      (box.fillTile
+        ? 'background-repeat:repeat'
+        : 'background-repeat:no-repeat;background-size:100% 100%')
     : ''
+  // the editor's chrome layer (.box-rotator) carries the rotation so the
+  // selection handles turn with the box; the box itself stays unturned there
+  const transforms = [box.rotDeg && !opts?.editorChrome ? `rotate(${box.rotDeg}deg)` : '']
+  // the float slot normally lives on the box; in the editor's chrome the
+  // rotator mirrors it and the box goes static inside (see textboxFloatPlacement)
+  const floatPos = opts?.editorChrome ? '' : textboxFloatPlacement(box, opts)
   return [
     geomCss ?? '',
-    !geomCss && box.fill ? `background-color:#${box.fill}` : '',
+    !geomCss && fill ? `background-color:#${fill}` : '',
     !geomCss && box.borderColor ? `border-color:#${box.borderColor}` : '',
     !geomCss && box.borderColor ? `border-width:${box.borderWidthPx ?? 1}px` : '',
     !geomCss && box.borderColor && box.borderDash ? `border-style:${box.borderDash}` : '',
     fillImage,
+    picClip ? `clip-path:path("${picClip}")` : '',
     // shape-style fontRef color: the box default, so runs carrying their own
     // w:color still override it through the run spans (+ dark-page twin)
     box.textColor ? `color:#${box.textColor};${dkColor(box.textColor)}` : '',
@@ -1720,10 +1858,12 @@ export function textboxBoxStyle(box: TextboxDisplay, opts?: { inCell?: boolean }
     // WordArt strings never wrap; spill instead of clipping when the
     // font-size approximation runs slightly wide
     box.nowrap ? 'white-space:nowrap;overflow:visible' : '',
-    // wps:bodyPr anchor="ctr|b": text body hugs the box middle/bottom
+    // wps:bodyPr anchor="ctr|b": text body hugs the box middle/bottom; content
+    // taller than the box starts at the top and spills down like Word (never
+    // pushed above the box top where the clip would hide the first lines)
     box.vAlign && box.heightPx
       ? `display:flex;flex-direction:column;justify-content:${
-          box.vAlign === 'bottom' ? 'flex-end' : 'center'
+          box.vAlign === 'bottom' ? 'safe flex-end' : 'safe center'
         }`
       : '',
     waStyle?.textShadow ? `text-shadow:${waStyle.textShadow}` : '',
@@ -1733,34 +1873,106 @@ export function textboxBoxStyle(box: TextboxDisplay, opts?: { inCell?: boolean }
 }
 
 const AUTOSPACE_PAD_ATTRS = { class: 'doc-autospace-pad' }
+const HANGUL_SPACE_ATTRS = { class: 'doc-hangul-space' }
+const KR_WJ_SPEC = ['span', { class: 'doc-kr-wj' }]
+
+/** paragraph styleId -> inherited ascii face of the open document (the editor's
+ *  asciiOf; static runs without a face of their own scale their pads by it) */
+let staticAsciiOf: AsciiFamilyOf = () => null
+export function setStaticAsciiResolver(getStorage: () => ListNumberingStorage | undefined): void {
+  staticAsciiOf = asciiFamilyResolver(getStorage)
+}
+
+/** texts directly before/after a run inside its paragraph (empty = none); prevFace = the
+ *  ascii face of the text before (its Latin -> CJK seam gap); face = this run's ascii face
+ *  after inheritance; krNoBreak = Korean word-wrap paragraph (word-joiner at punctuation seams) */
+export type RunNeighbours = {
+  prev?: string
+  next?: string
+  prevFace?: string
+  face?: string
+  krNoBreak?: boolean
+}
 
 /**
- * static-DOM counterpart of the editor's autospace pad decorations: the
- * character after each CJK-Latin boundary (and the first one when leadPad)
- * carries the pad margin
+ * static-DOM counterpart of the editor's autospace pad and hangul-space
+ * decorations: the character after each CJK-Latin boundary (and the first one
+ * when leadPad) carries the pad margin; a space with a hangul neighbour gets
+ * the half-width space face
  */
-function padSegments(text: string, leadPad = false): unknown[] {
-  const cuts = autospaceBoundaries(text)
-  if (leadPad && text) cuts.unshift(0)
-  if (cuts.length === 0) return [text]
+function padSegments(
+  text: string,
+  pads: AutospaceMode | null,
+  leadPad: boolean,
+  neighbours: RunNeighbours,
+  face?: string,
+): unknown[] {
+  const wraps: Array<[number, number, object]> = []
+  if (pads) {
+    const cls = autospacePadClass(pads)
+    const attrs = pads === true ? AUTOSPACE_PAD_ATTRS : { class: cls }
+    const attrsFor = (latinFirst: boolean, latinFace: string | undefined) => {
+      const scale = latinFirst ? autospacePadScale(latinAutospaceGapEm(latinFace), pads) : 1
+      return scale === 1
+        ? attrs
+        : { class: `${cls} doc-autospace-pad-le`, style: `--doc-autospace-pad-le:${scale}` }
+    }
+    const seams = autospaceSeams(text, pads).map((s) => ({ ...s, face }))
+    if (leadPad && text) {
+      seams.unshift({
+        at: 0,
+        latinFirst: autospaceLatinFirst(neighbours.prev ?? ''),
+        face: neighbours.prevFace,
+      })
+    }
+    for (const seam of seams) {
+      wraps.push([
+        seam.at,
+        seam.at + codePointLengthAt(text, seam.at),
+        attrsFor(seam.latinFirst, seam.face),
+      ])
+    }
+  }
+  if (hangulSpaceWideningOn()) {
+    for (const i of hangulSpaceOffsets(text, neighbours.prev, neighbours.next)) {
+      wraps.push([i, i + 1, HANGUL_SPACE_ATTRS])
+    }
+  }
+  const joiners = neighbours.krNoBreak ? krNoBreakOffsets(text, neighbours.prev) : []
+  if (wraps.length === 0 && joiners.length === 0) return [text]
+  wraps.sort((a, b) => a[0] - b[0])
   const out: unknown[] = []
   let start = 0
-  for (const cut of cuts) {
-    if (cut > start) out.push(text.slice(start, cut))
-    const end = cut + codePointLengthAt(text, cut)
-    out.push(['span', AUTOSPACE_PAD_ATTRS, text.slice(cut, end)])
+  let j = 0
+  const emitJoinersBefore = (at: number) => {
+    for (; j < joiners.length && joiners[j] <= at; j++) {
+      if (joiners[j] > start) out.push(text.slice(start, joiners[j]))
+      start = joiners[j]
+      out.push(KR_WJ_SPEC)
+    }
+  }
+  for (const [from, end, attrs] of wraps) {
+    emitJoinersBefore(from)
+    if (from > start) out.push(text.slice(start, from))
+    out.push(['span', attrs, text.slice(from, end)])
     start = end
   }
+  emitJoinersBefore(text.length)
   if (start < text.length) out.push(text.slice(start))
   return out
 }
 
 /** run → styled <span> (+ inline <img>) specs, shared by textbox and table-cell rendering */
-export function runSpanSpecs(run: Run, autoSpace?: boolean, leadPad = false): DomSpec[] {
+export function runSpanSpecs(
+  run: Run,
+  autoSpace?: AutoSpace,
+  leadPad = false,
+  neighbours: RunNeighbours = {},
+): DomSpec[] {
   const out: DomSpec[] = []
   // a run can carry both w:t text and a w:drawing; the text renders before the
   // image (generate.ts / the editable path keep the same order)
-  if (run.text !== '' || !run.image) out.push(textSpanSpec(run, autoSpace, leadPad))
+  if (run.text !== '' || !run.image) out.push(textSpanSpec(run, autoSpace, leadPad, neighbours))
   if (run.image?.rule) {
     const decls = inlineRuleDecls({ ...run.image.rule, sizeHalfPoints: run.sizeHalfPoints })
     out.push([
@@ -1783,8 +1995,38 @@ export function runSpanSpecs(run: Run, autoSpace?: boolean, leadPad = false): Do
   return out
 }
 
-function textSpanSpec(run: Run, autoSpace?: boolean, leadPad = false): DomSpec {
-  const cs = run.csFont && textHasComplexScript(run.text) ? run.csFont : undefined
+/** the run face declarations marks.ts emits: the chain, its --doc-run-ff twin
+ *  (doc-style-css re-heads it with the strut face in .doc-grid-strut
+ *  paragraphs), the face's own line factor (.doc-mixed-face) and the explicit
+ *  East Asian face */
+function runFaceDecls(run: Run, cs: string | undefined): { decls: string[]; family?: string } {
+  if (!run.font && !run.fontAscii && !cs) return { decls: [] }
+  const ea = run.font ?? null
+  const ascii = run.fontAscii ?? null
+  const decls: string[] = []
+  // a Latin-only chain fills both slots, so an unparsed run's font only names
+  // an East Asian face when the slots differ
+  const explicitEa = run.eastAsiaFont ?? (!run.rawRPr && ea !== ascii ? ea : null)
+  if (explicitEa && !run.eaSlotEmpty)
+    decls.push(`--doc-east-asian-font:${cssFontFamily(explicitEa)}`)
+  const family = cs
+    ? cssCsFontFamily(cs, ascii ?? undefined, ea ?? undefined)
+    : cssRunFontFamily(ascii, ea)
+  decls.push(`font-family:${family}`, `--doc-run-ff:${family}`)
+  const lh = Math.max(...[cs, ascii ?? ea].filter(Boolean).map((f) => lineHeightFactor(f!)))
+  decls.push(`--doc-run-lh:${lh}`)
+  return { decls, family }
+}
+
+function textSpanSpec(
+  run: Run,
+  autoSpace?: AutoSpace,
+  leadPad = false,
+  neighbours: RunNeighbours = {},
+): DomSpec {
+  // the cs chain sizes complex-script text, and every character of an rtl run (marks.ts)
+  const cs = run.csFont && (run.cs || textHasComplexScript(run.text)) ? run.csFont : undefined
+  const face = runFaceDecls(run, cs)
   const letterSpacing = runLetterSpacingCss(run)
   const kerning = fontKerningCss(run)
   const runStyle = [
@@ -1793,13 +2035,7 @@ function textSpanSpec(run: Run, autoSpace?: boolean, leadPad = false): DomSpec {
     run.bold ? 'font-weight:700' : run.bold === false ? 'font-weight:normal' : '',
     run.italic ? 'font-style:italic' : run.italic === false ? 'font-style:normal' : '',
     run.underline ? 'text-decoration:underline' : '',
-    run.font || run.fontAscii || cs
-      ? `font-family:${
-          cs
-            ? cssCsFontFamily(cs, run.fontAscii, run.font)
-            : cssRunFontFamily(run.fontAscii, run.font)
-        }`
-      : '',
+    ...face.decls,
     run.sizeHalfPoints ? `font-size:${run.sizeHalfPoints / 2}pt` : '',
     letterSpacing ? `letter-spacing:${letterSpacing}` : '',
     kerning ? `font-kerning:${kerning}` : '',
@@ -1812,18 +2048,32 @@ function textSpanSpec(run: Run, autoSpace?: boolean, leadPad = false): DomSpec {
     run.caps === 'small' ? 'font-variant-caps:small-caps' : '',
     run.caps === 'none' ? 'text-transform:none;font-variant-caps:normal' : '',
     // explicit autoSpaceDE/DN off also disables the browser's native gap (same as the editor path)
-    autoSpace === false ? 'text-autospace:no-autospace' : '',
+    autoSpace != null && autoSpace !== true ? 'text-autospace:no-autospace' : '',
   ]
     .filter(Boolean)
     .join(';')
-  const content = autoSpace === false ? [run.text] : padSegments(run.text, leadPad)
+  const content = padSegments(
+    run.text,
+    autospaceMode(autoSpace),
+    leadPad,
+    neighbours,
+    neighbours.face ?? run.fontAscii ?? run.font,
+  )
   // hyperlink runs keep the editable path's look (.doc-link) and real href;
   // App-level click handling prevents in-place navigation (jump on mod+click)
   const attrs: Record<string, string> = {}
   if (runStyle) attrs.style = runStyle
   if (run.styleId) attrs['data-style'] = run.styleId
+  const revClass = [run.ins && 'doc-ins', run.del && 'doc-del'].filter(Boolean).join(' ')
+  if (revClass) attrs.class = revClass
+  // cs-slot run: styles.css .doc-cs-mixed collapses its line box
+  if (cs) attrs['data-cs'] = ''
+  // bold/italic cut of a per-cut size-adjusted alias: .doc-cut-adjusted collapses its line box
+  if (face.family && cutAdjustedAlias(face.family)) attrs['data-cut-adj'] = ''
   if (run.link?.href) {
-    attrs.class = 'doc-link'
+    attrs.class = [run.link.plain ? 'doc-link doc-link-plain' : 'doc-link', revClass]
+      .filter(Boolean)
+      .join(' ')
     attrs.href = run.link.href
     if (run.link.tooltip) attrs.title = run.link.tooltip
     return ['a', attrs, ...content]
@@ -1831,18 +2081,53 @@ function textSpanSpec(run: Run, autoSpace?: boolean, leadPad = false): DomSpec {
   return ['span', attrs, ...content]
 }
 
-/** run spans with pads at run-boundary CJK-Latin seams (empty runs keep their span, no pad) */
-function runSpansWithPads(runs: Run[], autoSpace?: boolean): DomSpec[] {
+/** text directly touching run k on one side; a picture (drawn after its run's
+ *  text) breaks adjacency like the editor's non-text inlines, empty runs are skipped */
+function adjacentRunText(runs: Run[], k: number, step: 1 | -1): string {
+  if (step > 0 && runs[k].image) return ''
+  for (let j = k + step; j >= 0 && j < runs.length; j += step) {
+    const r = runs[j]
+    if (step < 0 && r.image) return ''
+    if (r.text !== '') return r.text
+    if (r.image) return ''
+  }
+  return ''
+}
+
+/** run spans with pads at run-boundary CJK-Latin seams (empty runs keep their span, no pad);
+ *  para = the paragraph's style id (inherited ascii face) and wordWrap (Korean no-break seams) */
+function runSpansWithPads(
+  runs: Run[],
+  autoSpace?: AutoSpace,
+  para?: { styleId?: string; wordWrap?: boolean },
+): DomSpec[] {
   const out: DomSpec[] = []
   let prevText = ''
-  for (const run of runs) {
-    let leadPad = false
-    if (run.text !== '') {
-      leadPad = autoSpace !== false && autospacePadBetween(prevText, run.text)
-      prevText = run.text
-    }
-    out.push(...runSpanSpecs(run, autoSpace, leadPad))
+  let prevFace: string | undefined
+  let inherited: string | undefined
+  const faceOf = (run: Run): string | undefined => {
+    const own = run.fontAscii ?? run.font
+    if (own) return own
+    if (inherited === undefined) inherited = staticAsciiOf(para?.styleId) ?? ''
+    return inherited || undefined
   }
+  const krNoBreak = para?.wordWrap !== false && textHasHangul(runs.map((r) => r.text).join(''))
+  runs.forEach((run, k) => {
+    let leadPad = false
+    const neighbours: RunNeighbours = {
+      prev: adjacentRunText(runs, k, -1),
+      next: adjacentRunText(runs, k, 1),
+      prevFace,
+      krNoBreak,
+    }
+    if (run.text !== '') {
+      const mode = autospaceMode(autoSpace)
+      leadPad = mode !== null && autospacePadBetween(prevText, run.text, mode)
+      prevText = run.text
+      prevFace = neighbours.face = faceOf(run)
+    }
+    out.push(...runSpanSpecs(run, autoSpace, leadPad, neighbours))
+  })
   return out
 }
 
@@ -1864,11 +2149,17 @@ function textboxRowSpec(para: TextboxParaDisplay): DomSpec {
     for (const [side, css] of Object.entries(geom.borders)) {
       decls.push(dkBorder(side as DkBorderSide, css))
     }
+    if (geom.diagonals) decls.push(dkBackgroundImage(geom.diagonals))
     const lines = (cell.paras.length > 0 ? cell.paras : [[]]).map((runs, k): DomSpec => {
-      const attrs: Record<string, string> = { class: 'page-hf-cell-para' }
-      const style = styleText(hfCellParaStyle(cell.paraProps?.[k]))
+      const box = hfCellParaBox(cell.paraProps?.[k], undefined, runs, para.row)
+      const attrs: Record<string, string> = {
+        class: ['page-hf-cell-para', ...box.classes].join(' '),
+      }
+      const style = styleText(box.style)
       if (style) attrs.style = style
-      return runs.length === 0 ? ['div', attrs, ' '] : ['div', attrs, ...runSpansWithPads(runs)]
+      return runs.length === 0
+        ? ['div', attrs, ' ']
+        : ['div', attrs, ...runSpansWithPads(runs, undefined, cell.paraProps?.[k])]
     })
     return ['div', { class: 'page-hf-cell', style: decls.filter(Boolean).join(';') }, ...lines]
   })
@@ -1878,7 +2169,10 @@ function textboxRowSpec(para: TextboxParaDisplay): DomSpec {
   return ['div', attrs, ...cells]
 }
 
-export function renderTextboxSpec(box: TextboxDisplay, opts?: { inCell?: boolean }): DomSpec {
+export function renderTextboxSpec(
+  box: TextboxDisplay,
+  opts?: { inCell?: boolean; editorChrome?: boolean },
+): DomSpec {
   const style = textboxBoxStyle(box, opts)
   const boxAttrs: Record<string, string> = {
     class: textboxIsFilled(box) ? 'doc-textbox doc-textbox-filled' : 'doc-textbox',
@@ -1890,143 +2184,68 @@ export function renderTextboxSpec(box: TextboxDisplay, opts?: { inCell?: boolean
     if (box.pageRelVFrom === 'page') boxAttrs['data-page-rel-from'] = 'page'
   }
   // page-absolute X: the column-layout counter-translate keys on this
-  if (box.floating && box.pageRelX) boxAttrs['data-page-rel-x'] = '1'
+  if (box.floating && box.pageRelX) {
+    boxAttrs['data-page-rel-x'] = '1'
+    if (box.pageRelXFrom === 'page') boxAttrs['data-page-rel-x-from'] = 'page'
+  }
+  // layoutInCell="0" page-positioned cell box: pinCellBoxesToPage lands it on
+  // the page from these raw offsets instead of the cell origin
+  if (opts?.inCell && cellBoxOnPage(box)) {
+    boxAttrs['data-cell-page'] = '1'
+    boxAttrs['data-cell-page-x'] = ((box.offsetXEmu ?? 0) / 9525).toFixed(1)
+    boxAttrs['data-cell-page-y'] = ((box.offsetYEmu ?? 0) / 9525).toFixed(1)
+  }
   // wrapNone/front/behind boxes never open pages: Word clips them at their
   // anchor's page edge (a letterhead's page-tall art box must not add a page)
   if (box.floating && !box.bandTopPx && !box.bandBottomPx && !box.wrapSide) {
     boxAttrs['data-no-spill'] = '1'
   }
+  // side-wrapped floating box: a page obstacle for every later line (syncWrapObstacles)
+  if (box.floating && box.wrapSides) {
+    boxAttrs['data-wrap-side'] = '1'
+    const d = box.wrapDistPx
+    if (d) boxAttrs['data-wrap-dist'] = `${d.l} ${d.r} ${d.t} ${d.b}`
+  }
 
   const paras: DomSpec[] = box.paras.map((para) => {
     if (para.cells) return textboxRowSpec(para)
-    const spans: DomSpec[] = runSpansWithPads(para.runs, para.autoSpace)
+    const spans: DomSpec[] = runSpansWithPads(para.runs, para.autoSpace, para)
     const text = para.runs.map((r) => r.text).join('')
-    // same line strut as body/cell paragraphs (factor by run fonts + run-size
-    // strut + grid snapping); inheriting the page's computed line-height
-    // instead inflated every CJK textbox line to the body's pixel value
-    const fontStyles: string[] = []
-    if (text && !SPACE_ONLY_RE.test(text)) {
-      fontStyles.push(`--doc-line-factor:${runsLineFactor(para.runs, text)}`)
-      const fam = runsDeclaredFontFamily(para.runs)
-      if (fam) fontStyles.push(`font-family:${fam}`)
-      const strut = runStrutHalfPoints(para.runs)
-      if (strut) fontStyles.push(...strutFontCss(strut))
-    } else {
-      // space-only paragraph: the mark sizes the line (Word probe 2026-09-11),
-      // with the Latin factor like body/cell empties, never the space run
-      fontStyles.push('--doc-line-factor:var(--doc-line-factor-latin,1.2)')
-      if (para.emptyRunSizeHalfPoints)
-        fontStyles.push(`font-size:${para.emptyRunSizeHalfPoints / 2}pt`)
-    }
-    const lineMult = cssAutoLineMult(para.lineRule, para.lineRawTwips, para.lineSpacing)
-    const lh = cssLineHeight(para.lineRule, para.lineRawTwips, para.lineSpacing)
+    // same line box as body/cell paragraphs (para-layout-spec); inheriting the
+    // page's computed line-height instead inflated every CJK textbox line to
+    // the body's pixel value
+    const line = fromRuns(para, para.runs, text, 'textbox')
     const pStyles = [
-      para.align ? `text-align:${para.align}` : '',
       // .doc-textbox-para's pre-wrap would still wrap a nowrap (WordArt) box
       box.nowrap ? 'white-space:nowrap' : '',
-      ...fontStyles,
       // undeclared spacing inherits the document default via the
       // .doc-textbox-para stylesheet rule (an inline base would override it)
-      lh ? `line-height:${lh}` : '',
-      // explicit single (mult 1) still overrides an inherited style/doc multiple
-      lineMult ? `--doc-line-mult:${lineMult}` : '',
-      // w:snapToGrid=0 opts the paragraph out of docGrid snapping (Word applies
-      // the typed line grid inside textboxes too)
-      para.snapToGrid === false ? '--doc-grid-pitch:0.0001px' : '',
-      para.indentLeft != null ? `margin-left:${para.indentLeft / 20}pt` : '',
-      para.indentRight != null ? `margin-right:${para.indentRight / 20}pt` : '',
-      para.indentFirstLine != null ? `text-indent:${para.indentFirstLine / 20}pt` : '',
-      // != null: an explicit 0 twips must still emit (matches the sub-editor)
-      para.spaceBeforeAuto
-        ? `margin-top:${WORD_AUTO_SPACING_PT}pt`
-        : para.spaceBefore != null
-          ? `margin-top:${para.spaceBefore / 20}pt`
-          : '',
-      para.spaceAfterAuto
-        ? `margin-bottom:${WORD_AUTO_SPACING_PT}pt`
-        : para.spaceAfter != null
-          ? `margin-bottom:${para.spaceAfter / 20}pt`
-          : '',
+      ...line.styles,
     ]
       .filter(Boolean)
       .join(';')
-    const fixedLh = (para.lineRule === 'exact' && para.lineRawTwips) || para.lineRule === 'atLeast'
     const pAttrs: Record<string, string> = {
-      class: `doc-textbox-para${spans.length === 0 ? ' doc-textbox-para-empty' : ''}${
-        fixedLh ? ' doc-lh-fixed' : ''
-      }${para.snapToGrid === false ? ' doc-nosnap' : ''}`,
+      class: [
+        'doc-textbox-para',
+        ...(spans.length === 0 ? ['doc-textbox-para-empty'] : []),
+        ...line.classes,
+      ].join(' '),
     }
     if (para.styleId) pAttrs['data-style'] = para.styleId
     if (pStyles) pAttrs.style = pStyles
     // empty paragraphs hold a <br> so the caret can land on them while editing
-    return spans.length > 0 ? ['div', pAttrs, ...spans] : ['div', pAttrs, ['br', {}]]
+    if (spans.length === 0) return ['div', pAttrs, ['br', {}]]
+    return wrapsLtrRuns(para, para.runs)
+      ? ['div', pAttrs, ['span', { class: 'doc-ltr-runs' }, ...spans]]
+      : ['div', pAttrs, ...spans]
   })
 
   return ['div', boxAttrs, ...paras]
 }
 
-/** Max explicit run size (half-points, plus uniformity) when every run declares one (blockAttrs' strut rule). */
-function runStrutHalfPoints(runs: Run[]): { halfPoints: number; uniform: boolean } | null {
-  let max: number | null = null
-  let min: number | null = null
-  for (const run of runs) {
-    if (SPACE_ONLY_RE.test(run.text)) continue
-    if (run.sizeHalfPoints == null) return null
-    max = Math.max(max ?? 0, run.sizeHalfPoints)
-    min = Math.min(min ?? Infinity, run.sizeHalfPoints)
-  }
-  return max === null ? null : { halfPoints: max, uniform: max === min }
-}
-
-/** Run[] port of extensions' latinParaFactor (declared run fonts override the doc factor). */
-function latinRunsFactor(runs: Run[], scriptVar: string): string {
-  let declaredMax = 0
-  let undeclared = false
-  for (const run of runs) {
-    // ascii slot only, like extensions' latinParaFactor: an eastAsia-only
-    // declaration must not set a Latin line's factor
-    const family = run.fontAscii
-    if (family) declaredMax = Math.max(declaredMax, lineHeightFactor(family))
-    else undeclared = true
-  }
-  if (declaredMax <= 0) return scriptVar
-  return undeclared ? `max(${scriptVar}, ${declaredMax})` : String(declaredMax)
-}
-
-/** Run[] port of extensions' paraDeclaredFontFamily (strut face follows the runs). */
-function runsDeclaredFontFamily(runs: Run[]): string | null {
-  let first: string | null = null
-  for (const run of runs) {
-    const ea = run.font || null
-    const ascii = run.fontAscii || null
-    if (!ea && !ascii) return null
-    first ??= cssRunFontFamily(ascii, ea)
-  }
-  return first
-}
-
-/** Per-paragraph --doc-line-factor from runs (Run[] port of extensions' paraLineFactor). */
-function runsLineFactor(runs: Run[], text: string): string {
-  const scriptVar = paraLineFactorCss(text)
-  if (!textHasCjk(text)) return latinRunsFactor(runs, scriptVar)
-  let declaredMax = 0
-  let undeclaredCjk = false
-  for (const run of runs) {
-    if (!textHasCjk(run.text)) continue
-    const family = run.eaSlotEmpty === true ? null : (run.font ?? run.fontAscii)
-    if (family && isCjkFontName(family)) {
-      declaredMax = Math.max(declaredMax, cjkDeclaredLineFactor(family) ?? lineHeightFactor(family))
-    } else undeclaredCjk = true
-  }
-  if (declaredMax <= 0) return scriptVar
-  return undeclaredCjk ? `max(${scriptVar}, ${declaredMax})` : String(declaredMax)
-}
-
 /**
- * Cell paragraph block: run-size strut + line factor + explicit line spacing,
- * mirroring the main renderer's blockAttrs. Without it the cell inherits
- * .doc-page's line height as a computed px value (body font size), inflating
- * every line whose runs are smaller. Block divs keep innerText's
+ * Cell paragraph block: the shared line box (para-layout-spec fromRuns) plus
+ * the cell-only classes and the LTR-runs wrapper. Block divs keep innerText's
  * one-\n-per-paragraph semantics that cell edit write-back depends on.
  */
 function cellParaSpec(
@@ -2035,66 +2254,23 @@ function cellParaSpec(
   runs: Run[] | null,
   fmt?: TableParagraph,
 ): DomSpec {
-  const styles: string[] = []
-  // explicit per-paragraph direction (same rule as the editor's blockAttrs):
-  // a bidiVisual table's dir="rtl" mirrors columns but must not reorder cell text
-  styles.push(fmt?.bidi || inferredBidi(fmt, runs ?? undefined) ? 'direction:rtl' : 'direction:ltr')
+  const line = fromRuns(fmt, runs, text, 'cell')
+  const styles = line.styles
+  const extraClasses = line.classes
   // a space-only paragraph is sized by its mark like an empty one (Word probe 2026-09-11)
   const markSized = !text || SPACE_ONLY_RE.test(text)
-  if (!markSized) {
-    // Korean cells break at spaces like Word (same rule as the editor's blockAttrs)
-    if (textHasHangul(text) && fmt?.wordWrap !== false) {
-      styles.push('word-break:keep-all', 'overflow-wrap:anywhere')
-    }
-    styles.push(`--doc-line-factor:${runs ? runsLineFactor(runs, text) : paraLineFactorCss(text)}`)
-    const fam = runs ? runsDeclaredFontFamily(runs) : null
-    if (fam) styles.push(`font-family:${fam}`)
-    const strut = runs ? runStrutHalfPoints(runs) : null
-    if (strut) styles.push(...strutFontCss(strut))
-  }
   // a picture-only paragraph is exactly the image tall (no strut/descender
   // slack), like the body image block
   const pictureOnly = !text && !!runs?.some((r) => r.image && !r.image.rule)
-  styles.push(
-    pictureOnly
-      ? 'line-height:0'
-      : `line-height:${cssLineHeight(fmt?.lineRule, fmt?.lineRawTwips, fmt?.lineSpacing) ?? cssGridLineBase()}`,
-  )
-  const cellMult = cssAutoLineMult(fmt?.lineRule, fmt?.lineRawTwips, fmt?.lineSpacing)
-  if (cellMult && cellMult !== 1) styles.push(`--doc-line-mult:${cellMult}`)
-  if (fmt?.spaceBeforeAuto) styles.push(`margin-top:${cssGridSpacingPt(WORD_AUTO_SPACING_PT)}`)
-  else if (fmt?.spaceBefore) styles.push(`margin-top:${cssGridSpacingPt(fmt.spaceBefore / 20)}`)
-  if (fmt?.spaceAfterAuto) styles.push(`margin-bottom:${cssGridSpacingPt(WORD_AUTO_SPACING_PT)}`)
-  else if (fmt?.spaceAfter) styles.push(`margin-bottom:${cssGridSpacingPt(fmt.spaceAfter / 20)}`)
-  // Word sizes an empty line by the paragraph mark / empty run (same as blockAttrs)
-  if (markSized && !pictureOnly && fmt?.emptyRunSizeHalfPoints) {
-    styles.push(`font-size:${fmt.emptyRunSizeHalfPoints / 2}pt`)
-  }
-  // Western mark faces only (same scoping as blockAttrs): empty cells keep
-  // the Latin-factor rule instead of growing to a CJK mark face
-  if (
-    markSized &&
-    !pictureOnly &&
-    fmt?.emptyRunFontFamily &&
-    !isCjkFontName(fmt.emptyRunFontFamily)
-  ) {
-    const fam = fmt.emptyRunFontFamily
-    styles.push(`--doc-line-factor:${lineHeightFactor(fam)}`, `font-family:${cssFontFamily(fam)}`)
-  }
   const attrs: Record<string, string> = { style: styles.join(';') }
-  const classes: string[] = []
+  const classes: string[] = ['doc-cell-para', ...extraClasses]
+  if (fmt?.styleId) attrs['data-style'] = fmt.styleId
   // empty paragraphs get the Latin factor (.doc-table .doc-p-empty) and a <br> line box
   if (pictureOnly) classes.push('doc-p-picture')
   else if (markSized) classes.push('doc-p-empty')
-  // the sp-auto-* cell rules (styles.css) zero the auto margins at the cell boundaries
-  if (fmt?.spaceBeforeAuto) classes.push('sp-auto-b')
-  if (fmt?.spaceAfterAuto) classes.push('sp-auto-a')
-  if (classes.length) attrs.class = classes.join(' ')
+  attrs.class = classes.join(' ')
   if (content.length === 0) return ['div', attrs, ['br', {}]]
-  // runs without w:rtl order LTR inside an RTL paragraph (same rule as the editor's paraContentSpec)
-  const ltrRuns =
-    (fmt?.bidi || inferredBidi(fmt, runs ?? undefined)) && !!runs?.length && !runs.some((r) => r.cs)
-  return ltrRuns
+  return wrapsLtrRuns(fmt, runs)
     ? ['div', attrs, ['span', { class: 'doc-ltr-runs' }, ...content]]
     : ['div', attrs, ...content]
 }
@@ -2104,15 +2280,19 @@ function cellParaSpec(
  * wrapNone boxes overlay the cell without growing it */
 export function cellBoxesSpec(boxes: TextboxDisplay[]): DomSpec {
   if (boxes.length === 0) return ['div', { class: 'doc-cell-boxes' }]
+  // a page-positioned group (splitCellBoxGroup) gets its own strut: the
+  // preview un-positions it so the boxes resolve against the page box like
+  // top-level page-relative floats; Word does not grow the row for them
+  const onPage = boxes.every(cellBoxOnPage)
   let bottom = 0
   for (const b of boxes) {
-    if (b.noWrap) continue
+    if (b.noWrap || onPage) continue
     bottom = Math.max(bottom, (b.offsetYEmu ?? 0) / 9525 + (b.heightPx ?? b.minHeightPx ?? 0))
   }
   return [
     'div',
     {
-      class: 'doc-cell-boxes',
+      class: onPage ? 'doc-cell-boxes doc-cell-boxes-page' : 'doc-cell-boxes',
       contenteditable: 'false',
       style: bottom > 0 ? `height:${bottom.toFixed(1)}px` : '',
     },
@@ -2128,6 +2308,20 @@ export function cellBoxesSpec(boxes: TextboxDisplay[]): DomSpec {
       ]
     }),
   ]
+}
+
+/** one anchor paragraph's boxes split into page-positioned and in-cell struts */
+export function splitCellBoxGroup(group: TextboxDisplay[]): TextboxDisplay[][] {
+  const onPage = group.filter(cellBoxOnPage)
+  const inCell = group.filter((b) => !cellBoxOnPage(b))
+  return [onPage, inCell].filter((g) => g.length > 0)
+}
+
+/** a layoutInCell="0" box with a page/margin-relative offset: Word positions it
+ *  on the page, not in the cell (resume templates: avatar and header bar
+ *  anchored in the first cell of a page-anchored floating table) */
+export function cellBoxOnPage(box: TextboxDisplay): boolean {
+  return !!box.outsideCell && !!box.floating && !!box.pageRelV
 }
 
 /** read-only <table> DOM spec from the display model (vMerge -> rowSpan);
@@ -2156,6 +2350,7 @@ export function renderTableSpec(model: TableModel, nested = false): DomSpec {
           rowSpan++
         }
       }
+      const collapsedBw = collapsedCellBw(row, ci)
       const style = [
         // gridBefore/gridAfter placeholder: bare grid space, never bordered/filled
         cell.gridGap ? 'border:none;background:none' : '',
@@ -2173,15 +2368,28 @@ export function renderTableSpec(model: TableModel, nested = false): DomSpec {
         // per-cell borders are the only line source for style-less documents
         ...(['top', 'left', 'bottom', 'right'] as const).map((side) => {
           const v = borderLineCss(cell.borders?.[side])
-          if (!v) return ''
+          const collapsed =
+            side === 'left' ? collapsedBw?.l : side === 'right' ? collapsedBw?.r : undefined
+          const bw =
+            side === 'left' || side === 'right'
+              ? (collapsed ?? borderWidthPx(cell.borders?.[side]))
+              : undefined
+          if (!v) return collapsed !== undefined ? `--cell-bw-${DK_SIDE[side]}:${collapsed}px` : ''
           const css = `border-${side}:${v};${dkBorder(DK_SIDE[side], v)}`
           return side === 'left' || side === 'right'
-            ? `${css};--cell-bw-${DK_SIDE[side]}:${borderWidthPx(cell.borders?.[side])}px`
+            ? `${css};--cell-bw-${DK_SIDE[side]}:${bw}px`
             : `${css};${bdDeltaCss(side, cell.borders?.[side])}`
         }),
-        ...(['top', 'left', 'bottom', 'right'] as const).map((side) =>
+        (() => {
+          const layers = (['tl2br', 'tr2bl'] as const)
+            .map((d) => cellDiagonalCss(cell.borders?.[d], d))
+            .filter((v): v is string => v !== null)
+            .join(',')
+          return layers ? `background-image:${layers};${dkBackgroundImage(layers)}` : ''
+        })(),
+        ...(['left', 'right'] as const).map((side) =>
           cell.cellMarTwips?.[side] !== undefined
-            ? `--doc-cell-pad-${DK_SIDE[side]}:${(cell.cellMarTwips[side]! / 15).toFixed(1)}px`
+            ? `--doc-cell-pad-${DK_SIDE[side]}:${cellPadPx(cell.cellMarTwips[side]!)}`
             : '',
         ),
       ]
@@ -2195,19 +2403,36 @@ export function renderTableSpec(model: TableModel, nested = false): DomSpec {
       }
       // not in-flow evidence for the .cell-vert switch (same as tableCellHtml)
       if (cell.gridGap) tdAttrs['data-grid-gap'] = '1'
+      if (cell.hideMark) tdAttrs['data-hide-mark'] = '1'
       if (cell.colSpan && cell.colSpan > 1) tdAttrs.colspan = String(cell.colSpan)
       if (rowSpan > 1) tdAttrs.rowspan = String(rowSpan)
       const paraBlocks: DomSpec[] = cell.richParas?.length
         ? cell.richParas.map((p) => {
             const runs = p.runs.filter((run) => run.text !== '' || run.image)
             return cellParaSpec(
-              runSpansWithPads(runs, p.autoSpace),
+              runSpansWithPads(runs, p.autoSpace, p),
               runs.map((r) => r.text).join(''),
               runs,
               p,
             )
           })
-        : cell.paras.map((p) => cellParaSpec(p === '' ? [] : [...padSegments(p)], p, null))
+        : cell.paras.map((p) =>
+            cellParaSpec(
+              p === ''
+                ? []
+                : [
+                    ...padSegments(
+                      p,
+                      true,
+                      false,
+                      { krNoBreak: textHasHangul(p) },
+                      staticAsciiOf(undefined) ?? undefined,
+                    ),
+                  ],
+              p,
+              null,
+            ),
+          )
       // nested tables spliced in at their paragraph anchors (cells with them are never editable)
       const nested = cell.nestedTables ?? []
       const anchorOf = (i: number) =>
@@ -2223,7 +2448,7 @@ export function renderTableSpec(model: TableModel, nested = false): DomSpec {
       let ni = 0
       const boxesAt = (pi: number) => {
         const group = boxGroups.get(pi)
-        if (group) content.push(cellBoxesSpec(group))
+        if (group) for (const g of splitCellBoxGroup(group)) content.push(cellBoxesSpec(g))
       }
       paraBlocks.forEach((blk, pi) => {
         while (ni < nested.length && anchorOf(ni) <= pi)
@@ -2260,18 +2485,34 @@ export function renderTableSpec(model: TableModel, nested = false): DomSpec {
       }
     })
     const trAttrs: Record<string, string> = {}
+    const inFlow = row.filter((cell) => !cell.gridGap)
+    const trStyles = rowPadVarsCss(inFlow.map((cell) => cell.cellMarTwips))
     const rh = model.rowHeightsTwips?.[ri]
-    if (rh)
-      trAttrs.style = rowHeightCss(
-        rh,
-        row.filter((cell) => !cell.gridGap).map((cell) => cell.borders),
+    if (rh) {
+      trStyles.push(
+        rowHeightCss(
+          rh,
+          inFlow.map((cell) => cell.borders),
+          inFlow.map((cell) => cell.cellMarTwips),
+          model.rowHeightRules?.[ri] ?? null,
+        ),
       )
+    }
+    if (trStyles.length > 0) trAttrs.style = trStyles.join(';')
     return ['tr', trAttrs, ...tds]
   })
 
   const tableChildren: unknown[] = []
+  const spacingShares = model.cellSpacingTwips
+    ? cellSpacingGridSharesTwips(model.colWidthsTwips?.length ?? 1, model.cellSpacingTwips)
+    : null
+  const spacingBorders = model.cellSpacingTwips
+    ? cellSpacingBorderPx(model.colWidthsTwips?.length ?? 1, model.borders)
+    : null
   const colPx = !model.widthPct
-    ? model.colWidthsTwips?.map((w) => Math.max(1, Math.round(w / 15)))
+    ? model.colWidthsTwips?.map((w, i) =>
+        Math.max(1, Math.round((w - (spacingShares?.[i] ?? 0)) / 15) + (spacingBorders?.[i] ?? 0)),
+      )
     : undefined
   if (colPx) {
     tableChildren.push(['colgroup', {}, ...colPx.map((w) => ['col', { style: `width:${w}px` }])])
@@ -2286,59 +2527,18 @@ export function renderTableSpec(model: TableModel, nested = false): DomSpec {
   const tableAttrs: Record<string, string> = { class: 'doc-table' }
   if (model.bidiVisual) tableAttrs.dir = 'rtl'
   const tableStyles: string[] = []
-  let centerMargin: string | null = null
-  // --doc-content-w: per-block section content width (differing-width sections); defaults to the page content box
-  const contentW = 'var(--doc-content-w,100%)'
-  // start-aligned bidiVisual table: hangs from the right margin (see DocTable.renderHTML)
-  const rtlStart =
-    model.bidiVisual === true && !nested && model.align !== 'center' && model.align !== 'right'
-  const spillMargin = rtlStart ? 'var(--doc-margin-left,0px)' : 'var(--doc-margin-right,0px)'
-  let widthExpr: string | null = null
-  if (model.widthPct) {
-    // 'pct' table widths are a share of the section's TEXT COLUMN (see
-    // DocTable.renderHTML): differing-margin/width sections resolve through the
-    // per-block --doc-content-w; nested tables stay relative to their cell
-    widthExpr = nested
-      ? `${model.widthPct}%`
-      : `calc(${contentW} * ${Number(model.widthPct) / 100})`
-    tableStyles.push(`width:${widthExpr}`)
-  } else if (colPx) {
-    // nested tables are capped by their cell; top-level ones spill into the page
-    // margins like Word (centered: both sides via negative-margin centering,
-    // left-aligned: right up to the paper edge — see DocTable.renderHTML);
-    // indent shifts the table right, so it comes out of the budget
-    const widthPx =
-      colPx.reduce((sum, w) => sum + w, 0) +
-      (model.cellSpacingTwips ? 0 : outerBorderPx(model.borders ?? null))
-    // w:tblLayout fixed holds the declared widths even past the paper edge (see DocTable.renderHTML)
-    if (!nested && model.fixedLayout) {
-      widthExpr = `${widthPx}px`
-      tableStyles.push(`width:${widthExpr}`, 'max-width:none')
-      if (model.align === 'center')
-        centerMargin = `margin-left:calc((${contentW} - ${widthPx}px)/2)`
-    } else if (!nested && model.align === 'center') {
-      const paper = `calc(${contentW} + var(--doc-margin-left,var(--doc-margin-right,0px)) + var(--doc-margin-right,0px))`
-      tableStyles.push(`width:min(${widthPx}px,${paper})`)
-      centerMargin = `margin-left:calc((${contentW} - min(${widthPx}px,${paper}))/2)`
-    } else {
-      const indented =
-        model.align !== 'center' && model.align !== 'right' && (model.indentTwips ?? 0) !== 0
-      const indentPx = indented ? model.indentTwips! / 15 : 0
-      const base = nested ? '100%' : `calc(${contentW} + ${spillMargin})`
-      // a negative w:tblInd moves the box into the left margin and widens the
-      // right-hand spill allowance by the same amount (see DocTable.renderHTML)
-      const shift = indentPx < 0 ? `+ ${(-indentPx).toFixed(1)}px` : `- ${indentPx.toFixed(1)}px`
-      const avail = indentPx
-        ? nested
-          ? indentPx > 0
-            ? `calc(100% - ${indentPx.toFixed(1)}px)`
-            : base
-          : `calc(${contentW} + ${spillMargin} ${shift})`
-        : base
-      widthExpr = `min(${widthPx}px,${avail})`
-      tableStyles.push(`width:${widthExpr}`)
-    }
-  }
+  const widthPx = colPx
+    ? colPx.reduce((sum, w) => sum + w, 0) +
+      (model.cellSpacingTwips
+        ? Math.round(((colPx.length + 1) * 2 * model.cellSpacingTwips) / 15)
+        : outerBorderPx(model.borders ?? null, modelEdgeBorders(model)))
+    : null
+  const widthInput = modelWidthInput(model, widthPx)
+  const widthCss = tableWidthCss(widthInput, {
+    kind: nested ? 'nested' : 'body',
+    surface: 'static',
+  })
+  tableStyles.push(...widthCss.styles)
   tableStyles.push(...cellPadCss(model.cellMarTwips ?? null))
   // w:tblCellSpacing: the CSS gap is twice the per-cell-side value (see DocTable.renderHTML)
   if (model.cellSpacingTwips) {
@@ -2351,23 +2551,55 @@ export function renderTableSpec(model: TableModel, nested = false): DomSpec {
     )
   }
   if (model.fill) tableStyles.push(`background-color:#${model.fill}`)
-  tableStyles.push(...tableBordersCss((model.borders as TableBordersAttr | undefined) ?? null))
+  // a borderless nested table must not inherit the host table's --doc-b-* lines
+  tableStyles.push(
+    ...tableBordersCss(
+      (model.borders as TableBordersAttr | undefined) ?? (nested ? ({} as TableBordersAttr) : null),
+    ),
+  )
   tableStyles.push(
     ...tableRowEatCss(
       (model.borders as TableBordersAttr | undefined) ?? null,
       Boolean(model.cellSpacingTwips),
     ),
   )
-  if (model.align === 'center') {
-    if (centerMargin) tableStyles.push(centerMargin)
-    else tableStyles.push('margin-left:auto', 'margin-right:auto')
-  } else if (model.align === 'right') tableStyles.push('margin-left:auto')
-  else if (rtlStart)
-    tableStyles.push(...rtlStartMarginCss(widthExpr, (model.indentTwips ?? 0) / 15))
-  else if (model.indentTwips)
-    tableStyles.push(`margin-left:${(model.indentTwips / 15).toFixed(1)}px`)
+  const nestedFloat = nested ? nestedFloatCss(model) : null
+  if (nestedFloat) tableStyles.push(...nestedFloat)
+  else tableStyles.push(...tablePositionCss(widthInput, widthCss))
   if (tableStyles.length > 0) tableAttrs.style = tableStyles.join(';')
   return ['table', tableAttrs, ...tableChildren]
+}
+
+/** Floating table inside a cell. Word keeps the w:tblpPr float but positions it
+ *  relative to the cell: the table top sits w:tblpY below the cell content top
+ *  (measured 13.08pt for tblpY=261 under vertAnchor=page), the cell's own
+ *  paragraphs wrap beside it and the cell grows around it. The float is given
+ *  up (inline flow) for tables too tall to float on one page, like top-level
+ *  ones (DocTable minHeightTwips cap). */
+const NESTED_FLOAT_CTX = { kind: 'nested', surface: 'static' } as const
+const TEXTBOX_CTX = { kind: 'textbox', surface: 'static' } as const
+
+export function nestedFloatCss(model: TableModel): string[] | null {
+  const pos = model.floatPos
+  const side = model.floatSide
+  if (!pos || !side) return null
+  const minHeightTwips = model.rows.reduce(
+    (sum, _row, i) => sum + Math.max(model.rowHeightsTwips?.[i] ?? 0, 240),
+    0,
+  )
+  if (minHeightTwips > 12960) return null
+  const widthPx = (model.colWidthsTwips?.reduce((a, b) => a + b, 0) ?? 0) / 15
+  return tableFloatCss(
+    {
+      anchor: tableFloatAnchor(pos, side, widthPx),
+      side,
+      widthPx,
+      distance: tableFloatDistancePx(pos.distanceTwips),
+      hasX: true,
+      xPx: pos.xTwips / 15,
+    },
+    NESTED_FLOAT_CTX,
+  ).styles
 }
 
 // ---- marks ----

@@ -17,6 +17,7 @@ import type { CustomScheme } from 'electron'
 import {
   DOCX_MEDIA_SCHEME_PRIVILEGE,
   RENDERER_SCHEME_PRIVILEGE,
+  SLIDE_MEDIA_SCHEME_PRIVILEGE,
 } from '@genoffice/electron-utils/renderer-scheme'
 import { ASSET_SCHEME, PREVIEW_SCHEME } from '../../../html/src/main/preview-document'
 
@@ -26,11 +27,16 @@ import { ASSET_SCHEME, PREVIEW_SCHEME } from '../../../html/src/main/preview-doc
  * - `RENDERER_SCHEME_PRIVILEGE` serves the built renderer pages and
  *   `DOCX_MEDIA_SCHEME_PRIVILEGE` carries lazily served document pictures; both
  *   come straight from GenOffice's own helpers so privileges never drift.
+ * - `SLIDE_MEDIA_SCHEME_PRIVILEGE` (`genoffice-slide-media`) serves slides'
+ *   archive pictures outside structured-clone IPC payloads (added upstream
+ *   between v0.10 and v0.12; without it slide pictures fail to load from a
+ *   secure page).
  * - `html-preview` / `html-asset` (scheme names from the html app's
  *   preview-document module) serve the live preview iframe and its assets. */
 export const GENOFFICE_SCHEME_PRIVILEGES: readonly CustomScheme[] = [
   RENDERER_SCHEME_PRIVILEGE,
   DOCX_MEDIA_SCHEME_PRIVILEGE,
+  SLIDE_MEDIA_SCHEME_PRIVILEGE,
   {
     scheme: PREVIEW_SCHEME,
     privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },

@@ -136,6 +136,34 @@ describe('field paragraph display model', () => {
     expect(doc.blocks[0].fieldDisplay).toMatchObject({ kind: 'tocLine', leader: 'dot' })
   })
 
+  it('a TOC entry reads single-quoted pStyle, spacing, indent and size like double-quoted ones', async () => {
+    // the pPr / run metrics were read with double-quote-only patterns, so a
+    // single-quoted entry lost its style (no tocLine at all) and ran together
+    const entry = (q: '"' | "'") =>
+      `<w:p><w:pPr><w:pStyle w:val=${q}TOC1${q}/>` +
+      `<w:tabs><w:tab w:val=${q}right${q} w:leader=${q}dot${q} w:pos=${q}9350${q}/></w:tabs>` +
+      `<w:spacing w:before=${q}120${q} w:after=${q}0${q} w:line=${q}360${q} w:lineRule=${q}auto${q}/>` +
+      `<w:ind w:left=${q}420${q} w:right=${q}0${q}/></w:pPr>` +
+      `<w:r><w:rPr><w:sz w:val=${q}20${q}/></w:rPr><w:t>Title</w:t></w:r>` +
+      '<w:r><w:tab/></w:r><w:r><w:t>7</w:t></w:r></w:p>'
+    for (const q of ['"', "'"] as const) {
+      const doc = await parseDocx(await buildDocx({ bodyXml: entry(q) }))
+      expect(doc.blocks[0].fieldDisplay).toMatchObject({
+        kind: 'tocLine',
+        left: 'Title',
+        right: '7',
+        level: 1,
+        leader: 'dot',
+        szHalfPoints: 20,
+        lineRule: 'auto',
+        lineRawTwips: 360,
+        lineSpacing: 1.5,
+        spaceBeforeTwips: 120,
+        spaceAfterTwips: 0,
+      })
+    }
+  })
+
   it('a TOC entry carries the leading result run face and weight (Word draws the entry with its runs)', async () => {
     const entry = (rPr: string) =>
       '<w:p><w:pPr><w:pStyle w:val="TOC2"/><w:tabs><w:tab w:val="right" w:pos="8786"/></w:tabs>' +
@@ -171,6 +199,21 @@ describe('field paragraph display model', () => {
       '</w:del></w:p>'
     const del = await parseDocx(await buildDocx({ bodyXml: deleted }))
     expect(del.blocks[0].fieldDisplay).toMatchObject({ deleted: true, fontFamily: 'SimSun' })
+    // a Latin "1.1 " run ahead of a KaiTi title: the CJK face still sizes the line
+    const rFonts =
+      '<w:rPr><w:rFonts w:ascii="Times New Roman" w:eastAsia="DFKai-SB" w:hAnsi="Times New Roman"/></w:rPr>'
+    const numbered = entry(rFonts).replace(
+      '<w:t>Annexe 1-1 : Classification</w:t>',
+      `<w:t xml:space="preserve">1.1 </w:t></w:r><w:r>${rFonts}<w:t>\u5951\u7d04</w:t>`,
+    )
+    const mixed = await parseDocx(await buildDocx({ bodyXml: numbered }))
+    expect(mixed.blocks[0].fieldDisplay).toMatchObject({
+      fontFamily: 'Times New Roman',
+      eaFontFamily: 'DFKai-SB',
+    })
+    // the leading run already resolves the CJK face: no duplicate
+    expect(doc.blocks[0].fieldDisplay?.eaFontFamily).toBeUndefined()
+    expect(del.blocks[0].fieldDisplay?.eaFontFamily).toBeUndefined()
   })
 
   it('TOC bold respects off/none/case variants (onOff parity)', async () => {
@@ -192,6 +235,22 @@ describe('field paragraph display model', () => {
     }
     const on = await parseDocx(await buildDocx({ bodyXml: offEntry('<w:b w:val="true"/>') }))
     expect(on.blocks[0].fieldDisplay?.bold).toBe(true)
+  })
+
+  it('a lone field-end paragraph keeps its empty line with its own line rule', async () => {
+    const xml =
+      '<w:p><w:pPr><w:spacing w:line="360" w:lineRule="auto"/><w:rPr><w:b/></w:rPr></w:pPr>' +
+      '<w:r><w:rPr><w:sz w:val="20"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r></w:p>'
+    const doc = await parseDocx(await buildDocx({ bodyXml: xml }))
+    expect(doc.blocks[0].label).toBe('Field end marker')
+    expect(doc.blocks[0].fieldDisplay).toEqual({
+      kind: 'text',
+      left: '',
+      emptyLine: true,
+      lineRule: 'auto',
+      lineRawTwips: 360,
+      lineSpacing: 1.5,
+    })
   })
 
   it('field-end + page break paragraph shows as a pageBreak marker', async () => {
@@ -220,6 +279,55 @@ describe('field paragraph display model', () => {
     expect(reparsed.blocks[0].runs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ text: '(Smith, 2024)', instrField: ZOTERO_CITATION_INSTR }),
+      ]),
+    )
+  })
+
+  it('Mendeley CSL_CITATION fields fold into an inline run and keep the paragraph indent', async () => {
+    const instr = 'ADDIN CSL_CITATION {"citationItems":[{"id":"ITEM-1"}],"mendeley":{}}'
+    const body =
+      '<w:p><w:pPr><w:ind w:left="0" w:right="0" w:firstLine="720"/></w:pPr>' +
+      '<w:r><w:t>Evidence </w:t></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="begin" w:fldLock="1"/></w:r>' +
+      `<w:r><w:instrText xml:space="preserve"> ${instr} </w:instrText></w:r>` +
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+      '<w:r><w:rPr><w:noProof/></w:rPr><w:t>(Yu &amp; Zin, 2022)</w:t></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r>' +
+      '<w:r><w:t>.</w:t></w:r></w:p>'
+    const doc = await parseDocx(await buildDocx({ bodyXml: body }))
+    const block = doc.blocks[0]
+    expect(block.type).toBe('paragraph')
+    expect(block.format).toMatchObject({ indentRight: 0, indentFirstLine: 720 })
+    expect(block.runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ text: '(Yu & Zin, 2022)', instrField: instr }),
+      ]),
+    )
+  })
+
+  // Word writes a long Mendeley instruction as several w:instrText runs; a
+  // continuation fragment alone never matches the field regex, and the
+  // paragraph used to drop to the passthrough path, losing its w:ind
+  it('a CSL_CITATION instruction split over several instrText runs keeps the paragraph editable', async () => {
+    const head = 'ADDIN CSL_CITATION {"citationItems":[{"id":"ITEM-1","itemData":{"con'
+    const tail = 'tainer-title":"Jurnal Pendidikan IPA Indonesia"}}],"mendeley":{}}'
+    const body =
+      '<w:p><w:pPr><w:ind w:left="0" w:right="0" w:firstLine="720"/><w:rPr><w:lang w:val="fi-FI"/></w:rPr></w:pPr>' +
+      '<w:r><w:t>Evidence </w:t></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="begin" w:fldLock="1"/></w:r>' +
+      `<w:r><w:instrText xml:space="preserve">${head}</w:instrText></w:r>` +
+      `<w:r><w:instrText xml:space="preserve">${tail}</w:instrText></w:r>` +
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+      '<w:r><w:rPr><w:noProof/></w:rPr><w:t>(Yu &amp; Zin, 2022)</w:t></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r>' +
+      '<w:r><w:t>.</w:t></w:r></w:p>'
+    const doc = await parseDocx(await buildDocx({ bodyXml: body }))
+    const block = doc.blocks[0]
+    expect(block.type).toBe('paragraph')
+    expect(block.format).toMatchObject({ indentRight: 0, indentFirstLine: 720 })
+    expect(block.runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ text: '(Yu & Zin, 2022)', instrField: head + tail }),
       ]),
     )
   })
@@ -347,6 +455,31 @@ describe('field paragraph display model', () => {
       lineRule: 'auto',
       lineRawTwips: 360,
       lineSpacing: 1.5,
+    })
+  })
+
+  it('a text field paragraph keeps its direct first-line and right indents (Word lays the citation body out with them)', async () => {
+    const withInd = (ind: string) =>
+      INCLUDEPICTURE_PARAGRAPH.replace(
+        '<w:pPr><w:jc w:val="left"/>',
+        `<w:pPr>${ind}<w:jc w:val="left"/>`,
+      )
+    const first = await parseDocx(
+      await buildDocx({ bodyXml: withInd('<w:ind w:left="60" w:right="240" w:firstLine="420"/>') }),
+    )
+    expect(first.blocks[0].fieldDisplay).toMatchObject({
+      kind: 'text',
+      indentLeftTwips: 60,
+      indentRightTwips: 240,
+      indentFirstLineTwips: 420,
+    })
+    const hanging = await parseDocx(
+      await buildDocx({ bodyXml: withInd('<w:ind w:start="720" w:end="0" w:hanging="360"/>') }),
+    )
+    expect(hanging.blocks[0].fieldDisplay).toMatchObject({
+      indentLeftTwips: 720,
+      indentRightTwips: 0,
+      indentFirstLineTwips: -360,
     })
   })
 
@@ -523,6 +656,26 @@ describe('generateTocFieldXml', () => {
       expect(block.fieldDisplay?.left).toBe(entries[i].text)
       expect(block.fieldDisplay?.level).toBe(entries[i].level)
     }
+  })
+
+  it('handles more entries than the argument limit and clamps the level range', () => {
+    const many = Array.from({ length: 200_000 }, (_, i) => ({
+      level: (i % 9) + 1,
+      text: `H${i}`,
+    }))
+    const frags = generateTocFieldXml(many)
+    expect(frags).toHaveLength(many.length)
+    expect(frags[0]).toContain(' TOC \\o "1-9" \\h \\z \\u ')
+    // a level above 9 still clamps the instruction range
+    expect(generateTocFieldXml([{ level: 42, text: 'deep' }])[0]).toContain(
+      ' TOC \\o "1-9" \\h \\z \\u ',
+    )
+    expect(
+      generateTocFieldXml([
+        { level: 1, text: 'a' },
+        { level: 4, text: 'b' },
+      ])[0],
+    ).toContain(' TOC \\o "1-4" \\h \\z \\u ')
   })
 })
 
@@ -952,5 +1105,130 @@ describe('dirty inline fields', () => {
       ['NUMPAGES', true],
       ['PAGE', false],
     ])
+  })
+})
+
+// Word's TOC without TOC styles: plain paragraphs holding a bookmark hyperlink,
+// a right tab stop with a dot leader and a nested PAGEREF field; the first
+// entry opens the TOC field, the last one closes it
+const UNSTYLED_TOC_PPR = (extra: string) =>
+  '<w:pPr><w:tabs><w:tab w:val="right" w:leader="dot" w:pos="9746"/></w:tabs>' +
+  `<w:spacing w:after="0" w:line="240" w:lineRule="auto"/>${extra}</w:pPr>`
+const PAGEREF_ENTRY = (n: number, page: string) =>
+  `<w:hyperlink w:anchor="_Toc${n}" w:history="1">` +
+  `<w:r><w:rPr><w:b/></w:rPr><w:t>Chapter ${n}</w:t></w:r><w:r><w:tab/></w:r>` +
+  '<w:r><w:rPr><w:noProof/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r>' +
+  `<w:r><w:instrText xml:space="preserve"> PAGEREF _Toc${n} \\h </w:instrText></w:r>` +
+  '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+  `<w:r><w:rPr><w:noProof/></w:rPr><w:t>${page}</w:t></w:r>` +
+  '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:hyperlink>'
+const UNSTYLED_TOC =
+  `<w:p>${UNSTYLED_TOC_PPR('')}<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+  '<w:r><w:instrText xml:space="preserve"> TOC \\o "1-2" \\h \\z \\u </w:instrText></w:r>' +
+  `<w:r><w:fldChar w:fldCharType="separate"/></w:r>${PAGEREF_ENTRY(1, '3')}</w:p>` +
+  `<w:p>${UNSTYLED_TOC_PPR('<w:ind w:left="240"/>')}${PAGEREF_ENTRY(2, '5')}</w:p>` +
+  `<w:p>${UNSTYLED_TOC_PPR('<w:ind w:left="240"/>')}${PAGEREF_ENTRY(3, '9')}` +
+  '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>'
+
+describe('TOC entries without TOC styles (PAGEREF behind a right tab)', () => {
+  it('a PAGEREF-only entry is an editable paragraph: bookmark link, tab, inline field', async () => {
+    const doc = await parseDocx(await buildDocx({ bodyXml: UNSTYLED_TOC }))
+    const entry = doc.blocks[1]
+    expect(entry.type).toBe('paragraph')
+    expect(entry.format?.tabStops).toEqual([{ pos: 9746, val: 'right', leader: 'dot' }])
+    expect(entry.format?.spaceAfter).toBe(0)
+    expect(entry.runs?.map((r) => r.text).join('')).toBe('Chapter 2\t5')
+    const page = entry.runs?.find((r) => r.instrField)
+    expect(page).toMatchObject({
+      text: '5',
+      instrField: 'PAGEREF _Toc2 \\h',
+      link: { href: '#_Toc2', plain: true },
+    })
+    expect(entry.runs?.[0]).toMatchObject({ text: 'Chapter 2', bold: true, link: { plain: true } })
+  })
+
+  it('the entries opening and closing the TOC field stay protected toc lines with their own geometry', async () => {
+    const doc = await parseDocx(await buildDocx({ bodyXml: UNSTYLED_TOC }))
+    const [head, , tail] = doc.blocks
+    expect(head.type).toBe('passthrough')
+    expect(head.fieldDisplay).toMatchObject({
+      kind: 'tocLine',
+      left: 'Chapter 1',
+      right: '3',
+      level: 1,
+      leader: 'dot',
+      anchor: '_Toc1',
+      spaceAfterTwips: 0,
+    })
+    expect(head.fieldDisplay?.indentLeftTwips).toBeUndefined()
+    expect(tail.type).toBe('passthrough')
+    expect(tail.fieldDisplay).toMatchObject({
+      kind: 'tocLine',
+      left: 'Chapter 3',
+      right: '9',
+      indentLeftTwips: 240,
+      spaceAfterTwips: 0,
+    })
+  })
+
+  it('an edited entry regenerates the PAGEREF field inside its unstyled bookmark link', async () => {
+    const source = await buildDocx({ bodyXml: UNSTYLED_TOC })
+    const doc = await parseDocx(source)
+    const entry = doc.blocks[1]
+    const runs = entry.runs!.map((r) =>
+      r.text === 'Chapter 2' ? { ...r, text: 'Chapter Two' } : r,
+    )
+    const saved = await saveDocx(doc, [
+      { kind: 'original', docxIndex: 0 },
+      { kind: 'generated', block: { type: 'paragraph', runs, format: entry.format } },
+      { kind: 'original', docxIndex: 2 },
+    ] as never)
+    const xml = await documentXmlOf(saved)
+    expect(xml).toMatch(
+      /<w:hyperlink w:anchor="_Toc2">[\s\S]*Chapter Two[\s\S]*<w:tab\/>[\s\S]*<w:fldChar w:fldCharType="begin"\/>[\s\S]*<w:instrText xml:space="preserve"> PAGEREF _Toc2 \\h <\/w:instrText>[\s\S]*>5<\/w:t>[\s\S]*<w:fldChar w:fldCharType="end"\/><\/w:r><\/w:hyperlink>/,
+    )
+    expect(xml).not.toContain('w:rStyle w:val="Hyperlink"')
+    // the TOC field itself is untouched: one begin, and its end still in the last entry
+    expect(xml.match(/ TOC \\o/g)?.length).toBe(1)
+    expect(xml.match(/fldCharType="begin"/g)?.length).toBe(4)
+    expect(xml.match(/fldCharType="end"/g)?.length).toBe(4)
+    const reparsed = await parseDocx(saved)
+    expect(reparsed.blocks[1].runs?.find((r) => r.instrField)?.text).toBe('5')
+    expect(reparsed.blocks[2].type).toBe('passthrough')
+  })
+
+  it('a fldSimple PAGEREF keeps the enclosing bookmark link and saves inside it', async () => {
+    const simple =
+      '<w:p><w:pPr><w:tabs><w:tab w:val="right" w:leader="dot" w:pos="9746"/></w:tabs></w:pPr>' +
+      '<w:hyperlink w:anchor="_Toc7"><w:r><w:t>Chapter 7</w:t></w:r><w:r><w:tab/></w:r>' +
+      '<w:fldSimple w:instr=" PAGEREF _Toc7 \\h "><w:r><w:t>12</w:t></w:r></w:fldSimple></w:hyperlink></w:p>'
+    const source = await buildDocx({ bodyXml: simple })
+    const doc = await parseDocx(source)
+    const entry = doc.blocks[0]
+    expect(entry.type).toBe('paragraph')
+    expect(entry.runs?.find((r) => r.instrField)).toMatchObject({
+      text: '12',
+      instrField: 'PAGEREF _Toc7 \\h',
+      link: { href: '#_Toc7', plain: true },
+    })
+    const saved = await saveDocx(doc, [
+      { kind: 'generated', block: { type: 'paragraph', runs: entry.runs, format: entry.format } },
+    ] as never)
+    const xml = await documentXmlOf(saved)
+    expect(xml).toMatch(
+      /<w:hyperlink w:anchor="_Toc7">[\s\S]*Chapter 7[\s\S]*PAGEREF _Toc7 \\h [\s\S]*>12<\/w:t>[\s\S]*<w:fldChar w:fldCharType="end"\/><\/w:r><\/w:hyperlink>/,
+    )
+    expect(xml).not.toContain('w:rStyle w:val="Hyperlink"')
+  })
+
+  it('a paragraph with a stray field end stays protected even when its own fields fold', async () => {
+    const stray =
+      '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+      '<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>4</w:t></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>'
+    const doc = await parseDocx(await buildDocx({ bodyXml: stray }))
+    expect(doc.blocks[0].type).toBe('passthrough')
   })
 })

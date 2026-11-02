@@ -26,7 +26,7 @@ import {
   net,
 } from 'electron';
 import { join, basename, resolve } from 'node:path';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { createLogger } from '@urchin/logger';
 
@@ -730,6 +730,25 @@ function registerIpcHandlers(): void {
   // 上游 shell Home 的 home:* 通道由本进程实现可用子集（打开/最近/文件夹/
   // 新建/主题/语言/AI 设置），账号与云能力以中性桩返回。
   if (!GENOFFICE_DISABLED) {
+    // 确保 GenOffice 编辑器的默认保存目录与浏览器数据目录对齐：
+    // 编辑器的 configuredDefaultSaveDir(app) 读 <userData>/app-settings.json
+    // 的 defaultSaveDir 键。启动时如该键未设置（用户未自定义），写入
+    // <数据目录>/documents。用户可通过设置弹窗的「更改」按钮自定义（写入同一文件）。
+    {
+      const settingsPath = join(app.getPath('userData'), 'app-settings.json');
+      const documentsRoot = join(currentDataDir, 'documents');
+      try {
+        const raw = existsSync(settingsPath)
+          ? (JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>)
+          : {};
+        if (typeof raw.defaultSaveDir !== 'string' || !raw.defaultSaveDir) {
+          raw.defaultSaveDir = documentsRoot;
+          writeFileSync(settingsPath, JSON.stringify(raw, null, 2));
+        }
+      } catch {
+        /* 读/写失败：编辑器回落到 <Documents>/GenOffice，不影响 Home 侧 */
+      }
+    }
     registerGenOfficeHomeHandlers({
       ipcMain,
       store: new GenOfficeHomeStore(join(currentDataDir, 'genoffice-home.json')),
@@ -1086,11 +1105,18 @@ function registerIpcHandlers(): void {
 
   // dev.48：pi 模块内打开的网页（window.open 新标签）右侧栏图标钉定为 π——
   // 来源 tab URL 命中当前 pi 服务地址时返回钉定图标（端口随机，读实时状态）
+  // dev.122：改为 origin 匹配（protocol+host+port），兼容页面导航后 token 丢失、
+  // 路径变化等场景；同时在 tab-manager.create 中调用以覆盖主标签（非仅 window.open）
   tabManager.setPiIconPinner((sourceUrl) => {
-    const phUrl = piWebHostLauncher?.status().url;
-    if (phUrl && sourceUrl.startsWith(phUrl)) return 'urchin://pi-icon/';
-    const dshUrl = dshLauncher?.status().url;
-    if (dshUrl && sourceUrl.startsWith(dshUrl)) return 'urchin://dsh-icon/';
+    try {
+      const origin = new URL(sourceUrl).origin;
+      const phUrl = piWebHostLauncher?.status().url;
+      if (phUrl && new URL(phUrl).origin === origin) return 'urchin://pi-icon/';
+      const dshUrl = dshLauncher?.status().url;
+      if (dshUrl && new URL(dshUrl).origin === origin) return 'urchin://dsh-icon/';
+    } catch {
+      /* invalid URL → no pin */
+    }
     return undefined;
   });
 
@@ -2107,11 +2133,24 @@ void app.whenReady().then(() => {
       (details, callback) => {
         try {
           const u = new URL(details.url);
+          const phPort = piWebHostLauncher?.status().port;
+          if (
+            phPort &&
+            u.port === String(phPort) &&
+            (u.pathname === '/favicon.svg' ||
+              u.pathname === '/favicon.ico' ||
+              u.pathname === '/favicon.png' ||
+              u.pathname === '/pi-icon.png')
+          ) {
+            callback({ redirectURL: 'urchin://pi-icon/' });
+            return;
+          }
           const dshPort = dshLauncher?.status().port;
           if (
             dshPort &&
             u.port === String(dshPort) &&
             (u.pathname === '/favicon.svg' ||
+              u.pathname === '/favicon-dark.svg' ||
               u.pathname === '/favicon.ico' ||
               u.pathname === '/favicon.png')
           ) {

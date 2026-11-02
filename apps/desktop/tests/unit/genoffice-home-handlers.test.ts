@@ -24,7 +24,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('electron', () => ({
-  app: { getVersion: () => '0.1.0-test' },
+  app: {
+    getVersion: () => '0.1.0-test',
+    getPath: (name: string) =>
+      name === 'userData' ? ((globalThis as Record<string, unknown>).__testUserData ?? '') : '',
+  },
   clipboard: { writeText: mocks.writeText },
   dialog: { showOpenDialog: mocks.showOpenDialog, showMessageBox: mocks.showMessageBox },
   shell: {
@@ -58,6 +62,7 @@ let harness: Harness;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'urchin-genoffice-home-'));
+  (globalThis as Record<string, unknown>).__testUserData = root;
   mocks.showOpenDialog.mockReset();
   mocks.trashItem.mockReset().mockResolvedValue(undefined);
 
@@ -100,6 +105,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  (globalThis as Record<string, unknown>).__testUserData = undefined;
   rmSync(root, { recursive: true, force: true });
 });
 

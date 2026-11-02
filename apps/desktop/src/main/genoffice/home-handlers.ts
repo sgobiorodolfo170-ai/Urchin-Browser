@@ -14,8 +14,9 @@
  */
 import type { IpcMain } from 'electron';
 import { app, clipboard, dialog, shell, webContents } from 'electron';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { copyFile, mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join } from 'node:path';
 import { createLogger } from '@urchin/logger';
 import { classifyFileKind } from '../files/file-kind';
 import type { GenOfficeAiPanelPrefsStore } from './host-channels';
@@ -109,12 +110,41 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
   const { ipcMain, store } = deps;
   const starredSet = (): Set<string> => new Set(store.get().starred);
 
-  /** 默认保存目录（始终跟随浏览器数据存储位置：documentsRoot = <数据目录>/documents）。
-   *   用户手动选择已移除（消除绝对路径漂移），defaultSaveDir 字段保留但不读取。 */
+  /** app-settings.json 路径（与编辑器的 configuredDefaultSaveDir 同源读取）。 */
+  const appSettingsPath = join(app.getPath('userData'), 'app-settings.json');
+
+  /** 读取 app-settings.json（小文件，同步读）。 */
+  function readAppSettings(): Record<string, unknown> {
+    try {
+      return JSON.parse(readFileSync(appSettingsPath, 'utf8')) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
+  /** 写入 app-settings.json（合并已有键，不覆盖）。 */
+  function writeAppSettings(patch: Record<string, unknown>): void {
+    try {
+      const current = readAppSettings();
+      writeFileSync(appSettingsPath, JSON.stringify({ ...current, ...patch }, null, 2));
+    } catch {
+      /* 写入失败：编辑器回落到 <Documents>/GenOffice，不影响 Home 侧 */
+    }
+  }
+
+  /**
+   * 默认保存目录：与编辑器 configuredDefaultSaveDir(app) 同源——读 app-settings.json
+   * 的 defaultSaveDir 键；未设置时回落到 documentsRoot（<数据目录>/documents）。
+   * 启动时由 index.ts 确保该键指向 documentsRoot，保证编辑器与 Home 对齐。
+   */
   async function defaultSaveDir(): Promise<string> {
-    const dir = deps.documentsRoot;
-    await mkdir(dir, { recursive: true }).catch(() => undefined);
-    return dir;
+    const settings = readAppSettings();
+    const configured =
+      typeof settings.defaultSaveDir === 'string' && isAbsolute(settings.defaultSaveDir)
+        ? settings.defaultSaveDir
+        : deps.documentsRoot;
+    await mkdir(configured, { recursive: true }).catch(() => undefined);
+    return configured;
   }
 
   async function toEntry(filePath: string): Promise<HomeEntry> {
@@ -178,6 +208,13 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
       }
       case 'toggleStar': {
         await store.toggleStar(strArg(args[0], ''));
+        return null;
+      }
+      case 'unstarPaths': {
+        const paths = Array.isArray(args[0]) ? (args[0] as string[]) : [];
+        for (const p of paths) {
+          if (store.get().starred.includes(p)) await store.toggleStar(p);
+        }
         return null;
       }
       case 'removeRecent': {
@@ -427,9 +464,22 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
       case 'getDefaultSaveDir':
         return defaultSaveDir();
       case 'pickDefaultSaveDir': {
-        // 默认保存位置已改为跟随浏览器数据存储位置（documentsRoot），不再支持手动选择。
-        // 返回当前 documentsRoot，保持 IPC 契约可用（调用方拿到正确路径，不漂移）。
-        return defaultSaveDir();
+        // 允许用户自定义默认保存位置：弹目录选择器，选中后写入 app-settings.json
+        // 的 defaultSaveDir 键（编辑器的 configuredDefaultSaveDir 读同一文件），
+        // 取消则返回当前值。默认值由 index.ts 启动时写入（= <数据目录>/documents）。
+        const current = await defaultSaveDir();
+        const result = await dialog.showOpenDialog({
+          title: '选择默认保存位置',
+          defaultPath: current,
+          properties: ['openDirectory', 'createDirectory'],
+        });
+        if (result.canceled || !result.filePaths[0]) {
+          return current;
+        }
+        const selected = result.filePaths[0];
+        writeAppSettings({ defaultSaveDir: selected });
+        log.info('default save dir changed', { from: current, to: selected });
+        return selected;
       }
       case 'getAppVersion':
         return deps.getVersion();
@@ -507,6 +557,113 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
         clipboard.writeText(strArg(args[0], ''));
         return null;
       }
+      // ── 文件搜索（Phase B：基础文件名匹配；非全文索引） ──
+      case 'searchFiles': {
+        const query = (args[0] ?? {}) as { q?: string; ext?: string; limit?: number };
+        const q = typeof query.q === 'string' ? query.q : '';
+        const ext = typeof query.ext === 'string' && query.ext !== 'all' ? query.ext : undefined;
+        const limit = Math.min(
+          Math.max(typeof query.limit === 'number' ? query.limit : 100, 1),
+          200,
+        );
+        if (!q.trim()) {
+          return { hits: [], total: 0, index: { indexed: 0, pending: 0, scanning: false } };
+        }
+        const needle = q.trim().toLowerCase();
+        const root = deps.documentsRoot;
+        const hits: HomeEntry[] = [];
+        const scan = async (dir: string, depth: number): Promise<void> => {
+          if (depth > 5 || hits.length >= limit) return;
+          try {
+            const items = await readdir(dir, { withFileTypes: true });
+            for (const item of items) {
+              if (hits.length >= limit) return;
+              const full = join(dir, item.name);
+              if (item.isDirectory()) {
+                await scan(full, depth + 1);
+              } else if (item.isFile() && isListableFile(item.name)) {
+                const nameLower = item.name.toLowerCase();
+                if (
+                  nameLower.includes(needle) &&
+                  (!ext || extname(item.name).replace(/^\./, '').toLowerCase() === ext)
+                ) {
+                  hits.push(await toEntry(full));
+                }
+              }
+            }
+          } catch {
+            /* 无权限或不存在：跳过 */
+          }
+        };
+        await scan(root, 0);
+        hits.sort((a, b) => b.mtimeMs - a.mtimeMs);
+        return {
+          hits: hits.map((h) => ({ ...h, snippet: null, needles: [needle] })),
+          total: hits.length,
+          index: { indexed: hits.length, pending: 0, scanning: false },
+        };
+      }
+      case 'rerankSearch':
+        // 重排序需要决策模型；宿主不支持，返回 null（Home 回落到本地顺序）
+        return null;
+      case 'getFileSearchSettings':
+        return {
+          rerank: false,
+          endpoint: 'none',
+          keys: {},
+          customBaseUrl: '',
+          customModel: '',
+          cloudflareAccountId: '',
+          cloudflareModel: '',
+        };
+      case 'setFileSearchSettings':
+        return {
+          rerank: false,
+          endpoint: 'none',
+          keys: {},
+          customBaseUrl: '',
+          customModel: '',
+          cloudflareAccountId: '',
+          cloudflareModel: '',
+        };
+      case 'testFileSearchRerank':
+        return { ok: false, error: 'not supported' };
+      case 'setStarredGroup':
+        // 星标分组：宿主暂不支持分组，静默成功
+        return { ok: true };
+      // ── 设置面板其余项（返回合理默认值，使面板不空/loading） ──
+      case 'getRestoreLastSession':
+        return false; // Urchin 有自己的会话恢复
+      case 'setRestoreLastSession':
+        return false;
+      case 'getAutoUpdateCheck':
+        return true;
+      case 'setAutoUpdateCheck':
+        return true;
+      case 'getTabSleepEnabled':
+        return true;
+      case 'setTabSleepEnabled':
+        return true;
+      case 'getAuthorName':
+        return ''; // 空 = 用 OS 用户名
+      case 'setAuthorName':
+        return '';
+      case 'getDocumentTheme':
+        return 'light';
+      case 'setDocumentTheme':
+        return 'light';
+      case 'getDefaultAppStatus':
+        return { registered: false };
+      case 'setDefaultApp':
+        return { ok: false, error: 'not supported' };
+      case 'getUpdateState':
+        return null;
+      case 'openUpdateDialog':
+        return undefined;
+      case 'openHelp':
+        return undefined;
+      case 'getCustomModels':
+        return { models: [], defaultModel: '' };
       default:
         log.warn('unhandled genoffice home method', { method });
         return null;

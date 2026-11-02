@@ -5,6 +5,7 @@
 /// safely throws — the save must fail closed rather than corrupt references.
 
 import type { WorkbookStyleEdit } from '../shared/edit-schemas'
+import { MAX_GRID_COLUMNS, MAX_GRID_ROWS } from '../shared/grid-bounds'
 
 export type StructuralOp =
   | {
@@ -52,6 +53,13 @@ export type StructuralOp =
       readonly level: number
       readonly collapsed?: boolean
     }
+  /// sheetPr/outlinePr summary placement; true is the schema default and
+  /// drops the attribute.
+  | {
+      readonly kind: 'set-outline-pr'
+      readonly summaryBelow: boolean
+      readonly summaryRight: boolean
+    }
 
 export type AxisAttributeOp = Extract<StructuralOp, { start: number }>
 
@@ -73,6 +81,88 @@ export type RowColumnOp = Extract<StructuralOp, { index: number }>
 
 export class StructuralShiftError extends Error {}
 
+export function inferWorksheetAddresses(worksheetXml: string): string {
+  const sheetDataOpen = /<sheetData\b[^>]*>/.exec(worksheetXml)
+  const closeIndex = worksheetXml.lastIndexOf('</sheetData>')
+  if (!sheetDataOpen || closeIndex < sheetDataOpen.index + sheetDataOpen[0].length) {
+    return worksheetXml
+  }
+
+  const bodyStart = sheetDataOpen.index + sheetDataOpen[0].length
+  const body = worksheetXml.slice(bodyStart, closeIndex)
+  let currentRow = 0
+  let firstRow = true
+  let changed = false
+  const normalizedBody = body.replace(/<row\b[^>]*?(?:\/>|>[\s\S]*?<\/row>)/g, (rowXml) => {
+    const rowOpenEnd = rowXml.indexOf('>')
+    if (rowOpenEnd === -1) return rowXml
+    // The open tag keeps its closing `>` (or `/>`) so a self-closing row is
+    // re-emitted as-is instead of gaining a stray `</row>`.
+    const rowOpen = rowXml.slice(0, rowOpenEnd + 1)
+    const selfClosing = rowOpen.endsWith('/>')
+    const rowBody = selfClosing ? '' : rowXml.slice(rowOpenEnd + 1, rowXml.length - '</row>'.length)
+    const explicitRow = readPositiveInteger(readTagAttribute(rowOpen, 'r'))
+    const rowNumber = explicitRow ?? (firstRow ? 1 : currentRow + 1)
+    firstRow = false
+    currentRow = rowNumber
+    let nextColumn = 0
+    const rowAttributeMissing = readTagAttribute(rowOpen, 'r') === undefined
+    let rowChanged = rowAttributeMissing
+    const normalizedCells = rowBody.replace(/<c\b[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g, (cellXml) => {
+      const cellOpenEnd = cellXml.indexOf('>')
+      if (cellOpenEnd === -1) return cellXml
+      const cellOpen = cellXml.slice(0, cellOpenEnd + 1)
+      const cellSelfClosing = cellOpen.endsWith('/>')
+      const cellBody = cellSelfClosing
+        ? ''
+        : cellXml.slice(cellOpenEnd + 1, cellXml.length - '</c>'.length)
+      const explicitAddress = readTagAttribute(cellOpen, 'r')
+      const parsed = explicitAddress === undefined ? null : parseA1(explicitAddress)
+      nextColumn = parsed === null ? nextColumn + 1 : parsed.column + 1
+      if (explicitAddress !== undefined) return cellXml
+      rowChanged = true
+      const address = `${columnToLetters(nextColumn - 1)}${rowNumber}`
+      const normalizedOpen = addTagAttribute(cellOpen, 'r', address)
+      return cellSelfClosing ? normalizedOpen : `${normalizedOpen}${cellBody}</c>`
+    })
+    const normalizedOpen = rowAttributeMissing
+      ? addTagAttribute(rowOpen, 'r', String(rowNumber))
+      : rowOpen
+    changed ||= rowChanged
+    return selfClosing
+      ? `${normalizedOpen}${normalizedCells}`
+      : `${normalizedOpen}${normalizedCells}</row>`
+  })
+
+  return changed
+    ? worksheetXml.slice(0, bodyStart) + normalizedBody + worksheetXml.slice(closeIndex)
+    : worksheetXml
+}
+
+function readTagAttribute(tag: string, name: string): string | undefined {
+  return new RegExp(`(?:^|\\s)${name}="([^"]*)"`).exec(tag)?.[1]
+}
+
+function setTagAttribute(tag: string, name: string, value: string): string {
+  const pattern = new RegExp(`((?:^|\\s)${name}=")[^"]*(")`)
+  if (!pattern.test(tag)) return addTagAttribute(tag, name, value)
+  return tag.replace(
+    pattern,
+    (_match, prefix: string, suffix: string) => `${prefix}${value}${suffix}`,
+  )
+}
+
+function addTagAttribute(tag: string, name: string, value: string): string {
+  const nameEnd = /^<[^ \t\r\n/>]+/.exec(tag)?.[0].length ?? 1
+  return `${tag.slice(0, nameEnd)} ${name}="${value}"${tag.slice(nameEnd)}`
+}
+
+function readPositiveInteger(value: string | undefined): number | undefined {
+  if (value === undefined || !/^[0-9]+$/.test(value)) return undefined
+  const number = Number(value)
+  return number > 0 && Number.isSafeInteger(number) ? number : undefined
+}
+
 export function applyStructuralOps(
   worksheetXml: string,
   ops: readonly StructuralOp[],
@@ -82,7 +172,7 @@ export function applyStructuralOps(
   /// whenever such ops exist).
   resolveColStyle?: (baseXfIndex: number, delta: WorkbookStyleEdit) => number,
 ): string {
-  let xml = worksheetXml
+  let xml = ops.length === 0 ? worksheetXml : inferWorksheetAddresses(worksheetXml)
   let outlineTouched = false
   for (const op of ops) {
     if ('start' in op) {
@@ -93,6 +183,10 @@ export function applyStructuralOps(
         op.kind === 'set-rows-outline'
           ? applyRowAttributeOp(xml, op)
           : applyColAttributeOp(xml, op, resolveColStyle)
+      continue
+    }
+    if ('summaryBelow' in op) {
+      xml = applyOutlinePr(xml, op)
       continue
     }
     if (!('index' in op)) {
@@ -171,6 +265,52 @@ function shiftVmlAnchorValues(values: readonly number[], ops: readonly RowColumn
     }
   }
   return next
+}
+
+const SHEET_PR_PATTERN = /<sheetPr\b[^>]*\/>|<sheetPr\b[^>]*>[\s\S]*?<\/sheetPr>/
+const OUTLINE_PR_PATTERN = /<outlinePr\b[^>]*\/>|<outlinePr\b[^>]*>[\s\S]*?<\/outlinePr>/
+
+export function applyOutlinePr(
+  xml: string,
+  op: Extract<StructuralOp, { summaryBelow: boolean }>,
+): string {
+  const attributes =
+    (op.summaryBelow ? '' : ' summaryBelow="0"') + (op.summaryRight ? '' : ' summaryRight="0"')
+  const existing = SHEET_PR_PATTERN.exec(xml)
+  const sheetPr = existing?.[0]
+  const current = sheetPr === undefined ? undefined : OUTLINE_PR_PATTERN.exec(sheetPr)?.[0]
+  // Other outlinePr attributes (applyStyles, showOutlineSymbols) stay verbatim.
+  const kept = (current ?? '')
+    .replace(/^<outlinePr\b|\/?>$|<\/outlinePr>$/g, '')
+    .replace(/\s+summary(?:Below|Right)="[^"]*"/g, '')
+    .replace(/>.*$/s, '')
+    .trim()
+  const element =
+    kept === '' && attributes === '' ? '' : `<outlinePr${kept ? ` ${kept}` : ''}${attributes}/>`
+  if (sheetPr === undefined) {
+    if (element === '') return xml
+    return xml.replace(
+      /(<worksheet\b[^>]*>)/,
+      (_full, open: string) => `${open}<sheetPr>${element}</sheetPr>`,
+    )
+  }
+  let next: string
+  if (current !== undefined) {
+    next = sheetPr.replace(OUTLINE_PR_PATTERN, () => element)
+  } else if (element === '') {
+    next = sheetPr
+  } else if (sheetPr.endsWith('/>')) {
+    next = `${sheetPr.slice(0, -2)}>${element}</sheetPr>`
+  } else {
+    // Schema order: tabColor, outlinePr, pageSetUpPr.
+    const pageSetUp = /<pageSetUpPr\b/.exec(sheetPr)
+    next = pageSetUp
+      ? `${sheetPr.slice(0, pageSetUp.index)}${element}${sheetPr.slice(pageSetUp.index)}`
+      : sheetPr.replace(/<\/sheetPr>$/, `${element}</sheetPr>`)
+  }
+  const emptied = /^<sheetPr\b([^>]*)>\s*<\/sheetPr>$/.exec(next)
+  if (emptied && emptied[1]!.trim() === '') next = ''
+  return xml.replace(SHEET_PR_PATTERN, () => next)
 }
 
 /// Excel sizes the outline gutter from sheetFormatPr's outlineLevelRow/Col;
@@ -253,12 +393,19 @@ function formatSize(size: number): string {
 function applyRowAttributeOp(xml: string, op: AxisAttributeOp): string {
   // col-only op: never dispatched here, but narrow the union for the checks below
   if ('style' in op) return xml
+  // start/end are 0-based. The op schema caps `row`, but a direct caller need
+  // not, and an uncapped span materialises <row r="5000000">. Clamp the tail;
+  // a span starting outside the grid is dropped rather than written onto the
+  // last row in its place.
+  const start = op.start
+  const end = Math.min(op.end, MAX_GRID_ROWS - 1)
+  if (start > end) return xml
   const seen = new Set<number>()
   let result = xml.replace(/<row\b([^>]*?)(\/>|>)/g, (full, attributes: string, close: string) => {
     const rowNumber = /(?:^|\s)r="([0-9]+)"/.exec(attributes)?.[1]
     if (rowNumber === undefined) return full
     const rowIndex = Number(rowNumber) - 1
-    if (rowIndex < op.start || rowIndex > op.end) return full
+    if (rowIndex < start || rowIndex > end) return full
     seen.add(rowIndex)
     let patched = attributes
     if ('size' in op) {
@@ -291,7 +438,7 @@ function applyRowAttributeOp(xml: string, op: AxisAttributeOp): string {
         ? (op.level > 0 ? ` outlineLevel="${op.level}"` : '') +
           (op.collapsed ? ' collapsed="1"' : '')
         : ' hidden="1"'
-  for (let rowIndex = op.start; rowIndex <= op.end; rowIndex += 1) {
+  for (let rowIndex = start; rowIndex <= end; rowIndex += 1) {
     if (seen.has(rowIndex)) continue
     result = insertEmptyRow(result, rowIndex + 1, newAttributes)
   }
@@ -460,15 +607,27 @@ export function shiftCrossSheetFormulas(
   for (const op of rowColumnOps(ops)) {
     const axis: Axis = axisOf(op)
     const shift = toShift(op)
+    const rewrite = (body: string): string =>
+      escapeXmlText(shiftFormulaText(decodeEntities(body), editedSheetName, shift, axis, true))
     // The attribute part must not end with '/': a self-closing shared
     // formula (`<f t="shared" si="0"/>`) is not an opening tag, and matching
     // it would swallow real XML up to the next `</f>` as a "formula body".
     xml = xml.replace(
       /<f\b([^>]*[^/>])?>([\s\S]*?)<\/f>/g,
       (_full, attributes: string | undefined, body: string) =>
-        `<f${attributes ?? ''}>${escapeXmlText(
-          shiftFormulaText(decodeEntities(body), editedSheetName, shift, axis, true),
-        )}</f>`,
+        `<f${attributes ?? ''}>${rewrite(body)}</f>`,
+    )
+    xml = xml.replace(
+      /<(formula[12]?)>([\s\S]*?)<\/\1>/g,
+      (_full, tag: string, body: string) => `<${tag}>${rewrite(body)}</${tag}>`,
+    )
+    // Attribute value: `"` must stay `&quot;` (a quoted sheet name may carry one).
+    xml = xml.replace(
+      /(<hyperlink\b[^>]*?\blocation=")([^"]+)(")/g,
+      (_full, prefix: string, location: string, suffix: string) =>
+        `${prefix}${escapeXmlAttribute(
+          shiftFormulaText(decodeEntities(location), editedSheetName, shift, axis, true),
+        )}${suffix}`,
     )
   }
   return xml
@@ -641,7 +800,7 @@ export function shiftTablePart(
   let xml = tableXml
   const records: TableColumnInsertion[] = []
   for (const op of ops) {
-    if ('start' in op) continue
+    if ('start' in op || 'summaryBelow' in op) continue
     const table = parseTablePart(xml)
     if ('range' in op) {
       if (op.kind === 'merge-cells' && areasOverlap(op.range, table)) {
@@ -1234,14 +1393,22 @@ function transformSheetColumns(xml: string, shift: Shift): string {
 }
 
 function transformColDefinitions(xml: string, shift: Shift): string {
-  return xml.replace(
-    /<col\b([^>]*?)\bmin="([0-9]+)"([^>]*?)\bmax="([0-9]+)"([^>]*?)\/>/g,
-    (_full, b1: string, min: string, b2: string, max: string, b3: string) => {
-      const moved = moveRange(Number(min) - 1, Number(max) - 1, shift)
-      if (moved === null) return ''
-      return `<col${b1}min="${moved.start + 1}"${b2}max="${moved.end + 1}"${b3}/>`
-    },
-  )
+  // Attribute order carries no meaning in XML, so read min/max by name rather
+  // than assuming min comes first: the old pattern only matched the schema
+  // order, and a <col> written max-before-min was left unshifted, stranding
+  // its width on the wrong columns after an insert or delete.
+  return xml.replace(/<col\b([^>]*?)\/>/g, (full, attributes: string) => {
+    const min = readPositiveInteger(readTagAttribute(attributes, 'min'))
+    const max = readPositiveInteger(readTagAttribute(attributes, 'max'))
+    if (min === undefined || max === undefined) return full
+    const moved = moveRange(min - 1, max - 1, shift)
+    if (moved === null) return ''
+    return setTagAttribute(
+      setTagAttribute(full, 'min', String(moved.start + 1)),
+      'max',
+      String(moved.end + 1),
+    )
+  })
 }
 
 /// Rewrites `<f>` bodies plus shared/array formula `ref` attributes, and the
@@ -1301,18 +1468,22 @@ function transformRangedFeatures(xml: string, shift: Shift, axis: Axis): string 
       )
     },
   )
-  // dimension / autoFilter shift in place (kept even when degenerate).
+  // dimension shifts in place (kept even when degenerate).
   result = result.replace(
-    /(<(?:dimension|autoFilter)\b[^>]*?\bref=")([^"]+)(")/g,
+    /(<dimension\b[^>]*?\bref=")([^"]+)(")/g,
     (full, prefix: string, ref: string, suffix: string) => {
       const moved = moveRefRange(ref, shift, axis)
       return moved === null ? full : `${prefix}${moved}${suffix}`
     },
   )
+  result = result.replace(
+    /<autoFilter\b[^>]*\/>|<autoFilter\b[^>]*>[\s\S]*?<\/autoFilter>/g,
+    (element) => shiftAutoFilterCriteria(element, shift, axis),
+  )
   for (const tag of ['hyperlink', 'dataValidation', 'conditionalFormatting']) {
     const attribute = tag === 'hyperlink' ? 'ref' : 'sqref'
     result = result.replace(
-      new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?</${tag}>|<${tag}\\b[^>]*/>`, 'g'),
+      new RegExp(`<${tag}\\b[^>]*/>|<${tag}\\b[^>]*>[\\s\\S]*?</${tag}>`, 'g'),
       (element) => {
         const refMatch = new RegExp(`\\b${attribute}="([^"]+)"`).exec(element)
         if (!refMatch?.[1]) return element
@@ -1336,6 +1507,47 @@ function transformRangedFeatures(xml: string, shift: Shift, axis: Axis): string 
     },
   )
   return result
+}
+
+function shiftAutoFilterCriteria(element: string, shift: Shift, axis: Axis): string {
+  const ref = /\bref="([^"]+)"/.exec(element)?.[1]
+  if (ref === undefined) return element
+  const movedRef = moveRefRange(ref, shift, axis)
+  if (movedRef === null) return element
+  let result = element.replace(/\bref="[^"]+"/, () => `ref="${movedRef}"`)
+  if (result.endsWith('/>')) return result
+
+  const from = refFirstColumn(ref)
+  const to = refFirstColumn(movedRef)
+  if (from === null || to === null) return result
+  result = result.replace(
+    /<filterColumn\b[^>]*?\bcolId="([0-9]+)"[^>]*?(?:\/>|>[\s\S]*?<\/filterColumn>)/g,
+    (full, colId: string) => {
+      if (axis !== 'column') return full
+      const column = movePosition(from + Number(colId), shift)
+      if (column === null) return ''
+      return full.replace(/\bcolId="[0-9]+"/, () => `colId="${column - to}"`)
+    },
+  )
+  result = result.replace(
+    /<sortCondition\b[^>]*?\bref="([^"]+)"[^>]*?\/>/g,
+    (full, conditionRef: string) => {
+      const moved = moveRefRange(conditionRef, shift, axis)
+      return moved === null ? '' : full.replace(/\bref="[^"]+"/, () => `ref="${moved}"`)
+    },
+  )
+  result = result.replace(
+    /(<sortState\b[^>]*?\bref=")([^"]+)(")/g,
+    (full, prefix: string, stateRef: string, suffix: string) => {
+      const moved = moveRefRange(stateRef, shift, axis)
+      return moved === null ? full : `${prefix}${moved}${suffix}`
+    },
+  )
+  return result.replace(/<sortState\b[^>]*>\s*<\/sortState>/g, '')
+}
+
+function refFirstColumn(ref: string): number | null {
+  return parseA1(ref.split(':')[0] ?? '')?.column ?? null
 }
 
 function assertSwapKeepsAnchorIntact(ref: string, swap: BlockSwap['swap']): void {
@@ -1514,9 +1726,6 @@ function shiftReferenceToken(token: string, shift: Shift, axis: Axis): string | 
   )
 }
 
-const SHARED_MAX_ROW = 1_048_576
-const SHARED_MAX_COLUMN = 16_384
-
 /// Shared-formula expansion (OOXML 18.3.1.40): the master's relative
 /// references shift by the follower's (row, column) offset; `$`-anchored
 /// components stay put. Null when a shifted reference leaves the sheet.
@@ -1555,12 +1764,12 @@ function translateSharedToken(token: string, rowDelta: number, columnDelta: numb
       const column = translateOrdinal(
         lettersToColumn(cell[2] ?? 'A'),
         cell[1] === '$' ? 0 : columnDelta,
-        SHARED_MAX_COLUMN - 1,
+        MAX_GRID_COLUMNS - 1,
       )
       const row = translateOrdinal(
         Number(cell[4]) - 1,
         cell[3] === '$' ? 0 : rowDelta,
-        SHARED_MAX_ROW - 1,
+        MAX_GRID_ROWS - 1,
       )
       if (column === null || row === null) return null
       return `${cell[1]}${columnToLetters(column)}${cell[3]}${row + 1}`
@@ -1570,7 +1779,7 @@ function translateSharedToken(token: string, rowDelta: number, columnDelta: numb
       const column = translateOrdinal(
         lettersToColumn(wholeColumn[2] ?? 'A'),
         wholeColumn[1] === '$' ? 0 : columnDelta,
-        SHARED_MAX_COLUMN - 1,
+        MAX_GRID_COLUMNS - 1,
       )
       if (column === null) return null
       return `${wholeColumn[1]}${columnToLetters(column)}`
@@ -1580,7 +1789,7 @@ function translateSharedToken(token: string, rowDelta: number, columnDelta: numb
       const row = translateOrdinal(
         Number(wholeRow[2]) - 1,
         wholeRow[1] === '$' ? 0 : rowDelta,
-        SHARED_MAX_ROW - 1,
+        MAX_GRID_ROWS - 1,
       )
       if (row === null) return null
       return `${wholeRow[1]}${row + 1}`
@@ -1600,7 +1809,7 @@ export function qualifierMatches(qualifier: string, sheetName: string): boolean 
   const unquoted = qualifier.startsWith("'")
     ? qualifier.slice(1, -1).replaceAll("''", "'")
     : qualifier
-  return unquoted === sheetName
+  return unquoted.toLowerCase() === sheetName.toLowerCase()
 }
 
 function parseA1(ref: string): { row: number; column: number } | null {
@@ -1639,4 +1848,8 @@ function decodeEntities(input: string): string {
 
 function escapeXmlText(input: string): string {
   return input.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+}
+
+function escapeXmlAttribute(input: string): string {
+  return escapeXmlText(input).replaceAll('"', '&quot;')
 }

@@ -1,14 +1,34 @@
-import { aiPanelWidthAtPointer, AiPanelSideButton } from '@genoffice/ui'
+import {
+  aiPanelWidthAtPointer,
+  AiPanelSideButton,
+  AiModelPicker,
+  type AiModelPickerBridge,
+  AiSkillChips,
+  AiSkillsMenu,
+} from '@genoffice/ui'
 import { useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react'
-import { AgentLoop, composeSkills, streamText } from '@genoffice/agent-core'
+import {
+  AgentLoop,
+  composeSkills,
+  streamText,
+  withAttachedSkills,
+  type MindMapTreeNode,
+} from '@genoffice/agent-core'
 import { imageGenerationAvailable, type AiSettings } from '@genoffice/ai-provider/browser'
 import {
   AiComposer,
+  AiQueueStrip,
+  AI_QUEUE_LABELS,
   AiScopeQuote,
   AiTypingIndicator,
+  AiUsageChip,
+  addTokenUsage,
+  createFileNav,
   Markdown,
+  useChatRunQueue,
   type AiScopeQuoteData,
+  type AiTokenUsageView,
 } from '@genoffice/ui'
 import type { Editor } from '@tiptap/core'
 import { aiLangDirective, t as tGlobal, useI18n } from '../i18n/locale'
@@ -17,7 +37,10 @@ import sendEnterOff from '../assets/send-enter-off.png'
 import sendStop from '../assets/send-stop.png'
 import { clearAiHighlights } from '../editor/aiHighlight'
 import { setInactiveSelectionShown } from '../editor/inactiveSelection'
+import { uiOp } from '../editor/ops'
 import { createMarkdownSkill, MARKDOWN_RULES } from './markdown-skill'
+import { MindMapCard } from './MindMapCard'
+import { mindMapToMermaid } from './mind-map'
 import {
   buildDocWriterRequest,
   countMarkdownBlocks,
@@ -88,8 +111,15 @@ interface ChatEntry {
   /** the run failed and this user message was rolled back out of the model context */
   undelivered?: boolean
   tools?: ToolActivity[]
+  /** interactive mind map from generate_mindmap's side-channel display (session-only;
+   * the persisted transcript keeps the tool call, so a reopened file can regenerate) */
+  mindmap?: MindMapTreeNode
   /** the selection this user message targeted, frozen at send */
   scope?: AiScopeQuoteData
+  /** skills the user attached to this message from the composer menu */
+  skills?: string[]
+  /** tokens the provider billed for this reply, summed across its turns (absent when unreported) */
+  usage?: AiTokenUsageView
 }
 
 /** longest selection excerpt echoed on a user bubble */
@@ -130,6 +160,14 @@ export interface MarkdownAiDeps {
   onRunDone(mutated: boolean): void
 }
 
+const MODEL_BRIDGE: AiModelPickerBridge = {
+  getSettings: () => window.markdownApi.getAiSettings(),
+  setSettings: (settings) => window.markdownApi.setAiSettings(settings),
+  onSettingsChanged: (handler) => window.markdownApi.onAiSettingsChanged(handler),
+  gskLoggedIn: () => window.markdownApi.aiGskStatus().then((s) => !!s?.loggedIn),
+  openModelSettings: () => window.markdownApi.openAiModelSettings().catch(() => {}),
+}
+
 export function AiPanel({
   deps,
   filePath,
@@ -155,6 +193,9 @@ export function AiPanel({
   onQueueConsume?: (qids: string[]) => void
 }): ReactElement {
   const { lang, t } = useI18n()
+  const [attachedSkills, setAttachedSkills] = useState<string[]>([])
+  const attachedSkillsRef = useRef(attachedSkills)
+  attachedSkillsRef.current = attachedSkills
   const [chat, setChat] = useState<ChatEntry[]>([])
   /** a streamed write stopped early: the draft stays in the document until the user keeps or discards it */
   const [activePartial, setActivePartial] = useState<{ blocks: number } | null>(null)
@@ -163,6 +204,16 @@ export function AiPanel({
   const writerEpochRef = useRef(0)
   const [prompt, setPrompt] = useState('')
   const [busy, setBusy] = useState(false)
+  /** messages queued while a reply runs; the pump re-runs them through send on settle */
+  const msgQueue = useChatRunQueue<void>({
+    busy,
+    submit: (text) => {
+      const loop = loopRef.current
+      if (!loop || loop.busy) return false
+      send(text, text, null)
+      return true
+    },
+  })
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const [snapshots, setSnapshots] = useState<Snapshot[]>([])
   // bumped on selection/doc changes so the scope chip & queue rows stay fresh
@@ -220,6 +271,10 @@ export function AiPanel({
   const runMutatedRef = useRef(false)
   /** tool activity of the whole run, for transcript persistence */
   const runToolsRef = useRef<ToolActivity[]>([])
+  /** tokens billed so far in the in-flight run (summed across turns) */
+  const runUsageRef = useRef<AiTokenUsageView | undefined>(undefined)
+  /** tokens billed across the panel's session (the composer chip) */
+  const [sessionUsage, setSessionUsage] = useState<AiTokenUsageView | undefined>(undefined)
   const chatIdsRef = useRef<{ projectId: string; chatId: string } | null>(null)
   /** messages sent before resolveChat returned, flushed once the chat id is known */
   const pendingPersistRef = useRef<
@@ -398,6 +453,9 @@ export function AiPanel({
               [...prev, { label, time, doc: snapshotBefore }].slice(-MAX_SNAPSHOTS),
             )
           }
+          // mind maps ride the UI-only display side channel onto the message
+          const display = execution.display
+          const mindmap = display?.kind === 'mindmap' ? display.tree : undefined
           const activity: ToolActivity = {
             name: call.name,
             summary: execution.summary,
@@ -409,12 +467,17 @@ export function AiPanel({
             // Swap out the running placeholder pushed by onToolStart (parse-fail calls have none)
             const tools = [...(last.tools ?? [])]
             if (tools.at(-1)?.running) tools.pop()
-            return { tools: [...tools, activity] }
+            return { tools: [...tools, activity], ...(mindmap ? { mindmap } : {}) }
           })
         },
         onTurnEnd: () => {
           patchLast({ streaming: false })
           setChat((prev) => [...prev, { role: 'assistant', text: '', streaming: true }])
+        },
+        onUsage: (usage) => {
+          runUsageRef.current = addTokenUsage(runUsageRef.current, usage)
+          setSessionUsage((prev) => addTokenUsage(prev, usage))
+          patchLast({ usage: runUsageRef.current })
         },
         onDone: ({ text, cancelled, turnLimit, truncated }) => {
           const base = turnLimit
@@ -548,15 +611,51 @@ export function AiPanel({
   }
 
   /** retryScope: null = a retry that had no scope; undefined = capture the live selection */
-  const send = (text: string, displayText?: string, retryScope?: AiScopeQuoteData | null): void => {
+
+  /** the attached skills' full text in front of the request; a skill that vanished is skipped */
+  const withSkillBodies = async (instruction: string, names: readonly string[]) => {
+    if (names.length === 0) return instruction
+    const bodies = await Promise.all(
+      names.map(async (name) => {
+        try {
+          return { name, body: await window.markdownApi.skillText(name) }
+        } catch {
+          return null
+        }
+      }),
+    )
+    return withAttachedSkills(
+      instruction,
+      bodies.filter((b): b is { name: string; body: string } => b !== null),
+    )
+  }
+
+  const listSkillsForMenu = async () =>
+    (await window.markdownApi.skillsList()).map(({ name, description }) => ({ name, description }))
+  const toggleSkill = (name: string) =>
+    setAttachedSkills((prev) =>
+      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name],
+    )
+
+  const send = (
+    text: string,
+    displayText?: string,
+    retryScope?: AiScopeQuoteData | null,
+    /** only the composer's own send takes the attached skills along */
+    attachSkills = false,
+  ): void => {
     const instruction = text.trim()
     const loop = loopRef.current
     if (!instruction || !loop || loop.busy) return
+    // skills ride with this one message only; a queue batch or retry carries none
+    const sentSkills = attachSkills ? attachedSkillsRef.current : []
+    if (sentSkills.length > 0) setAttachedSkills([])
     stickToBottomRef.current = true
     runInstructionRef.current = instruction
     runDisplayRef.current = displayText ?? instruction
     runMutatedRef.current = false
     runToolsRef.current = []
+    runUsageRef.current = undefined
     // a queue batch carries its own display text: no selection quote
     const scope =
       retryScope !== undefined
@@ -569,7 +668,12 @@ export function AiPanel({
     if (scope) setInactiveSelectionShown(depsRef.current.getEditor(), true)
     setChat((prev) => [
       ...prev,
-      { role: 'user', text: displayText ?? instruction, ...(scope ? { scope } : {}) },
+      {
+        role: 'user',
+        text: displayText ?? instruction,
+        ...(scope ? { scope } : {}),
+        ...(sentSkills.length > 0 ? { skills: sentSkills } : {}),
+      },
       { role: 'assistant', text: '', streaming: true },
     ])
     setPrompt('')
@@ -580,8 +684,9 @@ export function AiPanel({
     void (async () => {
       try {
         settingsRef.current = await window.markdownApi.getAiSettings()
+        const withSkills = await withSkillBodies(instruction, sentSkills)
         if (!mountedRef.current) return
-        await loop.run(instruction)
+        await loop.run(withSkills)
       } catch (err) {
         if (!mountedRef.current) return
         patchLast({
@@ -594,7 +699,18 @@ export function AiPanel({
     })()
   }
 
-  const stop = (): void => loopRef.current?.cancel()
+  const stop = (): void => {
+    msgQueue.hold()
+    loopRef.current?.cancel()
+  }
+
+  /** Enter while a reply runs: the draft joins the queue above the composer */
+  const enqueueDraft = () => {
+    const text = prompt.trim()
+    if (!text) return
+    msgQueue.enqueue(text, undefined)
+    setPrompt('')
+  }
 
   const retry = (): void =>
     send(runInstructionRef.current, runDisplayRef.current, lastScopeRef.current ?? null)
@@ -664,6 +780,10 @@ export function AiPanel({
       if (index !== null && current) navigateToBlock(current, index)
     },
   }
+  // [name](filenav:///abs/path) citations open the cited file in its own app
+  const fileNav = createFileNav((path) => {
+    void window.markdownApi.openSourcePath(path)
+  })
 
   /** submit every still-anchored queued edit as one batch run */
   const sendQueue = (): void => {
@@ -762,7 +882,7 @@ export function AiPanel({
         onPointerDown={startResize}
         role="separator"
         aria-orientation="vertical"
-        aria-label="Genspark"
+        aria-label={t('aiOpenAssistant')}
       />
       <header className="ai-panel-header">
         <span className="ai-panel-title">
@@ -780,9 +900,11 @@ export function AiPanel({
               onClick={() => {
                 stop()
                 abandonWriter()
+                msgQueue.clear()
                 loopRef.current?.reset()
                 setBusy(false)
                 setChat([])
+                setAttachedSkills([])
               }}
               data-tip={t('aiNewChat')}
               aria-label={t('aiNewChat')}
@@ -825,6 +947,15 @@ export function AiPanel({
               >
                 {t('aiQuickPolish')}
               </button>
+              <button
+                className="ai-starter"
+                onClick={() => {
+                  setPrompt(t('aiQuickMindMapPrompt'))
+                  inputRef.current?.focus()
+                }}
+              >
+                {t('aiQuickMindMap')}
+              </button>
             </div>
           </div>
         )}
@@ -833,6 +964,7 @@ export function AiPanel({
             return (
               <div key={i} className="ai-msg ai-msg-user">
                 {entry.scope && <AiScopeQuote scope={entry.scope} />}
+                {entry.skills && <AiSkillChips lang={lang} names={entry.skills} />}
                 <span dir="auto">{entry.text}</span>
                 {entry.undelivered && (
                   <div className="ai-msg-undelivered">
@@ -870,11 +1002,38 @@ export function AiPanel({
               ) : (
                 entry.text && (
                   <div dir="auto">
-                    <Markdown text={entry.text} nav={docNav} />
+                    <Markdown text={entry.text} navs={[docNav, fileNav]} />
                   </div>
                 )
               )}
               {hasTools && <ToolChipList tools={entry.tools!} />}
+              {entry.mindmap && (
+                <MindMapCard
+                  tree={entry.mindmap}
+                  onAsk={(label) => {
+                    setPrompt(t('aiMindMapAskPrompt', { label }))
+                    inputRef.current?.focus()
+                  }}
+                  onJumpBlock={(index) => {
+                    const current = depsRef.current.getEditor()
+                    if (current) navigateToBlock(current, index)
+                  }}
+                  onInsert={() => {
+                    const current = depsRef.current.getEditor()
+                    if (!current || !entry.mindmap) return
+                    uiOp(current, {
+                      op: 'insertContent',
+                      after: current.state.doc.childCount - 1,
+                      markdown: ['```mermaid', mindMapToMermaid(entry.mindmap), '```'].join('\n'),
+                    })
+                  }}
+                />
+              )}
+              {entry.usage && (
+                <div className="ai-message-usage">
+                  <AiUsageChip usage={entry.usage} lang={lang} />
+                </div>
+              )}
               {showToolbar && (
                 <div className="ai-msg-toolbar">
                   <button
@@ -991,43 +1150,64 @@ export function AiPanel({
           />
         )}
         <AiComposer
+          queueStrip={
+            <AiQueueStrip
+              items={msgQueue.queued}
+              labels={AI_QUEUE_LABELS[lang]}
+              onUpdate={msgQueue.update}
+              onRemove={msgQueue.remove}
+              onClear={msgQueue.clear}
+              paused={msgQueue.paused}
+              onTogglePause={msgQueue.togglePaused}
+              onMove={msgQueue.move}
+            />
+          }
+          onQueue={enqueueDraft}
+          queuePlaceholder={AI_QUEUE_LABELS[lang].queuePlaceholder}
           value={prompt}
           busy={busy}
           header={
-            hasScopeSelection && (
-              <div className="ai-scope-row">
-                <span className="ai-scope-hint">
-                  <button
-                    className="ai-scope-label"
-                    onClick={() => setScopePreviewOpen((v) => !v)}
-                    aria-expanded={scopePreviewOpen}
-                    data-tip={t('aiScopeSelectionTip')}
-                  >
-                    {t('aiScopeSelection', { words: countWords(selectionText) })}
-                  </button>
-                  <button
-                    className="ai-scope-clear"
-                    onClick={clearScopeSelection}
-                    data-tip={t('aiScopeClearTitle')}
-                    aria-label={t('aiScopeClearTitle')}
-                  >
-                    <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden>
-                      <path
-                        d="M4 4l8 8M12 4l-8 8"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
-                </span>
-                {scopePreviewOpen && (
-                  <div className="ai-scope-preview">
-                    {selectionText.length > 400 ? `${selectionText.slice(0, 400)}…` : selectionText}
+            (hasScopeSelection || attachedSkills.length > 0) && (
+              <>
+                <AiSkillChips lang={lang} names={attachedSkills} onRemove={toggleSkill} />
+                {hasScopeSelection && (
+                  <div className="ai-scope-row">
+                    <span className="ai-scope-hint">
+                      <button
+                        className="ai-scope-label"
+                        onClick={() => setScopePreviewOpen((v) => !v)}
+                        aria-expanded={scopePreviewOpen}
+                        data-tip={t('aiScopeSelectionTip')}
+                      >
+                        {t('aiScopeSelection', { words: countWords(selectionText) })}
+                      </button>
+                      <button
+                        className="ai-scope-clear"
+                        onClick={clearScopeSelection}
+                        data-tip={t('aiScopeClearTitle')}
+                        aria-label={t('aiScopeClearTitle')}
+                      >
+                        <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden>
+                          <path
+                            d="M4 4l8 8M12 4l-8 8"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </button>
+                    </span>
+                    {scopePreviewOpen && (
+                      <div className="ai-scope-preview">
+                        {selectionText.length > 400
+                          ? `${selectionText.slice(0, 400)}…`
+                          : selectionText}
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
+              </>
             )
           }
           placeholder={t('aiComposerPlaceholder')}
@@ -1036,12 +1216,25 @@ export function AiPanel({
           sendLabel={t('aiSend')}
           stopLabel={t('aiStop')}
           iconOnly
+          footerStart={
+            <>
+              <AiModelPicker bridge={MODEL_BRIDGE} lang={lang} />
+              {sessionUsage && <AiUsageChip usage={sessionUsage} session lang={lang} />}
+              <AiSkillsMenu
+                lang={lang}
+                listSkills={listSkillsForMenu}
+                selected={attachedSkills}
+                onToggle={toggleSkill}
+                onManage={() => void window.markdownApi.openSkillsSettings?.()}
+              />
+            </>
+          }
           sendIconEnabled={<img src={sendEnterOn} alt="" aria-hidden />}
           sendIconDisabled={<img src={sendEnterOff} alt="" aria-hidden />}
           stopIcon={<img src={sendStop} alt="" aria-hidden />}
           textareaRef={inputRef}
           onChange={setPrompt}
-          onSend={() => send(prompt)}
+          onSend={() => send(prompt, undefined, undefined, true)}
           onStop={stop}
         />
       </div>

@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
+import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -42,10 +43,13 @@ interface Session {
 }
 
 const MAX_JSON_BYTES = 32 * 1024 * 1024
+/** clients that never DELETE their session otherwise grow the map without bound */
+const MAX_SESSIONS = 100
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
 
 export async function startHttp(opts: HttpServeOptions): Promise<HttpHandle> {
-  const host = opts.host ?? '127.0.0.1'
+  // '' would bypass the loopback default and bind every interface
+  const host = opts.host?.trim() || '127.0.0.1'
   const files = new FileStore(
     join(tmpdir(), `genoffice-mcp-http-${process.pid}-${randomBytes(4).toString('hex')}`),
   )
@@ -75,8 +79,15 @@ export async function startHttp(opts: HttpServeOptions): Promise<HttpHandle> {
   }
 
   const baseUrlOf = (req: IncomingMessage): string => {
-    const proto = header(req.headers['x-forwarded-proto']) ?? 'http'
-    const hostHeader = header(req.headers['x-forwarded-host']) ?? header(req.headers.host)
+    // Security: X-Forwarded-Host/Proto are client-controlled, so a poisoned
+    // header would make us hand out download URLs pointing at an attacker host.
+    // Ignore them by default; only honor them when the operator explicitly opts
+    // in behind a trusted reverse proxy via GENOFFICE_TRUST_PROXY_HEADERS=1.
+    const trustProxy = opts.env.GENOFFICE_TRUST_PROXY_HEADERS === '1'
+    const forwardedProto = trustProxy ? header(req.headers['x-forwarded-proto']) : undefined
+    const forwardedHost = trustProxy ? header(req.headers['x-forwarded-host']) : undefined
+    const proto = forwardedProto?.split(',')[0]?.trim() || 'http'
+    const hostHeader = forwardedHost?.split(',')[0]?.trim() || header(req.headers.host)
     return `${proto}://${hostHeader ?? `${host}:${handle.port}`}`
   }
 
@@ -91,13 +102,26 @@ export async function startHttp(opts: HttpServeOptions): Promise<HttpHandle> {
       files,
       baseUrl: baseUrlOf(req),
     })
-    const server = createMcpServer(ctx, opts)
+    const server = await createMcpServer(ctx, opts)
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => id })
     const session: Session = { transport, server, ctx }
     transport.onclose = () => {
       if (sessions.delete(id)) {
         disposeContext(ctx)
         log(`[mcp] session ${id} closed`)
+      }
+    }
+    // Map preserves insertion order, so the first key is the oldest session
+    while (sessions.size >= MAX_SESSIONS) {
+      const oldest = sessions.keys().next().value as string | undefined
+      if (oldest === undefined) break
+      const evicted = sessions.get(oldest)
+      sessions.delete(oldest)
+      if (evicted) {
+        // deleted first so transport.onclose does not dispose twice
+        void evicted.transport.close().catch(() => {})
+        disposeContext(evicted.ctx)
+        log(`[mcp] session ${oldest} evicted (cap ${MAX_SESSIONS})`)
       }
     }
     sessions.set(id, session)
@@ -160,12 +184,17 @@ export async function startHttp(opts: HttpServeOptions): Promise<HttpHandle> {
     }
     const path = files.uploadTarget(name)
     let received = 0
-    req.on('data', (chunk: Buffer) => {
-      received += chunk.length
-      if (received > MAX_TRANSFER_BYTES) req.destroy(new Error('upload too large'))
+    // Count bytes inside the pipeline: a separate req.on('data') listener would
+    // flip the stream into flowing mode and race the pipeline for chunks.
+    const counted = new Transform({
+      transform(chunk: Buffer, _enc, cb) {
+        received += chunk.byteLength
+        if (received > MAX_TRANSFER_BYTES) cb(new Error('upload too large'))
+        else cb(null, chunk)
+      },
     })
     try {
-      await pipeline(req, createWriteStream(path))
+      await pipeline(req, counted, createWriteStream(path))
     } catch (err) {
       rmSync(join(path, '..'), { recursive: true, force: true })
       json(res, 413, { error: err instanceof Error ? err.message : String(err) })
@@ -183,7 +212,17 @@ export async function startHttp(opts: HttpServeOptions): Promise<HttpHandle> {
       json(res, 404, { error: 'no such file (it may have expired)' })
       return
     }
-    const size = statSync(stored.path).size
+    // The file can vanish between the get() above and now; a stat failure is a
+    // gone file (404), not a server crash (500).
+    let size: number
+    try {
+      const st = statSync(stored.path)
+      if (!st.isFile()) throw new Error('not a file')
+      size = st.size
+    } catch {
+      json(res, 404, { error: 'no such file (it may have expired)' })
+      return
+    }
     res.statusCode = 200
     res.setHeader('content-type', mimeOf(stored.path))
     res.setHeader('content-length', String(size))
@@ -195,7 +234,9 @@ export async function startHttp(opts: HttpServeOptions): Promise<HttpHandle> {
       res.end()
       return
     }
-    createReadStream(stored.path).pipe(res)
+    const stream = createReadStream(stored.path)
+    stream.on('error', () => res.destroy())
+    stream.pipe(res)
   }
 
   const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -206,7 +247,7 @@ export async function startHttp(opts: HttpServeOptions): Promise<HttpHandle> {
     }
     // no token and a loopback bind: refuse Host headers a rebound DNS name would carry
     if (!opts.token && LOOPBACK_HOSTS.has(host)) {
-      const hostname = new URL(`http://${header(req.headers.host) ?? ''}`).hostname
+      const hostname = hostnameOf(header(req.headers.host) ?? '')
       if (!LOOPBACK_HOSTS.has(hostname)) {
         json(res, 403, { error: 'host not allowed' })
         return
@@ -221,7 +262,15 @@ export async function startHttp(opts: HttpServeOptions): Promise<HttpHandle> {
 
     const upload = /^\/files\/?([^/]*)$/.exec(url.pathname)
     if (upload && (req.method === 'POST' || req.method === 'PUT')) {
-      const name = decodeURIComponent(upload[1] ?? '') || url.searchParams.get('name') || ''
+      // A malformed percent-encoding such as %ZZ must not 500 the route;
+      // keep the raw segment and let safeName sanitize it to a fallback.
+      let rawName = upload[1] ?? ''
+      try {
+        rawName = decodeURIComponent(rawName)
+      } catch {
+        // keep rawName as-is; safeName below reduces it to a safe segment
+      }
+      const name = rawName || url.searchParams.get('name') || ''
       return handleUpload(
         req,
         res,
@@ -299,6 +348,15 @@ export async function serveHttp(opts: HttpServeOptions): Promise<void> {
 
 function header(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value
+}
+
+/** '' for an absent or malformed Host so it reads as not allowed instead of a 500 */
+function hostnameOf(hostHeader: string): string {
+  try {
+    return new URL(`http://${hostHeader}`).hostname
+  } catch {
+    return ''
+  }
 }
 
 function isInitialize(body: unknown): boolean {

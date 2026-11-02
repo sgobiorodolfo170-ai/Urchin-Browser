@@ -301,6 +301,26 @@ describe('grouped and sibling pictures', () => {
     expect(await dashOf('sysDot')).toBe('dotted')
   })
 
+  it('an empty divider-rule anchor paragraph keeps its own tiny paragraph mark', async () => {
+    const rule = anchorParagraph(
+      custWsp({
+        cx: 6267450,
+        cy: 9525,
+        fill: '<a:solidFill><a:srgbClr val="111111"/></a:solidFill>',
+      }),
+      SHAPE_URI,
+    )
+      .replace('<wp:wrapNone/>', '<wp:wrapTopAndBottom/>')
+      .replace(
+        '<w:p>',
+        '<w:p><w:pPr><w:spacing w:before="84"/><w:rPr><w:sz w:val="5"/></w:rPr></w:pPr>',
+      )
+    const block = (await parseDocx(await buildDocx({ bodyXml: rule }))).blocks[0]
+    expect(block.strayRuns ?? []).toEqual([])
+    expect(block.anchorLine?.format?.emptyRunSizeHalfPoints).toBe(5)
+    expect(block.anchorLine?.format?.spaceBefore).toBe(84)
+  })
+
   it('a text-bearing anchor paragraph keeps its own spacing as the stray line format', async () => {
     const textbox = anchorParagraph(
       `<wps:wsp ${WPS_NS}><wps:cNvSpPr/><wps:spPr>` +
@@ -377,6 +397,26 @@ describe('grouped and sibling pictures', () => {
     expect(photo.floating).toBe(true)
     expect(photo.rotDeg).toBe(-45)
     expect(doc.blocks[0].strayRuns).toBeUndefined()
+  })
+
+  it('a photo box keeps the preset geometry of its pic:spPr (Word clips the picture to it)', async () => {
+    const textbox = anchorParagraph(
+      `<wps:wsp ${WPS_NS}><wps:cNvSpPr/><wps:spPr>` +
+        `<a:xfrm><a:off x="0" y="0"/><a:ext cx="952500" cy="476250"/></a:xfrm>` +
+        `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
+        `</wps:spPr><wps:txbx><w:txbxContent><w:p><w:r><w:t>card</w:t></w:r></w:p>` +
+        `</w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp>`,
+      SHAPE_URI,
+    ).replace(/<\/w:p>$/, '')
+    const shaped = anchorParagraph(
+      `<pic:pic><pic:blipFill><a:blip r:embed="rId10"/></pic:blipFill>` +
+        `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="476250" cy="238125"/></a:xfrm>` +
+        `<a:prstGeom prst="flowChartDocument"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>`,
+      'http://schemas.openxmlformats.org/drawingml/2006/picture',
+    ).replace('<w:p>', '')
+    const doc = await parseDocx(await buildDocx({ bodyXml: textbox + shaped, withImage: true }))
+    const photo = doc.blocks[0].textboxes?.find((b) => b.fillImageDataUrl)
+    expect(photo?.prst).toBe('flowChartDocument')
   })
 
   it('a drawing inside mc:AlternateContent/mc:Choice still yields a run image', async () => {
@@ -585,7 +625,7 @@ describe('label group over an inline chart picture', () => {
         withImage: true,
       }),
     )
-    expect(centered.blocks[0].strayRuns?.find((r) => r.image)?.image?.widthPx).toBe(493)
+    expect(centered.blocks[0].strayRuns?.find((r) => r.image)?.image?.widthPx).toBe(493.24)
     expect(centered.blocks[0].strayAlign).toBe('center')
     const plain = await parseDocx(await buildDocx({ bodyXml: paragraph(''), withImage: true }))
     expect(plain.blocks[0].strayAlign).toBeUndefined()

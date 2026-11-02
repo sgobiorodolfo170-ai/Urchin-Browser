@@ -10,6 +10,7 @@ import { BrowserWindow, dialog } from 'electron'
 
 import { isHeadlessMode, showSaveDialogWithMemory } from '@genoffice/electron-utils'
 
+import { atomicWriteFile } from './atomic-write'
 import { evenPageRanges, stitchPlan, type PageVariant } from './pdf-page-variants'
 import { printOptionsFor } from './print-options'
 
@@ -47,7 +48,7 @@ export async function exportPdf(
     await writeFile(htmlPath, request.html, 'utf8')
     await window.loadFile(htmlPath)
     const pdf = await renderPdf(window.webContents, request)
-    await writeFile(selection.filePath, pdf)
+    await atomicWriteFile(selection.filePath, pdf)
     return { canceled: false, path: selection.filePath }
   } finally {
     window.destroy()
@@ -71,7 +72,7 @@ export async function printWorkbook(
     ...(owner && !owner.isDestroyed() ? { parent: owner } : {}),
     // Chromium attaches the native Windows print dialog to the printed window;
     // a hidden owner hides the dialog too, so Windows gets a real one
-    ...(process.platform === 'win32'
+    ...(process.platform === 'win32' && request.deviceName === undefined
       ? { width: 900, height: 700, autoHideMenuBar: true, closable: false, skipTaskbar: true }
       : {}),
     webPreferences: { sandbox: true, javascript: false },
@@ -79,7 +80,7 @@ export async function printWorkbook(
   try {
     await writeFile(htmlPath, request.html, 'utf8')
     await window.loadFile(htmlPath)
-    if (process.platform === 'win32') {
+    if (process.platform === 'win32' && request.deviceName === undefined) {
       window.show()
       window.focus()
     }
@@ -119,6 +120,9 @@ async function printPass(
     pageSize: request.pageSize,
     margins: request.margins,
     scale: request.scale,
+    // Pages declare their own paper via @page (a job may mix sheets with
+    // different sizes or orientations).
+    preferCSSPageSize: true,
     printBackground: true,
     ...(pageRanges === undefined ? {} : { pageRanges }),
     ...(templates

@@ -17,16 +17,19 @@ Word, Excel, PowerPoint and PDF files, edited by you and your AI, saved back in 
   <a href="https://github.com/genspark-ai/genoffice/releases/latest"><img src="https://img.shields.io/github/v/release/genspark-ai/genoffice" alt="Latest release"></a>
   <a href="https://github.com/genspark-ai/genoffice/releases"><img src="https://img.shields.io/github/downloads/genspark-ai/genoffice/total" alt="Downloads"></a>
   <a href="https://github.com/genspark-ai/genoffice/stargazers"><img src="https://img.shields.io/github/stars/genspark-ai/genoffice?style=flat" alt="GitHub stars"></a>
+  <a href="https://x.com/merrickbuilds"><img src="https://img.shields.io/badge/follow-%40merrickbuilds-000000?logo=x&logoColor=white" alt="Follow @merrickbuilds on X"></a>
 </p>
 
-<p align="center"><b>English</b> · <a href="docs/i18n/README.es.md">Español</a> · <a href="docs/i18n/README.pt-BR.md">Português (Brasil)</a> · <a href="docs/i18n/README.de.md">Deutsch</a> · <a href="docs/i18n/README.fr.md">Français</a> · <a href="docs/i18n/README.zh-CN.md">简体中文</a> · <a href="docs/i18n/README.zh-TW.md">繁體中文</a> · <a href="docs/i18n/README.ko.md">한국어</a> · <a href="docs/i18n/README.ja.md">日本語</a> · <a href="docs/i18n/README.ar.md">العربية</a> · <a href="docs/i18n/README.ru.md">Русский</a> · <a href="docs/i18n/README.it.md">Italiano</a> · <a href="docs/i18n/README.nl.md">Nederlands</a> · <a href="docs/i18n/README.pl.md">Polski</a> · <a href="docs/i18n/README.cs.md">Čeština</a> · <a href="docs/i18n/README.id.md">Bahasa Indonesia</a> · <a href="docs/i18n/README.ms.md">Bahasa Melayu</a> · <a href="docs/i18n/README.th.md">ไทย</a> · <a href="docs/i18n/README.hi.md">हिन्दी</a> · <a href="docs/i18n/README.he.md">עברית</a></p><!-- lang-switcher · public-hygiene: allow -->
+<p align="center"><b>English</b> · <a href="docs/i18n/README.es.md">Español</a> · <a href="docs/i18n/README.pt-BR.md">Português (Brasil)</a> · <a href="docs/i18n/README.de.md">Deutsch</a> · <a href="docs/i18n/README.fr.md">Français</a> · <a href="docs/i18n/README.zh-CN.md">简体中文</a> · <a href="docs/i18n/README.zh-TW.md">繁體中文</a> · <a href="docs/i18n/README.ko.md">한국어</a> · <a href="docs/i18n/README.ja.md">日本語</a> · <a href="docs/i18n/README.ar.md">العربية</a> · <a href="docs/i18n/README.ru.md">Русский</a> · <a href="docs/i18n/README.it.md">Italiano</a> · <a href="docs/i18n/README.nl.md">Nederlands</a> · <a href="docs/i18n/README.pl.md">Polski</a> · <a href="docs/i18n/README.cs.md">Čeština</a> · <a href="docs/i18n/README.id.md">Bahasa Indonesia</a> · <a href="docs/i18n/README.ms.md">Bahasa Melayu</a> · <a href="docs/i18n/README.th.md">ไทย</a> · <a href="docs/i18n/README.hi.md">हिन्दी</a> · <a href="docs/i18n/README.he.md">עברית</a> · <a href="docs/i18n/README.vi.md">Tiếng Việt</a> · <a href="docs/i18n/README.tr.md">Türkçe</a></p><!-- lang-switcher · public-hygiene: allow -->
 
 <p align="center">
   <a href="#download"><b>Download</b></a> ·
+  <a href="#skills"><b>Skills</b></a> ·
   <a href="#command-line-and-agent-skill"><b>CLI</b></a> ·
   <a href="#mcp-server"><b>MCP</b></a> ·
   <a href="https://genoffice.ai/"><b>Website</b></a> ·
   <a href="https://genoffice.ai/join"><b>Community</b></a> ·
+  <a href="https://x.com/merrickbuilds"><b>X</b></a> ·
   <a href="PRIVACY.md"><b>Privacy</b></a>
 </p>
 
@@ -34,20 +37,35 @@ GenOffice is a free, open-source alternative to Microsoft Office for macOS,
 Windows and Linux. It opens and saves native `.docx`, `.xlsx` and `.pptx`
 files, edits PDF, Markdown and HTML, and puts an AI agent next to every
 document — not a chat box bolted on the side, but an editor that reads the
-file, makes the change, and shows you exactly what it touched.
+file, makes the change, and shows you exactly what it touched. ODF files
+(`.odt`, `.ods`, `.odp` and the `.ott`/`.ots`/`.otp` templates) open as
+editable OOXML copies; the import is open-only — saving writes OOXML, never
+ODF.
 
 - **Real formats, byte-preserving.** Only what you edit is rewritten. Everything
   else in the file survives byte-for-byte, so documents keep working in Word,
   Excel and PowerPoint.
 - **AI you can review.** Edits land as tracked changes and diffs with one-click
   rollback. Spreadsheets get live formulas, not pasted numbers. Decks and pages
-  are generated onto the canvas and stay fully editable.
+  are generated onto the canvas and stay fully editable. Hide a Docs selection
+  or a Sheets cell range from the model and the AI sees only a named
+  placeholder; the original words stay in the file and come back. Hiding
+  covers this app's AI — the CLI, MCP tools and headless export read the file
+  directly and still see these words.
 - **Local by design.** Files open, edit, save and convert on your machine.
   PDF → Word / Excel / PowerPoint, Markdown → Word and HTML → Word all run
   on-device. Only the AI calls leave the machine, to the provider you choose.
+- **Find files by what they say.** The home screen searches the names,
+  folders and full text of your `.docx`, `.xlsx`, `.pptx`, PDF, Markdown and
+  HTML files from a local SQLite index, CJK included. Optionally, the top hits
+  are reranked by **[TypeSafe Jev](https://typesafe.ai/)**, the System One
+  judgment model, so the file that answers your question comes first.
+- **Ask your files, with sources.** Star a set of documents and **Ask AI** on
+  the home screen answers questions across them, citing the file behind every
+  claim so you can open it and check.
 - **Your keys or none.** Sign in with Genspark and skip keys, or bring your own
   key for Claude, OpenAI, Gemini, DeepSeek, Kimi, GLM, Qwen, Doubao, MiniMax,
-  Grok, Mistral, OpenRouter, Requesty, Opper, or any OpenAI-compatible endpoint, local
+  Grok, Mistral, OpenRouter, Requesty, Opper, Cheaper Inference, Atlas Cloud, or any OpenAI-compatible endpoint, local
   servers included.
 - **Scriptable and agent-ready.** The app ships a `genoffice` command line and
   a skill for Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode
@@ -61,7 +79,9 @@ details and requirements in [Download](#download).
 
 ## Demo
 
-Six apps, one AI panel, and a command line for your coding agent. Every
+Six apps, one AI panel, a file search reranked by TypeSafe Jev, an Ask AI
+that answers from your starred files with sources, and a command line for
+your coding agent. Every
 screenshot is the real app on macOS, with the AI driven from the prompt you
 can read in the panel.
 
@@ -73,8 +93,8 @@ can read in the panel.
 <td width="50%"><img src="docs/assets/readme/docs-ai.webp" alt="GenOffice Docs: a company overview with a banner image; the AI tightened the Overview and inserted a new bulleted section, and the panel offers a one-click roll back"></td>
 </tr>
 <tr>
-<td><b>Opens the file as Word lays it out</b> — two-column sections, full-bleed images, shaded tables, headers and footers, pagination on Word's line metrics. Styles, comments, tracked changes, equations and ink round-trip untouched.</td>
-<td><b>Ask for the edit</b> — the AI reads the blocks it needs, rewrites the Overview and inserts a new bulleted section. Every AI turn is a snapshot you can roll back; with <b>Track changes</b> on, edits arrive as Word-style revisions.</td>
+<td><b>Opens the file as Word lays it out</b> — two-column sections, full-bleed images, shaded tables, headers and footers, pagination on Word's line metrics. Styles, comments, tracked changes, equations, ink and content controls round-trip untouched. A <b>Mailings</b> tab turns the document into a merge template: pick a <code>.xlsx</code> or <code>.csv</code> recipient list, insert real <code>MERGEFIELD</code>s, preview record by record, and merge to one document or one <code>.docx</code> per record.</td>
+<td><b>Ask for the edit</b> — the AI reads the blocks it needs, rewrites the Overview and inserts a new bulleted section. Every AI turn is a snapshot you can roll back; with <b>Track changes</b> on, edits arrive as Word-style revisions. Ask for a mind map instead and the answer is an interactive diagram of the whole document: collapsible branches, zoom and pan, a node click asks a follow-up, and citations jump back to the block they came from.</td>
 </tr>
 </table>
 
@@ -87,7 +107,7 @@ can read in the panel.
 </tr>
 <tr>
 <td><b>Build it</b> — from one sentence the agent adds a Summary sheet with real <code>SUMIF</code>s by region and category, inserts a column chart, and applies the 43 changes as a single undoable batch.</td>
-<td><b>Ask it</b> — questions about the workbook come back with the reasoning and the exact cells used as clickable citations. Under the hood: an in-house Rust <code>.xlsx</code> engine, pivot tables, slicers, conditional formatting and formula tracing.</td>
+<td><b>Ask it</b> — questions about the workbook come back with the reasoning and the exact cells used as clickable citations. Under the hood: an in-house Rust <code>.xlsx</code> engine, pivot tables, slicers, conditional formatting, formula tracing, and pictures embedded in cells as Excel's native rich values — Excel reopens them still in the cell.</td>
 </tr>
 </table>
 
@@ -102,9 +122,13 @@ can read in the panel.
 </tr>
 <tr>
 <td><b>One line in</b> — "Create a 10-slide investor pitch deck for Aurora Home…". GenOffice plans the storyline, researches the numbers, and drafts every slide onto the canvas as a real <code>.pptx</code>.</td>
-<td><b>A finished deck out</b> — eleven designed slides with consistent typography, imagery and a closing call to action; keep editing with masters, layouts, smart guides and non-destructive cropping, or ask the panel to restyle, rewrite and reorder.</td>
+<td><b>A finished deck out</b> — eleven designed slides with consistent typography, imagery and a closing call to action; keep editing with masters, layouts, smart guides and non-destructive cropping, or ask the panel to restyle, rewrite and reorder. Insert a <code>.glb</code> and it is a real 3D model: turn it by dragging in the editor, stored the way PowerPoint stores 3D, still 3D in PowerPoint.</td>
 </tr>
 </table>
+
+**Slide Show → Record** narrates the deck slide by slide, with pause and
+resume. The narration and the auto-advance timings it measures are saved into
+the `.pptx`, and PowerPoint plays them back the same way.
 
 ### 4 · PDF — edit PDF text in place, convert PDF to Word on-device
 
@@ -161,7 +185,57 @@ self-contained `.html` file against those tokens.
 </tr>
 </table>
 
-### 7 · CLI — your coding agent drives GenOffice, on your machine
+**Linked notes, the way Obsidian does it.** `[[wiki links]]` click through to
+the note they name, typing `[[` offers note-name completion, and `![[…]]`
+embeds a note or a picture inline. A **Backlinks** panel lists every note that
+points at the open one, and the **Graph** view maps the links of the whole
+vault.
+
+### 7 · Search — find the file that answers the question, with TypeSafe Jev
+
+Every file in your work folder is indexed on-device: names, folders and the
+extracted text of Word, Excel, PowerPoint, PDF, Markdown and HTML files, in a
+SQLite full-text index with CJK-aware tokenizing. Switch on **Jev search
+reranking** and the top 20 local hits are judged by
+[TypeSafe Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev),
+the System One model that returns one calibrated relevance score per document
+in a single call instead of generating text. The list is reordered by
+that score; if the call fails or times out, the local order stays.
+
+<img src="docs/assets/readme/search-jev-motion.webp" alt="Screen recording of the GenOffice home screen: typing laptop refresh policy lists a browser-cache policy, a brand-refresh plan and a dashboard-refresh schedule first while the equipment standards document is last; the Settings page shows Jev search reranking switched on under AI Media & Search with the TypeSafe endpoint; the same search then shows the equipment standards document first with a Jev badge next to the result count" width="100%">
+
+<table>
+<tr>
+<td width="50%"><img src="docs/assets/readme/search-jev-before-after.webp" alt="Two result lists for the query laptop refresh policy side by side: without Jev the dashboard refresh schedule, brand refresh plan and browser cache refresh policy lead and the company equipment standards document is fifth; with Jev the equipment standards document, which states the three-year laptop replacement cycle, is first"></td>
+<td width="50%"><img src="docs/assets/readme/search-jev-settings.webp" alt="GenOffice Settings, AI Media & Search page: the Local file search block with the Jev search reranking switch, the endpoint choice between OpenRouter and TypeSafe, and the API key field"></td>
+</tr>
+<tr>
+<td><b>Same words, different answers</b> — "laptop refresh policy" matches a browser-cache refresh policy, a brand-refresh plan and a dashboard-refresh schedule word for word, so full-text ranking puts them first. Jev reads the excerpts and moves the equipment standards document, the one that states the three-year replacement cycle, to the top. The <b>Jev</b> badge next to the result count shows when the order came from the model.</td>
+<td><b>Off by default, one switch to turn on</b> — Settings → AI Media & Search → Local file search. Pick OpenRouter or TypeSafe direct, paste a key, hit Test connection. Only when the switch is on do excerpts of the top hits leave the device; the index itself never does.</td>
+</tr>
+</table>
+
+### 8 · Ask AI — your starred files, answered with sources
+
+Star the files you work with and the home screen's **Ask AI** treats them as
+a knowledge base. Ask a question in plain language; the agent searches the
+starred files, reads the ones it needs and answers with a citation after
+every claim. Click a citation and the file opens in the right app. Attach
+files to the question by dragging, pasting or from the **+** menu — images go
+to the model as visual input — and every question is kept as its own
+conversation: switch between them, start a new one, delete one, the list
+survives a restart.
+
+<img src="docs/assets/readme/home-ask-ai-motion.webp" alt="Screen recording of GenOffice Ask AI: the question quick summary, what drove our Q3 growth and how did Asia-Pacific perform, is typed on the home screen; the agent reads two starred files and answers with the Aurora X1 launch and the Asia-Pacific expansion, each claim followed by a citation chip naming the quarterly report or the regional sales workbook; a click on the workbook chip opens it in Sheets with the Asia-Pacific row highlighted" width="100%">
+
+Ask AI searches the same on-device full-text index as
+[Search](#7--search--find-the-file-that-answers-the-question-with-typesafe-jev)
+and reads files in pages, so the model only sees the hits and the passages it
+asked for, through the provider you chose. It can also call the built-in
+`genoffice` CLI to build files outright; each one appears as an artifact card
+under the answer, and a click opens it.
+
+### 9 · CLI — your coding agent drives GenOffice, on your machine
 
 GenOffice ships a `genoffice` command line and an agent skill. Install the
 skill and Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot, OpenCode or
@@ -181,7 +255,7 @@ same engines as the apps, without opening a window.
 </tr>
 </table>
 
-### 8 · MCP — the same tools over the Model Context Protocol
+### 10 · MCP — the same tools over the Model Context Protocol
 
 Every `genoffice` command is also an MCP tool. Claude Code, Claude Desktop,
 Cursor and any other MCP client can start `genoffice mcp` themselves, with no
@@ -218,6 +292,13 @@ document in a visible editor tab while you watch.
 - **PDF done properly.** Edit text inside the page, and convert PDF to Word,
   Excel or PowerPoint on-device, with system OCR for scans.
 - **Markdown and HTML too**, with the same AI panel and local export to Word.
+- **Search that finds the answer, not the keyword.** Full-text search over
+  every document in your folders, indexed on-device, with optional reranking
+  by TypeSafe Jev, the System One judgment model.
+- **Ask AI across your files.** Star the files that matter and ask questions
+  in plain language; every answer cites the file it came from, one click away.
+- **Skills.** Ready-made skills, or your own `SKILL.md`, attached from
+  the **+** menu of any AI panel.
 - **Scriptable.** A `genoffice` command line, an agent skill and an MCP server
   put every engine at the service of Claude Code, Claude Desktop, Codex, Cursor
   and other agents, still on-device.
@@ -230,17 +311,43 @@ through the Genspark proxy (Claude, GPT and Gemini families) and the agents get
 web and image search, image generation, and image/audio/video analysis.
 
 **Or bring your own key.** Settings → AI lists Claude, OpenAI, Gemini,
-DeepSeek, Kimi, GLM, Qwen, Doubao, MiniMax, Grok, Mistral, OpenRouter, Requesty, Opper
-and OpenCode Zen/Go, plus a custom slot for any OpenAI-compatible endpoint (base
+DeepSeek, Kimi, GLM, Qwen, Doubao, MiniMax, Grok, Mistral, OpenRouter, Requesty, Opper,
+Cheaper Inference, Atlas Cloud and OpenCode Zen/Go, plus a custom slot for any OpenAI-compatible endpoint (base
 URL + key), including local model servers. Search and media have their own
-per-capability providers under **AI Media & Search**: Serper or Tavily for web
-search, and OpenAI, Gemini, Doubao/Seedream, GLM, Grok, Qwen, MiniMax or any
-OpenAI-compatible images endpoint for image generation and image/video
-analysis.
+per-capability providers under **AI Media & Search**: Serper, Serply, Tavily, Parallel, Keenable,
+Exa or Firecrawl for web search, and OpenAI, Gemini, Doubao/Seedream, GLM, Grok,
+Qwen, MiniMax or any OpenAI-compatible images endpoint for image generation
+and image/video analysis, plus DeepSeek V4.1 Flash for image analysis.
+
+**TypeSafe Jev** reranks the home screen's file search. Under **AI Media & Search →
+Local file search**, switch on Jev search reranking and pick an endpoint:
+[OpenRouter](https://openrouter.ai/typesafe) (model `typesafe/jev-1.13`) or
+TypeSafe's own API. The key is stored only on this device. It is off by
+default; when on, the excerpts of the top 20 local hits are sent for judgment
+and nothing else leaves the machine.
+
+**Parallel** works without an account: its free Search MCP (rate-limited) is the
+default web search whenever no Genspark login or search key is configured, and
+it runs ahead of the DuckDuckGo scrape. Select Parallel under Web search and
+enter a [Parallel](https://platform.parallel.ai/) key to use the Search API
+instead. Keenable is keyless too; a key only raises the rate limits.
 
 The whole suite ships light, dark and system themes. Themes only change what
 is on screen: exports, prints and saved files always keep the document's own
 colors.
+
+## Skills
+
+A skill is a `SKILL.md` that tells the AI how to do one job well: a weekly
+report, an NDA, a lesson plan. GenOffice ships a set of them and takes your own,
+in the same format coding agents use.
+
+- **Settings → Skills.** **Install** a recommended skill, or **Import** a
+  folder, a zip or a single `SKILL.md`. Nothing runs on import.
+- **In a chat.** Open the **+** menu next to the composer of any AI panel,
+  pick **Skills**, tick one, send. The skill goes along with that message only.
+
+---
 
 ## Command line and agent skill
 
@@ -273,10 +380,11 @@ check its own work.
 ```bash
 genoffice --version
 genoffice info report.docx --json                  # headings and blocks; or sheets, slides, pages
-genoffice convert report.md --to pdf               # md/html/docx/xlsx/pptx → pdf, pdf → docx/xlsx/pptx, …
+genoffice convert report.md --to pdf               # md/html/docx/xlsx/pptx → pdf, pdf → docx/xlsx/pptx/md/html, odt/ods/odp → docx/xlsx/pptx, …
 genoffice create --type docx --from notes.md --out notes.docx
 genoffice create --type xlsx --from table.json --out sales.xlsx   # "=SUM(B2:B9)" cells stay live formulas
 genoffice docs read report.docx --range 0-9 --json # then `docs apply --ops edits.json` edits in place
+genoffice docs compare original.docx revised.docx --out redline.docx   # the differences as tracked Word revisions
 genoffice render report.docx --out shots/          # one PNG per page, to look at what you made
 genoffice open sales.xlsx                          # hand the result to the editor
 ```
@@ -474,6 +582,8 @@ GenOffice is in active development and your feedback shapes it.
   [GitHub Issues](https://github.com/genspark-ai/genoffice/issues).
 - **Join the GenOffice group chat** on
   [GenTeam](https://genoffice.ai/join) to talk to the team and other users.
+- **Follow [@merrickbuilds](https://x.com/merrickbuilds) on X** for release
+  notes, demos and what is being built next.
 - **Star the repo** if GenOffice is useful to you — it is the best way to
   support the project.
 
@@ -529,9 +639,19 @@ convert to editable text rather than a page image.
 
 Yes. Besides the keyless Genspark sign-in, GenOffice supports bring your own
 key for Claude, OpenAI, Gemini, DeepSeek, Kimi, GLM, Qwen, Doubao, MiniMax,
-Grok, Mistral, OpenRouter, Requesty, Opper and OpenCode Zen/Go, plus any OpenAI-compatible
+Grok, Mistral, OpenRouter, Requesty, Opper, Cheaper Inference, Atlas Cloud and OpenCode Zen/Go, plus any OpenAI-compatible
 endpoint — including local model servers. Search, image generation and
 image/video analysis take their own keys under Settings → AI Media & Search.
+
+</details>
+
+<details>
+<summary><b>Can I turn the AI panel off?</b></summary>
+
+Yes. Settings → AI carries a **Show the AI sidebar** switch. Off, and every
+editor hides the sidebar; new documents stop opening it on their own. An
+explicit AI action — a ribbon button, a menu item — still opens the panel for
+that document, and closing it returns to hidden.
 
 </details>
 

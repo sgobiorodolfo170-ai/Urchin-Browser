@@ -69,6 +69,8 @@ export interface BrowserWindowLike {
   /** 注册事件监听 */
   on(event: string, handler: (...args: unknown[]) => void): void;
   once(event: string, handler: (...args: unknown[]) => void): void;
+  /** 移除事件监听（dispose 时清理，避免 listener 残留） */
+  removeListener?(event: string, handler: (...args: unknown[]) => void): void;
 }
 
 /**

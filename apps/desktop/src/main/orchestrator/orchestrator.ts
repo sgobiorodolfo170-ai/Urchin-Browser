@@ -176,10 +176,11 @@ export class Orchestrator {
       rateLimiter,
     };
 
-    // 监听 child → orchestrator 消息
-    port.on('message', (msg) => {
+    // 监听 child → orchestrator 消息（保存引用以便 disposeHost 移除）
+    host.messageListener = (msg: unknown) => {
       this.handleProviderMessage(host, msg);
-    });
+    };
+    port.on('message', host.messageListener);
     port.start();
 
     // OR3 决策：心跳超时检测
@@ -337,6 +338,16 @@ export class Orchestrator {
         // ignore
       }
       host.exitListener = undefined;
+    }
+
+    // 显式移除 port message listener（避免 port 闭包泄漏）
+    if (host.messageListener) {
+      try {
+        host.port.removeListener('message', host.messageListener);
+      } catch {
+        // ignore
+      }
+      host.messageListener = undefined;
     }
 
     host.port.close();

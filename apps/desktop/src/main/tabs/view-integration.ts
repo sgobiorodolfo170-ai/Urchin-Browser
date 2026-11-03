@@ -517,6 +517,21 @@ export function installTabViewIntegration(
     tabManager.off('removed', onRemoved);
     tabManager.off('crashed', onCrashed);
     windowManager.off('window-created', onWindowCreated);
+    // 清理 resize listeners（窗口可能仍存在）
+    for (const [windowId, handler] of resizeListeners) {
+      const managed = windowManager.getWindow(windowId);
+      if (managed) {
+        try {
+          managed.browserWindow.removeListener?.('resize', handler);
+        } catch {
+          // window may be destroyed
+        }
+      }
+    }
+    resizeListeners.clear();
+    lastBoundsUrlPerTab.clear();
+    lastFullscreenPerTab.clear();
+    mountedEditorViewPerWindow.clear();
     log.info('tab view integration uninstalled');
   };
 

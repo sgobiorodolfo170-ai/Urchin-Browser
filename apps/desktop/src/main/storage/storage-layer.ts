@@ -184,15 +184,31 @@ export class StorageLayer {
     return this.getOrCreateNamespaceDb(this.dataDir, 'extensions', extId);
   }
 
-  /** 关闭所有数据库连接 */
+  /** 关闭所有数据库连接（每个连接独立 try/catch，确保一个失败不阻断其余） */
   close(): void {
+    let errors = 0;
     for (const db of this.connectionPool.values()) {
-      db.close();
+      try {
+        db.close();
+      } catch (e) {
+        errors++;
+        log.error('namespace db close failed', { error: String(e) });
+      }
     }
     this.connectionPool.clear();
-    this.main.close();
-    this.ai.close();
-    log.info('storage layer closed');
+    try {
+      this.main.close();
+    } catch (e) {
+      errors++;
+      log.error('main db close failed', { error: String(e) });
+    }
+    try {
+      this.ai.close();
+    } catch (e) {
+      errors++;
+      log.error('ai db close failed', { error: String(e) });
+    }
+    log.info('storage layer closed', { errors });
   }
 
   /**

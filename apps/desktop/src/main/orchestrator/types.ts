@@ -137,6 +137,8 @@ export interface ProviderHost {
   idleRecycler?: ReturnType<typeof setTimeout>;
   /** proc.on('exit') 的 listener，disposeHost 时显式移除（避免 listener 累积） */
   exitListener?: (code: unknown) => void;
+  /** port.on('message') 的 listener，disposeHost 时显式移除（避免 port 闭包泄漏） */
+  messageListener?: (msg: unknown) => void;
 }
 
 /**

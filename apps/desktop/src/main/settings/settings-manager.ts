@@ -110,6 +110,7 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   ['clipper.cleanSnapshot', true],
   ['clipper.selectionPriority', true],
   ['clipper.loadLazyContent', false],
+  ['clipper.trimBoilerplate', true],
   ['clipper.noteNameFormat', '{{title}}'],
   [
     'clipper.properties',
@@ -128,6 +129,9 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   // 画布视口/三区分割位置）。默认 null = 首次运行由渲染层种下默认笔记本。
   // 该键必须登记在此处，SettingsManager 构造时才会从 SQLite 加载已保存状态。
   ['notebook.state', null],
+  // 中转区（左侧栏）：items 数组 JSON（文件索引，不复制原文件）。
+  // 默认 null = 首次运行为空。该键必须登记在此处，SettingsManager 构造时才会加载。
+  ['transit.items', null],
 ] as const;
 
 export class SettingsManager {

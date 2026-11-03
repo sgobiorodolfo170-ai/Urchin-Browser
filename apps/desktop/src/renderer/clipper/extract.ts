@@ -7,6 +7,7 @@
  * - 选区存在且“选中优先”时，content 用选区 Markdown，否则使用 Defuddle 正文。
  */
 import Defuddle, { createMarkdownContent } from 'defuddle/full';
+import { sanitizeFragmentHtml } from './postprocess';
 
 /** 抽取结果（页面元数据 + 两种 Markdown） */
 export interface ClipperExtraction {
@@ -102,9 +103,11 @@ export function extractClipperContent(
       .join('\n\n');
   }
 
+  // 选区 HTML 先做安全净化（移除脚本/样式/表单/事件属性），避免选中优先
+  // 把页面交互块或样式带进 Markdown；纯文本回退不经此处理。
   const selectionMarkdown =
     snapshot.selectionHtml.trim().length > 0
-      ? createMarkdownContent(snapshot.selectionHtml, snapshot.url)
+      ? createMarkdownContent(sanitizeFragmentHtml(snapshot.selectionHtml), snapshot.url)
       : snapshot.selectionText.trim();
 
   const canUseSelection = selectionPriority && selectionMarkdown.trim().length > 0;

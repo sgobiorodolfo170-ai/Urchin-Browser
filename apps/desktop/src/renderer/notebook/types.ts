@@ -54,6 +54,8 @@ export interface StickyNote {
   readonly color: StickyColor;
   readonly createdAt: number;
   readonly updatedAt: number;
+  /** 图片便利贴：本地图片文件绝对路径（有值时渲染 <img> 代替 <textarea>） */
+  readonly imagePath?: string;
 }
 
 /** 每个笔记本独立保存的画布视口 */

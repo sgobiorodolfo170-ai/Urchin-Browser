@@ -40,6 +40,7 @@ const DATA_SUBDIRS: readonly string[] = [
   'downloads', // 默认下载目录
   'extensions', // 扩展命名空间 db
   'editor-drafts', // 文件编辑器会话草稿（启动清扫，见 files/editor-handlers.ts）
+  'documents', // 中转区网页选中文字生成的 md 文档（clipper 子目录 documents/clipper 同根）
 ];
 
 /** 指针文件内容 */

@@ -7,6 +7,7 @@
 import { useState } from 'react';
 import { Button } from '../components/ui/button';
 import { Loader2, Send, X, ChevronDown, ChevronUp, Paperclip, FileText } from 'lucide-react';
+import { parseTransitDrag } from '../transit/drag-utils';
 
 interface AttachmentItem {
   filename: string;
@@ -69,6 +70,32 @@ export function ComposeView({
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  /** 中转区拖入：file/screenshot→附件，text→正文，link/video→URL 插入正文 */
+  const handleDrop = async (e: React.DragEvent) => {
+    const transitItem = parseTransitDrag(e.dataTransfer);
+    if (!transitItem) return;
+    e.preventDefault();
+    if (
+      (transitItem.kind === 'file' || transitItem.kind === 'screenshot') &&
+      transitItem.filePath
+    ) {
+      try {
+        const res = (await window.urchin.invoke('mail.attachment.fromPath', {
+          filePath: transitItem.filePath,
+        })) as { attachment: AttachmentItem };
+        setAttachments((prev) => [...prev, res.attachment]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } else if (transitItem.kind === 'text' && transitItem.text) {
+      const textContent = transitItem.text;
+      setBody((prev) => (prev ? `${prev}\n${textContent}` : textContent));
+    } else if ((transitItem.kind === 'link' || transitItem.kind === 'video') && transitItem.url) {
+      const urlContent = transitItem.url;
+      setBody((prev) => (prev ? `${prev}\n${urlContent}` : urlContent));
+    }
+  };
+
   const handleSend = async () => {
     const toList = to.split(/[,;\s]+/).filter(Boolean);
     if (toList.length === 0) {
@@ -112,7 +139,16 @@ export function ComposeView({
   }
 
   return (
-    <div className="flex h-full flex-col bg-surface">
+    <div
+      className="flex h-full flex-col bg-surface"
+      onDrop={(e) => void handleDrop(e)}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('application/x-urchin-transit')) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }
+      }}
+    >
       {/* 头部 */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
         <h2 className="flex-1 text-sm font-semibold text-text">写邮件</h2>

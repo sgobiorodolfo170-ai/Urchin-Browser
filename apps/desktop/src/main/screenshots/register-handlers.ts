@@ -57,6 +57,17 @@ export function registerScreenshotHandlers(
     return { path };
   });
 
+  // 覆盖窗口拖拽框选：裁剪保存 + startDrag 发起 OS 级文件拖拽
+  registerHandler(ipcMain, 'screenshot.dragStart', (req) => {
+    const path = deps.overlay.dragStart({
+      x: req.x,
+      y: req.y,
+      width: req.width,
+      height: req.height,
+    });
+    return { path };
+  });
+
   // 覆盖窗口取消框选
   registerHandler(ipcMain, 'screenshot.cancel', () => {
     deps.overlay.cancel();

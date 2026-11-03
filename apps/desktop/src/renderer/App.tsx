@@ -34,6 +34,9 @@ import {
 import { AppTitleBar } from './components/app-titlebar';
 import { MailView } from './mail/MailView';
 import { NotebookView } from './notebook/NotebookView';
+import { TransitPanel } from './transit/TransitPanel';
+import { parseTransitDrag } from './transit/drag-utils';
+import { resolveDroppedFilePath } from './transit/file-path';
 import { SettingsPage } from './settings/SettingsPage';
 import { NewTabPage } from './home/NewTabPage';
 import { GenOfficeHome } from './home/GenOfficeHome';
@@ -94,6 +97,8 @@ declare global {
     readonly urchin: {
       invoke: <C extends string>(channel: C, req: unknown) => Promise<unknown>;
       on: (channel: string, callback: (payload: unknown) => void) => () => void;
+      /** 取 OS 拖入文件的真实磁盘路径（Electron 32+ 已移除 File.path） */
+      pathForFile: (file: File) => string;
       onMessagePort: (
         channel: string,
         callback: (
@@ -2283,8 +2288,17 @@ export function App() {
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
+        // 中转区拖入：link/video → 打开 URL
+        const transitItem = parseTransitDrag(e.dataTransfer);
+        if (transitItem) {
+          if ((transitItem.kind === 'link' || transitItem.kind === 'video') && transitItem.url) {
+            handleOpenFilePath(transitItem.url);
+          }
+          return;
+        }
         const file = e.dataTransfer.files[0];
-        const path = (file as File & { path?: string })?.path;
+        if (!file) return;
+        const path = resolveDroppedFilePath(file);
         if (path) handleOpenFilePath(path);
       }}
     >
@@ -2331,6 +2345,9 @@ export function App() {
                 <PanelLeftOpen className="h-4 w-4" />
               )}
             </button>
+
+            {/* 中转区：折叠按钮下方、功能区上方。展开态列表 / 折叠态迷你图标 */}
+            <TransitPanel expanded={leftExpanded} />
 
             {/* 底部：DeepSeek Harness / pi / GenOffice 文档 / 邮箱 / 主页 / 主题切换 / 设置入口
              *（GenOffice 入口打开模块主页：打开文件 / 格式说明 / 原生 AI 设置） */}
@@ -2527,9 +2544,20 @@ export function App() {
                       }}
                       onCreate={async (name, color) => {
                         const ws = await handleCreateWorkspace(name, color);
-                        // 创建后切到新工作区并关闭总览页
+                        // 创建后切到新工作区：先在工作区内新建主页标签（await 确保标签
+                        // 已激活），再关闭总览页——否则关闭总览页时标签管理器会自动激活
+                        // 旧工作区的标签，导致 currentWorkspaceId 被同步回旧工作区，
+                        // 新创建的工作区看起来像被"自动删除"了。
+                        // 空工作区在 registry 中持久化保留，不因无存储标签而被删除。
                         if (ws) {
                           setCurrentWorkspaceId(ws.id);
+                          const windowId = await getCurrentWindowId();
+                          await window.urchin.invoke('tab.create', {
+                            windowId,
+                            url: 'urchin://newtab',
+                            active: true,
+                            workspaceId: ws.id,
+                          });
                           if (activeTabId != null) handleCloseTab(activeTabId);
                         }
                       }}

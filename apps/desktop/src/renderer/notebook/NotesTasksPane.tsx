@@ -10,6 +10,7 @@ import { ArrowLeft, Check, ListTodo, NotebookPen, Plus, Trash2 } from 'lucide-re
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { cn } from '../lib/utils';
 import { makeNotebookId } from './normalize';
+import { parseTransitDrag } from '../transit/drag-utils';
 import type { NotePage, NotebookMeta, NotebookState, TaskItem } from './types';
 
 export interface NotesTasksPaneProps {
@@ -113,8 +114,52 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
     update((prev) => ({ ...prev, tasks: prev.tasks.filter((task) => task.id !== taskId) }));
   };
 
+  /** 中转区拖入：任务模式→新建任务，笔记模式→新建笔记 */
+  const handleTransitDrop = (e: React.DragEvent) => {
+    const transitItem = parseTransitDrag(e.dataTransfer);
+    if (!transitItem) return;
+    e.preventDefault();
+    const content =
+      transitItem.text ?? transitItem.url ?? transitItem.filePath ?? transitItem.title;
+    if (mode === 'tasks') {
+      const task: TaskItem = {
+        id: makeNotebookId('task'),
+        notebookId: notebook.id,
+        text: content.slice(0, 2000),
+        done: false,
+        createdAt: Date.now(),
+      };
+      update((prev) => ({ ...prev, tasks: [...prev.tasks, task] }));
+    } else {
+      const now = Date.now();
+      const note: NotePage = {
+        id: makeNotebookId('note'),
+        notebookId: notebook.id,
+        title: transitItem.title.slice(0, 200),
+        content: content.slice(0, 200000),
+        createdAt: now,
+        updatedAt: now,
+      };
+      update((prev) => ({
+        ...prev,
+        notes: [...prev.notes, note],
+        activeNoteId: note.id,
+      }));
+    }
+  };
+
   return (
-    <section className="flex h-full min-w-0 flex-col bg-surface" aria-label="笔记内容">
+    <section
+      className="flex h-full min-w-0 flex-col bg-surface"
+      aria-label="笔记内容"
+      onDrop={handleTransitDrop}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('application/x-urchin-transit')) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }
+      }}
+    >
       <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           {activeNote && mode === 'notes' && (
@@ -212,7 +257,15 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
                 <button
                   key={note.id}
                   type="button"
-                  className="mb-1 block w-full rounded-md border border-transparent px-3 py-2 text-left hover:border-border hover:bg-surface-secondary"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = 'copy';
+                    e.dataTransfer.setData(
+                      'text/plain',
+                      `${note.title || '无标题笔记'}\n\n${note.content}`,
+                    );
+                  }}
+                  className="mb-1 block w-full cursor-grab rounded-md border border-transparent px-3 py-2 text-left hover:border-border hover:bg-surface-secondary"
                   onClick={() =>
                     update((prev) => ({
                       ...prev,
@@ -256,7 +309,12 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
               tasks.map((task) => (
                 <div
                   key={task.id}
-                  className="group flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-surface-secondary"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = 'copy';
+                    e.dataTransfer.setData('text/plain', task.text);
+                  }}
+                  className="group flex cursor-grab items-start gap-2 rounded-md px-2 py-1.5 hover:bg-surface-secondary"
                 >
                   <button
                     type="button"

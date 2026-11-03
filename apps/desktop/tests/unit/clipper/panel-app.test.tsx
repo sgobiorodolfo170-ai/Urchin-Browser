@@ -37,6 +37,7 @@ const CONFIG: ClipperConfigRes = {
   cleanSnapshot: true,
   selectionPriority: true,
   loadLazyContent: false,
+  trimBoilerplate: true,
   localizeImages: false,
   noteNameFormat: '{{title}}',
   properties: 'title: {{title}}\nsource: {{url}}',

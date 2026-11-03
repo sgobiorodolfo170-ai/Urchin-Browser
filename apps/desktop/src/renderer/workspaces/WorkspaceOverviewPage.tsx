@@ -280,11 +280,11 @@ export function WorkspaceOverviewPage({
 
   return (
     <div
-      className="flex min-h-full w-full items-center justify-center overflow-y-auto bg-transparent px-10 py-8 text-text"
+      className="flex min-h-full w-full items-start justify-start overflow-y-auto bg-transparent px-10 py-8 text-text"
       aria-label="工作区总览"
     >
       <div
-        className="grid w-full max-w-6xl gap-5"
+        className="grid w-full gap-5"
         style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}
       >
         {items.map((item) => (

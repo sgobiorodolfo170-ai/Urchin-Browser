@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { makeNotebookId } from './normalize';
+import { parseTransitDrag } from '../transit/drag-utils';
 import {
   DEFAULT_CANVAS_VIEWPORT,
   type CanvasViewport,
@@ -195,7 +196,7 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
     };
   };
 
-  const addSticky = (text = '', at?: { x: number; y: number }) => {
+  const addSticky = (text = '', at?: { x: number; y: number }, imagePath?: string) => {
     const element = containerRef.current;
     const current = viewRef.current;
     const rect = element?.getBoundingClientRect();
@@ -205,17 +206,21 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
     };
     const point = at ?? center;
     const now = Date.now();
+    const isImage = !!imagePath;
+    const w = isImage ? STICKY_DEFAULT_WIDTH * 1.5 : STICKY_DEFAULT_WIDTH;
+    const h = isImage ? STICKY_DEFAULT_HEIGHT * 1.5 : STICKY_DEFAULT_HEIGHT;
     const sticky: StickyNote = {
       id: makeNotebookId('sticky'),
       notebookId,
       text: text.slice(0, 20_000),
-      x: point.x - STICKY_DEFAULT_WIDTH / 2,
-      y: point.y - STICKY_DEFAULT_HEIGHT / 2,
-      width: STICKY_DEFAULT_WIDTH,
-      height: STICKY_DEFAULT_HEIGHT,
+      x: point.x - w / 2,
+      y: point.y - h / 2,
+      width: w,
+      height: h,
       color: 'amber',
       createdAt: now,
       updatedAt: now,
+      ...(imagePath ? { imagePath } : {}),
     };
     update((prev) => ({ ...prev, stickies: [...prev.stickies, sticky] }));
     setLastAddedId(sticky.id);
@@ -313,6 +318,43 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
         if (!text) return;
         e.preventDefault();
         addSticky(text);
+      }}
+      onDrop={(e) => {
+        const transitItem = parseTransitDrag(e.dataTransfer);
+        if (!transitItem) return;
+        e.preventDefault();
+        const point = screenToWorld(e.clientX, e.clientY);
+        // 图片类（screenshot 或 file+image MIME）→ 图片便利贴（直接显示图片）
+        const isImage =
+          transitItem.kind === 'screenshot' ||
+          (transitItem.kind === 'file' && (transitItem.mimeType ?? '').startsWith('image/'));
+        if (isImage && transitItem.filePath) {
+          addSticky(transitItem.title, point, transitItem.filePath);
+          return;
+        }
+        // 其他类型 → 文本便利贴
+        let content = '';
+        if (transitItem.kind === 'text' && transitItem.text) {
+          content = transitItem.text;
+        } else if (transitItem.kind === 'link' && transitItem.url) {
+          content = transitItem.url;
+        } else if (transitItem.kind === 'video' && transitItem.url) {
+          content = transitItem.url;
+        } else if (
+          (transitItem.kind === 'file' || transitItem.kind === 'screenshot') &&
+          transitItem.filePath
+        ) {
+          content = transitItem.filePath;
+        } else {
+          content = transitItem.title;
+        }
+        addSticky(content, point);
+      }}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('application/x-urchin-transit')) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }
       }}
     >
       {/* 无限十字坐标系标尺（屏幕空间，文字保持固定大小） */}
@@ -656,22 +698,34 @@ function StickyCard({
         </button>
       </div>
 
-      <textarea
-        className="min-h-0 flex-1 resize-none bg-transparent px-2.5 pb-2 text-sm leading-relaxed outline-none placeholder:text-black/35 dark:placeholder:text-white/35"
-        placeholder="写点什么…"
-        value={sticky.text}
-        autoFocus={autoFocus}
-        onChange={(e) => onTextChange(e.target.value)}
-        onPointerDown={(e) => {
-          // 左键仍阻止冒泡（避免触发画布平移）；中键放行到卡片以启动拖动
-          if (e.button !== 1) e.stopPropagation();
-        }}
-        onMouseDown={(e) => {
-          // 阻止中键粘贴/自动滚动，拖动由 pointer 事件处理
-          if (e.button === 1) e.preventDefault();
-        }}
-        aria-label="便利贴内容"
-      />
+      {sticky.imagePath ? (
+        <img
+          src={`file:///${sticky.imagePath.replace(/\\/g, '/')}`}
+          className="min-h-0 flex-1 object-contain"
+          alt={sticky.text}
+          draggable={false}
+          onPointerDown={(e) => {
+            if (e.button !== 1) e.stopPropagation();
+          }}
+        />
+      ) : (
+        <textarea
+          className="min-h-0 flex-1 resize-none bg-transparent px-2.5 pb-2 text-sm leading-relaxed outline-none placeholder:text-black/35 dark:placeholder:text-white/35"
+          placeholder="写点什么…"
+          value={sticky.text}
+          autoFocus={autoFocus}
+          onChange={(e) => onTextChange(e.target.value)}
+          onPointerDown={(e) => {
+            // 左键仍阻止冒泡（避免触发画布平移）；中键放行到卡片以启动拖动
+            if (e.button !== 1) e.stopPropagation();
+          }}
+          onMouseDown={(e) => {
+            // 阻止中键粘贴/自动滚动，拖动由 pointer 事件处理
+            if (e.button === 1) e.preventDefault();
+          }}
+          aria-label="便利贴内容"
+        />
+      )}
 
       <div
         className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize"

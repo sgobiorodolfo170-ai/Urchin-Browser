@@ -119,6 +119,7 @@ import { registerClipperHandlers } from './clipper/register-handlers';
 import { createMhtmlView } from './clipper/mhtml-viewer';
 import { installTabContextMenu, handleContextMenu } from './context-menu';
 import { installZoomControl, applyZoomByDelta } from './zoom';
+import { installDragInjection, type TransitDragData } from './transit/drag-injection';
 import { TranslateManager, TRANSLATE_PROGRESS_CHANNEL } from './translate/translate-manager';
 import { registerTranslateHandlers } from './translate/register-handlers';
 import { registerMailHandlers, MailManager, MailStorage, MailContentStore } from './mail';
@@ -475,6 +476,8 @@ let tabViewIntegration: TabViewIntegrationHandle | null = null;
 let disposeContextMenu: (() => void) | null = null;
 /** Ctrl+滚轮缩放卸载句柄（installZoomControl 返回）。退出时移除 created 监听。 */
 let disposeZoomControl: (() => void) | null = null;
+/** 中转区拖拽注入卸载句柄（installDragInjection 返回）。退出时移除 created 监听。 */
+let disposeDragInjection: (() => void) | null = null;
 /** 网页翻译管理器卸载句柄（dev.80，M24：停轮询/移除导航钩子/清状态）。 */
 let disposeTranslateManager: (() => void) | null = null;
 /** 网页翻译管理器引用（dev.81：右键菜单翻译动作与划词结果回传使用）。 */
@@ -530,6 +533,87 @@ function sendToMainWindow(channel: string, payload: unknown): void {
     entry?.browserWindow.webContents?.send(channel, payload);
   } catch (err) {
     log.warn('send to main window failed', { channel, error: String(err) });
+  }
+}
+
+/**
+ * 处理网页 dragstart 数据（路径 B / urchin://transit-drag 协议回调）。
+ *
+ * - text → 写 md 文档到 documents/<yyyyMMdd-HHmmss>.md，格式：选中文字 + 元信息
+ * - link → 写 md 文档，格式：# {链接文本}\n\n{url}\n\n> 来源：{页面URL} | {时间}
+ * - image/video → 不写 md，直接传 URL 到主窗口 transit:add
+ *
+ * md 文档生成后同样通过 sendToMainWindow('transit:add') 推送到主窗口中转区。
+ */
+function handleTransitDragData(
+  data: TransitDragData,
+  dataDir: string,
+  send: (channel: string, payload: unknown) => void,
+): void {
+  const now = new Date();
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  const stamp =
+    `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+    `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const isoTime = now.toISOString();
+
+  if (data.kind === 'text' && data.text) {
+    const docsDir = join(dataDir, 'documents');
+    try {
+      mkdirSync(docsDir, { recursive: true });
+    } catch (err) {
+      log.warn('transit-drag: failed to ensure documents dir', { error: String(err) });
+    }
+    const filePath = join(docsDir, `transit-${stamp}.md`);
+    const content = `${data.text}\n\n> 来源：${data.pageUrl} | ${data.pageTitle} | ${isoTime}`;
+    try {
+      writeFileSync(filePath, content, 'utf8');
+    } catch (err) {
+      log.warn('transit-drag: failed to write md doc', { error: String(err) });
+    }
+    send('transit:add', {
+      kind: 'text',
+      title: data.title,
+      text: data.text,
+      mdDocPath: filePath,
+      sourceApp: 'webview',
+    });
+  } else if (data.kind === 'link' && data.url) {
+    const docsDir = join(dataDir, 'documents');
+    try {
+      mkdirSync(docsDir, { recursive: true });
+    } catch (err) {
+      log.warn('transit-drag: failed to ensure documents dir', { error: String(err) });
+    }
+    const filePath = join(docsDir, `transit-${stamp}.md`);
+    const linkText = data.linkText ?? data.title;
+    const content = `# ${linkText}\n\n${data.url}\n\n> 来源：${data.pageUrl} | ${isoTime}`;
+    try {
+      writeFileSync(filePath, content, 'utf8');
+    } catch (err) {
+      log.warn('transit-drag: failed to write md doc', { error: String(err) });
+    }
+    send('transit:add', {
+      kind: 'text',
+      title: data.title,
+      text: content,
+      mdDocPath: filePath,
+      sourceApp: 'webview',
+    });
+  } else if (data.kind === 'image' && data.url) {
+    send('transit:add', {
+      kind: 'screenshot',
+      title: data.title,
+      url: data.url,
+      sourceApp: 'webview',
+    });
+  } else if (data.kind === 'video' && data.url) {
+    send('transit:add', {
+      kind: 'video',
+      title: data.title,
+      url: data.url,
+      sourceApp: 'webview',
+    });
   }
 }
 
@@ -1675,6 +1759,11 @@ void app.whenReady().then(() => {
     // 网站图标缓存（M2）：标签栏/书签/历史统一读取主进程缓存。
     // faviconService 在下面 StorageLayer 初始化后创建；回调在请求到达时才执行。
     getFavicon: (name) => faviconService?.serve(name) ?? Promise.resolve(null),
+    // 中转区拖拽（路径 B）：页面 dragstart 注入脚本 POST JSON 到 urchin://transit-drag。
+    // text/link → 写 md 文档到 documents/；image/video → 直接传 URL 到主窗口。
+    onTransitDrag: (data) => {
+      handleTransitDragData(data, currentDataDir, sendToMainWindow);
+    },
   });
 
   // 初始化需要文件系统 / SQLite 的模块（W6：移入 whenReady 避免模块加载阶段崩溃）
@@ -2057,6 +2146,58 @@ void app.whenReady().then(() => {
         });
       },
     },
+    // 加入中转区：选中文字生成 md 文档存 documents/，链接/视频直接传 URL。
+    // 通过 sendToMainWindow('transit:add') 推送到主窗口渲染层。
+    addToTransit: (item: {
+      kind: 'text' | 'link' | 'video';
+      title: string;
+      text?: string;
+      url?: string;
+      sourceUrl?: string;
+    }) => {
+      if (item.kind === 'text' && item.text) {
+        const docsDir = join(currentDataDir, 'documents');
+        try {
+          mkdirSync(docsDir, { recursive: true });
+        } catch (err) {
+          log.warn('transit: failed to ensure documents dir', { error: String(err) });
+        }
+        const now = new Date();
+        const pad = (n: number): string => String(n).padStart(2, '0');
+        const stamp =
+          `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+          `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        const fileName = `transit-${stamp}.md`;
+        const filePath = join(docsDir, fileName);
+        const content = `# ${item.title}\n\n${item.text}\n\n> 来源：${item.sourceUrl ?? '未知'} | ${now.toISOString()}`;
+        try {
+          writeFileSync(filePath, content, 'utf8');
+        } catch (err) {
+          log.warn('transit: failed to write md doc', { error: String(err) });
+        }
+        sendToMainWindow('transit:add', {
+          kind: 'text',
+          title: item.title,
+          text: item.text,
+          mdDocPath: filePath,
+          sourceApp: 'webview',
+        });
+      } else if (item.kind === 'link' && item.url) {
+        sendToMainWindow('transit:add', {
+          kind: 'link',
+          title: item.title,
+          url: item.url,
+          sourceApp: 'webview',
+        });
+      } else if (item.kind === 'video' && item.url) {
+        sendToMainWindow('transit:add', {
+          kind: 'video',
+          title: item.title,
+          url: item.url,
+          sourceApp: 'webview',
+        });
+      }
+    },
   };
   disposeContextMenu = installTabContextMenu(tabManager, contextMenuDeps);
 
@@ -2130,6 +2271,12 @@ void app.whenReady().then(() => {
     // 用户指令 2026-10-23：不向主窗口注入缩放脚本，避免侧栏/地址栏随 Ctrl+滚轮缩放；
     // 仅网页 BrowserView（中区内容页）参与缩放。
     disposeZoomControl = installZoomControl(tabManager);
+
+    // 中转区拖拽注入（路径 B）：每个网页 tab 的 did-finish-load 后注入 dragstart
+    // 监听脚本。脚本收集选中文字/链接/图片/视频信息，fetch urchin://transit-drag
+    // 通知主进程 → 写 md 文档 / 推送 transit:add 到主窗口。
+    // 复用 zoom 的 created + 存量补挂 + dispose 模式，不注入 BrowserView preload。
+    disposeDragInjection = installDragInjection(tabManager);
 
     // M15 DevTools F12 快捷键（dev.121）：对每个网页 tab + 主窗口 webContents
     // 挂 before-input-event，命中 F12 → preventDefault + 推送 devtools:toggle
@@ -2513,6 +2660,16 @@ async function performCleanup(): Promise<void> {
         log.error('Failed to dispose zoom control on quit', { error: String(e) });
       }
       disposeZoomControl = null;
+    }
+
+    // 4.6a 移除中转区拖拽注入的 created/did-finish-load 监听
+    if (disposeDragInjection) {
+      try {
+        disposeDragInjection();
+      } catch (e) {
+        log.error('Failed to dispose drag injection on quit', { error: String(e) });
+      }
+      disposeDragInjection = null;
     }
 
     // 4.6.1 销毁底部悬浮状态栏子窗口（不受 WindowManager 管理，需显式释放）

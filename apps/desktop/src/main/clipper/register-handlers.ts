@@ -206,6 +206,7 @@ export function registerClipperHandlers(deps: ClipperHandlerDeps): void {
       cleanSnapshot: getBoolean(settings, 'clipper.cleanSnapshot', true),
       selectionPriority: getBoolean(settings, 'clipper.selectionPriority', true),
       loadLazyContent: getBoolean(settings, 'clipper.loadLazyContent', false),
+      trimBoilerplate: getBoolean(settings, 'clipper.trimBoilerplate', true),
       localizeImages: getBoolean(settings, 'clipper.localizeImages', true),
       noteNameFormat: getString(settings, 'clipper.noteNameFormat', '{{title}}'),
       properties: getString(settings, 'clipper.properties', ''),

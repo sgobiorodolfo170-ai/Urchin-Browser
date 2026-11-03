@@ -243,6 +243,9 @@ export function normalizeNotebookState(raw: unknown, now = Date.now()): Notebook
       color: STICKY_COLORS.includes(color as StickyColor) ? (color as StickyColor) : 'amber',
       createdAt,
       updatedAt: asInt(item.updatedAt, createdAt),
+      ...(typeof item.imagePath === 'string' && item.imagePath
+        ? { imagePath: item.imagePath }
+        : {}),
     });
   }
 

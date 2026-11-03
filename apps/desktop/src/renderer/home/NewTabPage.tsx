@@ -23,6 +23,7 @@ import { Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { displayNameForLocale } from '../../shared/brand';
 import { lookupBuiltinSite, builtinIconUrl } from './site-directory-lookup';
+import { parseTransitDrag } from '../transit/drag-utils';
 
 /** 常用网站条目（仅根网址） */
 export interface FrequentSite {
@@ -242,12 +243,26 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
       });
   }, []);
 
-  /** 常用区 drop：最近区拖入（去重）或常用区内重排 */
+  /** 常用区 drop：最近区拖入（去重）或常用区内重排，或中转区 link 拖入 */
   const handleFrequentDrop = useCallback(
     (e: React.DragEvent, targetIndex: number) => {
       e.preventDefault();
       setDragOverFrequent(false);
       droppedInFrequentRef.current = true;
+
+      // 中转区拖入：仅接受 link 类型
+      const transitItem = parseTransitDrag(e.dataTransfer);
+      if (transitItem) {
+        if (transitItem.kind === 'link' && transitItem.url) {
+          const key = siteKey(transitItem.url);
+          if (frequent.some((s) => siteKey(s.url) === key)) return;
+          const next = [...frequent];
+          next.splice(targetIndex, 0, { url: transitItem.url, title: transitItem.title });
+          persistFrequent(next);
+        }
+        return;
+      }
+
       let payload: DragPayload | null = null;
       try {
         payload = JSON.parse(e.dataTransfer.getData('text/plain')) as DragPayload;
@@ -350,6 +365,22 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
             setDragOverFrequent(false);
             // 拖到区域空白处：标记已落在常用区内（防止 dragend 误删），并处理追加
             droppedInFrequentRef.current = true;
+
+            // 中转区拖入：仅接受 link 类型
+            const transitItem = parseTransitDrag(e.dataTransfer);
+            if (transitItem) {
+              if (transitItem.kind === 'link' && transitItem.url) {
+                const key = siteKey(transitItem.url);
+                if (!frequent.some((s) => siteKey(s.url) === key)) {
+                  persistFrequent([
+                    ...frequent,
+                    { url: transitItem.url, title: transitItem.title },
+                  ]);
+                }
+              }
+              return;
+            }
+
             const payload = (() => {
               try {
                 return JSON.parse(e.dataTransfer.getData('text/plain')) as DragPayload;

@@ -96,6 +96,20 @@ const api = {
     };
   },
   /**
+   * 取 OS 拖入文件（桌面 / 资源管理器）的真实磁盘路径。
+   *
+   * Electron 32+ 已移除 `File.path`（本项目 Electron 43），渲染层无法再从 File
+   * 对象直接读路径，必须经 preload 的 webUtils.getPathForFile。
+   * 非 File 对象或非磁盘文件会抛错 / 返回空串，统一归一为 '' 交由调用方跳过。
+   */
+  pathForFile(file: File): string {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return '';
+    }
+  },
+  /**
    * 订阅 MessagePort 下发事件（W4 AI 流式对话用）。
    *
    * Main 进程通过 `webContents.postMessage(channel, data, [port])` 下发 MessagePort，

@@ -1697,6 +1697,27 @@ export const ChatInput = memo(function ChatInput({
         // 输入条优先：stopPropagation 后 App 的 onDrop 不再重复附加。
         e.preventDefault();
         e.stopPropagation();
+
+        // 中转区拖入：text→正文，link/video→URL，file/screenshot→路径
+        const transitRaw = e.dataTransfer?.getData('application/x-urchin-transit');
+        if (transitRaw) {
+          try {
+            const item = JSON.parse(transitRaw) as {
+              text?: string;
+              url?: string;
+              filePath?: string;
+              title?: string;
+            };
+            const content = item.text || item.url || item.filePath || item.title || '';
+            if (content) {
+              setText((prev) => (prev ? `${prev}\n${content}` : content));
+            }
+          } catch {
+            handleFiles(e.dataTransfer?.files ?? null);
+          }
+          return;
+        }
+
         handleFiles(e.dataTransfer?.files ?? null);
       }}
     >

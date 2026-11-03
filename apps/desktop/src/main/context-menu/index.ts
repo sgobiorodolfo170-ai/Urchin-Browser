@@ -55,6 +55,17 @@ export interface ContextMenuDeps {
     translateSelection: (tabId: number, text: string, x: number, y: number) => void;
     restore: (tabId: number) => void;
   };
+  /**
+   * 加入中转区动作（可选注入；未注入时菜单项不出现）。
+   * 主进程侧处理：选中文字生成 md 文档、链接/视频直接传 URL 到主窗口。
+   */
+  addToTransit?: (item: {
+    kind: 'text' | 'link' | 'video';
+    title: string;
+    text?: string;
+    url?: string;
+    sourceUrl?: string;
+  }) => void;
 }
 
 /** 菜单项（原生 MenuItemConstructorOptions 的测试友好子集） */
@@ -67,6 +78,14 @@ export interface ContextMenuParamsLite {
   editFlags?: { canCopy?: boolean; canPaste?: boolean };
   /** 选中文本（划词翻译用；无选区时缺省） */
   selectionText?: string;
+  /** 链接 URL（右键在 <a> 上时存在） */
+  linkURL?: string;
+  /** 媒体类型（右键在 <img>/<video> 上时为对应类型） */
+  mediaType?: 'none' | 'image' | 'audio' | 'video' | 'canvas' | 'file' | 'plugin';
+  /** 媒体元素 src URL */
+  srcURL?: string;
+  /** 页面 URL */
+  pageURL?: string;
 }
 
 /** 右键菜单目标页信息（用于「保存网页」默认文件名与内部页禁用判断） */
@@ -103,6 +122,14 @@ export function buildMenuTemplate(
     restore?: () => void;
     /** 翻译激活态查询（无 tab 或未注入时视为未激活） */
     isTranslating?: () => boolean;
+    /** 加入中转区（选中文字/链接/视频） */
+    addToTransit?: (item: {
+      kind: 'text' | 'link' | 'video';
+      title: string;
+      text?: string;
+      url?: string;
+      sourceUrl?: string;
+    }) => void;
   },
 ): ContextMenuTemplateItem[] {
   const canCopy = params.editFlags?.canCopy ?? true;
@@ -132,10 +159,58 @@ export function buildMenuTemplate(
     }
   }
 
+  // 中转区组：选中文字 / 链接 / 视频（有对应内容时出现）
+  const transitItems: ContextMenuTemplateItem[] = [];
+  if (actions.addToTransit) {
+    if (selection) {
+      const text = selection;
+      transitItems.push({
+        label: '加入选中文字到中转区',
+        enabled: true,
+        click: () =>
+          actions.addToTransit!({
+            kind: 'text',
+            title: text.slice(0, 40),
+            text,
+            sourceUrl: tab?.url,
+          }),
+      });
+    }
+    if (params.linkURL) {
+      const url = params.linkURL;
+      transitItems.push({
+        label: '加入链接到中转区',
+        enabled: true,
+        click: () =>
+          actions.addToTransit!({
+            kind: 'link',
+            title: url,
+            url,
+            sourceUrl: tab?.url,
+          }),
+      });
+    }
+    if (params.mediaType === 'video' && (params.srcURL ?? tab?.url)) {
+      const videoUrl = params.srcURL ?? tab?.url ?? '';
+      transitItems.push({
+        label: '加入视频到中转区',
+        enabled: true,
+        click: () =>
+          actions.addToTransit!({
+            kind: 'video',
+            title: videoUrl,
+            url: videoUrl,
+            sourceUrl: tab?.url,
+          }),
+      });
+    }
+  }
+
   return [
     { label: '复制', enabled: canCopy, click: () => actions.copy() },
     { label: '粘贴', enabled: canPaste, click: () => actions.paste() },
     ...(translateItems.length > 0 ? [{ type: 'separator' } as const, ...translateItems] : []),
+    ...(transitItems.length > 0 ? [{ type: 'separator' } as const, ...transitItems] : []),
     { type: 'separator' },
     { label: '保存网页为…', enabled: !isInternalPage, click: () => actions.save() },
   ];
@@ -295,6 +370,7 @@ export function handleContextMenu(
     },
     isTranslating: () =>
       tabInfo?.id !== undefined && deps.translate ? deps.translate.isActive(tabInfo.id) : false,
+    addToTransit: deps.addToTransit ? (item) => deps.addToTransit!(item) : undefined,
   });
 
   try {

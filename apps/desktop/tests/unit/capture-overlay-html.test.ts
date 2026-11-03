@@ -41,8 +41,8 @@ describe('capture overlay html', () => {
   });
 
   it('should hint move, resize and cancel operations', () => {
-    expect(html).toContain('框内拖动移动');
+    expect(html).toContain('框内按住拖到中转区');
     expect(html).toContain('缩放');
-    expect(html).toContain('框外右键取消');
+    expect(html).toContain('Esc 取消');
   });
 });

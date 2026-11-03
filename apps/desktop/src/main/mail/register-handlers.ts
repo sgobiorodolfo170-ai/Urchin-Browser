@@ -21,6 +21,47 @@ import type { TranslateManager } from '../translate/translate-manager';
 
 const log = createLogger('mail-ipc');
 
+/** 附件扩展名 → MIME 映射（select 与 fromPath 共用） */
+const ATTACHMENT_CONTENT_TYPE_MAP: Record<string, string> = {
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  bmp: 'image/bmp',
+  zip: 'application/zip',
+  rar: 'application/x-rar-compressed',
+  '7z': 'application/x-7z-compressed',
+  txt: 'text/plain',
+  csv: 'text/csv',
+  mp3: 'audio/mpeg',
+  mp4: 'video/mp4',
+};
+
+/** 从文件路径构造附件数据（select 与 fromPath 共用） */
+function buildAttachmentFromPath(filePath: string): {
+  filename: string;
+  contentType: string;
+  contentBase64: string;
+  size: number;
+} {
+  const buffer = readFileSync(filePath);
+  const filename = filePath.split(/[/\\]/).pop() ?? 'attachment';
+  const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+  return {
+    filename,
+    contentType: ATTACHMENT_CONTENT_TYPE_MAP[ext] ?? 'application/octet-stream',
+    contentBase64: buffer.toString('base64'),
+    size: buffer.length,
+  };
+}
+
 export interface MailHandlerDeps {
   ipcMain: IpcMain;
   mailManager: MailManager;
@@ -219,40 +260,15 @@ export function registerMailHandlers(deps: MailHandlerDeps): void {
     if (result.canceled || result.filePaths.length === 0) {
       return { attachments: [] };
     }
-    const attachments = result.filePaths.map((filePath) => {
-      const buffer = readFileSync(filePath);
-      const filename = filePath.split(/[/\\]/).pop() ?? 'attachment';
-      const ext = filename.split('.').pop()?.toLowerCase() ?? '';
-      const contentTypeMap: Record<string, string> = {
-        pdf: 'application/pdf',
-        doc: 'application/msword',
-        docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        xls: 'application/vnd.ms-excel',
-        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        ppt: 'application/vnd.ms-powerpoint',
-        pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        png: 'image/png',
-        jpg: 'image/jpeg',
-        jpeg: 'image/jpeg',
-        gif: 'image/gif',
-        bmp: 'image/bmp',
-        zip: 'application/zip',
-        rar: 'application/x-rar-compressed',
-        '7z': 'application/x-7z-compressed',
-        txt: 'text/plain',
-        csv: 'text/csv',
-        mp3: 'audio/mpeg',
-        mp4: 'video/mp4',
-      };
-      return {
-        filename,
-        contentType: contentTypeMap[ext] ?? 'application/octet-stream',
-        contentBase64: buffer.toString('base64'),
-        size: buffer.length,
-      };
-    });
+    const attachments = result.filePaths.map((filePath) => buildAttachmentFromPath(filePath));
     log.info('mail.attachment.select done', { count: attachments.length });
     return { attachments };
+  });
+
+  // mail.attachment.fromPath：从已知文件路径构造附件（中转区拖入邮箱用）
+  registerHandler(ipcMain, 'mail.attachment.fromPath', (req) => {
+    log.info('mail.attachment.fromPath', { path: req.filePath });
+    return { attachment: buildAttachmentFromPath(req.filePath) };
   });
 
   // mail.message.translate：邮件翻译（复用 M24 引擎层；中英互译自动判定）

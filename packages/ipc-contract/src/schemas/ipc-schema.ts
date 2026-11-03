@@ -1497,6 +1497,21 @@ export const screenshotConfirmResSchema = z.object({
 });
 export type ScreenshotConfirmRes = z.infer<typeof screenshotConfirmResSchema>;
 
+/** 拖拽框选请求：选区物理像素矩形（与 confirm 相同），触发 OS 级文件拖拽到中转区 */
+export const screenshotDragStartReqSchema = z.object({
+  x: z.number().int().min(0),
+  y: z.number().int().min(0),
+  width: z.number().int().min(1),
+  height: z.number().int().min(1),
+});
+export type ScreenshotDragStartReq = z.infer<typeof screenshotDragStartReqSchema>;
+
+/** 拖拽框选响应：裁剪后的 PNG 文件绝对路径（已通过 startDrag 发起 OS 级拖拽） */
+export const screenshotDragStartResSchema = z.object({
+  path: z.string().min(1),
+});
+export type ScreenshotDragStartRes = z.infer<typeof screenshotDragStartResSchema>;
+
 /** 取消框选请求：无参数，关闭覆盖窗口 */
 export const screenshotCancelReqSchema = z.object({}).default({});
 export type ScreenshotCancelReq = z.infer<typeof screenshotCancelReqSchema>;
@@ -1584,6 +1599,8 @@ export const clipperConfigResSchema = z.object({
   cleanSnapshot: z.boolean(),
   selectionPriority: z.boolean(),
   loadLazyContent: z.boolean(),
+  /** CL12：是否剪除正文末尾的中文信息栏短行（来源：/作者：/评论：等，默认 true） */
+  trimBoilerplate: z.boolean(),
   /** CL11：剪藏 Markdown 时是否下载远程图片到本地 assets/ 目录（默认 true） */
   localizeImages: z.boolean(),
   noteNameFormat: z.string().max(512),
@@ -2234,6 +2251,23 @@ export const mailAttachmentSelectResSchema = z.object({
 });
 export type MailAttachmentSelectRes = z.infer<typeof mailAttachmentSelectResSchema>;
 
+// --- mail.attachment.fromPath（从路径读取附件，中转区拖入邮箱用） ---
+
+export const mailAttachmentFromPathReqSchema = z.object({
+  filePath: z.string().min(1),
+});
+export type MailAttachmentFromPathReq = z.infer<typeof mailAttachmentFromPathReqSchema>;
+
+export const mailAttachmentFromPathResSchema = z.object({
+  attachment: z.object({
+    filename: z.string(),
+    contentType: z.string(),
+    contentBase64: z.string(),
+    size: z.number().int(),
+  }),
+});
+export type MailAttachmentFromPathRes = z.infer<typeof mailAttachmentFromPathResSchema>;
+
 // --- 新邮件事件（单向推送，mail.event.newMessage） ---
 
 export const mailEventNewMessageSchema = z.object({
@@ -2663,6 +2697,10 @@ export const ipcSchema = {
     res: screenshotGetImageDataResSchema,
   },
   'screenshot.confirm': { req: screenshotConfirmReqSchema, res: screenshotConfirmResSchema },
+  'screenshot.dragStart': {
+    req: screenshotDragStartReqSchema,
+    res: screenshotDragStartResSchema,
+  },
   'screenshot.cancel': { req: screenshotCancelReqSchema, res: screenshotCancelResSchema },
   // Clipper 域（地址栏剪藏按钮）：面板 + 页面快照 + Markdown/快照保存
   'clipper.open': { req: clipperOpenReqSchema, res: clipperOpenResSchema },
@@ -2713,6 +2751,10 @@ export const ipcSchema = {
   'mail.attachment.select': {
     req: mailAttachmentSelectReqSchema,
     res: mailAttachmentSelectResSchema,
+  },
+  'mail.attachment.fromPath': {
+    req: mailAttachmentFromPathReqSchema,
+    res: mailAttachmentFromPathResSchema,
   },
   // Update 域（M20 提前落地，dev.114）：设置页更新按钮 → GitHub Releases 自动更新。
   // 进度经 `update:event` 推送（同 translate:progress 模式），4 个 RPC 返回状态快照。

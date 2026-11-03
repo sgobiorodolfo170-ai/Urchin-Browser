@@ -44,4 +44,16 @@ describe('clipper extract', () => {
     expect(result.contentMarkdown).toBe('MD(<p>page content</p>)');
     expect(result.usedSelection).toBe(false);
   });
+
+  it('should sanitize selection html before converting to markdown', () => {
+    const dirty = {
+      ...snapshot,
+      selectionHtml: '<p>sel</p><script>alert(1)</script><style>.x{}</style>',
+      selectionText: 'sel',
+    };
+    const result = extractClipperContent(dirty, true);
+    expect(result.selectionMarkdown).toBe('MD(<p>sel</p>)');
+    expect(result.selectionMarkdown).not.toContain('script');
+    expect(result.selectionMarkdown).not.toContain('style');
+  });
 });

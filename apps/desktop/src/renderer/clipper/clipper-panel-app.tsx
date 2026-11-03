@@ -29,6 +29,7 @@ import {
 } from './draft';
 import { extractClipperContent, type ClipperExtraction } from './extract';
 import { assessQuality, buildCleanedHtml, type ClipperQuality } from './clean-html';
+import { trimTrailingBoilerplate } from './postprocess';
 
 const FORMAT_LABELS: Readonly<Record<ClipperFormat, string>> = {
   markdown: 'Markdown（可编辑）',
@@ -75,6 +76,7 @@ export function ClipperPanelApp() {
   const [format, setFormat] = useState<ClipperFormat>('markdown');
   const [snapshotMode, setSnapshotMode] = useState<ClipperSnapshotMode>('clean');
   const [selectionPriority, setSelectionPriority] = useState(true);
+  const [trimBoilerplate, setTrimBoilerplate] = useState(true);
   const [noteName, setNoteName] = useState('');
   const [rows, setRows] = useState<readonly ClipperPropertyRow[]>([]);
   const [body, setBody] = useState('');
@@ -90,9 +92,10 @@ export function ClipperPanelApp() {
   const [newSubDirInput, setNewSubDirInput] = useState('');
 
   const applyDraft = useCallback(
-    (data: ClipperExtraction, cfg: ClipperConfigRes, preferSelection: boolean) => {
+    (data: ClipperExtraction, cfg: ClipperConfigRes, preferSelection: boolean, trim: boolean) => {
       const useSelection = preferSelection && data.selectionMarkdown.trim().length > 0;
-      const contentMarkdown = useSelection ? data.selectionMarkdown : data.pageMarkdown;
+      const raw = useSelection ? data.selectionMarkdown : data.pageMarkdown;
+      const contentMarkdown = trim ? trimTrailingBoilerplate(raw) : raw;
       const variables = buildVariables({
         title: data.title,
         url: data.url,
@@ -148,6 +151,7 @@ export function ClipperPanelApp() {
         setFormat(cfg.defaultFormat === 'ocr' ? 'markdown' : cfg.defaultFormat);
         setSnapshotMode(cfg.cleanSnapshot ? 'clean' : 'original');
         setSelectionPriority(cfg.selectionPriority);
+        setTrimBoilerplate(cfg.trimBoilerplate);
 
         // 获取 clipper 目录下的子文件夹列表（保存路径选择器用）
         try {
@@ -162,7 +166,7 @@ export function ClipperPanelApp() {
         const data = extractClipperContent(pageRes, cfg.selectionPriority);
         if (cancelled) return;
         setExtraction(data);
-        applyDraft(data, cfg, cfg.selectionPriority);
+        applyDraft(data, cfg, cfg.selectionPriority, cfg.trimBoilerplate);
         setQuality(
           assessQuality({
             textLength: pageRes.signals.textLength,
@@ -204,9 +208,28 @@ export function ClipperPanelApp() {
   const handleSelectionPriorityChange = (enabled: boolean): void => {
     setSelectionPriority(enabled);
     if (extraction && config) {
-      applyDraft(extraction, config, enabled);
+      applyDraft(extraction, config, enabled, trimBoilerplate);
       if (page) {
         const content = enabled ? extraction.selectionMarkdown : extraction.pageMarkdown;
+        setQuality(
+          assessQuality({
+            textLength: page.signals.textLength,
+            markdownLength: content.length,
+            imageCount: page.signals.imageCount,
+            hasCanvas: page.signals.hasCanvas,
+          }),
+        );
+      }
+    }
+  };
+
+  const handleTrimBoilerplateChange = (enabled: boolean): void => {
+    setTrimBoilerplate(enabled);
+    if (extraction && config) {
+      applyDraft(extraction, config, selectionPriority, enabled);
+      if (page) {
+        const raw = selectionPriority ? extraction.selectionMarkdown : extraction.pageMarkdown;
+        const content = enabled ? trimTrailingBoilerplate(raw) : raw;
         setQuality(
           assessQuality({
             textLength: page.signals.textLength,
@@ -524,7 +547,7 @@ export function ClipperPanelApp() {
                 </div>
               </div>
             )}
-            <div className="mb-1 flex items-center gap-3">
+            <div className="mb-1 flex flex-wrap items-center gap-3">
               <span className="text-xs font-medium text-text-secondary">正文 Markdown</span>
               <label className="flex items-center gap-1 text-xs text-text-secondary">
                 <input
@@ -534,6 +557,15 @@ export function ClipperPanelApp() {
                   onChange={(e) => setClipImages(e.target.checked)}
                 />
                 剪藏图片
+              </label>
+              <label className="flex items-center gap-1 text-xs text-text-secondary">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 accent-primary"
+                  checked={trimBoilerplate}
+                  onChange={(e) => handleTrimBoilerplateChange(e.target.checked)}
+                />
+                去掉尾部信息栏
               </label>
             </div>
             <textarea

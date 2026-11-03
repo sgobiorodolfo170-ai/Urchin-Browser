@@ -217,6 +217,8 @@ async function serveLocalFile(request: Request, url: URL): Promise<Response> {
  * - urchin://favicon/<hash> → 主进程缓存的网站图标（标签栏/书签/历史共用）
  * - urchin://zoom / urchin://zoom-main → Ctrl+滚轮缩放信号（页面注入脚本 fetch，
  *   主进程按方向调整 zoomFactor；zoom 作用于网页 tab、zoom-main 作用于主窗口内部页）
+ * - urchin://transit-drag → 中转区拖拽信号（路径 B：页面 dragstart 注入脚本 POST JSON，
+ *   主进程解析后写 md 文档 / 推送 transit:add 到主窗口）
  * - urchin://newtab → 空白页（占位，v0.1 返回简单 HTML）
  * - 其他 → 404
  *
@@ -245,6 +247,16 @@ export function registerUrchinProtocol(
     getMailContent?: (token: string) => string | null;
     /** favicon 缓存读取（urchin://favicon/<hash> → 位图字节；缺失返回 null） */
     getFavicon?: (name: string) => Promise<FaviconResponse | null>;
+    /** 中转区拖拽回调（路径 B）：页面 dragstart 注入脚本 fetch urchin://transit-drag 触发 */
+    onTransitDrag?: (data: {
+      kind: 'text' | 'link' | 'image' | 'video';
+      title: string;
+      text?: string;
+      url?: string;
+      linkText?: string;
+      pageUrl: string;
+      pageTitle: string;
+    }) => void;
   },
   targetSession?: Session,
 ): void {
@@ -298,6 +310,27 @@ export function registerUrchinProtocol(
     return new Response('', { status: 200 });
   };
 
+  // 中转区拖拽信号（路径 B）：页面 dragstart 注入脚本 POST JSON 到此。
+  // 读取 body 后回调 onTransitDrag，返回空 200（页面不需要读取响应）。
+  const handleTransitDrag = async (request: Request): Promise<Response> => {
+    if (opts?.onTransitDrag) {
+      try {
+        const body = await request.text();
+        const parsed: unknown = JSON.parse(body);
+        if (
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          typeof (parsed as Record<string, unknown>).kind === 'string'
+        ) {
+          opts.onTransitDrag(parsed as Parameters<NonNullable<typeof opts.onTransitDrag>>[0]);
+        }
+      } catch {
+        // 解析失败：静默忽略
+      }
+    }
+    return new Response('', { status: 200 });
+  };
+
   const handler = async (request: Request): Promise<Response> => {
     try {
       const url = new URL(request.url);
@@ -305,6 +338,10 @@ export function registerUrchinProtocol(
 
       if (host === 'zoom' || host === 'zoom-main') {
         return handleZoom(request, host === 'zoom-main' ? 'main' : 'tab');
+      }
+
+      if (host === 'transit-drag') {
+        return handleTransitDrag(request);
       }
 
       if (host === 'pi-icon') {

@@ -75,7 +75,7 @@ export function getCaptureOverlayHtml(): string {
     <button id="cancel-btn">取消</button>
     <button id="confirm-btn">确认</button>
   </div>
-  <div id="hint">拖拽选择区域 · 框内拖动移动 · 边框/四角缩放 · 框外右键取消 · Esc 取消</div>
+      <div id="hint">拖拽选择区域 · 框内按住拖到中转区 · 边框/四角缩放 · Esc 取消</div>
 
   <script>
     (function () {
@@ -138,7 +138,7 @@ export function getCaptureOverlayHtml(): string {
         if (x >= l && x <= r && y > b - EDGE && y <= b) return { dir: 's', cursor: 'ns-resize' };
         if (x >= l && x < l + EDGE && y > t + CORNER && y < b - CORNER) return { dir: 'w', cursor: 'ew-resize' };
         if (x > r - EDGE && x <= r && y > t + CORNER && y < b - CORNER) return { dir: 'e', cursor: 'ew-resize' };
-        if (x > l && x < r && y > t && y < b) return { dir: 'move', cursor: 'move' };
+        if (x > l && x < r && y > t && y < b) return { dir: 'move', cursor: 'grab' };
         return null;
       }
 
@@ -151,15 +151,23 @@ export function getCaptureOverlayHtml(): string {
         if (rect && (e.target === selection || selection.contains(e.target))) {
           var zone = hitZone(e.clientX, e.clientY);
           if (zone) {
-            startX = e.clientX; startY = e.clientY;
             if (zone.dir === 'move') {
-              mode = 'move';
-              grabDX = e.clientX - rect.left;
-              grabDY = e.clientY - rect.top;
-            } else {
-              mode = 'resize';
-              resizeDir = zone.dir;
+              // 框内按住 = 截图成功 + 发起 OS 级文件拖拽（拖到中转区松开即存入）
+              var dpr = window.devicePixelRatio || 1;
+              window.urchin.invoke('screenshot.dragStart', {
+                x: Math.round(rect.left * dpr),
+                y: Math.round(rect.top * dpr),
+                width: Math.round((rect.right - rect.left) * dpr),
+                height: Math.round((rect.bottom - rect.top) * dpr),
+              }).catch(function (err) {
+                document.getElementById('hint').textContent =
+                  '拖拽失败：' + (err && err.message ? err.message : String(err));
+              });
+              return;
             }
+            startX = e.clientX; startY = e.clientY;
+            mode = 'resize';
+            resizeDir = zone.dir;
             actions.style.display = 'none';
             return;
           }

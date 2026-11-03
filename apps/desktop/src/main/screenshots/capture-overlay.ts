@@ -210,6 +210,51 @@ export class CaptureOverlay {
     return filePath;
   }
 
+  /**
+   * 拖拽框选：裁剪截图 → 保存 PNG → 发起 OS 级文件拖拽（webContents.startDrag）
+   * → 关闭覆盖窗口。用户拖到中转区松开后由中转区 onDrop 接收文件路径。
+   *
+   * 与 confirm 的区别：不打开文件夹，而是通过 startDrag 让用户拖到目标区域。
+   *
+   * @param rect 物理像素矩形（覆盖窗口已按 devicePixelRatio 换算）
+   * @returns 保存的 PNG 文件绝对路径
+   */
+  dragStart(rect: SelectionRect): string {
+    if (!this.screenshot) {
+      throw new Error('Capture overlay not started');
+    }
+    if (rect.width <= 0 || rect.height <= 0) {
+      throw new Error('Invalid selection rect');
+    }
+
+    const cropped = this.screenshot.crop({
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+    });
+    const png = cropped.toPNG();
+
+    const dir = join(this.options.dataDir, SCREENSHOTS_DIR);
+    mkdirSync(dir, { recursive: true });
+    const filePath = join(dir, screenshotFileName(new Date()));
+    writeFileSync(filePath, png);
+
+    // 发起 OS 级文件拖拽：用户拖到中转区松开即存入（真实存储位置仍在 screenshots/）
+    const win = this.window;
+    if (win && !win.isDestroyed()) {
+      const iconImg = cropped.resize({ width: 120 });
+      win.webContents.startDrag({
+        file: filePath,
+        icon: iconImg,
+      });
+    }
+
+    this.close();
+    log.info('screenshot drag started', { path: filePath });
+    return filePath;
+  }
+
   /** 取消框选：关闭覆盖窗口并清缓存。 */
   cancel(): void {
     this.close();

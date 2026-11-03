@@ -93,9 +93,10 @@ describe('SettingsManager', () => {
     //   window.bounds 窗口几何记忆，主进程内部状态/
     //   translate.targetLang/translate.engine/translate.autoTranslate 网页翻译 dev.79/
     //   ui.workspaceSwitcherMode 折叠态工作区切换模式 TP7/
-    //   clipper.* 剪藏默认格式/清洗/选中优先/懒加载/模板 6 项/
-    //   notebook.state 笔记与便利贴整体状态 M27） + 自定义 1 项
-    expect(entries).toHaveLength(30);
+    //   clipper.* 剪藏默认格式/清洗/选中优先/懒加载/尾部信息栏剪除/模板 7 项/
+    //   notebook.state 笔记与便利贴整体状态 M27/
+    //   transit.items 中转区项目索引） + 自定义 1 项
+    expect(entries).toHaveLength(32);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');
@@ -117,6 +118,7 @@ describe('SettingsManager', () => {
     expect(keys).toContain('clipper.defaultFormat');
     expect(keys).toContain('clipper.cleanSnapshot');
     expect(keys).toContain('clipper.selectionPriority');
+    expect(keys).toContain('clipper.trimBoilerplate');
     expect(keys).toContain('clipper.properties');
     expect(keys).toContain('clipper.content');
     expect(keys).toContain('notebook.state');

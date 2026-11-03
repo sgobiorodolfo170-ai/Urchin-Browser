@@ -266,6 +266,12 @@ const CLIPPER_FIELDS: readonly SettingField[] = [
     type: 'toggle',
   },
   {
+    key: 'clipper.trimBoilerplate',
+    label: '剪除正文末尾信息栏',
+    desc: '自动去掉正文末尾的「来源：/作者：/评论：/责编：」等中文信息栏短行（只剪末尾连续短行，不动正文中间的合法引用）',
+    type: 'toggle',
+  },
+  {
     key: 'clipper.localizeImages',
     label: 'Markdown 剪藏时下载图片到本地',
     desc: '剪藏为 Markdown 时把远程图片下载到 assets/ 目录，md 中改为本地相对路径。下载失败的图片保留原链接。需 GenOffice 编辑器可用',
@@ -354,6 +360,7 @@ const DEFAULTS: Record<string, unknown> = {
   'clipper.cleanSnapshot': true,
   'clipper.selectionPriority': true,
   'clipper.loadLazyContent': false,
+  'clipper.trimBoilerplate': true,
   'clipper.localizeImages': true,
   'clipper.noteNameFormat': '{{title}}',
   'clipper.properties':

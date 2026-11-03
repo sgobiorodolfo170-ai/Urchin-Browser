@@ -480,6 +480,7 @@ export class MailManager {
         }
       })();
     }, HEARTBEAT_INTERVAL_MS);
+    this.heartbeatTimer.unref?.();
   }
 
   /** 清理所有连接 + 心跳（应用退出时调用） */

@@ -23,5 +23,3 @@ export class DatabaseSync {
     );
   }
 }
-
-export type SQLInputValue = string | number | bigint | Uint8Array | null;

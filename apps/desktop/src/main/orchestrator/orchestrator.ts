@@ -289,8 +289,11 @@ export class Orchestrator {
     // 尝试 kill 残留进程
     try {
       host.process.kill();
-    } catch {
-      // ignore
+    } catch (err) {
+      log.warn('kill provider failed (markCrashed)', {
+        providerId: host.providerId,
+        error: String(err),
+      });
     }
   }
 
@@ -318,16 +321,19 @@ export class Orchestrator {
     if (host.state !== 'crashed') {
       try {
         host.port.postMessage({ kind: 'dispose' });
-      } catch {
-        // ignore
+      } catch (err) {
+        log.warn('postMessage dispose failed', { providerId: host.providerId, error: String(err) });
       }
     }
 
     // kill 进程
     try {
       host.process.kill();
-    } catch {
-      // ignore
+    } catch (err) {
+      log.warn('kill provider failed (disposeHost)', {
+        providerId: host.providerId,
+        error: String(err),
+      });
     }
 
     // 显式移除 exit listener（避免 listener 残留）

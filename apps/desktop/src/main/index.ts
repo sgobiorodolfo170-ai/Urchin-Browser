@@ -1796,10 +1796,16 @@ void app.whenReady().then(() => {
         'SELECT key, value FROM settings WHERE key LIKE ?',
         'settings:ai.%',
       );
-      return rows.map((row) => ({
-        key: row.key,
-        value: JSON.parse(row.value) as unknown,
-      }));
+      return rows
+        .map((row) => {
+          try {
+            return { key: row.key, value: JSON.parse(row.value) as unknown };
+          } catch {
+            log.warn('skip malformed setting during legacy scan', { key: row.key });
+            return null;
+          }
+        })
+        .filter((r): r is { key: string; value: unknown } => r !== null);
     },
   });
 

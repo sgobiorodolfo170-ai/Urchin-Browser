@@ -99,6 +99,13 @@ describe('SettingsPage', () => {
     clickTab('AI 助手');
     expect(screen.getByText('AI 助手功能正在开发中，敬请期待。')).toBeTruthy();
 
+    // 帮助手册选项卡（全部操作说明）
+    clickTab('帮助手册');
+    expect(screen.getByText('常用快捷键')).toBeTruthy();
+    expect(screen.getByText('界面总览')).toBeTruthy();
+    expect(screen.getByText('标签页与工作区')).toBeTruthy();
+    expect(screen.getByText('帮助手册', { selector: 'h1' })).toBeTruthy();
+
     // 隐私与安全
     clickTab('隐私与安全');
     expect(screen.getByText('拦截追踪器')).toBeTruthy();

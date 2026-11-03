@@ -12,7 +12,7 @@
  * - reload/goBack/goForward 直接调用 webContents，M3 Navigation Stack 将增加事件与状态同步
  */
 import type { IpcMain } from 'electron';
-import { registerHandler } from '@urchin/ipc-contract';
+import { registerHandler, IpcError, IpcErrorCode } from '@urchin/ipc-contract';
 import { createLogger } from '@urchin/logger';
 import { fallbackGenOfficeUrl } from '../genoffice/url';
 import type { TabManager } from './tab-manager';
@@ -82,7 +82,9 @@ export function registerTabHandlers(
 
     const snapshot = tabManager.getSnapshot(tab.id);
     if (!snapshot) {
-      throw new Error(`Failed to snapshot newly created tab ${tab.id}`);
+      throw new IpcError(IpcErrorCode.INTERNAL, `Failed to snapshot newly created tab ${tab.id}`, {
+        channel: 'tab.create',
+      });
     }
 
     return { tab: snapshot };
@@ -121,7 +123,9 @@ export function registerTabHandlers(
 
     const snapshot = tabManager.getSnapshot(req.tabId);
     if (!snapshot) {
-      throw new Error(`Tab not found after setActive: ${req.tabId}`);
+      throw new IpcError(IpcErrorCode.NOT_FOUND, `Tab not found after setActive: ${req.tabId}`, {
+        channel: 'tab.setActive',
+      });
     }
 
     return { tab: snapshot };
@@ -133,7 +137,9 @@ export function registerTabHandlers(
 
     const tab = tabManager.getTab(req.tabId);
     if (!tab) {
-      throw new Error(`Tab not found: ${req.tabId}`);
+      throw new IpcError(IpcErrorCode.NOT_FOUND, `Tab not found: ${req.tabId}`, {
+        channel: 'tab.reload',
+      });
     }
 
     if (req.ignoreCache) {
@@ -151,7 +157,9 @@ export function registerTabHandlers(
 
     const tab = tabManager.getTab(req.tabId);
     if (!tab) {
-      throw new Error(`Tab not found: ${req.tabId}`);
+      throw new IpcError(IpcErrorCode.NOT_FOUND, `Tab not found: ${req.tabId}`, {
+        channel: 'tab.goBack',
+      });
     }
 
     if (tab.canGoBack) {
@@ -167,7 +175,9 @@ export function registerTabHandlers(
 
     const tab = tabManager.getTab(req.tabId);
     if (!tab) {
-      throw new Error(`Tab not found: ${req.tabId}`);
+      throw new IpcError(IpcErrorCode.NOT_FOUND, `Tab not found: ${req.tabId}`, {
+        channel: 'tab.goForward',
+      });
     }
 
     if (tab.canGoForward) {

@@ -92,13 +92,12 @@ export function registerHandler<C extends IpcChannel>(
       return new IpcError(IpcErrorCode.VALIDATION, `入参校验失败: ${msg}`, { channel }).toPayload();
     }
 
-    // 2. 超时竞速
+    // 2. 超时竞速（race 后清理定时器，避免 unhandledRejection）
     const ctx: IpcCallCtx = { event, channel, timeoutMs };
+    const timeout = createTimeout(timeoutMs, channel);
     try {
-      const result = await Promise.race([
-        Promise.resolve(handler(req, ctx)),
-        createTimeout(timeoutMs, channel),
-      ]);
+      const result = await Promise.race([Promise.resolve(handler(req, ctx)), timeout.promise]);
+      timeout.cancel();
 
       // 3. 出参校验（仅对成功结果，超时/异常跳过）
       if (isIpcErrorPayloadInternal(result)) {
@@ -111,6 +110,7 @@ export function registerHandler<C extends IpcChannel>(
         return new IpcError(IpcErrorCode.INTERNAL, `出参校验失败: ${msg}`, { channel }).toPayload();
       }
     } catch (e) {
+      timeout.cancel();
       // 4. 异常装箱
       if (e instanceof IpcError) {
         return e.toPayload();
@@ -130,15 +130,28 @@ export function registerHandler<C extends IpcChannel>(
   };
 }
 
-/** 创建超时 promise，超时后 reject IpcError。 */
-function createTimeout(ms: number, channel: IpcChannel): Promise<never> {
-  return new Promise((_, reject) => {
-    setTimeout(() => {
+/** 创建超时 promise，超时后 reject IpcError。返回 cancel 以便 race 后清理。 */
+function createTimeout(
+  ms: number,
+  channel: IpcChannel,
+): { promise: Promise<never>; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const promise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
       reject(
         new IpcError(IpcErrorCode.TIMEOUT, `IPC 调用超时 (${ms}ms)`, { channel, retryable: true }),
       );
     }, ms);
   });
+  return {
+    promise,
+    cancel: () => {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+    },
+  };
 }
 
 /** 类型守卫：判断是否为内部已装箱错误 payload。 */

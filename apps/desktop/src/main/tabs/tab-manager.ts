@@ -29,7 +29,7 @@ import type {
   WindowOpenHandlerResponse,
 } from './types';
 import { buildAdBlockCss } from './ad-block-css';
-import { DEFAULT_WORKSPACE_ID } from '@urchin/ipc-contract';
+import { DEFAULT_WORKSPACE_ID, IpcError, IpcErrorCode } from '@urchin/ipc-contract';
 import { createLogger } from '@urchin/logger';
 
 const log = createLogger('tab-manager');
@@ -411,7 +411,12 @@ export class TabManager {
   loadUrl(tabId: number, url: string): void {
     const tab = this.tabs.get(tabId);
     if (!tab) {
-      throw new Error(`Tab not found: ${tabId}`);
+      throw new IpcError(IpcErrorCode.NOT_FOUND, `Tab not found: ${tabId}`, { channel: 'tab' });
+    }
+
+    // 主进程侧协议白名单兜底（renderer 已校验，此处防御 IPC 被绕过）
+    if (!/^(https?|file|urchin|about):/i.test(url)) {
+      throw new Error(`Blocked protocol in URL: ${url.substring(0, 50)}`);
     }
 
     // 立即更新 URL（did-navigate 事件会确认最终 URL，含重定向）

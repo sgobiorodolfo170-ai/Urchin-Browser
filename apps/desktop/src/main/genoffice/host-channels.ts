@@ -15,6 +15,10 @@
  * 宿主不重复注册（重复注册会抛 "second handler"）。
  */
 import type { IpcMain } from 'electron';
+import { z } from 'zod';
+import { createLogger } from '@urchin/logger';
+
+const log = createLogger('genoffice-host-channels');
 
 /** AI 面板偏好（与 packages/ui/src/ai-panel-prefs.ts 形状一致）。 */
 export interface GenOfficeAiPanelPrefs {
@@ -71,6 +75,16 @@ export function createAiPanelPrefsStore(): GenOfficeAiPanelPrefsStore {
   };
 }
 
+/** app:set-ai-panel-prefs patch 的 zod schema（与 GenOfficeAiPanelPrefs 字段对齐）。 */
+const AI_PANEL_PREFS_PATCH_SCHEMA = z
+  .object({
+    side: z.enum(['left', 'right']).optional(),
+    fontSize: z.enum(['default', 'large', 'xlarge', 'custom']).optional(),
+    customFontSize: z.number().finite().optional(),
+    spellcheck: z.boolean().optional(),
+  })
+  .partial();
+
 /**
  * 注册 GenOffice 宿主通道（幂等由调用方保证：整个应用生命周期只调用一次）。
  */
@@ -82,5 +96,12 @@ export function registerGenOfficeHostChannels(
   ipcMain.handle('app:get-theme', () => deps.getTheme());
   ipcMain.handle('app:get-auto-save-default', () => ({ on: false, updatedAt: 0 }));
   ipcMain.handle('app:get-ai-panel-prefs', () => prefs.get());
-  ipcMain.handle('app:set-ai-panel-prefs', (_event, patch: unknown) => prefs.set(patch));
+  ipcMain.handle('app:set-ai-panel-prefs', (_event, patch: unknown) => {
+    const parsed = AI_PANEL_PREFS_PATCH_SCHEMA.safeParse(patch ?? {});
+    if (!parsed.success) {
+      log.warn('app:set-ai-panel-prefs invalid patch', { error: parsed.error.message });
+      return prefs.get();
+    }
+    return prefs.set(parsed.data);
+  });
 }

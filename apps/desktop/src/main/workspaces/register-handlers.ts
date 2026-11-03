@@ -12,7 +12,7 @@
  * - 变更后广播 'workspace:changed'，多窗口渲染层统一刷新
  */
 import type { IpcMain } from 'electron';
-import { registerHandler } from '@urchin/ipc-contract';
+import { registerHandler, IpcError, IpcErrorCode } from '@urchin/ipc-contract';
 import { createLogger } from '@urchin/logger';
 import type { TabManager } from '../tabs/tab-manager';
 import type { WorkspaceRegistry } from './workspace-registry';
@@ -75,7 +75,9 @@ export function registerWorkspaceHandlers(ipcMain: IpcMain, deps: WorkspaceHandl
     log.info('workspace.clearData', { id: req.id });
     // 校验存在（default 也存在）
     if (!deps.registry.get(req.id)) {
-      throw new Error(`工作区不存在：${req.id}`);
+      throw new IpcError(IpcErrorCode.NOT_FOUND, `工作区不存在：${req.id}`, {
+        channel: 'workspace.clearData',
+      });
     }
     assertNoOpenTabs(deps.tabManager, req.id, '清空数据');
     await deps.sessions.clearData(req.id);
@@ -90,8 +92,10 @@ export function registerWorkspaceHandlers(ipcMain: IpcMain, deps: WorkspaceHandl
 function assertNoOpenTabs(tabManager: TabManager, workspaceId: string, action: string): void {
   const openTabs = tabManager.query({}).filter((t) => t.workspaceId === workspaceId);
   if (openTabs.length > 0) {
-    throw new Error(
+    throw new IpcError(
+      IpcErrorCode.STATE,
       `请先关闭${action}工作区的全部标签（该工作区还有 ${openTabs.length} 个标签打开）`,
+      { channel: 'workspace' },
     );
   }
 }

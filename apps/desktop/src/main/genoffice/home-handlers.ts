@@ -16,7 +16,8 @@ import type { IpcMain } from 'electron';
 import { app, clipboard, dialog, shell, webContents } from 'electron';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { copyFile, mkdir, readdir, rename, rm, stat } from 'node:fs/promises';
-import { basename, dirname, extname, isAbsolute, join } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, resolve, relative } from 'node:path';
+import { z } from 'zod';
 import { createLogger } from '@urchin/logger';
 import { classifyFileKind } from '../files/file-kind';
 import type { GenOfficeAiPanelPrefsStore } from './host-channels';
@@ -44,6 +45,22 @@ function isPlainName(name: string): boolean {
   if (trimmed.length === 0 || trimmed === '.' || trimmed === '..') return false;
   return !/[/\\]/.test(trimmed);
 }
+
+/**
+ * 校验目标路径是否在指定根目录内（防路径穿越）。
+ * 用于 deleteFiles/deleteFolder/movePaths 等破坏性操作的安全兜底。
+ */
+function isWithinRoot(target: string, root: string): boolean {
+  if (!isAbsolute(target) || !isAbsolute(root)) return false;
+  const rel = relative(resolve(root), resolve(target));
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
+
+/** genoffice:home 请求 payload 的 zod schema。 */
+const HOME_REQUEST_SCHEMA = z.object({
+  method: z.string().min(1),
+  args: z.array(z.unknown()).default([]),
+});
 
 /** 最近/星标条目（与上游 RecentEntry 形状一致）。 */
 interface HomeEntry {
@@ -471,6 +488,11 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
       case 'deleteFolder': {
         const dir = strArg(args[0], '');
         if (!dir) return null;
+        // 安全兜底：文件夹删除限定在 documentsRoot 子树内
+        if (!isWithinRoot(dir, deps.documentsRoot)) {
+          log.warn('deleteFolder blocked: path outside documentsRoot', { dir });
+          return { ok: false, error: 'PERMISSION: path outside root' };
+        }
         try {
           await shell.trashItem(dir);
         } catch (e) {
@@ -765,9 +787,12 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
   }
 
   ipcMain.handle('genoffice:home', (_event, payload: unknown) => {
-    const request = (payload ?? {}) as { method?: unknown; args?: unknown };
-    const method = typeof request.method === 'string' ? request.method : '';
-    const args = Array.isArray(request.args) ? request.args : [];
+    const parsed = HOME_REQUEST_SCHEMA.safeParse(payload ?? {});
+    if (!parsed.success) {
+      log.warn('genoffice:home invalid payload', { error: parsed.error.message });
+      return null;
+    }
+    const { method, args } = parsed.data;
     return dispatch(method, args);
   });
 

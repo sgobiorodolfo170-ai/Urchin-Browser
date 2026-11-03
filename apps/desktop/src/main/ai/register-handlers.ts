@@ -223,7 +223,11 @@ export function registerAiHandlers(
     // 4. 获取 sender（渲染进程 webContents）用于下发 port
     const sender = ctx.event.sender as WebContents | null;
     if (!sender || typeof sender.send !== 'function') {
-      throw new Error('ai.chat.start: invalid sender (webContents not available)');
+      throw new IpcError(
+        IpcErrorCode.INTERNAL,
+        'ai.chat.start: invalid sender (webContents not available)',
+        { channel: 'ai.chat.start' },
+      );
     }
 
     // 5. 创建 MessageChannel：port1 → Renderer, port2 → Orchestrator
@@ -332,7 +336,11 @@ export function registerAiHandlers(
     // 4. 获取 sender（渲染进程 webContents）用于下发 port
     const sender = ctx.event.sender as WebContents | null;
     if (!sender || typeof sender.send !== 'function') {
-      throw new Error('ai.agent.start: invalid sender (webContents not available)');
+      throw new IpcError(
+        IpcErrorCode.INTERNAL,
+        'ai.agent.start: invalid sender (webContents not available)',
+        { channel: 'ai.agent.start' },
+      );
     }
 
     // 5. 创建 MessageChannel：port1 → Renderer, port2 → Agent 桥接

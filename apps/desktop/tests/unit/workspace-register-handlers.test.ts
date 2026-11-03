@@ -122,7 +122,7 @@ describe('registerWorkspaceHandlers', () => {
       code: string;
       message: string;
     };
-    expect(res.code).toBe('INTERNAL');
+    expect(res.code).toBe('STATE');
     expect(res.message).toContain('请先关闭');
     expect(registry.remove).not.toHaveBeenCalled();
     expect(broadcastChanged).not.toHaveBeenCalled();
@@ -163,7 +163,7 @@ describe('registerWorkspaceHandlers', () => {
       code: string;
       message: string;
     };
-    expect(res.code).toBe('INTERNAL');
+    expect(res.code).toBe('STATE');
     expect(res.message).toContain('请先关闭');
     expect(sessions.clearData).not.toHaveBeenCalled();
   });
@@ -175,7 +175,7 @@ describe('registerWorkspaceHandlers', () => {
     registerWorkspaceHandlers(ipcMain, deps);
 
     const res = (await handlers.get('workspace.clearData')?.({ id: 'ghost' })) as { code: string };
-    expect(res.code).toBe('INTERNAL');
+    expect(res.code).toBe('NOT_FOUND');
   });
 
   it('should resolve default workspace id as existing (never rejects on clear)', async () => {

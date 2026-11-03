@@ -131,7 +131,8 @@ describe('SettingsPage', () => {
     // 操作选项卡：右侧边栏展开方式 + 悬停展开延迟（由调试选项卡迁入）
     clickTab('操作');
     expect(screen.getByText('右侧边栏展开方式')).toBeTruthy();
-    expect(screen.getByText('右侧边栏悬停展开延迟')).toBeTruthy();
+    expect(screen.getByText('左侧边栏悬停自动展开')).toBeTruthy();
+    expect(screen.getByText('侧边栏悬停展开延迟')).toBeTruthy();
   });
 
   it('should auto-save field change after debounce (800ms)', async () => {

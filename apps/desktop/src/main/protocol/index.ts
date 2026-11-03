@@ -300,6 +300,37 @@ export function registerUrchinProtocol(
     });
   };
 
+  let appIconCache: Buffer | null | undefined;
+  const serveAppIcon = (): Response => {
+    if (appIconCache === undefined) {
+      const candidates = app.isPackaged
+        ? [
+            join(process.resourcesPath, 'icon.png'),
+            join(app.getAppPath(), 'dist', 'renderer', 'browser-icon.png'),
+          ]
+        : [
+            join(app.getAppPath(), 'build', 'icon.png'),
+            join(app.getAppPath(), 'dist', 'renderer', 'browser-icon.png'),
+          ];
+      for (const candidate of candidates) {
+        try {
+          appIconCache = readFileSync(candidate);
+          break;
+        } catch {
+          /* try next */
+        }
+      }
+      appIconCache ??= null;
+    }
+    if (!appIconCache) {
+      return new Response('Not Found', { status: 404, headers: { 'Content-Type': 'text/plain' } });
+    }
+    return new Response(new Uint8Array(appIconCache), {
+      status: 200,
+      headers: { 'Content-Type': 'image/png', 'Cache-Control': 'max-age=86400' },
+    });
+  };
+
   const handleZoom = (request: Request, target: 'tab' | 'main'): Response => {
     const url = new URL(request.url);
     const direction = url.searchParams.get('d');
@@ -432,18 +463,7 @@ export function registerUrchinProtocol(
       }
 
       if (host === 'app-icon') {
-        // 应用主图标（build/icon.png），供悬浮球等 UI 加载。
-        const iconPath = join(app.getAppPath(), 'build', 'icon.png');
-        try {
-          const data = readFileSync(iconPath);
-          return new Response(data, {
-            status: 200,
-            headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-cache' },
-          });
-        } catch (err) {
-          log.warn('app-icon read failed', { error: String(err) });
-          return new Response('icon not found', { status: 404 });
-        }
+        return serveAppIcon();
       }
 
       if (host === 'panel') {

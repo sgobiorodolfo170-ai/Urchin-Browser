@@ -89,8 +89,13 @@ extraResources:
   - from: ../../vendor/genoffice/apps/sheets/native/xlsx-engine/target/release/xlsx-sidecar.exe
     to: native/xlsx-sidecar.exe
   # 许可合规（Apache-2.0 NOTICE 传播 + 第三方声明）：随包分发 GenOffice 的
-  # LICENSE / NOTICE / THIRD-PARTY-NOTICES（后者由 vendor `npm run notices`
-  # 生成后复制到 vendor 根，见 VENDOR.md）
+  # LICENSE / NOTICE / THIRD-PARTY-NOTICES。后者由 genoffice-build.mjs 调用
+  # `npm run notices`（tools/gen-third-party-notices.mjs）生成到
+  # apps/shell/build/ 后复制到 vendor 根；electron-builder 从此路径打包到
+  # resources/genoffice/THIRD-PARTY-NOTICES.txt。
+  # 2026-11-03 审计修复：此前 genoffice-build.mjs 漏跑 notices 步骤，导致
+  # 打包报 "file source doesn't exist" warning 且安装包缺少第三方声明文件。
+  # 修复后 genoffice-build.mjs 3.6 步骤自动生成+复制，并加入产物校验清单。
   - from: ../../vendor/genoffice/LICENSE
     to: genoffice/LICENSE
   - from: ../../vendor/genoffice/NOTICE

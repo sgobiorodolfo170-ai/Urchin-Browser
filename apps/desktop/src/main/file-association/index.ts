@@ -7,11 +7,14 @@
 export { registerFileAssociationHandlers } from './register-handlers';
 export {
   ASSOCIATION_GROUPS,
+  buildDefaultBrowserRegistryEntries,
+  buildOpenCommand,
   buildProgId,
   buildRegistryEntries,
   parseFileArg,
+  parseUrlArg,
   getExtensionsForGroup,
   getExtensionsByGroup,
 } from './associations';
 export type { AssociationGroupId, AssociationGroup, RegistryEntry } from './associations';
-export { registerAssociations, getRegisteredExtensions } from './register';
+export { registerAssociations, registerRegistryEntries, getRegisteredExtensions } from './register';

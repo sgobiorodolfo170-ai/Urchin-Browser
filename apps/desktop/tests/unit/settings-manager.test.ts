@@ -96,7 +96,7 @@ describe('SettingsManager', () => {
     //   clipper.* 剪藏默认格式/清洗/选中优先/懒加载/尾部信息栏剪除/模板 7 项/
     //   notebook.state 笔记与便利贴整体状态 M27/
     //   transit.items 中转区项目索引） + 自定义 1 项
-    expect(entries).toHaveLength(32);
+    expect(entries).toHaveLength(33);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');

@@ -8,9 +8,17 @@
  * - 规范化为纯函数，便于单测覆盖脏数据与版本迁移，不依赖 Electron。
  */
 import {
+  CANVAS_IMAGE_DEFAULT_HEIGHT,
+  CANVAS_IMAGE_DEFAULT_WIDTH,
+  CANVAS_IMAGE_MIN_SCALE,
+  CANVAS_IMAGE_MIN_SIZE,
   DEFAULT_CANVAS_VIEWPORT,
   NOTEBOOK_STATE_VERSION,
   NOTEBOOK_TEXT_MAX,
+  STICKY_FONT_DEFAULT,
+  STICKY_FONT_MAX,
+  STICKY_FONT_MIN,
+  type CanvasImage,
   type CanvasViewport,
   type NotePage,
   type NotebookLayout,
@@ -93,6 +101,7 @@ export function createDefaultState(now = Date.now()): NotebookState {
     notes: [note],
     tasks: [],
     stickies: [],
+    images: [],
     activeNotebookId: notebook.id,
     activeNoteId: null,
     middleMode: 'notes',
@@ -241,11 +250,42 @@ export function normalizeNotebookState(raw: unknown, now = Date.now()): Notebook
       width: clamp(asPositive(item.width, 220), 120, 1200),
       height: clamp(asPositive(item.height, 160), 80, 1200),
       color: STICKY_COLORS.includes(color as StickyColor) ? (color as StickyColor) : 'amber',
+      fontSize: clamp(asInt(item.fontSize, STICKY_FONT_DEFAULT), STICKY_FONT_MIN, STICKY_FONT_MAX),
       createdAt,
       updatedAt: asInt(item.updatedAt, createdAt),
       ...(typeof item.imagePath === 'string' && item.imagePath
         ? { imagePath: item.imagePath }
         : {}),
+    });
+  }
+
+  // 画布图片对象
+  const images: CanvasImage[] = [];
+  const imageIds = new Set<string>();
+  const rawImages = Array.isArray(obj.images) ? obj.images : [];
+  for (const item of rawImages) {
+    if (!isRecord(item)) continue;
+    const id = asString(item.id).trim();
+    const notebookId = asString(item.notebookId).trim();
+    const filePath = asString(item.filePath).trim();
+    if (!id || imageIds.has(id) || !notebookIds.has(notebookId) || !filePath) continue;
+    imageIds.add(id);
+    const createdAt = asInt(item.createdAt, now);
+    images.push({
+      id,
+      notebookId,
+      filePath,
+      x: asFinite(item.x, 0),
+      y: asFinite(item.y, 0),
+      width: clamp(asPositive(item.width, CANVAS_IMAGE_DEFAULT_WIDTH), CANVAS_IMAGE_MIN_SIZE, 4000),
+      height: clamp(
+        asPositive(item.height, CANVAS_IMAGE_DEFAULT_HEIGHT),
+        CANVAS_IMAGE_MIN_SIZE,
+        4000,
+      ),
+      scale: Math.max(CANVAS_IMAGE_MIN_SCALE, asFinite(item.scale, 1)),
+      createdAt,
+      updatedAt: asInt(item.updatedAt, createdAt),
     });
   }
 
@@ -276,6 +316,7 @@ export function normalizeNotebookState(raw: unknown, now = Date.now()): Notebook
     notes,
     tasks,
     stickies,
+    images,
     activeNotebookId,
     activeNoteId: activeNote?.id ?? null,
     middleMode,

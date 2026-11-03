@@ -20,6 +20,10 @@ import { BROWSER_NAME_ZH } from '../../shared/brand';
 /** ProgID 前缀（与 appId 语义一致；ext 小写）。 */
 const PROGID_PREFIX = 'UrchinBrowser';
 
+/** 默认浏览器 ProgID / 客户端键（http/https 与网页文件共用）。 */
+export const DEFAULT_BROWSER_PROG_ID = 'UrchinHTML';
+export const DEFAULT_BROWSER_CLIENT_KEY = 'UrchinBrowser';
+
 /** 关联分组标识。 */
 export type AssociationGroupId = 'media' | 'documents' | 'images';
 
@@ -85,8 +89,18 @@ export interface RegistryEntry {
   readonly value: string;
 }
 
+/** 构建 shell 打开命令（dev 模式需把应用目录作为首个参数传给 Electron）。 */
+export function buildOpenCommand(exePath: string, launchArgs: readonly string[] = []): string {
+  const args = launchArgs.map((arg) => `"${arg}"`).join(' ');
+  return args ? `"${exePath}" ${args} "%1"` : `"${exePath}" "%1"`;
+}
+
 /** 生成某扩展名所需的注册表条目（ProgID 命令 + 扩展名 OpenWithProgids 登记）。 */
-export function buildRegistryEntries(ext: string, exePath: string): readonly RegistryEntry[] {
+export function buildRegistryEntries(
+  ext: string,
+  exePath: string,
+  launchArgs: readonly string[] = [],
+): readonly RegistryEntry[] {
   const cleanExt = ext.toLowerCase().replace(/^\./, '');
   const progId = buildProgId(cleanExt);
   const extKey = `HKCU\\Software\\Classes\\.${cleanExt}`;
@@ -99,9 +113,80 @@ export function buildRegistryEntries(ext: string, exePath: string): readonly Reg
     // ProgID 默认描述（资源管理器「打开方式」里显示的名称）
     { key: progIdKey, valueName: '/d', value: BROWSER_NAME_ZH },
     // 打开命令：带引号的 exe 路径 + "%1" 文件参数
-    { key: `${progIdKey}\\shell\\open\\command`, valueName: '/d', value: `"${exePath}" "%1"` },
+    {
+      key: `${progIdKey}\\shell\\open\\command`,
+      valueName: '/d',
+      value: buildOpenCommand(exePath, launchArgs),
+    },
     // 文件类型图标：用 exe 内置图标（模块 0）
     { key: `${progIdKey}\\DefaultIcon`, valueName: '/d', value: `"${exePath}",0` },
+  ];
+}
+
+/**
+ * 生成「设为默认浏览器」所需的注册表能力项。
+ *
+ * Windows 10/11 不允许直接改写 UserChoice（带哈希校验），因此这里按
+ * Chrome/Edge 的做法登记 RegisteredApplications + StartMenuInternet 能力，
+ * 让本浏览器出现在系统「默认应用」候选列表，再由用户在该页确认。
+ */
+export function buildDefaultBrowserRegistryEntries(
+  exePath: string,
+  launchArgs: readonly string[] = [],
+): readonly RegistryEntry[] {
+  const progIdKey = `HKCU\\Software\\Classes\\${DEFAULT_BROWSER_PROG_ID}`;
+  const clientKey = `HKCU\\Software\\Clients\\StartMenuInternet\\${DEFAULT_BROWSER_CLIENT_KEY}`;
+  const capabilitiesKey = `${clientKey}\\Capabilities`;
+  const command = buildOpenCommand(exePath, launchArgs);
+  return [
+    { key: progIdKey, valueName: '/d', value: BROWSER_NAME_ZH },
+    { key: `${progIdKey}\\shell\\open\\command`, valueName: '/d', value: command },
+    { key: `${progIdKey}\\DefaultIcon`, valueName: '/d', value: `"${exePath}",0` },
+    { key: clientKey, valueName: '/d', value: BROWSER_NAME_ZH },
+    { key: `${clientKey}\\DefaultIcon`, valueName: '/d', value: `"${exePath}",0` },
+    { key: `${clientKey}\\shell\\open\\command`, valueName: '/d', value: command },
+    { key: capabilitiesKey, valueName: 'ApplicationName', value: BROWSER_NAME_ZH },
+    {
+      key: capabilitiesKey,
+      valueName: 'ApplicationDescription',
+      value: `${BROWSER_NAME_ZH} - AI 原生桌面浏览器`,
+    },
+    { key: capabilitiesKey, valueName: 'ApplicationIcon', value: `"${exePath}",0` },
+    {
+      key: `${capabilitiesKey}\\URLAssociations`,
+      valueName: 'http',
+      value: DEFAULT_BROWSER_PROG_ID,
+    },
+    {
+      key: `${capabilitiesKey}\\URLAssociations`,
+      valueName: 'https',
+      value: DEFAULT_BROWSER_PROG_ID,
+    },
+    {
+      key: `${capabilitiesKey}\\FileAssociations`,
+      valueName: '.htm',
+      value: DEFAULT_BROWSER_PROG_ID,
+    },
+    {
+      key: `${capabilitiesKey}\\FileAssociations`,
+      valueName: '.html',
+      value: DEFAULT_BROWSER_PROG_ID,
+    },
+    {
+      key: `${capabilitiesKey}\\FileAssociations`,
+      valueName: '.mht',
+      value: DEFAULT_BROWSER_PROG_ID,
+    },
+    {
+      key: `${capabilitiesKey}\\FileAssociations`,
+      valueName: '.mhtml',
+      value: DEFAULT_BROWSER_PROG_ID,
+    },
+    {
+      key: 'HKCU\\Software\\RegisteredApplications',
+      valueName: DEFAULT_BROWSER_CLIENT_KEY,
+      value: `Software\\Clients\\StartMenuInternet\\${DEFAULT_BROWSER_CLIENT_KEY}\\Capabilities`,
+    },
   ];
 }
 
@@ -109,6 +194,7 @@ export function buildRegistryEntries(ext: string, exePath: string): readonly Reg
 export function buildAllRegistryEntries(
   exts: readonly string[],
   exePath: string,
+  launchArgs: readonly string[] = [],
 ): readonly RegistryEntry[] {
   const seen = new Set<string>();
   const entries: RegistryEntry[] = [];
@@ -116,7 +202,7 @@ export function buildAllRegistryEntries(
     const key = ext.toLowerCase().replace(/^\./, '');
     if (seen.has(key)) continue;
     seen.add(key);
-    entries.push(...buildRegistryEntries(key, exePath));
+    entries.push(...buildRegistryEntries(key, exePath, launchArgs));
   }
   return entries;
 }
@@ -131,6 +217,14 @@ export function buildAllRegistryEntries(
  * - file:// URL：file:///C:/Users/a/doc.pdf（File:// 大小写亦兼容）
  * 非文件参数（以 - / -- 开头）与无文件参数时返回 null。
  */
+export function parseUrlArg(argv: readonly string[]): string | null {
+  for (const arg of argv.slice(1)) {
+    if (!arg) continue;
+    if (/^https?:\/\//i.test(arg)) return arg;
+  }
+  return null;
+}
+
 export function parseFileArg(argv: readonly string[]): string | null {
   // argv[0] 是 exe 路径，跳过
   for (const arg of argv.slice(1)) {

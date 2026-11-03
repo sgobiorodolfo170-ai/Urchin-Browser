@@ -2,19 +2,24 @@
  * 中转区 · 容器面板
  *
  * 位于左侧栏折叠按钮下方、功能区上方。两种渲染态：
- * - 展开态（leftExpanded=true，220px 宽）：标题栏 + 清空按钮 + 可滚动项目列表
+ * - 展开态（leftExpanded=true，220px 宽）：标题栏 + 图钉按钮 + 清空按钮 + 可滚动项目列表
  * - 折叠态（leftExpanded=false，44px 宽）：迷你图标列表
  *
  * 拖入来源（P1 实现外部文件拖入）：
  * - OS 文件（桌面/资源管理器）：e.dataTransfer.files → filePath 索引
  * - 内部排序：自定义 MIME application/x-urchin-transit
  *
- * 后续阶段增量：
- * - P4：截图拖入（screenshot.confirm 后自动加入 / startDrag 拖入）
- * - P5：网页选中文字/链接/视频右键菜单加入（通过 add() 编程入口）
+ * 拖出落盘他处后移除（被定住的除外）：
+ * - 拖出时 onDragStart 设置 draggingIdRef；内部排序 drop 时清除该 ref
+ * - onDragEnd 检测到 ref 未被清除（= 外部落盘）且 dropEffect !== 'none'（= 成功落盘）
+ *   时，若该 item 未被图钉定住则从中转区移除
+ *
+ * 图钉定住（pinned）：
+ * - 展开态标题栏图钉按钮：点击进入多选，选中文件再次点击图钉即确认定住
+ * - Ctrl+单击任意条目：切换该条目定住状态（不限展开/折叠）
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Trash2, Inbox } from 'lucide-react';
+import { Trash2, Inbox, Pin } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useTransitStore, type TransitItemInput } from './store';
 import { TransitItemRow } from './TransitItemRow';
@@ -62,8 +67,10 @@ export function collectDroppedFiles(dataTransfer: DataTransfer): {
 }
 
 export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElement | null {
-  const { items, loaded, add, remove, reorder, clear } = useTransitStore();
+  const { items, loaded, add, remove, reorder, clear, togglePin, setPinned } = useTransitStore();
   const [dragOverSelf, setDragOverSelf] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const draggingIdRef = useRef<string | null>(null);
 
   // ── 监听主进程推送的「加入中转区」事件（右键菜单选中文字/链接/视频） ──
@@ -77,6 +84,19 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
       off();
     };
   }, [add]);
+
+  // ── Escape 退出多选模式 ──
+  useEffect(() => {
+    if (!selectMode) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectMode(false);
+        setSelectedIds(new Set());
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectMode]);
 
   // ── 外部文件拖入 / 内部排序 drop / 纯文本拖入 ──
   const handlePanelDragOver = useCallback((e: React.DragEvent) => {
@@ -132,6 +152,8 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
         } catch {
           // 解析失败：忽略
         }
+        // 内部排序：清除 ref，让 onDragEnd 不当作外部落盘
+        draggingIdRef.current = null;
         return;
       }
 
@@ -197,10 +219,59 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
       } catch {
         // 解析失败：忽略
       }
+      // 内部排序：清除 ref，让 onDragEnd 不当作外部落盘
       draggingIdRef.current = null;
     },
     [reorder],
   );
+
+  // itemsRef 供 handleDragEndItem 同步读取最新 items
+  const itemsRef = useRef<readonly TransitItem[]>(items);
+  itemsRef.current = items;
+
+  // ── 拖出落盘他处后移除（被定住的除外） ──
+  const handleDragEndItem = useCallback(
+    (id: string, dropEffect: string) => {
+      const wasInternal = draggingIdRef.current === null;
+      draggingIdRef.current = null;
+      if (wasInternal) return;
+      if (dropEffect === 'none') return;
+      // 外部成功落盘：若未被定住则从中转区移除
+      const dragged = itemsRef.current.find((it) => it.id === id);
+      if (dragged && !dragged.pinned) {
+        remove(id);
+      }
+    },
+    [remove],
+  );
+
+  // ── 图钉多选模式 ──
+  const handlePinButtonClick = useCallback(() => {
+    if (!selectMode) {
+      // 进入多选模式
+      setSelectMode(true);
+      setSelectedIds(new Set());
+    } else {
+      // 确认定住选中项，退出多选
+      if (selectedIds.size > 0) {
+        setPinned([...selectedIds], true);
+      }
+      setSelectMode(false);
+      setSelectedIds(new Set());
+    }
+  }, [selectMode, selectedIds, setPinned]);
+
+  const handleToggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
 
   const handleClear = useCallback(() => {
     if (items.length === 0) return;
@@ -225,7 +296,12 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
           <Inbox className="h-4 w-4 text-text-secondary opacity-30" />
         )}
         {items.slice(0, 12).map((item) => (
-          <TransitItemIcon key={item.id} item={item} />
+          <TransitItemIcon
+            key={item.id}
+            item={item}
+            onDragEndItem={handleDragEndItem}
+            onTogglePin={togglePin}
+          />
         ))}
         {items.length > 12 && (
           <span className="text-[10px] text-text-secondary">+{items.length - 12}</span>
@@ -243,19 +319,38 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
     >
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-3 py-2">
-        <span className="text-xs font-medium text-text-secondary">中转区</span>
-        <button
-          type="button"
-          className={cn(
-            'rounded p-1 text-text-secondary hover:bg-surface-secondary hover:text-text',
-            items.length === 0 && 'pointer-events-none opacity-0',
-          )}
-          onClick={handleClear}
-          aria-label="清空中转区"
-          title="清空中转区"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        <span className="text-xs font-medium text-text-secondary">
+          {selectMode ? `已选 ${selectedIds.size} 项` : '中转区'}
+        </span>
+        <div className="flex items-center gap-1">
+          {/* 图钉按钮：点击进入多选 / 再次点击确认定住 */}
+          <button
+            type="button"
+            className={cn(
+              'rounded p-1 text-text-secondary hover:bg-surface-secondary hover:text-text',
+              items.length === 0 && 'pointer-events-none opacity-0',
+              selectMode && 'bg-primary/20 text-primary',
+            )}
+            onClick={handlePinButtonClick}
+            aria-label={selectMode ? '确认定住选中项' : '进入多选定住'}
+            title={selectMode ? '确认定住选中项' : '多选定住'}
+          >
+            <Pin className={cn('h-3.5 w-3.5', selectMode && 'rotate-45')} />
+          </button>
+          {/* 清空按钮 */}
+          <button
+            type="button"
+            className={cn(
+              'rounded p-1 text-text-secondary hover:bg-surface-secondary hover:text-text',
+              (items.length === 0 || selectMode) && 'pointer-events-none opacity-0',
+            )}
+            onClick={handleClear}
+            aria-label="清空中转区"
+            title="清空中转区"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* 项目列表（可滚动） */}
@@ -263,6 +358,7 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
         className={cn(
           'min-h-0 flex-1 overflow-y-auto px-1 pb-2',
           dragOverSelf && 'ring-1 ring-inset ring-primary/30',
+          selectMode && 'ring-1 ring-inset ring-primary/20',
         )}
         onDragOver={handlePanelDragOver}
         onDragLeave={handlePanelDragLeave}
@@ -286,6 +382,11 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
                 onRemove={remove}
                 onDragStartItem={handleItemDragStart}
                 onDropItem={handleItemDrop}
+                onDragEndItem={handleDragEndItem}
+                onTogglePin={togglePin}
+                selectMode={selectMode}
+                selected={selectedIds.has(item.id)}
+                onToggleSelect={handleToggleSelect}
               />
             ))}
           </div>

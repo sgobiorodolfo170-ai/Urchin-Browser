@@ -376,15 +376,19 @@ export function installTabViewIntegration(
   const onUpdated = (snapshot: TabSnapshot): void => {
     // URL 变更可能影响 BrowserView 可见性（如切换到/离开 urchin://settings 等 React 内部页）
     if (snapshot.active) {
+      // 先做 URL 去重，命中时直接跳过 updateActiveViewBounds 内部的
+      // query/sort/getContentBounds 热路径（页面加载期 updated 事件很密集）。
+      const urlChanged = lastBoundsUrlPerTab.get(snapshot.id) !== snapshot.url;
       const tab = tabManager.getTab(snapshot.id);
-      // htmlFullscreen 变化时强制刷新：否则 URL 去重跳过，全屏/退出全屏不生效
       const fullscreenChanged =
         tab !== undefined &&
         tab.htmlFullscreen !== (lastFullscreenPerTab.get(snapshot.id) ?? false);
-      if (fullscreenChanged) {
+      if (fullscreenChanged && tab) {
         lastFullscreenPerTab.set(snapshot.id, tab.htmlFullscreen);
       }
-      updateActiveViewBounds(snapshot.windowId, fullscreenChanged);
+      if (urlChanged || fullscreenChanged) {
+        updateActiveViewBounds(snapshot.windowId, fullscreenChanged);
+      }
     }
     // 节流 pushEvent：网页加载过程中 did-start-loading / page-title-updated /
     // page-favicon-updated / did-navigate 等事件密集触发，若每次都 IPC send 会导致

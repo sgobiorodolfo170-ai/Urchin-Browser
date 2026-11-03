@@ -31,6 +31,9 @@ function mockSettingsLoad(): void {
     if (channel === 'file-association.register') {
       return Promise.resolve({ ok: true, count: 18 });
     }
+    if (channel === 'file-association.setDefaultBrowser') {
+      return Promise.resolve({ ok: true, openedSettings: true });
+    }
     return Promise.reject(new Error(`unexpected channel ${channel}`));
   });
 }
@@ -64,21 +67,40 @@ describe('FilesTab (默认应用)', () => {
       expect(screen.getByText('0/18 已关联')).toBeDefined();
       expect(screen.getByText('3/20 已关联')).toBeDefined();
     });
-    // 扩展名清单渲染（.ext 前缀）
+    // 扩展名清单渲染（每个扩展名一个复选框）
     await waitFor(() => {
-      expect(screen.getByText(/\.mp3 \.mp4 \.wav/)).toBeDefined();
+      expect(screen.getByText('.mp3')).toBeDefined();
+      expect(screen.getByText('.mp4')).toBeDefined();
+      expect(screen.getByText('.wav')).toBeDefined();
     });
   });
 
-  it('should call register on button click and refresh status', async () => {
+  it('should render default browser row and open system default apps', async () => {
+    await renderAndOpenFilesTab();
+
+    const button = await screen.findByRole('button', { name: '设为默认浏览器' });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('file-association.setDefaultBrowser', {});
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/已登记默认浏览器能力/)).toBeDefined();
+    });
+  });
+
+  it('should register all checked extensions by default', async () => {
     await renderAndOpenFilesTab();
 
     await waitFor(() => {
-      fireEvent.click(screen.getAllByText('设为默认打开方式')[0]!);
+      fireEvent.click(screen.getAllByText(/设为默认打开方式/)[0]!);
     });
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith('file-association.register', { group: 'media' });
+      expect(mockInvoke).toHaveBeenCalledWith('file-association.register', {
+        group: 'media',
+        extensions: ['mp3', 'mp4', 'wav'],
+      });
     });
     // toast 提示（注册后可去系统打开方式选择）
     await waitFor(() => {
@@ -87,6 +109,24 @@ describe('FilesTab (默认应用)', () => {
     // 刷新状态：getStatus 再次被调用
     const statusCalls = mockInvoke.mock.calls.filter(([c]) => c === 'file-association.getStatus');
     expect(statusCalls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('should only register unchecked-out extensions', async () => {
+    await renderAndOpenFilesTab();
+
+    const checkboxes = await screen.findAllByRole('checkbox');
+    fireEvent.click(checkboxes[0]!);
+
+    await waitFor(() => {
+      fireEvent.click(screen.getAllByText(/设为默认打开方式/)[0]!);
+    });
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('file-association.register', {
+        group: 'media',
+        extensions: ['mp4', 'wav'],
+      });
+    });
   });
 
   it('should show error toast when register fails', async () => {
@@ -107,7 +147,7 @@ describe('FilesTab (默认应用)', () => {
     });
 
     await waitFor(() => {
-      fireEvent.click(screen.getAllByText('设为默认打开方式')[0]!);
+      fireEvent.click(screen.getAllByText(/设为默认打开方式/)[0]!);
     });
 
     await waitFor(() => {

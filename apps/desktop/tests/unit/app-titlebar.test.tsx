@@ -41,7 +41,10 @@ describe('AppTitleBar', () => {
     mockWindowState(false);
     render(<AppTitleBar />);
 
-    expect(screen.getByText('Urchin Browser')).toBeInTheDocument();
+    const brand = screen.getByText('Urchin Browser');
+    expect(brand).toBeInTheDocument();
+    expect(brand.className).toContain('text-xs');
+    expect(brand.style.fontFamily).toContain('SimSun');
     expect(screen.getByLabelText('最小化窗口')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByLabelText('最大化窗口')).toBeInTheDocument());
     expect(screen.getByLabelText('关闭窗口')).toBeInTheDocument();

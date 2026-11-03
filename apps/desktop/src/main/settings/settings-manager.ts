@@ -67,6 +67,8 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   ['links.openInNewTab', false],
   // 右侧边栏展开方式（默认双击展开；true=悬停自动展开，与双击互斥，设置页 select 切换）
   ['ui.rightSidebarAutoExpand', false],
+  // 左侧边栏悬停自动展开（默认开启；双击切换始终可用，悬停展开仅在折叠态生效）
+  ['ui.leftSidebarAutoExpand', true],
   // 折叠态工作区切换模式（'wheel'=滚轮循环切换【默认】；'cards'=点击弹出卡片面板切换，
   // 参考 ego-lite Space 卡片切换设计；仅影响折叠态交互，展开态 WorkspaceBar 不变）
   ['ui.workspaceSwitcherMode', 'wheel'],

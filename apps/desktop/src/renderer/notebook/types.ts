@@ -52,10 +52,25 @@ export interface StickyNote {
   readonly width: number;
   readonly height: number;
   readonly color: StickyColor;
+  readonly fontSize?: number;
   readonly createdAt: number;
   readonly updatedAt: number;
   /** 图片便利贴：本地图片文件绝对路径（有值时渲染 <img> 代替 <textarea>） */
   readonly imagePath?: string;
+}
+
+/** 画布图片对象：直接放置在画布上的图片，不包裹便利贴 */
+export interface CanvasImage {
+  readonly id: string;
+  readonly notebookId: string;
+  readonly filePath: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly scale: number;
+  readonly createdAt: number;
+  readonly updatedAt: number;
 }
 
 /** 每个笔记本独立保存的画布视口 */
@@ -84,6 +99,7 @@ export interface NotebookState {
   readonly notes: readonly NotePage[];
   readonly tasks: readonly TaskItem[];
   readonly stickies: readonly StickyNote[];
+  readonly images: readonly CanvasImage[];
   readonly activeNotebookId: string;
   readonly activeNoteId: string | null;
   readonly middleMode: NotebookMiddleMode;
@@ -109,3 +125,14 @@ export const NOTEBOOK_STATE_VERSION = 1;
 
 /** 笔记/便利贴文本长度上限（防御异常大值，避免 settings 值失控） */
 export const NOTEBOOK_TEXT_MAX = 200_000;
+
+/** 便利贴默认字号与可调范围 */
+export const STICKY_FONT_DEFAULT = 14;
+export const STICKY_FONT_MIN = 10;
+export const STICKY_FONT_MAX = 36;
+
+/** 画布图片默认尺寸、最小尺寸与缩放下限（放大不设上限） */
+export const CANVAS_IMAGE_DEFAULT_WIDTH = 320;
+export const CANVAS_IMAGE_DEFAULT_HEIGHT = 240;
+export const CANVAS_IMAGE_MIN_SIZE = 80;
+export const CANVAS_IMAGE_MIN_SCALE = 0.05;

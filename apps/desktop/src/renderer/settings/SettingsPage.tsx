@@ -213,8 +213,14 @@ const OPS_FIELDS: readonly SettingField[] = [
     ],
   },
   {
+    key: 'ui.leftSidebarAutoExpand',
+    label: '左侧边栏悬停自动展开',
+    desc: '开启后，左侧栏折叠时鼠标停留即可自动展开（默认开启）；双击左侧栏空白处始终可展开/折叠。',
+    type: 'toggle',
+  },
+  {
     key: 'debug.sidebarHoverDelay',
-    label: '右侧边栏悬停展开延迟',
+    label: '侧边栏悬停展开延迟',
     desc: '右侧栏折叠时，鼠标停留多久后自动展开（毫秒，0 = 立即展开，范围 0–3000）。仅在「展开方式=悬停自动展开」时生效',
     type: 'number',
     min: 0,
@@ -348,6 +354,7 @@ const DEFAULTS: Record<string, unknown> = {
   blockAds: true,
   'links.openInNewTab': false,
   'ui.rightSidebarAutoExpand': false,
+  'ui.leftSidebarAutoExpand': true,
   'ui.workspaceSwitcherMode': 'wheel',
   'debug.sidebarHoverDelay': 300,
   'ui.statusBall.sensitivityVertical': 1,
@@ -1270,7 +1277,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
     topics: [
       {
         title: '左侧栏',
-        body: '顶部按钮折叠 / 展开左侧栏。折叠按钮下方是「中转区」，用于暂存文件、链接、选中文字与截图。底部从上到下依次是 DeepSeek Harness、pi、笔记 / 便利贴、GenOffice 文档、邮箱、主页、主题切换与设置入口。',
+        body: '顶部按钮折叠 / 展开左侧栏；折叠时也可双击左侧栏空白处或悬停展开（悬停可在设置「操作」中关闭）。折叠按钮下方是「中转区」，用于暂存文件、链接、选中文字与截图。底部从上到下依次是 DeepSeek Harness、pi、笔记 / 便利贴、GenOffice 文档、邮箱、主页、主题切换与设置入口。',
       },
       {
         title: '中间内容区',
@@ -1387,7 +1394,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         title: '便利贴画布',
-        body: '右侧画布双击空白处、点击「+」或按 Ctrl+V 粘贴文本即可新建便利贴。便利贴可拖动、调整大小、切换颜色与删除；画布支持放大、缩小与重置视图。',
+        body: '右侧画布双击空白处、点击「+」或按 Ctrl+V 粘贴文本即可新建便利贴。便利贴可拖动、调整大小、切换颜色、用 A-/A+ 调整字号与删除；图片可直接拖入画布独立放置，鼠标停在图片上滚轮可放大图片本身，双击恢复 100%。画布支持放大、缩小与重置视图。',
       },
     ],
   },
@@ -1905,8 +1912,10 @@ function summaryToast(s: ImportSummaryInfo): string {
  */
 function FilesTab({ onToast }: { readonly onToast: (msg: string) => void }) {
   const [statuses, setStatuses] = useState<Record<string, GroupStatus> | null>(null);
+  const [selected, setSelected] = useState<Record<string, readonly string[]>>({});
   const [loading, setLoading] = useState(true);
   const [registering, setRegistering] = useState<string | null>(null);
+  const [settingDefaultBrowser, setSettingDefaultBrowser] = useState(false);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -1914,6 +1923,15 @@ function FilesTab({ onToast }: { readonly onToast: (msg: string) => void }) {
         groups: Record<string, GroupStatus>;
       };
       setStatuses(res.groups);
+      setSelected((prev) => {
+        const next: Record<string, readonly string[]> = {};
+        for (const group of ASSOCIATION_GROUP_DEFS) {
+          const extensions = res.groups[group.id]?.extensions ?? [];
+          const previous = new Set(prev[group.id] ?? extensions);
+          next[group.id] = extensions.filter((ext) => previous.has(ext));
+        }
+        return next;
+      });
     } catch (e) {
       onToast('读取关联状态失败：' + String(e));
     } finally {
@@ -1925,11 +1943,43 @@ function FilesTab({ onToast }: { readonly onToast: (msg: string) => void }) {
     void loadStatus();
   }, [loadStatus]);
 
+  const toggleExtension = useCallback((groupId: string, ext: string, checked: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev[groupId] ?? []);
+      if (checked) next.add(ext);
+      else next.delete(ext);
+      return { ...prev, [groupId]: [...next] };
+    });
+  }, []);
+
+  const handleSetDefaultBrowser = useCallback(async () => {
+    setSettingDefaultBrowser(true);
+    try {
+      const res = (await window.urchin.invoke('file-association.setDefaultBrowser', {})) as {
+        openedSettings: boolean;
+      };
+      onToast(
+        res.openedSettings
+          ? `已登记默认浏览器能力，请在系统「默认应用」中选择 ${displayNameForLocale(navigator.language)}`
+          : '已登记默认浏览器能力，请到系统「默认应用」中手动选择本浏览器',
+      );
+    } catch (e) {
+      onToast('设置默认浏览器失败：' + String(e));
+    } finally {
+      setSettingDefaultBrowser(false);
+    }
+  }, [onToast]);
+
   const handleRegister = useCallback(
     async (groupId: string) => {
+      const extensions = selected[groupId] ?? [];
+      if (extensions.length === 0) {
+        onToast('请至少勾选一种格式');
+        return;
+      }
       setRegistering(groupId);
       try {
-        await window.urchin.invoke('file-association.register', { group: groupId });
+        await window.urchin.invoke('file-association.register', { group: groupId, extensions });
         onToast(
           `已注册。可在系统「打开方式」选择 ${displayNameForLocale(navigator.language)} 并勾选"始终使用"`,
         );
@@ -1940,7 +1990,7 @@ function FilesTab({ onToast }: { readonly onToast: (msg: string) => void }) {
         setRegistering(null);
       }
     },
-    [loadStatus, onToast],
+    [loadStatus, onToast, selected],
   );
 
   return (
@@ -1948,14 +1998,34 @@ function FilesTab({ onToast }: { readonly onToast: (msg: string) => void }) {
       <h1 className="mb-2 text-2xl font-semibold">默认应用</h1>
       <p className="mb-6 text-sm text-text-secondary">
         把 {displayNameForLocale(navigator.language)}{' '}
-        设为音视频、文档、图片的打开方式。注册后，双击这类文件 即可用本浏览器打开；在系统「打开方式
-        → 选择其他应用」中勾选「始终使用」， 即可设为永久默认。
+        设为默认浏览器和音视频、文档、图片的打开方式。Windows 10/11 不允许程序直接改写默认浏览器，
+        点击下方按钮后会打开系统「默认应用」页，由你确认选择本浏览器。
       </p>
+
+      <div className="mb-4 rounded-md border border-border bg-surface-secondary px-4 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="font-medium">默认浏览器</div>
+            <div className="mt-0.5 text-xs text-text-secondary">
+              登记 http / https 与网页文件关联，并打开系统默认应用设置
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={settingDefaultBrowser}
+            onClick={() => void handleSetDefaultBrowser()}
+          >
+            {settingDefaultBrowser ? '设置中…' : '设为默认浏览器'}
+          </Button>
+        </div>
+      </div>
 
       {loading && <p className="text-text-secondary">加载中…</p>}
       {!loading &&
         ASSOCIATION_GROUP_DEFS.map((group) => {
           const status = statuses?.[group.id];
+          const selectedExtensions = selected[group.id] ?? [];
           return (
             <div
               key={group.id}
@@ -1980,18 +2050,33 @@ function FilesTab({ onToast }: { readonly onToast: (msg: string) => void }) {
                 )}
               </div>
               {status && status.extensions.length > 0 && (
-                <div className="mt-3 text-xs text-text-secondary">
-                  {status.extensions.map((e) => `.${e}`).join(' ')}
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {status.extensions.map((ext) => (
+                    <label
+                      key={ext}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded border border-border bg-surface px-2 py-1 text-xs text-text-secondary hover:text-text"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-3.5 w-3.5"
+                        checked={selectedExtensions.includes(ext)}
+                        onChange={(e) => toggleExtension(group.id, ext, e.target.checked)}
+                      />
+                      .{ext}
+                    </label>
+                  ))}
                 </div>
               )}
               <Button
                 variant="secondary"
                 size="sm"
                 className="mt-3"
-                disabled={registering === group.id}
+                disabled={registering === group.id || selectedExtensions.length === 0}
                 onClick={() => void handleRegister(group.id)}
               >
-                {registering === group.id ? '注册中…' : '设为默认打开方式'}
+                {registering === group.id
+                  ? '注册中…'
+                  : `设为默认打开方式（${selectedExtensions.length}）`}
               </Button>
             </div>
           );

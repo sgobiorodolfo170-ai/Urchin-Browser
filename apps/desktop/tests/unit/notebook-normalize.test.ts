@@ -85,6 +85,42 @@ describe('normalizeNotebookState', () => {
     });
   });
 
+  it('should normalize sticky font size and canvas image objects', () => {
+    const state = normalizeNotebookState(
+      {
+        notebooks: [{ id: 'nb-1', name: 'A', createdAt: 1 }],
+        stickies: [{ id: 's1', notebookId: 'nb-1', text: 'x', fontSize: 999 }],
+        images: [
+          {
+            id: 'i1',
+            notebookId: 'nb-1',
+            filePath: 'C:\\a.png',
+            x: 10,
+            y: 20,
+            width: 100,
+            height: 100,
+            scale: 0.001,
+          },
+          { id: 'i2', notebookId: 'nb-2', filePath: 'C:\\b.png' },
+          { id: 'i3', notebookId: 'nb-1', filePath: '' },
+        ],
+      },
+      5000,
+    );
+
+    expect(state.stickies[0]?.fontSize).toBe(36);
+    expect(state.images).toHaveLength(1);
+    expect(state.images[0]).toMatchObject({
+      id: 'i1',
+      filePath: 'C:\\a.png',
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 100,
+      scale: 0.05,
+    });
+  });
+
   it('should keep active note only when it belongs to the active notebook', () => {
     const state = normalizeNotebookState(
       {

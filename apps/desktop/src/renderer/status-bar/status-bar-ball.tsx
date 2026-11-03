@@ -195,6 +195,12 @@ function StatusBarBallRoot() {
           alt=""
           draggable={false}
           onContextMenu={(e) => e.preventDefault()}
+          onError={(e) => {
+            const img = e.currentTarget;
+            if (img.dataset.fallback) return;
+            img.dataset.fallback = '1';
+            img.src = './browser-icon.png';
+          }}
           style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
         />
       </button>

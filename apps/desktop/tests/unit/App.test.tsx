@@ -1073,6 +1073,67 @@ describe('App right sidebar double-click toggle (替代底部按钮)', () => {
   });
 });
 
+describe('App left sidebar double-click / hover expand', () => {
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
+      configurable: true,
+      value: () => undefined,
+    });
+  });
+
+  function setup(leftAutoExpand: boolean) {
+    mockInvoke.mockImplementation((channel: string, req: { key?: string }) => {
+      if (channel === 'tab.list') {
+        return Promise.resolve({ tabs: [makeTab({ id: 1, title: 'One' })] });
+      }
+      if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
+      if (channel === 'settings.get') {
+        if (req?.key === 'ui.leftSidebarAutoExpand')
+          return Promise.resolve({ value: leftAutoExpand });
+        if (req?.key === 'ui.rightSidebarAutoExpand') return Promise.resolve({ value: false });
+        if (req?.key === 'ui.rightSidebarWidth') return Promise.resolve({ value: null });
+        if (req?.key === 'debug.sidebarHoverDelay') return Promise.resolve({ value: 0 });
+        return Promise.resolve({ value: null });
+      }
+      return Promise.resolve({});
+    });
+  }
+
+  it('should expand left sidebar on double-click blank area', async () => {
+    setup(false);
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    const sidebar = screen.getByLabelText('左侧边栏');
+    fireEvent.doubleClick(sidebar);
+    await waitFor(() => expect(screen.getByLabelText('折叠左侧栏')).toBeInTheDocument());
+  });
+
+  it('should auto-expand on hover when setting enabled', async () => {
+    setup(true);
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    const sidebar = screen.getByLabelText('左侧边栏');
+    fireEvent.mouseEnter(sidebar);
+    await waitFor(() => expect(screen.getByText('中转区')).toBeInTheDocument());
+
+    fireEvent.mouseLeave(sidebar);
+    await waitFor(() => expect(screen.queryByText('中转区')).toBeNull());
+  });
+
+  it('should not auto-expand on hover when setting disabled', async () => {
+    setup(false);
+    renderApp();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
+
+    const sidebar = screen.getByLabelText('左侧边栏');
+    fireEvent.mouseEnter(sidebar);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByLabelText('折叠左侧栏')).toBeNull();
+  });
+});
+
 describe('App window drag via sidebars', () => {
   function setupTabs() {
     mockInvoke.mockImplementation((channel: string) => {

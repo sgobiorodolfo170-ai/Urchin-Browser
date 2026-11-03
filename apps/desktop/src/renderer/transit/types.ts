@@ -38,6 +38,8 @@ export interface TransitItem {
   readonly addedAt: number;
   /** 启动校验：原文件已不存在 */
   readonly missing?: boolean;
+  /** 已图钉定住：拖出落盘他处后不从中转区移除 */
+  readonly pinned?: boolean;
 }
 
 /** 持久化设置键 */
@@ -92,6 +94,7 @@ export function normalizeItem(raw: unknown): TransitItem | null {
       ? sourceAppRaw
       : undefined;
   const missing = obj.missing === true ? true : undefined;
+  const pinned = obj.pinned === true ? true : undefined;
 
   const item: TransitItem = {
     id,
@@ -107,6 +110,7 @@ export function normalizeItem(raw: unknown): TransitItem | null {
     ...(thumbnailDataUri ? { thumbnailDataUri } : {}),
     ...(sourceApp ? { sourceApp } : {}),
     ...(missing ? { missing } : {}),
+    ...(pinned ? { pinned } : {}),
   };
   return item;
 }

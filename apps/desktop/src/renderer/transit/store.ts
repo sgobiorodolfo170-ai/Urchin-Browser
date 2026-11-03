@@ -29,6 +29,8 @@ export interface TransitStore {
   readonly remove: (id: string) => void;
   readonly reorder: (fromId: string, toId: string) => void;
   readonly markMissing: (id: string, missing: boolean) => void;
+  readonly togglePin: (id: string) => void;
+  readonly setPinned: (ids: readonly string[], pinned: boolean) => void;
   readonly clear: () => void;
 }
 
@@ -180,9 +182,29 @@ export function useTransitStore(): TransitStore {
     [applyUpdate],
   );
 
+  const togglePin = useCallback(
+    (id: string) => {
+      applyUpdate((items) =>
+        items.map((it) => (it.id === id ? { ...it, pinned: !it.pinned || undefined } : it)),
+      );
+    },
+    [applyUpdate],
+  );
+
+  const setPinned = useCallback(
+    (ids: readonly string[], pinned: boolean) => {
+      const idSet = new Set(ids);
+      const pinVal = pinned || undefined;
+      applyUpdate((items) =>
+        items.map((it) => (idSet.has(it.id) ? { ...it, pinned: pinVal } : it)),
+      );
+    },
+    [applyUpdate],
+  );
+
   const clear = useCallback(() => {
     applyUpdate(() => []);
   }, [applyUpdate]);
 
-  return { items, loaded, add, remove, reorder, markMissing, clear };
+  return { items, loaded, add, remove, reorder, markMissing, togglePin, setPinned, clear };
 }

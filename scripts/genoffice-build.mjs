@@ -20,8 +20,8 @@
  * 后续阶段：pdf / html / docs 逐个加入 APPS 常量即可。
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { copyFileSync, existsSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractSchemePrivileges } from './genoffice-extract-scheme-privileges.mjs';
 
@@ -75,11 +75,26 @@ npm(['run', 'build', '-w', '@genoffice/urchin-embed']);
 // 3.5 抽取宿主启动所需的轻量 scheme 常量 JSON（启动优化；失败即抛错门禁）
 extractSchemePrivileges();
 
+// 3.6 生成第三方许可声明 THIRD-PARTY-NOTICES.txt（Apache-2.0 NOTICE 传播合规）。
+//      gen-third-party-notices.mjs 产出到 apps/shell/build/，但 electron-builder.yml
+//      的 extraResources 从 vendor 根读取（见 electron-builder.yml 许可合规段注释）。
+//      此前 genoffice-build.mjs 漏跑此步骤，导致打包时 electron-builder 报
+//      "file source doesn't exist" warning 且安装包缺少第三方声明文件。
+//      缺 cargo 时 Rust crate 段回退到 Cargo.lock 文本（脚本内 catch 不阻塞）。
+npm(['run', 'notices']);
+const noticesSrc = join(vendorRoot, 'apps', 'shell', 'build', 'THIRD-PARTY-NOTICES.txt');
+const noticesDst = join(vendorRoot, 'THIRD-PARTY-NOTICES.txt');
+copyFileSync(noticesSrc, noticesDst);
+console.log(`[genoffice] copied THIRD-PARTY-NOTICES.txt -> ${relative(vendorRoot, noticesDst)}`);
+
 /** 产物清单（宿主运行时的相对路径；缺失即失败）。 */
 const artifacts = [
   join(vendorRoot, 'apps', 'urchin-embed', 'out', 'main', 'index.js'),
   // 宿主 ready 前注册特权 scheme 用的轻量常量（避免加载整个嵌入包）
   join(vendorRoot, 'apps', 'urchin-embed', 'out', 'main', 'scheme-privileges.json'),
+  // 第三方许可声明（3.6 步骤生成并复制到 vendor 根；electron-builder
+  // extraResources 从此路径打包到 resources/genoffice/THIRD-PARTY-NOTICES.txt）
+  join(vendorRoot, 'THIRD-PARTY-NOTICES.txt'),
   ...apps.flatMap((app) => [
     join(vendorRoot, 'apps', app, 'out', 'renderer', 'index.html'),
     // shell Home 由宿主自有 preload 承载，不需要上游 preload 产物

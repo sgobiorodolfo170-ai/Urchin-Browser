@@ -84,7 +84,10 @@ export function AppTitleBar() {
           draggable={false}
           className="h-4 w-4 shrink-0 object-contain"
         />
-        <span className="truncate text-[11px] font-medium tracking-wide text-text-secondary">
+        <span
+          className="truncate text-xs font-medium tracking-wide text-text-secondary"
+          style={{ fontFamily: '"SimSun", "宋体", serif' }}
+        >
           {displayNameForLocale(navigator.language)}
         </span>
       </div>

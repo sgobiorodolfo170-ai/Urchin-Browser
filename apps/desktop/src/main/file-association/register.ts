@@ -52,6 +52,20 @@ function regAdd(exec: RegExec, entry: RegistryEntry, retries = 1): Promise<void>
 }
 
 /**
+ * 写入一组注册表条目；任一失败抛错（由 handler 层装箱）。
+ */
+export async function registerRegistryEntries(
+  entries: readonly RegistryEntry[],
+  deps: AssociationDeps = {},
+): Promise<{ registered: number }> {
+  const exec = deps.regExec ?? execFileDefault;
+  for (const entry of entries) {
+    await regAdd(exec, entry);
+  }
+  return { registered: entries.length };
+}
+
+/**
  * 注册一组扩展名的文件关联（写入 HKCU\Software\Classes）。
  * 全部条目逐一写入；任一失败抛错（由 handler 层装箱）。
  *
@@ -62,13 +76,10 @@ export async function registerAssociations(
   exts: readonly string[],
   exePath: string,
   deps: AssociationDeps = {},
+  launchArgs: readonly string[] = [],
 ): Promise<{ registered: number }> {
-  const exec = deps.regExec ?? execFileDefault;
-  const entries = buildAllRegistryEntries(exts, exePath);
-  for (const entry of entries) {
-    await regAdd(exec, entry);
-  }
-  return { registered: entries.length };
+  const entries = buildAllRegistryEntries(exts, exePath, launchArgs);
+  return registerRegistryEntries(entries, deps);
 }
 
 /**

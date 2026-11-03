@@ -77,7 +77,7 @@ import {
   sweepDrafts,
   classifyFileKind,
 } from './files';
-import { registerFileAssociationHandlers, parseFileArg } from './file-association';
+import { registerFileAssociationHandlers, parseFileArg, parseUrlArg } from './file-association';
 import { Orchestrator } from './orchestrator/orchestrator';
 import { ProviderRegistry } from './orchestrator/provider-registry';
 import { electronProcessFactory } from './orchestrator/electron-factory';
@@ -1230,7 +1230,11 @@ function registerIpcHandlers(): void {
 
   // 文件关联域 handler（默认应用）：注册/查询 HKCU 文件关联
   // 使用 process.execPath 作为打开命令的可执行文件路径
-  registerFileAssociationHandlers({ ipcMain, exePath: process.execPath });
+  registerFileAssociationHandlers({
+    ipcMain,
+    exePath: process.execPath,
+    launchArgs: process.defaultApp && process.argv[1] ? [resolve(process.argv[1])] : [],
+  });
 
   // M25 邮箱域 handler（imapflow + nodemailer + postal-mime）
   if (storageLayer) {
@@ -2474,12 +2478,21 @@ void app.whenReady().then(() => {
   }
   markStartup('main:first-tab');
 
-  // Windows 文件关联启动：命令行带文件路径（双击关联文件打开浏览器）时，
-  // 直接以查看器/原生播放器打开该文件。须在主窗口与初始 tab 创建后执行，
-  // 否则 windowId 尚未建立。
-  const fileArg = parseFileArg(process.argv);
-  if (fileArg) {
-    openLocalFile(mainWindow.id, fileArg);
+  // Windows 文件关联 / 默认浏览器启动：命令行带 URL 或文件路径时打开对应内容。
+  // 须在主窗口与初始 tab 创建后执行，否则 windowId 尚未建立。
+  const urlArg = parseUrlArg(process.argv);
+  if (urlArg) {
+    const active = tabManager.query({ windowId: mainWindow.id }).find((tab) => tab.active);
+    if (active) {
+      tabManager.loadUrl(active.id, urlArg);
+    } else {
+      tabManager.create({ windowId: mainWindow.id, url: urlArg, active: true });
+    }
+  } else {
+    const fileArg = parseFileArg(process.argv);
+    if (fileArg) {
+      openLocalFile(mainWindow.id, fileArg);
+    }
   }
 
   // macOS：点击 dock 图标时重新创建窗口
@@ -2765,9 +2778,14 @@ app.on('second-instance', (_event, commandLine) => {
     const win = windows[0]!;
     win.browserWindow.show();
     win.browserWindow.restore();
-    const fileArg = parseFileArg(commandLine);
-    if (fileArg) {
-      openLocalFile(win.id, fileArg);
+    const urlArg = parseUrlArg(commandLine);
+    if (urlArg) {
+      tabManager.create({ windowId: win.id, url: urlArg, active: true });
+    } else {
+      const fileArg = parseFileArg(commandLine);
+      if (fileArg) {
+        openLocalFile(win.id, fileArg);
+      }
     }
   }
 });

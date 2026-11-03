@@ -5,7 +5,7 @@
  * 三区分割线拖拽与持久化。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NotebookView } from '../../src/renderer/notebook/NotebookView';
 import { NOTEBOOK_STATE_KEY } from '../../src/renderer/notebook/types';
 
@@ -85,6 +85,67 @@ describe('NotebookView', () => {
     const title = await screen.findByLabelText('笔记标题');
     fireEvent.change(title, { target: { value: '新的想法' } });
     expect((title as HTMLInputElement).value).toBe('新的想法');
+  });
+
+  it('should increase and decrease sticky font size', async () => {
+    renderView();
+
+    await screen.findByText('我的笔记本');
+    fireEvent.click(screen.getByLabelText('新建便利贴'));
+
+    const stickyText = screen.getByLabelText<HTMLTextAreaElement>('便利贴内容');
+    expect(stickyText.style.fontSize).toBe('14px');
+
+    fireEvent.click(screen.getByLabelText('放大字号'));
+    expect(screen.getByLabelText<HTMLTextAreaElement>('便利贴内容').style.fontSize).toBe('15px');
+
+    fireEvent.click(screen.getByLabelText('缩小字号'));
+    expect(screen.getByLabelText<HTMLTextAreaElement>('便利贴内容').style.fontSize).toBe('14px');
+  });
+
+  it('should render canvas image and zoom it on wheel', async () => {
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'settings.get') {
+        return Promise.resolve({
+          value: {
+            version: 1,
+            notebooks: [{ id: 'nb-1', name: '我的笔记本', createdAt: 1 }],
+            notes: [],
+            tasks: [],
+            stickies: [],
+            images: [
+              {
+                id: 'img-1',
+                notebookId: 'nb-1',
+                filePath: 'C:\\a.png',
+                x: 0,
+                y: 0,
+                width: 200,
+                height: 150,
+                scale: 1,
+                createdAt: 1,
+                updatedAt: 1,
+              },
+            ],
+            activeNotebookId: 'nb-1',
+            activeNoteId: null,
+            middleMode: 'notes',
+            expandedNotebookIds: ['nb-1'],
+            viewports: {},
+            layout: null,
+          },
+        });
+      }
+      if (channel === 'settings.set') return Promise.resolve({ ok: true });
+      return Promise.resolve({});
+    });
+    renderView();
+
+    const image = await screen.findByLabelText('画布图片');
+    expect(within(image).getByText('100%')).toBeInTheDocument();
+
+    fireEvent.wheel(image, { deltaY: -120 });
+    await waitFor(() => expect(within(image).getByText('110%')).toBeInTheDocument());
   });
 
   it('should persist splitter position after dragging', async () => {

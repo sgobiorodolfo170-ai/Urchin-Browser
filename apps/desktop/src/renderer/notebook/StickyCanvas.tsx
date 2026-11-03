@@ -24,8 +24,17 @@ import {
 import { cn } from '../lib/utils';
 import { makeNotebookId } from './normalize';
 import { parseTransitDrag } from '../transit/drag-utils';
+import { resolveDroppedFilePath } from '../transit/file-path';
 import {
+  CANVAS_IMAGE_DEFAULT_HEIGHT,
+  CANVAS_IMAGE_DEFAULT_WIDTH,
+  CANVAS_IMAGE_MIN_SCALE,
+  CANVAS_IMAGE_MIN_SIZE,
   DEFAULT_CANVAS_VIEWPORT,
+  STICKY_FONT_DEFAULT,
+  STICKY_FONT_MAX,
+  STICKY_FONT_MIN,
+  type CanvasImage,
   type CanvasViewport,
   type NotebookState,
   type StickyColor,
@@ -174,6 +183,8 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
     if (!element) return;
 
     const onWheel = (event: WheelEvent): void => {
+      const target = event.target as Element | null;
+      if (target?.closest?.('[data-canvas-image]')) return;
       event.preventDefault();
       const current = viewRef.current;
       const zoom = clamp(current.zoom * (event.deltaY < 0 ? 1.1 : 0.9), ZOOM_MIN, ZOOM_MAX);
@@ -218,6 +229,7 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
       width: w,
       height: h,
       color: 'amber',
+      fontSize: STICKY_FONT_DEFAULT,
       createdAt: now,
       updatedAt: now,
       ...(imagePath ? { imagePath } : {}),
@@ -237,6 +249,69 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
 
   const deleteSticky = (id: string) => {
     update((prev) => ({ ...prev, stickies: prev.stickies.filter((sticky) => sticky.id !== id) }));
+  };
+
+  const addImage = (filePath: string, at?: { x: number; y: number }) => {
+    const element = containerRef.current;
+    const current = viewRef.current;
+    const rect = element?.getBoundingClientRect();
+    const center = {
+      x: ((rect?.width ?? 600) / 2 - current.panX) / current.zoom,
+      y: ((rect?.height ?? 400) / 2 - current.panY) / current.zoom,
+    };
+    const point = at ?? center;
+    const now = Date.now();
+    const image: CanvasImage = {
+      id: makeNotebookId('image'),
+      notebookId,
+      filePath,
+      x: point.x - CANVAS_IMAGE_DEFAULT_WIDTH / 2,
+      y: point.y - CANVAS_IMAGE_DEFAULT_HEIGHT / 2,
+      width: CANVAS_IMAGE_DEFAULT_WIDTH,
+      height: CANVAS_IMAGE_DEFAULT_HEIGHT,
+      scale: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    update((prev) => ({ ...prev, images: [...prev.images, image] }));
+    const probe = new Image();
+    probe.onload = () => {
+      if (!probe.naturalWidth) return;
+      const height = Math.max(
+        CANVAS_IMAGE_MIN_SIZE,
+        Math.round((CANVAS_IMAGE_DEFAULT_WIDTH * probe.naturalHeight) / probe.naturalWidth),
+      );
+      updateImage(image.id, { height });
+    };
+    probe.src = `file:///${filePath.replace(/\\/g, '/')}`;
+  };
+
+  const updateImage = (id: string, patch: Partial<CanvasImage>) => {
+    update((prev) => ({
+      ...prev,
+      images: prev.images.map((image) =>
+        image.id === id ? { ...image, ...patch, updatedAt: Date.now() } : image,
+      ),
+    }));
+  };
+
+  const deleteImage = (id: string) => {
+    update((prev) => ({ ...prev, images: prev.images.filter((image) => image.id !== id) }));
+  };
+
+  const scaleImage = (id: string, factor: number) => {
+    update((prev) => ({
+      ...prev,
+      images: prev.images.map((image) =>
+        image.id === id
+          ? {
+              ...image,
+              scale: Math.max(CANVAS_IMAGE_MIN_SCALE, image.scale * factor),
+              updatedAt: Date.now(),
+            }
+          : image,
+      ),
+    }));
   };
 
   const resetView = () => {
@@ -259,6 +334,7 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
   };
 
   const notebookStickies = state.stickies.filter((sticky) => sticky.notebookId === notebookId);
+  const notebookImages = state.images.filter((image) => image.notebookId === notebookId);
 
   const ruler = computeRuler(view, size.width, size.height);
 
@@ -320,19 +396,28 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
         addSticky(text);
       }}
       onDrop={(e) => {
+        const imageFile = Array.from(e.dataTransfer.files ?? []).find((file) =>
+          file.type.startsWith('image/'),
+        );
+        if (imageFile) {
+          const path = resolveDroppedFilePath(imageFile);
+          if (path) {
+            e.preventDefault();
+            addImage(path, screenToWorld(e.clientX, e.clientY));
+            return;
+          }
+        }
         const transitItem = parseTransitDrag(e.dataTransfer);
         if (!transitItem) return;
         e.preventDefault();
         const point = screenToWorld(e.clientX, e.clientY);
-        // 图片类（screenshot 或 file+image MIME）→ 图片便利贴（直接显示图片）
         const isImage =
           transitItem.kind === 'screenshot' ||
           (transitItem.kind === 'file' && (transitItem.mimeType ?? '').startsWith('image/'));
         if (isImage && transitItem.filePath) {
-          addSticky(transitItem.title, point, transitItem.filePath);
+          addImage(transitItem.filePath, point);
           return;
         }
-        // 其他类型 → 文本便利贴
         let content = '';
         if (transitItem.kind === 'text' && transitItem.text) {
           content = transitItem.text;
@@ -351,7 +436,10 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
         addSticky(content, point);
       }}
       onDragOver={(e) => {
-        if (e.dataTransfer.types.includes('application/x-urchin-transit')) {
+        if (
+          e.dataTransfer.types.includes('application/x-urchin-transit') ||
+          e.dataTransfer.types.includes('Files')
+        ) {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
         }
@@ -485,6 +573,17 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
           transformOrigin: '0 0',
         }}
       >
+        {notebookImages.map((image) => (
+          <CanvasImageCard
+            key={image.id}
+            image={image}
+            zoom={view.zoom}
+            onChange={(patch) => updateImage(image.id, patch)}
+            onDelete={() => deleteImage(image.id)}
+            onScaleChange={(factor) => scaleImage(image.id, factor)}
+            onResetScale={() => updateImage(image.id, { scale: 1 })}
+          />
+        ))}
         {notebookStickies.map((sticky) => (
           <StickyCard
             key={sticky.id}
@@ -492,6 +591,11 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
             autoFocus={sticky.id === lastAddedId}
             onTextChange={(text) => updateSticky(sticky.id, { text })}
             onColorChange={(color) => updateSticky(sticky.id, { color })}
+            onFontSizeChange={(fontSize) =>
+              updateSticky(sticky.id, {
+                fontSize: Math.min(STICKY_FONT_MAX, Math.max(STICKY_FONT_MIN, fontSize)),
+              })
+            }
             onDelete={() => deleteSticky(sticky.id)}
             onDragStart={(e) => {
               e.stopPropagation();
@@ -550,7 +654,7 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
       {notebookStickies.length === 0 && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <div className="max-w-xs rounded-lg border border-dashed border-border bg-surface/70 px-6 py-4 text-center text-xs text-text-secondary">
-            双击空白处、点击 + 或 Ctrl+V 粘贴文本，添加第一张便利贴。
+            双击空白处、点击 + 或 Ctrl+V 粘贴文本，添加第一张便利贴；也可把图片拖入画布。
           </div>
         </div>
       )}
@@ -610,6 +714,7 @@ interface StickyCardProps {
   readonly autoFocus: boolean;
   readonly onTextChange: (text: string) => void;
   readonly onColorChange: (color: StickyColor) => void;
+  readonly onFontSizeChange: (fontSize: number) => void;
   readonly onDelete: () => void;
   readonly onDragStart: (e: React.PointerEvent<HTMLDivElement>) => void;
   readonly onDragMove: (e: React.PointerEvent<HTMLDivElement>) => void;
@@ -624,6 +729,7 @@ function StickyCard({
   autoFocus,
   onTextChange,
   onColorChange,
+  onFontSizeChange,
   onDelete,
   onDragStart,
   onDragMove,
@@ -684,6 +790,32 @@ function StickyCard({
             />
           ))}
         </div>
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            className="flex h-5 w-5 items-center justify-center rounded text-[10px] font-semibold opacity-50 hover:bg-black/10 hover:opacity-100"
+            onPointerDown={(e) => {
+              if (e.button !== 1) e.stopPropagation();
+            }}
+            onClick={() => onFontSizeChange((sticky.fontSize ?? STICKY_FONT_DEFAULT) - 1)}
+            aria-label="缩小字号"
+            title="缩小字号"
+          >
+            A-
+          </button>
+          <button
+            type="button"
+            className="flex h-5 w-5 items-center justify-center rounded text-[10px] font-semibold opacity-50 hover:bg-black/10 hover:opacity-100"
+            onPointerDown={(e) => {
+              if (e.button !== 1) e.stopPropagation();
+            }}
+            onClick={() => onFontSizeChange((sticky.fontSize ?? STICKY_FONT_DEFAULT) + 1)}
+            aria-label="放大字号"
+            title="放大字号"
+          >
+            A+
+          </button>
+        </div>
         <button
           type="button"
           className="flex h-5 w-5 items-center justify-center rounded opacity-50 hover:bg-black/10 hover:opacity-100"
@@ -710,7 +842,8 @@ function StickyCard({
         />
       ) : (
         <textarea
-          className="min-h-0 flex-1 resize-none bg-transparent px-2.5 pb-2 text-sm leading-relaxed outline-none placeholder:text-black/35 dark:placeholder:text-white/35"
+          className="min-h-0 flex-1 resize-none bg-transparent px-2.5 pb-2 leading-relaxed outline-none placeholder:text-black/35 dark:placeholder:text-white/35"
+          style={{ fontSize: sticky.fontSize ?? STICKY_FONT_DEFAULT }}
           placeholder="写点什么…"
           value={sticky.text}
           autoFocus={autoFocus}
@@ -735,6 +868,172 @@ function StickyCard({
         onPointerCancel={onResizeEnd}
         aria-label="调整便利贴大小"
         title="拖动调整大小"
+      >
+        <div className="absolute bottom-1 right-1 h-2 w-2 border-b-2 border-r-2 border-black/30" />
+      </div>
+    </div>
+  );
+}
+
+interface CanvasImageCardProps {
+  readonly image: CanvasImage;
+  readonly zoom: number;
+  readonly onChange: (patch: Partial<CanvasImage>) => void;
+  readonly onDelete: () => void;
+  readonly onScaleChange: (factor: number) => void;
+  readonly onResetScale: () => void;
+}
+
+function CanvasImageCard({
+  image,
+  zoom,
+  onChange,
+  onDelete,
+  onScaleChange,
+  onResetScale,
+}: CanvasImageCardProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ startX: number; startY: number; x: number; y: number } | null>(null);
+  const resizeRef = useRef<{
+    startX: number;
+    startY: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const element = rootRef.current;
+    if (!element) return;
+    const onWheel = (event: WheelEvent): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      onScaleChange(event.deltaY < 0 ? 1.1 : 0.9);
+    };
+    element.addEventListener('wheel', onWheel, { passive: false });
+    return () => element.removeEventListener('wheel', onWheel);
+  }, [onScaleChange]);
+
+  return (
+    <div
+      ref={rootRef}
+      data-canvas-image
+      role="group"
+      tabIndex={0}
+      aria-label="画布图片"
+      title="悬停滚轮可放大图片；双击恢复 100%"
+      className="group pointer-events-auto absolute select-none rounded-md border border-black/10 bg-surface shadow-md outline-none focus:ring-2 focus:ring-primary/50"
+      style={{
+        left: image.x,
+        top: image.y,
+        width: image.width,
+        height: image.height,
+        transform: `scale(${image.scale})`,
+        transformOrigin: '0 0',
+      }}
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        dragRef.current = {
+          startX: e.clientX,
+          startY: e.clientY,
+          x: image.x,
+          y: image.y,
+        };
+      }}
+      onPointerMove={(e) => {
+        const drag = dragRef.current;
+        if (!drag) return;
+        onChange({
+          x: drag.x + (e.clientX - drag.startX) / zoom,
+          y: drag.y + (e.clientY - drag.startY) / zoom,
+        });
+      }}
+      onPointerUp={(e) => {
+        if (!dragRef.current) return;
+        dragRef.current = null;
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+      }}
+      onPointerCancel={(e) => {
+        if (!dragRef.current) return;
+        dragRef.current = null;
+        e.currentTarget.releasePointerCapture?.(e.pointerId);
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onResetScale();
+      }}
+    >
+      <img
+        src={`file:///${image.filePath.replace(/\\/g, '/')}`}
+        alt=""
+        draggable={false}
+        className="h-full w-full object-contain"
+        onDragStart={(e) => e.preventDefault()}
+      />
+
+      <div className="absolute -top-7 right-0 hidden items-center gap-1 rounded-md border border-border bg-surface/95 px-1.5 py-0.5 text-[10px] text-text-secondary shadow-sm backdrop-blur group-hover:flex group-focus-within:flex">
+        <span>{Math.round(image.scale * 100)}%</span>
+        <button
+          type="button"
+          className="rounded p-0.5 hover:bg-surface-secondary hover:text-text"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={onResetScale}
+          aria-label="恢复图片原始大小"
+          title="恢复 100%"
+        >
+          <RotateCcw className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
+          className="rounded p-0.5 text-error hover:bg-error/10"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={onDelete}
+          aria-label="删除图片"
+          title="删除图片"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      </div>
+
+      <div
+        className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize"
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          resizeRef.current = {
+            startX: e.clientX,
+            startY: e.clientY,
+            width: image.width,
+            height: image.height,
+          };
+        }}
+        onPointerMove={(e) => {
+          const resize = resizeRef.current;
+          if (!resize) return;
+          onChange({
+            width: Math.max(
+              CANVAS_IMAGE_MIN_SIZE,
+              resize.width + (e.clientX - resize.startX) / zoom,
+            ),
+            height: Math.max(
+              CANVAS_IMAGE_MIN_SIZE,
+              resize.height + (e.clientY - resize.startY) / zoom,
+            ),
+          });
+        }}
+        onPointerUp={(e) => {
+          if (!resizeRef.current) return;
+          resizeRef.current = null;
+          e.currentTarget.releasePointerCapture?.(e.pointerId);
+        }}
+        onPointerCancel={(e) => {
+          if (!resizeRef.current) return;
+          resizeRef.current = null;
+          e.currentTarget.releasePointerCapture?.(e.pointerId);
+        }}
+        aria-label="调整图片大小"
+        title="拖动调整图片大小"
       >
         <div className="absolute bottom-1 right-1 h-2 w-2 border-b-2 border-r-2 border-black/30" />
       </div>

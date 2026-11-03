@@ -10,8 +10,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// ── mock electron：仅类型（register-handlers 不直接调用 electron API）──
-vi.mock('electron', () => ({}));
+const { openExternal } = vi.hoisted(() => ({ openExternal: vi.fn() }));
+vi.mock('electron', () => ({
+  shell: { openExternal },
+}));
+openExternal.mockResolvedValue(undefined);
 
 import { registerFileAssociationHandlers } from '../../src/main/file-association/register-handlers';
 
@@ -87,6 +90,34 @@ describe('file-association.register', () => {
     expect(command).toContain('"C:\\apps\\urchin.exe" "%1"');
   });
 
+  it('should register only checked extensions', async () => {
+    const mock = createMockReg((cb) => cb(null, 'ok'));
+    const handlers = captureHandlers(mock.exec);
+
+    const res = await call(handlers, 'file-association.register', {
+      group: 'media',
+      extensions: ['mp3'],
+    });
+
+    expect(res).toMatchObject({ ok: true, count: 1 });
+    const argStrings = mock.calls.map((c) => c.args.join(' '));
+    expect(argStrings.some((s) => s.includes('Software\\Classes\\.mp3'))).toBe(true);
+    expect(argStrings.some((s) => s.includes('Software\\Classes\\.mp4'))).toBe(false);
+  });
+
+  it('should reject empty selection with VALIDATION error', async () => {
+    const mock = createMockReg((cb) => cb(null, 'ok'));
+    const handlers = captureHandlers(mock.exec);
+
+    const res = await call(handlers, 'file-association.register', {
+      group: 'media',
+      extensions: [],
+    });
+
+    expect(res).toMatchObject({ code: 'VALIDATION' });
+    expect(mock.calls.length).toBe(0);
+  });
+
   it('should reject unknown group with VALIDATION error', async () => {
     const mock = createMockReg((cb) => cb(null, 'ok'));
     const handlers = captureHandlers(mock.exec);
@@ -104,6 +135,23 @@ describe('file-association.register', () => {
     const res = await call(handlers, 'file-association.register', { group: 'images' });
 
     expect(res).toMatchObject({ code: 'INTERNAL' });
+  });
+});
+
+describe('file-association.setDefaultBrowser', () => {
+  it('should write browser capability keys and open system settings', async () => {
+    openExternal.mockClear();
+    const mock = createMockReg((cb) => cb(null, 'ok'));
+    const handlers = captureHandlers(mock.exec);
+
+    const res = await call(handlers, 'file-association.setDefaultBrowser', {});
+
+    expect(res).toMatchObject({ ok: true, openedSettings: true });
+    expect(openExternal).toHaveBeenCalledWith('ms-settings:defaultapps');
+    const argStrings = mock.calls.map((c) => c.args.join(' '));
+    expect(argStrings.some((s) => s.includes('RegisteredApplications'))).toBe(true);
+    expect(argStrings.some((s) => s.includes('URLAssociations'))).toBe(true);
+    expect(argStrings.some((s) => s.includes('UrchinHTML'))).toBe(true);
   });
 });
 

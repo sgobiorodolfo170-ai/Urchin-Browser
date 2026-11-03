@@ -12,10 +12,13 @@ import { describe, it, expect } from 'vitest';
 import {
   ASSOCIATION_GROUPS,
   buildAllRegistryEntries,
+  buildDefaultBrowserRegistryEntries,
+  buildOpenCommand,
   buildProgId,
   buildRegistryEntries,
   getExtensionsForGroup,
   parseFileArg,
+  parseUrlArg,
 } from '../../src/main/file-association/associations';
 
 describe('getExtensionsForGroup', () => {
@@ -91,6 +94,44 @@ describe('buildAllRegistryEntries', () => {
   it('should dedupe extensions and keep order', () => {
     const entries = buildAllRegistryEntries(['mp3', 'mp3', 'mp4'], 'C:\\a.exe');
     expect(entries).toHaveLength(10); // 2 个扩展名 × 5 条
+  });
+});
+
+describe('buildOpenCommand', () => {
+  it('should append dev launch args before %1', () => {
+    expect(buildOpenCommand('C:\\a.exe', ['C:\\app'])).toBe('"C:\\a.exe" "C:\\app" "%1"');
+  });
+
+  it('should keep packaged command unchanged without launch args', () => {
+    expect(buildOpenCommand('C:\\a.exe')).toBe('"C:\\a.exe" "%1"');
+  });
+});
+
+describe('buildDefaultBrowserRegistryEntries', () => {
+  it('should register capabilities, url associations and RegisteredApplications', () => {
+    const entries = buildDefaultBrowserRegistryEntries('C:\\apps\\urchin.exe');
+    const byKey = entries.map((entry) => `${entry.key}|${entry.valueName}|${entry.value}`);
+    expect(byKey.some((line) => line.includes('Classes\\UrchinHTML\\shell\\open\\command'))).toBe(
+      true,
+    );
+    expect(byKey.some((line) => line.includes('URLAssociations|http|UrchinHTML'))).toBe(true);
+    expect(byKey.some((line) => line.includes('URLAssociations|https|UrchinHTML'))).toBe(true);
+    expect(byKey.some((line) => line.includes('RegisteredApplications|UrchinBrowser|'))).toBe(true);
+    expect(byKey.some((line) => line.includes('FileAssociations|.html|UrchinHTML'))).toBe(true);
+  });
+});
+
+describe('parseUrlArg', () => {
+  it('should return first http/https argument and skip argv0', () => {
+    expect(parseUrlArg(['C:\\apps\\urchin.exe', 'https://example.com/a'])).toBe(
+      'https://example.com/a',
+    );
+    expect(parseUrlArg(['urchin.exe', '--flag', 'http://example.com'])).toBe('http://example.com');
+  });
+
+  it('should return null for file paths and no url', () => {
+    expect(parseUrlArg(['urchin.exe', 'C:\\docs\\a.pdf'])).toBeNull();
+    expect(parseUrlArg(['urchin.exe'])).toBeNull();
   });
 });
 

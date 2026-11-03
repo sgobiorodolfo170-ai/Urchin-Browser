@@ -340,6 +340,8 @@ export function App() {
   const [rightHovered, setRightHovered] = useState(false);
   // 回弹动画标记：为 true 时使用带过冲的弹性缓动，营造"有力度"的回弹感
   const [rightRetracting, setRightRetracting] = useState(false);
+  const [leftHovered, setLeftHovered] = useState(false);
+  const [leftRetracting, setLeftRetracting] = useState(false);
   /** 右侧边栏展开时的宽度（可拖拽调节，默认 RIGHT_EXPANDED；持久化于 settings） */
   const [rightExpandedWidth, setRightExpandedWidth] = useState<number>(RIGHT_EXPANDED);
   /** 右侧边栏拖拽调节中（禁用宽度 transition，保证跟手） */
@@ -553,12 +555,15 @@ export function App() {
   const [sidebarHoverDelay, setSidebarHoverDelay] = useState<number>(300);
   /** 右侧边栏悬停自动展开开关（设置 ui.rightSidebarAutoExpand，默认 true） */
   const [rightSidebarAutoExpand, setRightSidebarAutoExpand] = useState<boolean>(true);
+  /** 左侧边栏悬停自动展开开关（设置 ui.leftSidebarAutoExpand，默认 true） */
+  const [leftSidebarAutoExpand, setLeftSidebarAutoExpand] = useState<boolean>(true);
 
   /** 当前搜索引擎（设置 searchEngine，供地址栏搜索词生成搜索 URL；默认 google） */
   const [searchEngine, setSearchEngine] = useState<string>('google');
 
   // 右侧栏悬停展开延迟定时器（未触发前可取消）
   const rightHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leftHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeTabIdRef = useRef<number | null>(null);
   useEffect(() => {
@@ -569,9 +574,10 @@ export function App() {
   useEffect(() => {
     async function loadHoverSettings() {
       try {
-        const [delayRes, autoRes, engineRes, switcherModeRes] = await Promise.all([
+        const [delayRes, autoRes, leftAutoRes, engineRes, switcherModeRes] = await Promise.all([
           window.urchin.invoke('settings.get', { key: 'debug.sidebarHoverDelay' }),
           window.urchin.invoke('settings.get', { key: 'ui.rightSidebarAutoExpand' }),
+          window.urchin.invoke('settings.get', { key: 'ui.leftSidebarAutoExpand' }),
           window.urchin.invoke('settings.get', { key: 'searchEngine' }),
           window.urchin.invoke('settings.get', { key: 'ui.workspaceSwitcherMode' }),
         ]);
@@ -587,6 +593,14 @@ export function App() {
           setRightSidebarAutoExpand(true);
         } else if (auto === 'false') {
           setRightSidebarAutoExpand(false);
+        }
+        const leftAuto = (leftAutoRes as { value: unknown }).value;
+        if (typeof leftAuto === 'boolean') {
+          setLeftSidebarAutoExpand(leftAuto);
+        } else if (leftAuto === 'true') {
+          setLeftSidebarAutoExpand(true);
+        } else if (leftAuto === 'false') {
+          setLeftSidebarAutoExpand(false);
         }
         const engine = (engineRes as { value: unknown }).value;
         if (typeof engine === 'string' && engine) {
@@ -611,6 +625,7 @@ export function App() {
       if (
         detail?.keys?.includes('debug.sidebarHoverDelay') ||
         detail?.keys?.includes('ui.rightSidebarAutoExpand') ||
+        detail?.keys?.includes('ui.leftSidebarAutoExpand') ||
         detail?.keys?.includes('searchEngine') ||
         detail?.keys?.includes('ui.workspaceSwitcherMode')
       ) {
@@ -1507,12 +1522,14 @@ export function App() {
   const handleToggleLeft = useCallback(() => {
     const next = !leftExpanded;
     setLeftExpanded(next);
+    setLeftHovered(false);
+    setLeftRetracting(false);
     void notifyLayout(
       next ? LEFT_EXPANDED : LEFT_COLLAPSED,
       rightExpanded ? rightExpandedWidth : RIGHT_COLLAPSED,
       devtoolsOpen ? devtoolsWidth : 0,
     );
-  }, [leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout]);
+  }, [leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout, devtoolsOpen, devtoolsWidth]);
 
   const handleToggleRight = useCallback(() => {
     const next = !rightExpanded;
@@ -1521,11 +1538,19 @@ export function App() {
     setRightHovered(false);
     setRightRetracting(false);
     void notifyLayout(
-      leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED,
+      leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED,
       next ? rightExpandedWidth : RIGHT_COLLAPSED,
       devtoolsOpen ? devtoolsWidth : 0,
     );
-  }, [leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout, devtoolsOpen, devtoolsWidth]);
+  }, [
+    leftExpanded,
+    leftHovered,
+    rightExpanded,
+    rightExpandedWidth,
+    notifyLayout,
+    devtoolsOpen,
+    devtoolsWidth,
+  ]);
 
   // 双击右侧边栏空白处：展开/折叠切换（替代已移除的底部折叠/展开按钮）
   // 与悬停自动展开/自动折叠互斥（右侧栏自动展开开关控制后者）
@@ -1557,7 +1582,7 @@ export function App() {
       // 用拖拽后的实际宽度（而非固定 RIGHT_EXPANDED），否则主进程 BrowserView
       // 布局宽度与栏显示宽度不一致 → 网页滚动条与分割线间出现空白
       void notifyLayout(
-        leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED,
+        leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED,
         rightExpandedWidth,
         devtoolsOpen ? devtoolsWidth : 0,
       );
@@ -1574,9 +1599,12 @@ export function App() {
     rightExpanded,
     rightSidebarAutoExpand,
     leftExpanded,
+    leftHovered,
     rightExpandedWidth,
     notifyLayout,
     sidebarHoverDelay,
+    devtoolsOpen,
+    devtoolsWidth,
   ]);
 
   // 右侧栏离开回弹：折叠状态下鼠标离开时收起，使用带过冲的弹性缓动
@@ -1591,13 +1619,92 @@ export function App() {
     setRightRetracting(true);
     setRightHovered(false);
     void notifyLayout(
-      leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED,
+      leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED,
       RIGHT_COLLAPSED,
       devtoolsOpen ? devtoolsWidth : 0,
     );
     // 回弹动画结束后清除标记（300ms 对应回弹时长）
     window.setTimeout(() => setRightRetracting(false), 320);
-  }, [rightExpanded, rightHovered, leftExpanded, notifyLayout]);
+  }, [
+    rightExpanded,
+    rightHovered,
+    leftExpanded,
+    leftHovered,
+    notifyLayout,
+    devtoolsOpen,
+    devtoolsWidth,
+  ]);
+
+  const handleLeftDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      const target = e.target as Element;
+      if (target.closest('button, input, textarea, [role="separator"], [data-transit-item]')) {
+        return;
+      }
+      handleToggleLeft();
+    },
+    [handleToggleLeft],
+  );
+
+  const handleLeftMouseEnter = useCallback(() => {
+    if (leftExpanded || !leftSidebarAutoExpand) return;
+    if (leftHoverTimerRef.current) {
+      clearTimeout(leftHoverTimerRef.current);
+      leftHoverTimerRef.current = null;
+    }
+    const doExpand = (): void => {
+      setLeftHovered(true);
+      setLeftRetracting(false);
+      void notifyLayout(
+        LEFT_EXPANDED,
+        rightExpanded || rightHovered ? rightExpandedWidth : RIGHT_COLLAPSED,
+        devtoolsOpen ? devtoolsWidth : 0,
+      );
+    };
+    if (sidebarHoverDelay <= 0) {
+      doExpand();
+    } else {
+      leftHoverTimerRef.current = setTimeout(() => {
+        leftHoverTimerRef.current = null;
+        doExpand();
+      }, sidebarHoverDelay);
+    }
+  }, [
+    leftExpanded,
+    leftSidebarAutoExpand,
+    rightExpanded,
+    rightHovered,
+    rightExpandedWidth,
+    notifyLayout,
+    sidebarHoverDelay,
+    devtoolsOpen,
+    devtoolsWidth,
+  ]);
+
+  const handleLeftMouseLeave = useCallback(() => {
+    if (leftHoverTimerRef.current) {
+      clearTimeout(leftHoverTimerRef.current);
+      leftHoverTimerRef.current = null;
+    }
+    if (leftExpanded || !leftHovered) return;
+    setLeftRetracting(true);
+    setLeftHovered(false);
+    void notifyLayout(
+      LEFT_COLLAPSED,
+      rightExpanded || rightHovered ? rightExpandedWidth : RIGHT_COLLAPSED,
+      devtoolsOpen ? devtoolsWidth : 0,
+    );
+    window.setTimeout(() => setLeftRetracting(false), 320);
+  }, [
+    leftExpanded,
+    leftHovered,
+    rightExpanded,
+    rightHovered,
+    rightExpandedWidth,
+    notifyLayout,
+    devtoolsOpen,
+    devtoolsWidth,
+  ]);
 
   // 右侧边栏宽度拖拽调节：鼠标在网页与右侧边栏的边界线上按住拖动，实时调宽。
   // 展开态下于栏左缘内侧渲染拖拽手柄（避免与 BrowserView 重叠导致无法 hover/点击）。
@@ -1627,12 +1734,12 @@ export function App() {
       );
       setRightExpandedWidth(next);
       void notifyLayout(
-        leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED,
+        leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED,
         next,
         devtoolsOpen ? devtoolsWidth : 0,
       );
     },
-    [leftExpanded, notifyLayout],
+    [leftExpanded, leftHovered, notifyLayout, devtoolsOpen, devtoolsWidth],
   );
 
   const handleRightResizeEnd = useCallback(() => {
@@ -1719,7 +1826,7 @@ export function App() {
     };
   }, [activeTab?.url, refreshBookmarkSaved]);
 
-  const leftWidth = leftExpanded ? LEFT_EXPANDED : LEFT_COLLAPSED;
+  const leftWidth = leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED;
   // 右侧栏有效展开：固定展开 OR 折叠态下的悬停预览
   const effectiveRightExpanded = rightExpanded || rightHovered;
   const rightWidth = effectiveRightExpanded ? rightExpandedWidth : RIGHT_COLLAPSED;
@@ -2149,12 +2256,16 @@ export function App() {
     };
   }, [
     leftExpanded,
+    leftHovered,
+    leftRetracting,
     rightExpanded,
     rightHovered,
     rightRetracting,
     rightExpandedWidth,
     notifyLayout,
     useCustomChrome,
+    devtoolsOpen,
+    devtoolsWidth,
   ]);
 
   // ── 底部悬浮状态栏：状态同步 + 动作分发 ──
@@ -2326,12 +2437,21 @@ export function App() {
            *  （网页区左上角圆角的夹角边之一）。 */}
           <aside
             ref={leftAsideRef}
-            className="flex shrink-0 flex-col border-r border-border bg-transparent transition-[width] duration-150"
+            className={cn(
+              'flex shrink-0 flex-col border-r border-border bg-transparent',
+              leftRetracting
+                ? 'transition-[width] duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)]'
+                : 'transition-[width] duration-150 ease-out',
+            )}
             style={{ width: leftWidth }}
+            onMouseEnter={handleLeftMouseEnter}
+            onMouseLeave={handleLeftMouseLeave}
+            onDoubleClick={handleLeftDoubleClick}
             onPointerDown={windowDrag.startDrag}
             onPointerMove={windowDrag.moveDrag}
             onPointerUp={windowDrag.endDrag}
             onPointerCancel={windowDrag.endDrag}
+            aria-label="左侧边栏"
           >
             {/* 顶部：折叠/展开按钮 */}
             <button
@@ -2347,7 +2467,7 @@ export function App() {
             </button>
 
             {/* 中转区：折叠按钮下方、功能区上方。展开态列表 / 折叠态迷你图标 */}
-            <TransitPanel expanded={leftExpanded} />
+            <TransitPanel expanded={leftExpanded || leftHovered} />
 
             {/* 底部：DeepSeek Harness / pi / GenOffice 文档 / 邮箱 / 主页 / 主题切换 / 设置入口
              *（GenOffice 入口打开模块主页：打开文件 / 格式说明 / 原生 AI 设置） */}

@@ -30,6 +30,9 @@ import type {
 } from './types';
 import { buildAdBlockCss } from './ad-block-css';
 import { DEFAULT_WORKSPACE_ID } from '@urchin/ipc-contract';
+import { createLogger } from '@urchin/logger';
+
+const log = createLogger('tab-manager');
 
 /** 默认 URL */
 // 默认占位页：主页（urchin://newtab）。
@@ -121,6 +124,13 @@ export class TabManager {
    * 异步下载完成后丢弃过期结果，防止旧页面图标覆盖新页面。
    */
   private readonly faviconSequences = new Map<number, number>();
+
+  /** 每个 tab 上次推送的 updated 快照指纹（内容未变时不重复 IPC）。 */
+  private readonly lastUpdatedKeys = new Map<number, string>();
+
+  /** 导航耗时打点（did-start-loading / dom-ready / did-stop-loading）。 */
+  private readonly navigationStartedAt = new Map<number, number>();
+  private readonly navigationDomReadyAt = new Map<number, number>();
 
   /** 广告浮窗屏蔽开关（DB1 决策：默认开启，由设置 blockAds 控制） */
   private adBlockEnabled = true;
@@ -280,7 +290,7 @@ export class TabManager {
     if (tab.viewKind !== 'genoffice') return;
     if (tab.dirty === dirty) return;
     tab.dirty = dirty;
-    this.emit('updated', this.toSnapshot(tab));
+    this.emitUpdated(tab);
   }
 
   /**
@@ -303,6 +313,9 @@ export class TabManager {
     // 从集合移除
     this.tabs.delete(tabId);
     this.faviconSequences.delete(tabId);
+    this.lastUpdatedKeys.delete(tabId);
+    this.navigationStartedAt.delete(tabId);
+    this.navigationDomReadyAt.delete(tabId);
     this.windowTabs.get(tab.windowId)?.delete(tabId);
 
     // 先发 removed 再发 activated（2026-08-14 修复）：
@@ -404,14 +417,14 @@ export class TabManager {
     // 立即更新 URL（did-navigate 事件会确认最终 URL，含重定向）
     tab.url = url;
     tab.loading = true;
-    this.emit('updated', this.toSnapshot(tab));
+    this.emitUpdated(tab);
 
     // 处理 loadURL 的 Promise 拒绝（防止 unhandled rejection）
     // 固化：失败时重置 loading 状态，避免 tab 永久卡在 loading
     tab.webContents.loadURL(url).catch((err: unknown) => {
       console.error(`[tab ${tabId}] loadURL failed:`, err);
       tab.loading = false;
-      this.emit('updated', this.toSnapshot(tab));
+      this.emitUpdated(tab);
     });
   }
 
@@ -429,7 +442,7 @@ export class TabManager {
 
     tab.webContents.stop();
     tab.loading = false;
-    this.emit('updated', this.toSnapshot(tab));
+    this.emitUpdated(tab);
   }
 
   /**
@@ -512,13 +525,13 @@ export class TabManager {
           if (created && pinnedIcon) {
             created.favicon = pinnedIcon;
             created.piIconPinned = true;
-            this.emit('updated', this.toSnapshot(created));
+            this.emitUpdated(created);
           }
         } else {
           // 在当前标签页打开
           tab.url = url;
           tab.loading = true;
-          this.emit('updated', this.toSnapshot(tab));
+          this.emitUpdated(tab);
           wc.loadURL(url).catch((err: unknown) => {
             // ERR_ABORTED (-3)：本次导航被页面自身导航/重定向中断（如目标页立即跳转），
             // 属预期行为，静默忽略；其余错误才记录。
@@ -532,8 +545,17 @@ export class TabManager {
     }
 
     wc.on('did-start-loading', () => {
+      this.navigationStartedAt.set(tab.id, Date.now());
+      this.navigationDomReadyAt.delete(tab.id);
       tab.loading = true;
-      this.emit('updated', this.toSnapshot(tab));
+      this.emitUpdated(tab);
+    });
+
+    wc.on('dom-ready', () => {
+      const startedAt = this.navigationStartedAt.get(tab.id);
+      if (startedAt !== undefined) {
+        this.navigationDomReadyAt.set(tab.id, Date.now());
+      }
     });
 
     wc.on('did-finish-load', () => {
@@ -541,7 +563,7 @@ export class TabManager {
       const nav = readNavigationState(wc);
       tab.canGoBack = nav.canGoBack;
       tab.canGoForward = nav.canGoForward;
-      this.emit('updated', this.toSnapshot(tab));
+      this.emitUpdated(tab);
       // 广告浮窗屏蔽（DB1 决策）：页面加载完成后注入隐藏 CSS（CSS 全局生效，
       // 后续 SPA 动态创建的浮窗同样被规则覆盖，无需重复注入）
       this.applyAdBlock(tab.id);
@@ -560,7 +582,7 @@ export class TabManager {
       const nav = readNavigationState(wc);
       tab.canGoBack = nav.canGoBack;
       tab.canGoForward = nav.canGoForward;
-      this.emit('updated', this.toSnapshot(tab));
+      this.emitUpdated(tab);
 
       // 记录加载失败详情（便于调试）
       console.error(`[tab ${tab.id}] did-fail-load:`, {
@@ -573,12 +595,25 @@ export class TabManager {
 
     // 加载停止兜底：确保 loading 状态最终被清理
     wc.on('did-stop-loading', () => {
+      const startedAt = this.navigationStartedAt.get(tab.id);
+      if (startedAt !== undefined) {
+        const now = Date.now();
+        const domReadyAt = this.navigationDomReadyAt.get(tab.id);
+        log.info('page load timing', {
+          tabId: tab.id,
+          url: tab.url,
+          toDomReadyMs: domReadyAt !== undefined ? domReadyAt - startedAt : null,
+          toStopLoadingMs: now - startedAt,
+        });
+        this.navigationStartedAt.delete(tab.id);
+        this.navigationDomReadyAt.delete(tab.id);
+      }
       if (tab.loading) {
         tab.loading = false;
         const nav = readNavigationState(wc);
         tab.canGoBack = nav.canGoBack;
         tab.canGoForward = nav.canGoForward;
-        this.emit('updated', this.toSnapshot(tab));
+        this.emitUpdated(tab);
       }
     });
 
@@ -592,7 +627,7 @@ export class TabManager {
       this.faviconSequences.set(tab.id, (this.faviconSequences.get(tab.id) ?? 0) + 1);
       if (tab.favicon !== undefined) {
         tab.favicon = undefined;
-        this.emit('updated', this.toSnapshot(tab));
+        this.emitUpdated(tab);
       }
     });
 
@@ -606,7 +641,7 @@ export class TabManager {
       const nav = readNavigationState(wc);
       tab.canGoBack = nav.canGoBack;
       tab.canGoForward = nav.canGoForward;
-      this.emit('updated', this.toSnapshot(tab));
+      this.emitUpdated(tab);
     });
 
     // 页内导航（pushState/hashChange）：更新前进后退可用性。
@@ -615,7 +650,7 @@ export class TabManager {
       const nav = readNavigationState(wc);
       tab.canGoBack = nav.canGoBack;
       tab.canGoForward = nav.canGoForward;
-      this.emit('updated', this.toSnapshot(tab));
+      this.emitUpdated(tab);
     });
 
     wc.on('page-title-updated', (...args: unknown[]) => {
@@ -623,7 +658,7 @@ export class TabManager {
       if (typeof title === 'string') {
         tab.title = title;
       }
-      this.emit('updated', this.toSnapshot(tab));
+      this.emitUpdated(tab);
     });
 
     wc.on('page-favicon-updated', (...args: unknown[]) => {
@@ -639,7 +674,7 @@ export class TabManager {
       if (!this.faviconResolver) {
         if (candidates[0]) {
           tab.favicon = candidates[0];
-          this.emit('updated', this.toSnapshot(tab));
+          this.emitUpdated(tab);
         }
         return;
       }
@@ -658,7 +693,7 @@ export class TabManager {
           if (this.faviconSequences.get(tab.id) !== sequence) return;
           if (tab.piIconPinned || tab.favicon === favicon) return;
           tab.favicon = favicon;
-          this.emit('updated', this.toSnapshot(tab));
+          this.emitUpdated(tab);
         })
         .catch((err: unknown) => {
           if (this.tabs.get(tab.id) !== tab) return;
@@ -666,7 +701,7 @@ export class TabManager {
           console.error(`[tab ${tab.id}] favicon resolve failed:`, err);
           if (tab.favicon !== undefined) {
             tab.favicon = undefined;
-            this.emit('updated', this.toSnapshot(tab));
+            this.emitUpdated(tab);
           }
         });
     });
@@ -707,6 +742,10 @@ export class TabManager {
     this.tabs.clear();
     this.windowTabs.clear();
     this.activeTabPerWindow.clear();
+    this.lastUpdatedKeys.clear();
+    this.faviconSequences.clear();
+    this.navigationStartedAt.clear();
+    this.navigationDomReadyAt.clear();
   }
 
   /** 取消同窗口其他 tab 的激活态。 */
@@ -734,6 +773,27 @@ export class TabManager {
       if (active) return active.workspaceId;
     }
     return DEFAULT_WORKSPACE_ID;
+  }
+
+  /** 仅在快照内容变化时推送 updated，避免加载高峰期重复 IPC / 渲染。 */
+  private emitUpdated(tab: Tab): void {
+    const snapshot = this.toSnapshot(tab);
+    const key = [
+      snapshot.url,
+      snapshot.title,
+      snapshot.favicon ?? '',
+      snapshot.loading ? '1' : '0',
+      snapshot.canGoBack ? '1' : '0',
+      snapshot.canGoForward ? '1' : '0',
+      snapshot.active ? '1' : '0',
+      snapshot.crashed ? '1' : '0',
+      snapshot.workspaceId,
+      snapshot.viewKind,
+      snapshot.dirty ? '1' : '0',
+    ].join('\u0000');
+    if (this.lastUpdatedKeys.get(tab.id) === key) return;
+    this.lastUpdatedKeys.set(tab.id, key);
+    this.emit('updated', snapshot);
   }
 
   /** Tab → TabSnapshot（剔除不可序列化字段）。 */

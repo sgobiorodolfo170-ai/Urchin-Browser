@@ -1182,8 +1182,23 @@ export type AssociationGroupStatus = z.infer<typeof associationGroupStatusSchema
 
 export const fileAssociationRegisterReqSchema = z.object({
   group: associationGroupIdSchema,
+  /** 仅注册选中的扩展名；省略 = 注册整组（向后兼容）。 */
+  extensions: z.array(z.string().min(1).max(32)).max(200).optional(),
 });
 export type FileAssociationRegisterReq = z.infer<typeof fileAssociationRegisterReqSchema>;
+
+export const fileAssociationSetDefaultBrowserReqSchema = z.object({});
+export type FileAssociationSetDefaultBrowserReq = z.infer<
+  typeof fileAssociationSetDefaultBrowserReqSchema
+>;
+
+export const fileAssociationSetDefaultBrowserResSchema = z.object({
+  ok: z.literal(true),
+  openedSettings: z.boolean(),
+});
+export type FileAssociationSetDefaultBrowserRes = z.infer<
+  typeof fileAssociationSetDefaultBrowserResSchema
+>;
 
 export const fileAssociationRegisterResSchema = z.object({
   ok: z.literal(true),
@@ -2667,6 +2682,10 @@ export const ipcSchema = {
   'file-association.getStatus': {
     req: fileAssociationGetStatusReqSchema,
     res: fileAssociationGetStatusResSchema,
+  },
+  'file-association.setDefaultBrowser': {
+    req: fileAssociationSetDefaultBrowserReqSchema,
+    res: fileAssociationSetDefaultBrowserResSchema,
   },
   'ai.chat.start': { req: aiChatStartReqSchema, res: aiChatStartResSchema },
   'ai.chat.abort': { req: aiChatAbortReqSchema, res: aiChatAbortResSchema },

@@ -41,7 +41,9 @@ describe('TokenBucket', () => {
   });
 
   it('耗尽 token 后阻塞等待', async () => {
-    const bucket = new TokenBucket(2, { initialTokens: 2 });
+    // 冻结时钟：避免真实时钟跨毫秒导致 refill 补入小数 token（flaky）
+    const time = { now: () => 0 };
+    const bucket = new TokenBucket(2, { initialTokens: 2, time });
     await bucket.acquireRequestToken();
     await bucket.acquireRequestToken();
     expect(bucket.availableTokens).toBe(0);
@@ -59,7 +61,7 @@ describe('TokenBucket', () => {
         }
       },
     };
-    const time = { now: () => 0 }; // 时间冻结，refill 不会补充
+    // 复用上方声明的 time（冻结时钟，refill 不会补充）
     const bucket2 = new TokenBucket(2, {
       initialTokens: 0,
       time,

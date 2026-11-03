@@ -1,7 +1,8 @@
 # W7 Performance: cold start time + memory
 $ErrorActionPreference = 'Stop'
-$electron = 'G:\pj\pj--ing\111111\Urchin-Browser\node_modules\.pnpm\electron@32.3.3\node_modules\electron\dist\electron.exe'
-$appPath = 'g:\pj\pj--ing\111111\Urchin-Browser\apps\desktop'
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$appPath = Join-Path $repoRoot 'apps\desktop'
+$electron = Join-Path $appPath 'node_modules\electron\dist\electron.exe'
 $totalRuns = 11
 
 function Get-ElectronProcessTree {

@@ -10,7 +10,7 @@
  * 与 tabs/register-handlers.ts / translate/register-handlers.ts 一致。
  */
 import type { IpcMain } from 'electron';
-import { registerHandler, IpcError, IpcErrorCode } from '@urchin/ipc-contract';
+import { registerHandler } from '@urchin/ipc-contract';
 import { createLogger } from '@urchin/logger';
 import type { DevtoolsManager } from './devtools-manager';
 
@@ -56,7 +56,3 @@ export function registerDevtoolsHandlers(ipcMain: IpcMain, manager: DevtoolsMana
 
   log.info('devtools ipc handlers registered');
 }
-
-// 抑制未使用导入告警（IpcError/IpcErrorCode 预留给后续 NOT_FOUND 增强）
-void IpcError;
-void IpcErrorCode;

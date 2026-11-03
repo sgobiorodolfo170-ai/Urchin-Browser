@@ -8,6 +8,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:full": "pnpm run build:main && pnpm dev & wait-on ./dist/main/index.js && electron .",
     "dev:electron": "wait-on ./dist/main/index.js && electron .",
     "start": "node scripts/launch.mjs",
     "build": "pnpm run icon:build && tsc -b && pnpm run build:renderer && pnpm run build:main && pnpm run build:preload && pnpm run build:pi-web",

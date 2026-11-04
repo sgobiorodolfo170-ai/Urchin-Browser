@@ -14,7 +14,7 @@
 // Polyfill 必须在所有其他模块之前加载：undici 顶层 require node:worker_threads
 // 并解构 markAsUncloneable（Node 22.3+ 才有），Electron 32/Node 20 缺失会导致启动崩溃。
 import './polyfills/worker-threads-polyfill';
-import { app, nativeTheme, screen, session } from 'electron';
+import { app, screen, session } from 'electron';
 import { join, basename } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -514,47 +514,6 @@ function broadcastProviderEvent(event: ProviderEvent): void {
         error: err instanceof Error ? err.message : String(err),
       });
     }
-  }
-}
-
-/**
- * 应用主题到原生层与所有视图（ui.theme.set 与 GenOffice Home 共用）。
- *
- * 设置 nativeTheme.themeSource 使窗口标题栏/边框跟随主题；支持
- * prefers-color-scheme 的网页跟随；同步 pi 页直推、窗口/视图背景色，
- * 并向所有 webContents 广播 app:theme-changed（GenOffice 编辑器/Home 消费）。
- */
-export function applyTheme(theme: 'light' | 'dark' | 'system'): void {
-  nativeTheme.themeSource = theme;
-  const bg = currentThemeBackground();
-  for (const managed of windowManager.getAllWindows()) {
-    const win = managed.browserWindow as unknown as {
-      setBackgroundColor?: (color: string) => void;
-    };
-    try {
-      win.setBackgroundColor?.(bg);
-    } catch {
-      /* 测试 mock 无此方法/窗口销毁中：忽略 */
-    }
-  }
-  for (const snapshot of tabManager.query({})) {
-    const tab = tabManager.getTab(snapshot.id);
-    const view = tab?.view as unknown as {
-      setBackgroundColor?: (color: string) => void;
-    };
-    try {
-      view.setBackgroundColor?.(bg);
-    } catch {
-      /* 忽略 */
-    }
-  }
-  log.info('theme set', { theme });
-  for (const snapshot of tabManager.query({})) {
-    const tab = tabManager.getTab(snapshot.id);
-    tab?.webContents.send?.('app:theme-changed', theme);
-  }
-  for (const managed of windowManager.getAllWindows()) {
-    managed.browserWindow.webContents.send('app:theme-changed', theme);
   }
 }
 

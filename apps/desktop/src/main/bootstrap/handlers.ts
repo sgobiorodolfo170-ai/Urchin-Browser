@@ -7,13 +7,14 @@
  * pi-web-host/mail/file/editor 等）与 UI 域 handler 集中于此；可变状态一律
  * 经 AppContext（ctx）访问，本文件不持有可变模块级状态。
  *
- * ⚠ 循环引用（已评估，安全）：本文件从 '../index' 反向导入 8 个仍被
+ * ⚠ 循环引用（已评估，安全）：本文件从 '../index' 反向导入 7 个仍被
  * index.ts 其他路径（whenReady / 文件关联入口 / 悬浮层）使用的符号
  * （routeLocalFile / sendToMainWindow / sendBallConfig / scrollActivePage /
- * applyTheme / GENOFFICE_DISABLED / downloadManager / startupUserDataPath），
+ * GENOFFICE_DISABLED / downloadManager / startupUserDataPath），
  * 而 index.ts 导入本文件的 registerIpcHandlers。两侧引用均只发生在运行时
  * （registerIpcHandlers 于主窗口创建后 setImmediate 调用），不在模块求值期
- * 解引用，ESM 惰性绑定下安全。步骤 5（theme-apply 迁出）后此反向依赖将缩减。
+ * 解引用，ESM 惰性绑定下安全。applyTheme 已于步骤 5 迁至 './theme-apply'，
+ * 不再构成反向依赖。
  */
 import {
   app,
@@ -70,12 +71,13 @@ import { createUpdateService, registerUpdateHandlers, UPDATE_EVENT_CHANNEL } fro
 import { DevtoolsManager, registerDevtoolsHandlers } from '../devtools';
 import type { AppContext } from './app-context';
 // 运行时惰性使用的 index.ts 共享符号（循环引用安全性见文件头注释）
+import { applyTheme } from './theme-apply';
+// 运行时惰性使用的 index.ts 共享符号（循环引用安全性见文件头注释）
 import {
   routeLocalFile,
   sendToMainWindow,
   sendBallConfig,
   scrollActivePage,
-  applyTheme,
   GENOFFICE_DISABLED,
   downloadManager,
   startupUserDataPath,
@@ -231,7 +233,7 @@ export function registerIpcHandlers(ctx: AppContext): void {
       documentsRoot: join(ctx.currentDataDir, 'documents'),
       getTheme: () => nativeTheme.themeSource,
       setTheme: (theme) => {
-        if (theme === 'light' || theme === 'dark' || theme === 'system') applyTheme(theme);
+        if (theme === 'light' || theme === 'dark' || theme === 'system') applyTheme(ctx, theme);
       },
       getVersion: () => app.getVersion(),
       aiPanelPrefs: genofficeAiPanelPrefs,
@@ -721,7 +723,7 @@ export function registerIpcHandlers(ctx: AppContext): void {
   // dev.50：同步刷新窗口与已存在 BrowserView 的背景色——消除深色模式下
   // 网页区四周几何缝隙透出的硬编码白色（渲染层容器已同步改用主题令牌）。
   registerHandler(ipcMain, 'ui.theme.set', (req) => {
-    applyTheme(req.theme);
+    applyTheme(ctx, req.theme);
     return { ok: true as const };
   });
 

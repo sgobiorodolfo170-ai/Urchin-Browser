@@ -152,6 +152,15 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: '../../dist/renderer',
       emptyOutDir: true,
+      // P2 Session 4：收藏夹面板独立入口（dist/renderer/panel.html）。
+      // BookmarkPanel 子窗口 prod 时 loadFile 该文件、dev 时加载 dev server
+      // /panel.html；与主入口分开打包，面板子窗口不加载 App/pi/AI 等重依赖。
+      rollupOptions: {
+        input: {
+          main: resolve(__dirname, 'src/renderer/index.html'),
+          panel: resolve(__dirname, 'src/renderer/panel.html'),
+        },
+      },
     },
   };
 });

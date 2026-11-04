@@ -170,21 +170,23 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
 
     // 4. 面板内容可见：三选项卡（收藏夹/历史/下载）加载真实数据。
     // 注意 windows() 包含主窗口 renderer + BrowserView 网页 + 面板窗口（3 个 page），
-    // 必须按 URL 定位面板窗口（urchin://panel）。
+    // 必须按 URL 定位面板窗口。
+    // P2 Session 4（2026-11-05）：面板页面由 urchin://panel 内联 HTML 迁移为 React
+    // 构建产物（dist/renderer/panel.html，loadFile 加载），按 panel.html 定位。
     // 时序说明（dev.111 加固）：Playwright 的页面注册晚于原生窗口创建——
-    // 面板窗口已存在（上文 bounds 断言通过）但 url() 尚未变为 urchin://panel，
+    // 面板窗口已存在（上文 bounds 断言通过）但 url() 尚未变为 panel.html，
     // 故轮询页面列表直到出现（曾出现「窗口有、页面列表没有」的偶发失败）。
-    let panelWindow = electronApp.windows().find((w) => w.url().includes('urchin://panel'));
+    let panelWindow = electronApp.windows().find((w) => w.url().includes('panel.html'));
     try {
       await expect
         .poll(
           () => {
-            panelWindow = electronApp.windows().find((w) => w.url().includes('urchin://panel'));
+            panelWindow = electronApp.windows().find((w) => w.url().includes('panel.html'));
             return Boolean(panelWindow);
           },
           {
             timeout: 15_000,
-            message: '面板窗口（urchin://panel）应出现在 Playwright 页面列表',
+            message: '面板窗口（panel.html）应出现在 Playwright 页面列表',
           },
         )
         .toBe(true);

@@ -18,7 +18,6 @@ import { basename, join } from 'node:path';
 import { app } from 'electron';
 import { createLogger } from '@urchin/logger';
 import { displayNameForLocale } from '../../shared/brand';
-import { getBookmarkPanelHtml } from '../panel/bookmark-panel';
 import { getCaptureOverlayHtml } from '../screenshots/capture-overlay-html';
 import { inferMimeType } from '../files/file-kind';
 
@@ -210,7 +209,6 @@ async function serveLocalFile(request: Request, url: URL): Promise<Response> {
  * 路由：
  * - urchin://settings → 设置页 HTML（由主窗口 React SettingsPage 渲染，BrowserView 仅占位）
  * - urchin://notebook → 笔记 / 便利贴页占位 HTML（由主窗口 React NotebookView 渲染）
- * - urchin://panel → 收藏夹悬浮面板 HTML（独立子窗口加载，preload 在 urchin: 协议下暴露 API）
  * - urchin://file-viewer → 本地文件查看器占位 HTML（由主窗口 React FileViewer 渲染，
  *   文件路径经 ?path= 参数传入，BrowserView 仅占位）
  * - urchin://file-resource → 本地文件资源转发（FileViewer 内嵌媒体/PDF/图片加载）
@@ -464,15 +462,6 @@ export function registerUrchinProtocol(
 
       if (host === 'app-icon') {
         return serveAppIcon();
-      }
-
-      if (host === 'panel') {
-        // 收藏夹悬浮面板（独立子窗口加载）。preload 在 urchin: 协议下暴露
-        // window.urchin.invoke，面板内联 JS 通过它拉取书签/历史/下载数据并操作。
-        return new Response(getBookmarkPanelHtml(), {
-          status: 200,
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        });
       }
 
       if (host === 'capture-overlay') {

@@ -1,0 +1,401 @@
+/*
+ * 收藏夹悬浮面板样式（P2 Session 4：自 bookmark-panel.ts 内联 HTML <style> 原样迁移）
+ *
+ * 类名与原内联实现一一对应（.tab/.item/.breadcrumb/.crumb/.dl-item/…），
+ * 保证交互选择器（行操作守卫 .row-act/.star/.rename-input、拖拽过滤等）行为不变。
+ * 新增 .hidden：非激活 tab 面板隐藏用（三个 tab 面板保持挂载以保留跨 tab 状态）。
+ */
+:root {
+  --bg: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --border: #e5e5e5;
+  --text: #1a1a1a;
+  --text-secondary: #666666;
+  --primary: #2563eb;
+  --success: #16a34a;
+  --warning: #d97706;
+  --error: #dc2626;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a;
+    --bg-secondary: #262626;
+    --border: #404040;
+    --text: #f5f5f5;
+    --text-secondary: #a3a3a3;
+    --primary: #3b82f6;
+  }
+}
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  /* 自下而上弹出动画 */
+  animation: slideUp 0.18s ease-out;
+}
+@keyframes slideUp {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+#root {
+  height: 100%;
+}
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.tab {
+  flex: 1;
+  padding: 9px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  user-select: none;
+}
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--primary);
+  font-weight: 500;
+}
+.content {
+  height: calc(100% - 38px);
+  overflow-y: auto;
+}
+/* 非激活 tab 面板：保持挂载（保留目录轨迹/历史展开/速度采样等跨 tab 状态）但不可见 */
+.tab-panel.hidden {
+  display: none;
+}
+.empty {
+  padding: 32px 0;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.item:hover {
+  background: var(--bg-secondary);
+}
+.item .icon {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+/* 网站图标槽：固定 16px，图片加载失败时显示 emoji 回退 */
+.favicon-slot {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.favicon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  border-radius: 2px;
+}
+.favicon-fallback {
+  width: 14px;
+}
+/* 收藏星标：可点击取消收藏（hover 变暗提示可点击） */
+.item .icon.star {
+  cursor: pointer;
+}
+.item .icon.star:hover {
+  filter: grayscale(0.5) brightness(0.7);
+}
+.item .main {
+  flex: 1;
+  min-width: 0;
+}
+.item .title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.item .url {
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* ── 收藏夹目录化：工具条 / 面包屑 / 行内操作 ── */
+.bm-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  min-height: 34px;
+}
+.breadcrumb {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.crumb {
+  color: var(--text-secondary);
+  cursor: pointer;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.crumb:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.crumb-sep {
+  color: var(--text-secondary);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+.new-folder-btn {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.new-folder-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text);
+}
+.row-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.row-act {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.row-act:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+.item.folder-item .row-act {
+  opacity: 0;
+}
+.item.folder-item:hover .row-act,
+.item.folder-item .row-act:focus {
+  opacity: 1;
+}
+.item:not(.folder-item) .row-act {
+  opacity: 0;
+}
+.item:not(.folder-item):hover .row-act,
+.item:not(.folder-item) .row-act:focus {
+  opacity: 1;
+}
+.rename-input {
+  width: 100%;
+  max-width: 150px;
+  font-size: 12px;
+  padding: 1px 4px;
+  border: 1px solid var(--primary);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+/* ── picker 模式底部操作条（保存到当前文件夹 / 取消） ── */
+.picker-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.picker-target {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.picker-save {
+  border: none;
+  background: var(--primary);
+  color: #fff;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.picker-save:hover {
+  filter: brightness(1.08);
+}
+.picker-cancel {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.picker-cancel:hover {
+  background: var(--bg-secondary);
+  color: var(--text);
+}
+/* ── 历史日期分组 ── */
+.date-group {
+  border-bottom: 1px solid var(--border);
+}
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg);
+}
+.group-header:hover {
+  background: var(--bg-secondary);
+  color: var(--text);
+}
+.group-header .chevron {
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.group-label {
+  font-weight: 500;
+}
+.group-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 0 6px;
+}
+.group-body .item {
+  padding-left: 22px;
+}
+/* ── 下载进度条 ── */
+.dl-item .main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.progress-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+  margin-top: 2px;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 2px;
+  transition: width 0.4s ease-out;
+}
+/* 未知总量：不定进度动画（滑块来回） */
+.dl-item.indeterminate .progress-bar-fill {
+  width: 30% !important;
+  animation: dlIndeterminate 1.2s ease-in-out infinite alternate;
+}
+@keyframes dlIndeterminate {
+  from {
+    margin-left: 0;
+  }
+  to {
+    margin-left: 70%;
+  }
+}
+.dl-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.dl-actions button {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.dl-actions button:hover {
+  background: var(--bg-secondary);
+}
+.dl-state {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.clear-row {
+  padding: 6px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+.clear-row button {
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+.clear-row button:hover {
+  color: var(--text);
+}

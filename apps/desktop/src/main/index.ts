@@ -1173,6 +1173,8 @@ void app.whenReady().then(() => {
 
     // 初始化收藏夹悬浮面板（子窗口，悬浮于网页之上；随主窗口移动/缩放重定位）。
     // 面板定位避开底部地址栏与右侧边栏：布局尺寸从 view-integration 的 layoutState 读取。
+    // P2 Session 4：面板页面为 React 组件（src/renderer/panel/，独立 vite 入口
+    // panel.html）；dev 加载 dev server，prod loadFile 构建产物，与状态栏悬浮层同模式。
     ctx.bookmarkPanel = new BookmarkPanel({
       getParentWindow: () => windowManager.getWindow(mainWindow.id)?.browserWindow ?? null,
       preloadPath: join(__dirname, '..', 'preload', 'index.js'),
@@ -1183,6 +1185,19 @@ void app.whenReady().then(() => {
           rightWidth: state.rightWidth + WINDOW_FRAME_WIDTH,
           bottomHeight: state.bottomHeight + WINDOW_FRAME_WIDTH,
         };
+      },
+      onLoad: async (win, mode) => {
+        const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
+        const query = mode === 'picker' ? { mode: 'picker' } : undefined;
+        if (isDev) {
+          const base = process.env.URCHIN_RENDERER_URL ?? 'http://localhost:5173';
+          const u = new URL(base);
+          u.pathname = '/panel.html';
+          if (query) Object.entries(query).forEach(([k, v]) => u.searchParams.set(k, v));
+          await win.loadURL(u.toString());
+        } else {
+          await win.loadFile(join(__dirname, '..', 'renderer', 'panel.html'), { query });
+        }
       },
     });
 

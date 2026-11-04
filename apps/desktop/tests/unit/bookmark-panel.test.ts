@@ -8,14 +8,16 @@
  * 4. 定位：主窗口内容区右下角吸附
  * 5. blur 自动关闭
  * 6. 随主窗口 move/resize 重定位 + closed 清理监听
+ * 7. onLoad 注入：open('picker') / openPicker 重载按模式回调（P2 Session 4：
+ *    面板页面迁移为 React 组件后，加载方式由 index.ts 注入的 onLoad 决定）
+ *
+ * （面板 React 组件的交互测试见 tests/unit/panel/bookmark-panel-app.test.tsx）
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   BookmarkPanel,
   PANEL_WIDTH,
   PANEL_HEIGHT,
-  getBookmarkPanelHtml,
-  getBookmarkPanelScript,
   type PanelHostWindow,
 } from '../../src/main/panel/bookmark-panel';
 import type { BrowserWindow } from 'electron';
@@ -81,10 +83,12 @@ function setup(
     parent?: PanelHostWindow | null;
     createWindow?: (o: unknown) => unknown;
     getLayout?: () => { rightWidth: number; bottomHeight: number };
+    onLoad?: (win: BrowserWindow, mode: 'normal' | 'picker') => Promise<void>;
   } = {},
 ) {
   const parent = overrides.parent === undefined ? createMockParent() : overrides.parent;
   const created: ReturnType<typeof createMockPanelWindow>[] = [];
+  const onLoad = overrides.onLoad ?? vi.fn().mockImplementation(() => Promise.resolve(undefined));
   const createWindow = overrides.createWindow
     ? (overrides.createWindow as (o: unknown) => BrowserWindow)
     : (): BrowserWindow => {
@@ -96,9 +100,10 @@ function setup(
     getParentWindow: () => parent,
     preloadPath: 'C:\\preload\\index.js',
     getLayout: overrides.getLayout ?? (() => ({ rightWidth: 44, bottomHeight: 48 })),
+    onLoad: onLoad as (win: BrowserWindow, mode: 'normal' | 'picker') => Promise<void>,
     createWindow: createWindow,
   });
-  return { panel, parent, created };
+  return { panel, parent, created, onLoad };
 }
 
 describe('BookmarkPanel', () => {
@@ -220,274 +225,44 @@ describe('BookmarkPanel', () => {
     expect(parent.removeListener).toHaveBeenCalledWith('move', expect.any(Function));
     expect(parent.removeListener).toHaveBeenCalledWith('resize', expect.any(Function));
   });
-});
 
-describe('getBookmarkPanelHtml（面板模板）', () => {
-  it('should bind pointer-drag that opens url in new window when dragged out', () => {
-    const html = getBookmarkPanelHtml();
+  // ===== onLoad 注入（P2 Session 4：页面加载与窗口管理解耦） =====
 
-    // 书签拖出面板窗口 → 新浏览器窗口打开（自定义指针拖拽，非系统拖放）
-    expect(html).toContain(
-      "invoke('window.createWithUrl', { url: st.url, x: e.screenX, y: e.screenY })",
-    );
-    expect(html).toContain("contentEl.addEventListener('pointerdown'");
-    expect(html).toContain("contentEl.addEventListener('pointermove'");
-    // 不再使用系统拖放（防止拖到桌面生成快捷方式）
-    expect(html).not.toContain("e.dataTransfer.setData('text/uri-list', url)");
-    expect(html).not.toContain('draggable="true"');
-  });
-});
-
-describe('getBookmarkPanelScript（面板交互，jsdom）', () => {
-  /** 以真实面板 DOM + 脚本执行一次渲染，返回可查询的 content 容器与调用记录 */
-  function setupPanel() {
-    document.body.innerHTML = `
-      <div class="tabs">
-        <div class="tab active" data-tab="bookmarks">收藏夹</div>
-        <div class="tab" data-tab="history">历史记录</div>
-        <div class="tab" data-tab="downloads">下载列表</div>
-      </div>
-      <div class="content" id="content"><div class="empty">加载中…</div></div>
-    `;
-    const calls: { ch: string; req: Record<string, unknown> }[] = [];
-    const invokeMock = vi.fn((ch: string, req: Record<string, unknown>): Promise<unknown> => {
-      calls.push({ ch, req });
-      if (ch === 'bookmark.list') {
-        return Promise.resolve({
-          bookmarks: [
-            {
-              id: 'bm-1',
-              type: 'bookmark',
-              title: 'Example',
-              url: 'https://example.com/A',
-              favicon: 'urchin://favicon/abc',
-              parentId: null,
-              position: 0,
-              createdAt: 1,
-              updatedAt: 1,
-            },
-            {
-              id: 'bm-2',
-              type: 'bookmark',
-              title: 'B Site',
-              url: 'https://example.com/B',
-              parentId: null,
-              position: 1,
-              createdAt: 2,
-              updatedAt: 2,
-            },
-          ],
-        });
-      }
-      if (ch === 'tab.list') return Promise.resolve({ tabs: [{ id: 'tab-1', active: true }] });
-      return Promise.resolve({});
-    });
-    (window as unknown as { urchin: { invoke: (...a: unknown[]) => Promise<unknown> } }).urchin = {
-      invoke: invokeMock as unknown as (...a: unknown[]) => Promise<unknown>,
-    };
-    // jsdom runScripts=outside-only 下动态插入 <script> 不保证执行，改用 window.eval
-    window.eval(getBookmarkPanelScript());
-    return { calls };
-  }
-
-  beforeEach(() => {
-    document.body.innerHTML = '';
+  it('should load page via injected onLoad with normal mode', () => {
+    const { panel, created, onLoad } = setup();
+    panel.open();
+    expect(onLoad).toHaveBeenCalledTimes(1);
+    expect(onLoad).toHaveBeenCalledWith(created[0]!, 'normal');
   });
 
-  // ===== picker 模式（dev.120：星标按钮未收藏时选文件夹保存） =====
-
-  /** 以 ?mode=picker 加载面板脚本：mock 一个含子文件夹的书签集 + picker 上下文。 */
-  function setupPanelPicker() {
-    document.body.innerHTML = `
-      <div class="tabs">
-        <div class="tab active" data-tab="bookmarks">收藏夹</div>
-        <div class="tab" data-tab="history">历史记录</div>
-        <div class="tab" data-tab="downloads">下载列表</div>
-      </div>
-      <div class="content" id="content"><div class="empty">加载中…</div></div>
-    `;
-    // 脚本在 eval 时一次性读取 location.search 判定 pickerMode
-    const origSearch = window.location.search;
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, search: '?mode=picker' },
-      configurable: true,
-    });
-
-    const calls: { ch: string; req: Record<string, unknown> }[] = [];
-    const invokeMock = vi.fn((ch: string, req: Record<string, unknown>): Promise<unknown> => {
-      calls.push({ ch, req });
-      if (ch === 'bookmark.list') {
-        return Promise.resolve({
-          bookmarks: [
-            {
-              id: 'f-1',
-              type: 'folder',
-              title: '工作',
-              parentId: null,
-              position: 0,
-              createdAt: 1,
-              updatedAt: 1,
-            },
-            {
-              id: 'bm-1',
-              type: 'bookmark',
-              title: 'Example',
-              url: 'https://example.com/A',
-              parentId: null,
-              position: 1,
-              createdAt: 1,
-              updatedAt: 1,
-            },
-          ],
-        });
-      }
-      if (ch === 'ui.panel.getPickerContext') {
-        return Promise.resolve({ url: 'https://current.example.com/', title: 'Current Page' });
-      }
-      if (ch === 'bookmark.create') return Promise.resolve({ ok: true });
-      if (ch === 'ui.panel.close') return Promise.resolve({ ok: true });
-      return Promise.resolve({});
-    });
-    (window as unknown as { urchin: { invoke: (...a: unknown[]) => Promise<unknown> } }).urchin = {
-      invoke: invokeMock as unknown as (...a: unknown[]) => Promise<unknown>,
-    };
-    window.eval(getBookmarkPanelScript());
-    // 还原 location（避免污染后续测试）
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, search: origSearch },
-      configurable: true,
-    });
-    return { calls };
-  }
-
-  it('picker 模式：渲染保存底栏 + 文件夹行「保存到此处」按钮', async () => {
-    setupPanelPicker();
-    await vi.waitFor(() => expect(document.querySelector('.picker-footer')).toBeTruthy());
-
-    // 底栏「保存到：根目录」+ 保存/取消按钮
-    expect(document.querySelector('.picker-target')?.textContent).toContain('根目录');
-    expect(document.querySelector('[data-act="save-here"]')).toBeTruthy();
-    expect(document.querySelector('[data-act="picker-cancel"]')).toBeTruthy();
-    // 文件夹行有「保存到此处」按钮（data-act=save-into）
-    expect(document.querySelector('.folder-item [data-act="save-into"]')).toBeTruthy();
+  it('should load page via injected onLoad with picker mode on openPicker (closed)', () => {
+    const { panel, created, onLoad } = setup();
+    panel.openPicker();
+    expect(onLoad).toHaveBeenCalledTimes(1);
+    expect(onLoad).toHaveBeenCalledWith(created[0]!, 'picker');
   });
 
-  it('picker 模式：点「保存」底栏按钮 → bookmark.create 存入当前文件夹(根) + 关闭面板', async () => {
-    const { calls } = setupPanelPicker();
-    await vi.waitFor(() => expect(document.querySelector('[data-act="save-here"]')).toBeTruthy());
+  it('should reload existing panel in picker mode without recreating window', () => {
+    const { panel, created, onLoad } = setup();
+    panel.open();
+    expect(created).toHaveLength(1);
+    panel.openPicker();
+    // 复用同一窗口：不新建，onLoad 以 picker 模式再次调用
+    expect(created).toHaveLength(1);
+    expect(onLoad).toHaveBeenCalledTimes(2);
+    expect(onLoad).toHaveBeenLastCalledWith(created[0]!, 'picker');
+  });
 
-    const saveHereBtn = document.querySelector<HTMLElement>('[data-act="save-here"]');
-    saveHereBtn?.click();
-
+  it('should destroy panel when onLoad rejects (no zombie hidden window)', async () => {
+    const { panel, created } = setup({
+      onLoad: vi.fn().mockImplementation(() => Promise.reject(new Error('dev server down'))),
+    });
+    panel.open();
+    const w = created[0]!;
+    // onLoad 失败 → 销毁面板（避免 ready-to-show 永不触发的隐藏僵尸窗口）
     await vi.waitFor(() => {
-      expect(calls.some((c) => c.ch === 'bookmark.create')).toBe(true);
+      expect(w.destroy).toHaveBeenCalled();
+      expect(panel.isOpen).toBe(false);
     });
-    const create = calls.find((c) => c.ch === 'bookmark.create')!;
-    expect(create.req).toEqual({
-      url: 'https://current.example.com/',
-      title: 'Current Page',
-      parentId: null,
-      type: 'bookmark',
-    });
-    expect(calls.some((c) => c.ch === 'ui.panel.close')).toBe(true);
-  });
-
-  it('picker 模式：点文件夹行「保存到此处」→ bookmark.create parentId=该文件夹 id', async () => {
-    const { calls } = setupPanelPicker();
-    await vi.waitFor(() =>
-      expect(document.querySelector('.folder-item [data-act="save-into"]')).toBeTruthy(),
-    );
-
-    const saveIntoBtn = document.querySelector<HTMLElement>('.folder-item [data-act="save-into"]');
-    saveIntoBtn?.click();
-
-    await vi.waitFor(() => {
-      expect(calls.some((c) => c.ch === 'bookmark.create')).toBe(true);
-    });
-    const create = calls.find((c) => c.ch === 'bookmark.create')!;
-    expect(create.req.parentId).toBe('f-1');
-    expect(create.req.url).toBe('https://current.example.com/');
-  });
-
-  it('should delete bookmark when star clicked, not open the url', async () => {
-    const { calls } = setupPanel();
-    // 等待首次 bookmark.list 渲染完成
-    await vi.waitFor(() => expect(document.querySelectorAll('.item .star')).toHaveLength(2));
-
-    // 真实点击序列：pointerdown（会触发面板的拖拽逻辑）→ pointerup → click
-    const star = document.querySelectorAll<HTMLElement>('.item .star')[0]!;
-    star.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-    star.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
-    star.click();
-
-    await vi.waitFor(() => {
-      expect(calls.some((c) => c.ch === 'bookmark.delete')).toBe(true);
-    });
-    // 删除后刷新列表 → 重新拉取 bookmark.list
-    const deletes = calls.filter((c) => c.ch === 'bookmark.delete');
-    expect(deletes).toHaveLength(1);
-    expect(deletes[0]!.req).toEqual({ id: 'bm-1' });
-    // 星标点击不得误触"打开网址"（tab.loadUrl）
-    expect(calls.some((c) => c.ch === 'tab.loadUrl')).toBe(false);
-  });
-
-  it('should render cached favicon and show fallback when image fails', async () => {
-    setupPanel();
-    await vi.waitFor(() => expect(document.querySelectorAll('.item .star')).toHaveLength(2));
-
-    const img = document.querySelector<HTMLImageElement>('#content img.favicon');
-    expect(img?.getAttribute('src')).toBe('urchin://favicon/abc');
-    expect(img?.getAttribute('alt')).toBe('');
-
-    const fallback = img?.nextElementSibling as HTMLElement | null;
-    expect(fallback?.classList.contains('favicon-fallback')).toBe(true);
-    img!.dispatchEvent(new Event('error'));
-
-    expect(img!.style.display).toBe('none');
-    expect(fallback!.style.display).toBe('inline');
-  });
-
-  it('should not start pointer drag on star (capture would hijack star click)', async () => {
-    const { calls } = setupPanel();
-    await vi.waitFor(() => expect(document.querySelectorAll('.item .star')).toHaveLength(2));
-
-    // 根因回归护栏：pointerdown 落在星标上时，拖拽分支必须提前返回，不得对条目
-    // 调用 setPointerCapture。真实 Chromium 中 setPointerCapture 会把随后的 click
-    // 目标重定向到 .item，使星标删除点击被劫持为"打开网址"（本 bug 的直接成因）。
-    const star = document.querySelectorAll<HTMLElement>('.item .star')[0]!;
-    const item = star.closest<HTMLElement>('.item')!;
-    item.setPointerCapture = vi.fn();
-    star.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-    expect(item.setPointerCapture).not.toHaveBeenCalled();
-    expect(calls.some((c) => c.ch === 'bookmark.delete')).toBe(false);
-  });
-
-  it('should start pointer drag on item body (capture for drag-out)', async () => {
-    setupPanel();
-    await vi.waitFor(() => expect(document.querySelectorAll('.item')).toHaveLength(2));
-
-    // 条目主体仍保留拖拽能力：pointerdown 启动拖拽并捕获指针，供"拖出窗口打开"使用
-    const item = document.querySelectorAll<HTMLElement>('.item')[0]!;
-    item.setPointerCapture = vi.fn();
-    item.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-    expect(item.setPointerCapture).toHaveBeenCalled();
-  });
-
-  it('should open url in active tab when item body clicked (drag not started)', async () => {
-    const { calls } = setupPanel();
-    await vi.waitFor(() => expect(document.querySelectorAll('.item')).toHaveLength(2));
-
-    // 点击条目主体（非星标）→ 打开网址；且不因 pointerdown 启动拖拽而改变 click 目标
-    const item = document.querySelectorAll<HTMLElement>('.item')[1]!;
-    item.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-    item.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
-    item.click();
-
-    await vi.waitFor(() => {
-      expect(calls.some((c) => c.ch === 'tab.loadUrl')).toBe(true);
-    });
-    const load = calls.find((c) => c.ch === 'tab.loadUrl');
-    expect(load?.req).toEqual({ tabId: 'tab-1', url: 'https://example.com/B' });
-    expect(calls.some((c) => c.ch === 'bookmark.delete')).toBe(false);
   });
 });

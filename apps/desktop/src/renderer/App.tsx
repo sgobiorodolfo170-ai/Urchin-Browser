@@ -37,8 +37,7 @@ import type { Suggestion } from './omnibox/types';
 import { buildSuggestions } from './omnibox/build-suggestions';
 import { cn } from './lib/utils';
 import { getCurrentWindowId } from './lib/current-window';
-import { WorkspaceBar } from './workspaces/WorkspaceBar';
-import { WorkspaceSwitcher, type WorkspaceSwitcherMode } from './workspaces/WorkspaceSwitcher';
+import type { WorkspaceSwitcherMode } from './workspaces/WorkspaceSwitcher';
 import {
   WorkspaceOverviewPage,
   type WorkspaceOverviewItem,
@@ -48,9 +47,9 @@ import { WorkspaceManagerDialog } from './workspaces/WorkspaceManagerDialog';
 import { captureWindowSnapshot } from './workspaces/window-snapshot';
 import type { Workspace, WorkspaceColor } from './workspaces/types';
 import { DEFAULT_WORKSPACE_ID } from './workspaces/types';
-import { TabBar } from './tabs/TabBar';
 import type { TabEventPayload, TabSnapshot } from './tabs/types';
 import { LeftSidebar } from './sidebar/LeftSidebar';
+import { RightSidebar } from './sidebar/RightSidebar';
 import { useWindowDrag } from './lib/use-window-drag';
 import {
   BOTTOM_HEIGHT,
@@ -2455,104 +2454,48 @@ export function App() {
             />
           )}
 
-          {/* === 右侧栏 === */}
-          {/* 折叠态下悬停展开，鼠标离开带过冲弹性回弹；展开/收起使用不同缓动以体现"力度"。
-           *  拖拽调节中（resizingRight）禁用宽度 transition，保证跟手。 */}
-          <aside
-            ref={rightAsideRef}
-            className={cn(
-              'relative flex shrink-0 flex-col border-l border-border bg-transparent',
-              resizingRight
-                ? ''
-                : rightRetracting
-                  ? 'transition-[width] duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)]'
-                  : 'transition-[width] duration-150 ease-out',
-            )}
-            style={{ width: rightWidth }}
+          {/* === 右侧栏 ===
+           *  展示组件见 sidebar/RightSidebar.tsx（refactor-plan-p2 §2.3 步骤 3）；
+           *  尺寸/悬停状态仍由 App 持有（rightWidth 驱动主进程 BrowserView bounds）。 */}
+          <RightSidebar
+            asideRef={rightAsideRef}
+            width={rightWidth}
+            effectiveExpanded={effectiveRightExpanded}
+            resizing={resizingRight}
+            retracting={rightRetracting}
+            windowDrag={windowDrag}
             onMouseEnter={handleRightMouseEnter}
             onMouseLeave={handleRightMouseLeave}
             onDoubleClick={handleRightDoubleClick}
-            onPointerDown={windowDrag.startDrag}
-            onPointerMove={windowDrag.moveDrag}
-            onPointerUp={windowDrag.endDrag}
-            onPointerCancel={windowDrag.endDrag}
-            aria-label="右侧边栏"
-          >
-            {/* 宽度调节手柄：展开态下渲染于栏左缘内侧（避免与 BrowserView 重叠），
-             *  鼠标移入手柄区域变横向调节光标，按住左右拖动调宽 */}
-            {effectiveRightExpanded && (
-              <div
-                className="absolute top-0 bottom-12 left-0 z-10 w-1.5 cursor-col-resize"
-                onPointerDown={handleRightResizeStart}
-                onPointerMove={handleRightResizeMove}
-                onPointerUp={handleRightResizeEnd}
-                onPointerCancel={handleRightResizeEnd}
-                aria-label="调节右侧栏宽度"
-                role="separator"
-              />
-            )}
-            {effectiveRightExpanded ? (
-              <>
-                {/* 工作区选项卡条（TP7）：替换原「标签页」标题位 */}
-                <WorkspaceBar
-                  workspaces={workspaces}
-                  currentWorkspaceId={currentWorkspaceId}
-                  onSelect={handleSwitchWorkspace}
-                  onCycle={handleCycleWorkspace}
-                  onCreate={(name, color) => handleCreateAndSwitchWorkspace(name, color)}
-                  onContextMenu={(e, workspace) => {
-                    e.preventDefault();
-                    setWorkspaceManagerTarget(workspace);
-                  }}
-                />
-
-                {/* 标签列表：凸起悬浮感（卡片浮于底色之上，带阴影 + 微光边框 + 顶部高光） */}
-                <TabBar
-                  expanded
-                  tabs={visibleTabs}
-                  activeTabId={activeTabId}
-                  onSelectTab={handleSelectTab}
-                  onCloseTab={handleCloseTab}
-                  onNewTab={() => void handleNewTab()}
-                  onTabPointerDown={handleTabPointerDown}
-                  onTabPointerMove={handleTabPointerMove}
-                  onTabPointerEnd={handleTabPointerEnd}
-                  onTabContextMenu={handleTabContextMenu}
-                />
-              </>
-            ) : (
-              // 折叠状态：顶部单工作区图标（滚轮切换）+ 当前工作区的标签图标。
-              // 悬停工作区图标时抑制侧栏自动展开，滚轮切换不被打断。
-              <div className="flex flex-1 flex-col items-center overflow-hidden pb-2">
-                {/* 工作区图标固定在最顶部（无上方留白，用户指令 2026-10-23） */}
-                <WorkspaceSwitcher
-                  workspace={workspaces.find((w) => w.id === currentWorkspaceId)}
-                  mode={workspaceSwitcherMode}
-                  onCycle={handleCycleWorkspace}
-                  onClick={
-                    workspaceSwitcherMode === 'cards' ? handleOpenWorkspacesPage : handleToggleRight
-                  }
-                  onPointerEnter={handleWorkspaceAvatarEnter}
-                  onPointerLeave={handleWorkspaceAvatarLeave}
-                />
-                <TabBar
-                  expanded={false}
-                  tabs={visibleTabs}
-                  activeTabId={activeTabId}
-                  onSelectTab={handleSelectTab}
-                  onCloseTab={handleCloseTab}
-                  onNewTab={() => void handleNewTab()}
-                  onTabPointerDown={handleTabPointerDown}
-                  onTabPointerMove={handleTabPointerMove}
-                  onTabPointerEnd={handleTabPointerEnd}
-                  onTabContextMenu={handleTabContextMenu}
-                />
-              </div>
-            )}
-
-            {/* 底部折叠/展开按钮已移除（2026-08-14）：改为双击右侧边栏空白处展开/折叠，
-             *  由 aside 的 onDoubleClick 处理；与悬停自动展开互斥（设置开关控制）。 */}
-          </aside>
+            onResizeStart={handleRightResizeStart}
+            onResizeMove={handleRightResizeMove}
+            onResizeEnd={handleRightResizeEnd}
+            workspaces={workspaces}
+            currentWorkspaceId={currentWorkspaceId}
+            onSelectWorkspace={handleSwitchWorkspace}
+            onCycleWorkspace={handleCycleWorkspace}
+            onCreateWorkspace={handleCreateAndSwitchWorkspace}
+            onWorkspaceContextMenu={(e, workspace) => {
+              e.preventDefault();
+              setWorkspaceManagerTarget(workspace);
+            }}
+            tabs={visibleTabs}
+            activeTabId={activeTabId}
+            onSelectTab={handleSelectTab}
+            onCloseTab={handleCloseTab}
+            onNewTab={() => void handleNewTab()}
+            onTabPointerDown={handleTabPointerDown}
+            onTabPointerMove={handleTabPointerMove}
+            onTabPointerEnd={handleTabPointerEnd}
+            onTabContextMenu={handleTabContextMenu}
+            switcherMode={workspaceSwitcherMode}
+            onSwitcherCycle={handleCycleWorkspace}
+            onSwitcherClick={
+              workspaceSwitcherMode === 'cards' ? handleOpenWorkspacesPage : handleToggleRight
+            }
+            onSwitcherPointerEnter={handleWorkspaceAvatarEnter}
+            onSwitcherPointerLeave={handleWorkspaceAvatarLeave}
+          />
         </div>
 
         {/* 标签卡片右键菜单（TP7）：在另一工作区打开当前页 / 新工作区 / 关闭标签 */}

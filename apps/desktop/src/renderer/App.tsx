@@ -37,11 +37,10 @@ import { buildSuggestions } from './omnibox/build-suggestions';
 import { cn } from './lib/utils';
 import { getCurrentWindowId } from './lib/current-window';
 import type { WorkspaceSwitcherMode } from './workspaces/WorkspaceSwitcher';
-import type { WorkspaceOverviewItem } from './workspaces/WorkspaceOverviewPage';
+import { useWorkspaces } from './workspaces/use-workspaces';
 import { TabCardContextMenu } from './workspaces/TabCardContextMenu';
 import { WorkspaceManagerDialog } from './workspaces/WorkspaceManagerDialog';
-import { captureWindowSnapshot } from './workspaces/window-snapshot';
-import type { Workspace, WorkspaceColor } from './workspaces/types';
+import type { Workspace } from './workspaces/types';
 import { DEFAULT_WORKSPACE_ID } from './workspaces/types';
 import type { TabEventPayload, TabSnapshot } from './tabs/types';
 import { LeftSidebar } from './sidebar/LeftSidebar';
@@ -126,17 +125,10 @@ export function App() {
   // showEditorToast / editorGuardAsk / handleCloseTab / handleSelectTab 声明于
   // 上方「编辑守卫」区（tab 事件订阅 effect 之前，供事件路径守卫引用）。
 
-  // ── TP7 工作区状态 ──
-  const [workspaces, setWorkspaces] = useState<readonly Workspace[]>([]);
-  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string>(DEFAULT_WORKSPACE_ID);
-  /** 工作区整窗快照（总览页卡片；仅内存，不持久化）。key = workspaceId。 */
-  const [workspaceSnapshots, setWorkspaceSnapshots] = useState<Record<string, string>>({});
-  /** 快照采集中标记：避免切换/打开总览并发抓图。 */
-  const workspaceSnapshotInFlightRef = useRef(false);
-  /** 各工作区上次快照时间（滚轮快速切换时限流，避免每步都抓图卡顿）。 */
-  const lastWorkspaceSnapshotAtRef = useRef<Record<string, number>>({});
+  // ── TP7 工作区状态：收拢于 workspaces/use-workspaces.ts hook（真源仍归 App 域，
+  //    见 hook 头注释；下方 hook 调用点接线） ──
   /** 内容区 DOM 引用：整窗快照叠加网页截图时用于取 BrowserView 对应矩形
-   *  （ref 传给 ContentArea 挂载，真源仍在 App；类型与侧栏 asideRef 同模式）。 */
+   *  （ref 传给 ContentArea 挂载、传给 useWorkspaces 采集快照，真源仍在 App）。 */
   const contentAreaRef = useRef<HTMLDivElement>(null);
   // M15 DevTools 检视列开合/宽度（真源仍归 App：width 驱动主进程 BrowserView
   // bounds；hook 收拢状态与 F12 订阅，见 devtools/use-devtools-column.ts）
@@ -433,23 +425,8 @@ export function App() {
     void loadTabs();
   }, []);
 
-  // TP7：加载工作区列表（元数据；会话分区由主进程管理）。
-  const refreshWorkspaces = useCallback(async () => {
-    try {
-      const result = (await window.urchin.invoke('workspace.list', {})) as {
-        workspaces?: readonly Workspace[];
-      };
-      // 防御：mock/异常返回缺字段时按空列表处理
-      setWorkspaces(Array.isArray(result.workspaces) ? result.workspaces : []);
-    } catch (e) {
-      console.error('Failed to load workspaces:', e);
-      setWorkspaces([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshWorkspaces();
-  }, [refreshWorkspaces]);
+  // TP7：加载工作区列表 / 变更广播 / 跟随活动标签 / 失效回退等 effect 已随工作区
+  // 状态收拢进 use-workspaces.ts（见下方 hook 调用点）。
 
   // TP4：启动时读取保存的标签快照（非默认工作区部分），用于切换到该工作区时懒恢复。
   // 默认工作区的标签由主进程在启动时直接恢复，不在此处理。
@@ -474,33 +451,6 @@ export function App() {
       }
     })();
   }, []);
-
-  // TP7：工作区变更广播（其他窗口创建/删除/改名/清空后本窗口同步刷新）。
-  useEffect(() => {
-    const unsubscribe = window.urchin.on('workspace:changed', () => {
-      void refreshWorkspaces();
-    });
-    return () => {
-      unsubscribe();
-    };
-  }, [refreshWorkspaces]);
-
-  // TP7：当前工作区跟随活动标签（不变量：活动标签永远属于当前工作区）。
-  useEffect(() => {
-    if (activeTabId == null) return;
-    const active = tabs.find((t) => t.id === activeTabId);
-    if (active?.workspaceId && active.workspaceId !== currentWorkspaceId) {
-      setCurrentWorkspaceId(active.workspaceId);
-    }
-  }, [activeTabId, tabs, currentWorkspaceId]);
-
-  // TP7：工作区被删除/清空后，当前工作区失效 → 回退默认工作区。
-  useEffect(() => {
-    if (currentWorkspaceId === DEFAULT_WORKSPACE_ID) return;
-    if (workspaces.length > 0 && !workspaces.some((w) => w.id === currentWorkspaceId)) {
-      setCurrentWorkspaceId(DEFAULT_WORKSPACE_ID);
-    }
-  }, [workspaces, currentWorkspaceId]);
 
   // ── 编辑守卫：标签关闭/切换拦截 + 确认弹窗状态 ──
   // 声明在 tab 事件订阅 effect 之前：事件路径（新建标签等绕过 handleSelectTab
@@ -750,21 +700,6 @@ export function App() {
       offProgress();
     };
   }, []);
-
-  const handleNewTab = useCallback(async () => {
-    try {
-      // 新标签页总是作为内部页（urchin://newtab）无法被归类到某个网站，
-      // 显式归属当前工作区（TP7：空工作区的新建也落在该工作区）。
-      await window.urchin.invoke('tab.create', {
-        windowId: await getCurrentWindowId(),
-        url: 'urchin://newtab',
-        active: true,
-        workspaceId: currentWorkspaceId,
-      });
-    } catch (e) {
-      console.error('Failed to create tab:', e);
-    }
-  }, [currentWorkspaceId]);
 
   // 打开设置标签页：如果已有设置标签页则激活它，不重复创建
   const handleOpenSettings = useCallback(async () => {
@@ -1574,284 +1509,55 @@ export function App() {
     isFileViewerTab ||
     isGenOfficeTab;
 
-  // ── TP7 工作区操作 ──
-
-  /**
-   * 采集指定工作区的整窗快照（工作区总览页卡片）。
-   *
-   * 采集时机（必须在该工作区仍处于激活现场时）：
-   * - 切换到其他工作区前（保留离开时的窗口状态）；
-   * - 打开总览页前（否则截图会包含总览页自身）。
-   * 内部页（设置/主页/总览等）由 React 渲染，窗口截图已包含其内容，不叠加网页；
-   * 普通网页按内容区 DOM 矩形叠加 BrowserView 截图，合成为「整个浏览器窗口」。
-   *
-   * @param throttleMs >0 时按工作区限流（滚轮连续切换避免每步抓图）
-   */
-  const captureWorkspaceSnapshot = useCallback(
-    async (workspaceId: string, throttleMs = 0): Promise<void> => {
-      if (workspaceSnapshotInFlightRef.current) return;
-      const now = Date.now();
-      const last = lastWorkspaceSnapshotAtRef.current[workspaceId] ?? 0;
-      if (throttleMs > 0 && now - last < throttleMs) return;
-
-      workspaceSnapshotInFlightRef.current = true;
-      try {
-        const windowId = await getCurrentWindowId();
-        const rect = contentAreaRef.current?.getBoundingClientRect();
-        const overlayPage = !isInternalPage && activeTabId !== null;
-        const snapshot = await captureWindowSnapshot({
-          windowId,
-          activeTabId: overlayPage ? activeTabId : null,
-          contentRect:
-            overlayPage && rect
-              ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
-              : null,
-        });
-        if (snapshot) {
-          lastWorkspaceSnapshotAtRef.current[workspaceId] = Date.now();
-          setWorkspaceSnapshots((prev) => ({ ...prev, [workspaceId]: snapshot }));
-        }
-      } finally {
-        workspaceSnapshotInFlightRef.current = false;
-      }
-    },
-    [activeTabId, isInternalPage],
-  );
-
-  /** 切换工作区：有标签则激活该工作区最近激活/首个标签；空则自动新建主页标签。 */
-  const handleSwitchWorkspace = useCallback(
-    (workspaceId: string) => {
-      if (workspaceId === currentWorkspaceId) return;
-      setCurrentWorkspaceId(workspaceId);
-      const list = tabs.filter((t) => (t.workspaceId ?? DEFAULT_WORKSPACE_ID) === workspaceId);
-      const last = lastActiveByWorkspaceRef.current[workspaceId];
-      const target = list.find((t) => t.id === last) ?? list[0];
-      if (target) {
-        if (target.id !== activeTabId) void doSelectTab(target.id);
-        return;
-      }
-      // 空工作区：先检查是否有保存的标签可懒恢复（TP4）
-      const saved = savedTabsByWorkspaceRef.current[workspaceId];
-      if (saved && saved.length > 0) {
-        // 只恢复一次：从 ref 中删除
-        delete savedTabsByWorkspaceRef.current[workspaceId];
-        void (async () => {
-          try {
-            const windowId = await getCurrentWindowId();
-            let activeId: number | undefined;
-            for (const tab of saved) {
-              const res = (await window.urchin.invoke('tab.create', {
-                windowId,
-                url: tab.url,
-                workspaceId,
-                active: false,
-              })) as { tab: { id: number } };
-              if (tab.active) activeId = res.tab.id;
-            }
-            // 激活上次活跃的标签（或第一个创建的——TabManager 首个自动激活）
-            if (activeId) {
-              await window.urchin.invoke('tab.setActive', { tabId: activeId });
-            }
-          } catch (e) {
-            console.error('Failed to restore saved tabs in workspace:', e);
-          }
-        })();
-        return;
-      }
-      // 无保存标签：自动新建主页标签（TP7 确认行为）
-      void (async () => {
-        try {
-          const windowId = await getCurrentWindowId();
-          await window.urchin.invoke('tab.create', {
-            windowId,
-            url: 'urchin://newtab',
-            active: true,
-            workspaceId,
-          });
-        } catch (e) {
-          console.error('Failed to open newtab in workspace:', e);
-        }
-      })();
-    },
-    [tabs, currentWorkspaceId, activeTabId, doSelectTab],
-  );
-
-  // 自动采集当前工作区整窗快照（总览页卡片）：
-  // 标签切换/加载完成后延迟一拍（等页面绘制稳定），同工作区 2.5s 限流。
-  // 不阻塞工作区切换——总览打开时再补一次最新快照（见 handleOpenWorkspacesPage）。
-  const activeTabLoading = activeTab?.loading ?? false;
-  const activeTabUrl = activeTab?.url ?? '';
-  useEffect(() => {
-    if (isWorkspacesTab || activeTabId === null || activeTabLoading) return;
-    const timer = window.setTimeout(() => {
-      void captureWorkspaceSnapshot(currentWorkspaceId, 2500);
-    }, 350);
-    return () => window.clearTimeout(timer);
-  }, [
-    activeTabId,
-    activeTabUrl,
-    activeTabLoading,
+  // ── TP7 工作区状态与操作：收拢于 workspaces/use-workspaces.ts hook ──
+  // 真源仍归 App 域（currentWorkspaceId 被 tab:event 订阅 / handleNewTab / 总览页 /
+  // 侧栏多处消费；快照采集依赖 contentAreaRef 与 isInternalPage，见 hook 头注释）。
+  // lastActive / TP4 懒恢复两个 ref 仍由 App 持有传入（分别被 tab:event 订阅与
+  // 启动加载 effect 写入）。
+  const {
+    workspaces,
     currentWorkspaceId,
-    isWorkspacesTab,
-    captureWorkspaceSnapshot,
-  ]);
+    workspaceOverviewItems,
+    visibleTabs,
+    handleSwitchWorkspace,
+    handleCycleWorkspace,
+    handleCreateAndSwitchWorkspace,
+    handleOverviewSwitch,
+    handleOverviewCreate,
+    handleUpdateWorkspace,
+    handleRemoveWorkspace,
+    handleClearWorkspaceData,
+    handleOpenInWorkspace,
+    handleOpenInNewWorkspace,
+    handleOpenWorkspacesPage,
+  } = useWorkspaces({
+    tabs,
+    activeTabId,
+    contentAreaRef,
+    isInternalPage,
+    lastActiveByWorkspaceRef,
+    savedTabsByWorkspaceRef,
+    doSelectTab,
+    doCloseTab,
+    handleCloseTab,
+  });
 
-  /** 滚轮切换（折叠态）：dir=1 下一个 / -1 上一个。 */
-  const handleCycleWorkspace = useCallback(
-    (dir: 1 | -1) => {
-      if (workspaces.length === 0) return;
-      const idx = workspaces.findIndex((w) => w.id === currentWorkspaceId);
-      const nextIdx = idx + dir;
-      // 不循环：到第一个/最后一个后继续滚动不再切换
-      if (nextIdx < 0 || nextIdx >= workspaces.length) return;
-      const next = workspaces[nextIdx];
-      if (next) handleSwitchWorkspace(next.id);
-    },
-    [workspaces, currentWorkspaceId, handleSwitchWorkspace],
-  );
-
-  const handleCreateWorkspace = useCallback(
-    async (name: string, color: WorkspaceColor): Promise<Workspace | undefined> => {
-      try {
-        const res = (await window.urchin.invoke('workspace.create', { name, color })) as {
-          workspace: Workspace;
-        };
-        await refreshWorkspaces();
-        return res.workspace;
-      } catch (e) {
-        console.error('Failed to create workspace:', e);
-        return undefined;
-      }
-    },
-    [refreshWorkspaces],
-  );
-
-  /** 创建后切换到新工作区（入口保留原行为：创建 → 切过去）。 */
-  const handleCreateAndSwitchWorkspace = useCallback(
-    async (name: string, color: WorkspaceColor) => {
-      const ws = await handleCreateWorkspace(name, color);
-      if (ws) handleSwitchWorkspace(ws.id);
-    },
-    [handleCreateWorkspace, handleSwitchWorkspace],
-  );
-
-  // 工作区总览页（urchin://workspaces）点卡切换：激活该工作区的最近激活标签（或第一个），
-  // 再关闭总览页；空工作区则新建主页标签。原为 WorkspaceOverviewPage JSX 内联闭包，
-  // 随 ContentArea 抽取提升为具名回调（逻辑原样，闭包依赖不变）。
-  const handleOverviewSwitch = useCallback(
-    (workspaceId: string) => {
-      void (async () => {
-        // 排除总览页自身：总览 tab 归属当前工作区，若将其作为「最近激活标签」
-        // 激活后再关闭，会导致主进程移除 active tab 时自动激活到任意剩余 tab
-        const list = tabs.filter(
-          (t) =>
-            (t.workspaceId ?? DEFAULT_WORKSPACE_ID) === workspaceId &&
-            !t.url.startsWith('urchin://workspaces'),
-        );
-        const last = lastActiveByWorkspaceRef.current[workspaceId];
-        const target = list.find((t) => t.id === last) ?? list[0];
-        setCurrentWorkspaceId(workspaceId);
-        if (target) {
-          // 先激活目标标签（总览页变为 inactive），再关闭总览页；
-          // 否则关闭 active 的总览页会让主进程激活任意剩余 tab
-          if (target.id !== activeTabId) await doSelectTab(target.id);
-        } else {
-          // 空工作区：新建主页标签（目标工作区）
-          const windowId = await getCurrentWindowId();
-          await window.urchin.invoke('tab.create', {
-            windowId,
-            url: 'urchin://newtab',
-            active: true,
-            workspaceId,
-          });
-        }
-        // 此刻总览页已非 active，安全关闭
-        if (activeTabId != null) handleCloseTab(activeTabId);
-      })();
-    },
-    [tabs, activeTabId, doSelectTab, handleCloseTab],
-  );
-
-  // 工作区总览页新建工作区：创建后切到新工作区——先在工作区内新建主页标签（await 确保
-  // 标签已激活），再关闭总览页——否则关闭总览页时标签管理器会自动激活旧工作区的标签，
-  // 导致 currentWorkspaceId 被同步回旧工作区，新创建的工作区看起来像被"自动删除"了。
-  // 空工作区在 registry 中持久化保留，不因无存储标签而被删除。
-  const handleOverviewCreate = useCallback(
-    async (name: string, color: WorkspaceColor) => {
-      const ws = await handleCreateWorkspace(name, color);
-      if (ws) {
-        setCurrentWorkspaceId(ws.id);
-        const windowId = await getCurrentWindowId();
-        await window.urchin.invoke('tab.create', {
-          windowId,
-          url: 'urchin://newtab',
-          active: true,
-          workspaceId: ws.id,
-        });
-        if (activeTabId != null) handleCloseTab(activeTabId);
-      }
-    },
-    [handleCreateWorkspace, activeTabId, handleCloseTab],
-  );
-
-  const handleUpdateWorkspace = useCallback(
-    async (id: string, patch: { name?: string; color?: WorkspaceColor }) => {
-      await window.urchin.invoke('workspace.update', { id, ...patch });
-      await refreshWorkspaces();
-    },
-    [refreshWorkspaces],
-  );
-
-  const handleRemoveWorkspace = useCallback(
-    async (id: string) => {
-      await window.urchin.invoke('workspace.remove', { id });
-      await refreshWorkspaces();
-      // 删除当前工作区后：切到默认工作区并激活/新建标签（仅 setCurrentWorkspaceId
-      // 会导致 activeTabId 为 null、中区无内容渲染的降级状态）
-      if (currentWorkspaceId === id) handleSwitchWorkspace(DEFAULT_WORKSPACE_ID);
-    },
-    [refreshWorkspaces, currentWorkspaceId, handleSwitchWorkspace],
-  );
-
-  const handleClearWorkspaceData = useCallback(
-    async (id: string) => {
-      await window.urchin.invoke('workspace.clearData', { id });
-      await refreshWorkspaces();
-    },
-    [refreshWorkspaces],
-  );
-
-  /** 在另一工作区打开当前页（标签右键菜单）。 */
-  const handleOpenInWorkspace = useCallback(async (workspaceId: string, tab: { url: string }) => {
+  // 新标签页归属当前工作区（TP7），依赖 hook 返回的 currentWorkspaceId，
+  // 故声明于 hook 调用之后（仅被 JSX onNewTab 消费，移位不影响行为）。
+  const handleNewTab = useCallback(async () => {
     try {
-      const windowId = await getCurrentWindowId();
+      // 新标签页总是作为内部页（urchin://newtab）无法被归类到某个网站，
+      // 显式归属当前工作区（TP7：空工作区的新建也落在该工作区）。
       await window.urchin.invoke('tab.create', {
-        windowId,
-        url: tab.url,
+        windowId: await getCurrentWindowId(),
+        url: 'urchin://newtab',
         active: true,
-        workspaceId,
+        workspaceId: currentWorkspaceId,
       });
     } catch (e) {
-      console.error('Failed to open in workspace:', e);
+      console.error('Failed to create tab:', e);
     }
-  }, []);
-
-  /** 新建工作区并打开当前页（标签右键菜单兜底）。 */
-  const handleOpenInNewWorkspace = useCallback(
-    async (tab: { url: string }) => {
-      try {
-        const res = (await window.urchin.invoke('workspace.create', {
-          name: '新工作区',
-          color: 'violet',
-        })) as { workspace: Workspace };
-        await refreshWorkspaces();
-        await handleOpenInWorkspace(res.workspace.id, tab);
-      } catch (e) {
-        console.error('Failed to create workspace and open:', e);
-      }
-    },
-    [refreshWorkspaces, handleOpenInWorkspace],
-  );
+  }, [currentWorkspaceId]);
 
   /** 折叠态：悬停工作区切换器时抑制侧栏自动展开（滚轮切换不被打断）。 */
   const handleWorkspaceAvatarEnter = useCallback(() => {
@@ -1866,73 +1572,9 @@ export function App() {
     workspaceAvatarHoverRef.current = false;
   }, []);
 
-  // ── 折叠态工作区总览页（cards 模式，参考 ego-lite Space 卡片设计）──
-
-  /**
-   * 折叠态 cards 模式：点击工作区图标 = 切换总览页（toggle）。
-   * - 总览页正激活 → 关闭它（再次点击关闭）
-   * - 总览页已存在但非激活 → 激活它（不另开新标签）
-   * - 不存在 → 新建总览页标签
-   */
-  const handleOpenWorkspacesPage = useCallback(() => {
-    // 1. 总览页正激活 → 关闭（toggle off）
-    if (isWorkspacesTab && activeTabId != null) {
-      void doCloseTab(activeTabId);
-      return;
-    }
-    // 2. 总览页已存在但非激活 → 激活（不另开新标签）；仅搜索当前工作区的总览标签，
-    //    避免跨工作区激活旧总览导致用户被切回另一工作区
-    const existingOverview = tabs.find(
-      (t) =>
-        t.url?.startsWith('urchin://workspaces') &&
-        (t.workspaceId ?? DEFAULT_WORKSPACE_ID) === currentWorkspaceId,
-    );
-    if (existingOverview) {
-      void doSelectTab(existingOverview.id);
-      return;
-    }
-    // 3. 不存在 → 新建
-    void (async () => {
-      await captureWorkspaceSnapshot(currentWorkspaceId);
-      try {
-        await window.urchin.invoke('tab.create', {
-          windowId: await getCurrentWindowId(),
-          url: 'urchin://workspaces',
-          active: true,
-          workspaceId: currentWorkspaceId,
-        });
-      } catch (e) {
-        console.error('Failed to open workspaces page:', e);
-      }
-    })();
-  }, [
-    isWorkspacesTab,
-    activeTabId,
-    tabs,
-    doCloseTab,
-    doSelectTab,
-    currentWorkspaceId,
-    captureWorkspaceSnapshot,
-  ]);
-
-  /** 总览页数据：每工作区一张卡片 + 已采集的整窗快照（无快照时组件渲染占位）。 */
-  const workspaceOverviewItems: readonly WorkspaceOverviewItem[] = useMemo(
-    () =>
-      workspaces.map((ws) => ({
-        workspace: ws,
-        snapshot: workspaceSnapshots[ws.id],
-      })),
-    [workspaces, workspaceSnapshots],
-  );
-
-  // 当前工作区的标签（展开/折叠列表都按工作区过滤，TP7）
-  // 工作区总览页（urchin://workspaces）视为瞬态：点击查看不驻留为侧边栏图标，
-  // 与既有「不持久化 / 不计入最近激活」待遇对齐（main/index.ts 退出过滤、855 行 lastActive 排除）
-  const visibleTabs = tabs.filter(
-    (t) =>
-      (t.workspaceId ?? DEFAULT_WORKSPACE_ID) === currentWorkspaceId &&
-      !t.url.startsWith('urchin://workspaces'),
-  );
+  // 折叠态工作区总览页开关（handleOpenWorkspacesPage）/ 总览页数据
+  // （workspaceOverviewItems）/ 当前工作区标签列表（visibleTabs）均已随工作区
+  // 状态收拢进 use-workspaces.ts（见上方 hook 调用点）。
 
   // 按住侧边栏空白处拖动窗口（左/右两侧栏共用）
   const windowDrag = useWindowDrag();

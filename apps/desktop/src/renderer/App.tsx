@@ -21,6 +21,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppTitleBar } from './components/app-titlebar';
 import { parseTransitDrag } from './transit/drag-utils';
 import { resolveDroppedFilePath } from './transit/file-path';
+import { useBookmark, isBookmarkable } from './omnibox/use-bookmark';
+import { useTabDrag } from './tabs/use-tab-drag';
+import { useModuleOpeners } from './lib/use-module-openers';
 import { DevToolsPanel } from './devtools/DevToolsPanel';
 import { useDevtoolsColumn } from './devtools/use-devtools-column';
 import {
@@ -87,10 +90,6 @@ function getSecurityState(url: string): 'secure' | 'insecure' | 'mixed' {
   return 'insecure';
 }
 
-function isBookmarkable(url: string): boolean {
-  return /^https?:\/\//i.test(url);
-}
-
 export function App() {
   const { theme } = useTheme();
   const [tabs, setTabs] = useState<readonly TabSnapshot[]>([]);
@@ -109,8 +108,7 @@ export function App() {
   const [rightExpandedWidth, setRightExpandedWidth] = useState<number>(RIGHT_EXPANDED);
   /** 右侧边栏拖拽调节中（禁用宽度 transition，保证跟手） */
   const [resizingRight, setResizingRight] = useState(false);
-  const [bookmarkSaved, setBookmarkSaved] = useState(false);
-  const [bookmarkToast, setBookmarkToast] = useState<string | null>(null);
+  // 书签状态与 toggle 收拢于 omnibox/use-bookmark.ts（真源仍归 App 域，下方 hook 调用点）
   // 通用操作 toast（截图/翻译/DeepSeek Harness 等反馈，3 秒自动消失）
   const [actionToast, setActionToast] = useState<string | null>(null);
   // DeepSeek Harness 启动中标记：用于显示启动过程中的持久提示，
@@ -142,17 +140,16 @@ export function App() {
   >({});
   /** 折叠态工作区切换器悬停标记：悬停期间抑制侧栏自动展开（滚轮切换不被打断）。 */
   const workspaceAvatarHoverRef = useRef(false);
-  /** 标签卡片右键菜单状态。 */
-  const [tabCardMenu, setTabCardMenu] = useState<{
-    x: number;
-    y: number;
-    tab: {
-      id: number;
-      url: string;
-      title: string;
-      workspaceId: string;
-    };
-  } | null>(null);
+  // 标签卡片右键菜单 + 标签拖出窗口（收拢于 tabs/use-tab-drag.ts，真源仍归 App 域：
+  // 菜单渲染在 App 根层，跨工作区动作依赖 App 标签生命周期）
+  const {
+    tabCardMenu,
+    setTabCardMenu,
+    handleTabPointerDown,
+    handleTabPointerMove,
+    handleTabPointerEnd,
+    handleTabContextMenu,
+  } = useTabDrag();
   /** 工作区管理对话框（右键工作区选项卡触发）。 */
   const [workspaceManagerTarget, setWorkspaceManagerTarget] = useState<Workspace | null>(null);
   /** 折叠态工作区切换模式（设置 ui.workspaceSwitcherMode；'wheel'=滚轮循环；'cards'=点击打开工作区总览页）。 */
@@ -701,360 +698,27 @@ export function App() {
     };
   }, []);
 
-  // 打开设置标签页：如果已有设置标签页则激活它，不重复创建
-  const handleOpenSettings = useCallback(async () => {
-    // Toggle 行为：当前已激活设置页则关闭它；否则激活或创建
-    // 注意：URL 规范化会加末尾斜杠（urchin://settings/），用 startsWith 兼容两种形式
-    const existing = tabs.find((t) => t.url?.startsWith('urchin://settings'));
-    if (existing) {
-      if (existing.id === activeTabId) {
-        // 当前设置页已激活：关闭它
-        try {
-          await window.urchin.invoke('tab.close', { tabId: existing.id });
-        } catch (e) {
-          console.error('Failed to close settings tab:', e);
-        }
-      } else {
-        // 设置页存在但未激活：激活它
-        try {
-          await window.urchin.invoke('tab.setActive', { tabId: existing.id });
-        } catch (e) {
-          console.error('Failed to activate settings tab:', e);
-        }
-      }
-      return;
-    }
-    // 没有设置标签页，创建新的
-    try {
-      await window.urchin.invoke('tab.create', {
-        windowId: await getCurrentWindowId(),
-        url: 'urchin://settings',
-        active: true,
-      });
-    } catch (e) {
-      console.error('Failed to open settings tab:', e);
-    }
-  }, [tabs, activeTabId]);
-
-  // 打开 GenOffice 文档主页（阶段 4.5，用户指令：左侧栏入口改为嵌入的
-  // GenOffice 前端入口）：已有主页标签则激活，否则新建
-  const handleOpenGenOfficeHome = useCallback(async () => {
-    const existing = tabs.find((t) => t.url?.startsWith('urchin://genoffice-home'));
-    if (existing) {
-      try {
-        await window.urchin.invoke('tab.setActive', { tabId: existing.id });
-      } catch (e) {
-        console.error('Failed to activate GenOffice home tab:', e);
-      }
-      return;
-    }
-    try {
-      await window.urchin.invoke('tab.create', {
-        windowId: await getCurrentWindowId(),
-        url: 'urchin://genoffice-home',
-        active: true,
-      });
-    } catch (e) {
-      console.error('Failed to open GenOffice home tab:', e);
-    }
-  }, [tabs]);
-
-  // 打开 pi 模块（ADR-014）：确保服务运行 → 直接打开/聚焦 pi 聊天页（http 标签）。
-  // 服务常驻——关 pi 标签不停服务；无启动器中间页；无 toggle 关闭语义。
-  // origin 匹配复用标签（兼容页面导航后 token 丢失、URL 变化）。
-  const handleOpenPi = useCallback(async () => {
-    let piUrl: string | null = null;
-    let piState: string | undefined;
-    try {
-      const s = (await window.urchin.invoke('piWebHost.status', {})) as {
-        state?: string;
-        url?: string;
-      };
-      piState = s.state;
-      if (s.state === 'running' && typeof s.url === 'string') piUrl = s.url;
-    } catch {
-      // IPC 未就绪：提示错误
-      setActionToast('pi 服务状态查询失败');
-      setPiServiceState('error');
-      return;
-    }
-
-    // starting：服务正在启动，提示等待
-    if (piState === 'starting') {
-      setActionToast('正在启动 pi…');
-      return;
-    }
-
-    // stopped / error：启动服务（launch 幂等，error 态会重启）
-    if (!piUrl) {
-      setPiServiceState('starting');
-      setActionToast('正在启动 pi…');
-      try {
-        const res = (await window.urchin.invoke('piWebHost.launch', {})) as {
-          url?: string;
-        };
-        if (typeof res.url === 'string') {
-          piUrl = res.url;
-        } else {
-          throw new Error('launch returned no url');
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setActionToast(`pi 启动失败：${msg}`);
-        setPiServiceState('error');
-        return;
-      }
-    }
-
-    // 服务就绪：按 origin 复用/新建 pi 标签
-    const targetOrigin = (() => {
-      try {
-        return piUrl ? new URL(piUrl).origin : null;
-      } catch {
-        return null;
-      }
-    })();
-    const existing = targetOrigin
-      ? tabs.find((t) => {
-          try {
-            return t.url && new URL(t.url).origin === targetOrigin;
-          } catch {
-            return false;
-          }
-        })
-      : undefined;
-    if (existing) {
-      try {
-        await window.urchin.invoke('tab.setActive', { tabId: existing.id });
-      } catch (e) {
-        console.error('Failed to activate pi tab:', e);
-      }
-      return;
-    }
-    try {
-      await window.urchin.invoke('tab.create', {
-        windowId: await getCurrentWindowId(),
-        url: piUrl,
-        active: true,
-      });
-    } catch (e) {
-      console.error('Failed to open pi tab:', e);
-    }
-  }, [tabs]);
-
-  /**
-   * 打开邮箱标签页（M25）：toggle 模式——已存在则激活，否则创建。
-   * 与 handleOpenAi 同模式：urchin://mail 内部页由 React MailView 渲染。
-   */
-  const handleOpenMail = useCallback(async () => {
-    const existing = tabs.find((t) => t.url?.startsWith('urchin://mail'));
-    if (existing) {
-      if (existing.id !== activeTabId) {
-        try {
-          await window.urchin.invoke('tab.setActive', { tabId: existing.id });
-        } catch (e) {
-          console.error('Failed to activate mail tab:', e);
-        }
-      }
-      return;
-    }
-    try {
-      await window.urchin.invoke('tab.create', {
-        windowId: await getCurrentWindowId(),
-        url: 'urchin://mail',
-        active: true,
-      });
-    } catch (e) {
-      console.error('Failed to open mail tab:', e);
-    }
-  }, [tabs, activeTabId]);
-
-  /**
-   * 打开笔记 / 便利贴页（M27）：toggle 模式——已存在则激活，否则创建。
-   * 与邮箱一致：urchin://notebook 内部页由 React NotebookView 渲染。
-   */
-  const handleOpenNotebook = useCallback(async () => {
-    const existing = tabs.find((t) => t.url?.startsWith('urchin://notebook'));
-    if (existing) {
-      if (existing.id !== activeTabId) {
-        try {
-          await window.urchin.invoke('tab.setActive', { tabId: existing.id });
-        } catch (e) {
-          console.error('Failed to activate notebook tab:', e);
-        }
-      }
-      return;
-    }
-    try {
-      await window.urchin.invoke('tab.create', {
-        windowId: await getCurrentWindowId(),
-        url: 'urchin://notebook',
-        active: true,
-      });
-    } catch (e) {
-      console.error('Failed to open notebook tab:', e);
-    }
-  }, [tabs, activeTabId]);
-
-  /**
-   * 打开 DeepSeek Harness 标签页：启动 dsh web 子进程 → 在浏览器标签页打开前端。
-   * 与 piWeb 不同：关闭该标签页后自动停止后端（主进程 tab-lifecycle 绑定）。
-   * toggle 语义：已激活则关闭标签（触发后端停止）；未激活则激活；未运行则启动。
-   */
-  const handleOpenDeepSeekHarness = useCallback(async () => {
-    // 查 dsh 服务状态：running 则复用/激活标签
-    let dshUrl: string | null = null;
-    try {
-      const s = (await window.urchin.invoke('deepseekHarness.status', {})) as {
-        state?: string;
-        url?: string;
-      };
-      if (s.state === 'running' && typeof s.url === 'string') dshUrl = s.url;
-    } catch {
-      // 状态查询失败：回落到启动流程
-    }
-    if (dshUrl) {
-      const dshTab = tabs.find((t) => t.url?.startsWith(dshUrl));
-      if (dshTab) {
-        if (dshTab.id === activeTabId) {
-          // 已激活 → 关闭标签（触发后端停止）
-          try {
-            await window.urchin.invoke('tab.close', { tabId: dshTab.id });
-          } catch (e) {
-            console.error('Failed to close dsh tab:', e);
-          }
-        } else {
-          try {
-            await window.urchin.invoke('tab.setActive', { tabId: dshTab.id });
-          } catch (e) {
-            console.error('Failed to activate dsh tab:', e);
-          }
-        }
-        return;
-      }
-      // 服务运行但标签已关闭 → 新开标签
-      try {
-        await window.urchin.invoke('tab.create', {
-          windowId: await getCurrentWindowId(),
-          url: dshUrl,
-          active: true,
-        });
-      } catch (e) {
-        console.error('Failed to open dsh tab:', e);
-      }
-      return;
-    }
-    // 未运行 → launch → 打开标签
-    setDshStarting(true);
-    try {
-      const res = (await window.urchin.invoke('deepseekHarness.launch', {})) as {
-        url: string;
-        port: number;
-      };
-      await window.urchin.invoke('tab.create', {
-        windowId: await getCurrentWindowId(),
-        url: res.url,
-        active: true,
-      });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      setActionToast(`DeepSeek Harness 启动失败：${message}`);
-      console.error('Failed to launch dsh:', e);
-    } finally {
-      setDshStarting(false);
-    }
-  }, [tabs, activeTabId]);
+  // 左侧栏模块入口 handlers（设置/GenOffice 主页/pi/邮箱/笔记/DeepSeek Harness）
+  // 已收拢于 lib/use-module-openers.ts（真源仍归 App 域，见下方 hook 调用点）。
+  const {
+    handleOpenSettings,
+    handleOpenGenOfficeHome,
+    handleOpenPi,
+    handleOpenMail,
+    handleOpenNotebook,
+    handleOpenDeepSeekHarness,
+  } = useModuleOpeners({
+    tabs,
+    activeTabId,
+    setActionToast,
+    setPiServiceState,
+    setDshStarting,
+  });
 
   // doCloseTab / doSelectTab / handleCloseTab / handleSelectTab / editorGuardAsk /
   // beforeunload 兜底声明于上方「编辑守卫」区（tab 事件订阅 effect 之前）。
 
-  /**
-   * 标签拖出浏览器窗口：自定义指针拖拽，检测到鼠标移出窗口边界时
-   * 经 window.createWithUrl 在新窗口打开该 URL。
-   *
-   * 方案背景（2026-08-19 迭代）：
-   * - v1 HTML5 系统拖放（text/uri-list）→ Windows 对拖到桌面的 URL 默认生成快捷方式，
-   *   且拖出窗口后 DOM 事件由 OS 接管、主进程拿不到 URL
-   * - v2 自定义拖拽：窗口内全程受控（指针事件），移出边界即触发打开
-   * - v3（用户反馈）：① 拖出后关闭原窗口标签（移动语义，与原窗口不再保留一致）；
-   *   ② 新窗口定位到拖出瞬间的屏幕坐标（跟随拖拽位置，不重叠在原窗口上）。
-   *   指针移出 OS 窗口后渲染进程收不到事件，故用出界瞬间的屏幕坐标定位（出界即开窗）
-   * 仅 http/https 可拖（内部页无法外部打开）。
-   */
-  const tabDragRef = useRef<{
-    pointerId: number;
-    url: string;
-    tabId: number;
-    workspaceId: string;
-    captureEl: HTMLElement;
-  } | null>(null);
-
-  const handleTabPointerDown = useCallback((e: React.PointerEvent, tab: TabSnapshot) => {
-    // TP7：右键不触发拖拽（右键弹出工作区菜单）
-    if (e.button !== 0) return;
-    if (!/^https?:\/\//i.test(tab.url)) return;
-    // 关闭按钮等交互元素上不启动拖拽：setPointerCapture 会把 pointerup 后的
-    // click 事件重定向到卡片（捕获目标），关闭按钮的 onClick 永远不触发（关闭阻塞）
-    if ((e.target as HTMLElement).closest('button')) return;
-    const el = e.currentTarget as HTMLElement;
-    tabDragRef.current = {
-      pointerId: e.pointerId,
-      url: tab.url,
-      tabId: tab.id,
-      workspaceId: tab.workspaceId ?? DEFAULT_WORKSPACE_ID,
-      captureEl: el,
-    };
-    if (typeof el.setPointerCapture === 'function') {
-      try {
-        el.setPointerCapture(e.pointerId);
-      } catch {
-        /* 指针捕获失败忽略：仍可拖拽 */
-      }
-    }
-  }, []);
-
-  const handleTabPointerMove = useCallback((e: React.PointerEvent) => {
-    const st = tabDragRef.current;
-    if (!st) return;
-    // 指针移出窗口边界 → 在新窗口打开该标签 URL（定位到出界屏幕坐标），并关闭原窗口标签
-    if (
-      e.clientX < 0 ||
-      e.clientY < 0 ||
-      e.clientX > window.innerWidth ||
-      e.clientY > window.innerHeight
-    ) {
-      tabDragRef.current = null;
-      try {
-        st.captureEl.releasePointerCapture(st.pointerId);
-      } catch {
-        /* 未捕获/已释放忽略 */
-      }
-      const { url, tabId, workspaceId } = st;
-      void window.urchin
-        .invoke('window.createWithUrl', { url, x: e.screenX, y: e.screenY, workspaceId })
-        .then(() => window.urchin.invoke('tab.close', { tabId }))
-        .catch((err) => console.error('Failed to open tab in new window:', err));
-    }
-  }, []);
-
-  const handleTabPointerEnd = useCallback(() => {
-    tabDragRef.current = null;
-  }, []);
-
-  /** 标签卡片右键菜单：记录点击位置与标签快照（跨工作区打开/关闭标签）。 */
-  const handleTabContextMenu = useCallback((e: React.MouseEvent, tab: TabSnapshot) => {
-    e.preventDefault();
-    setTabCardMenu({
-      x: e.clientX,
-      y: e.clientY,
-      tab: {
-        id: tab.id,
-        url: tab.url,
-        title: tab.title || tab.url || '新标签页',
-        workspaceId: tab.workspaceId ?? DEFAULT_WORKSPACE_ID,
-      },
-    });
-  }, []);
+  // 标签拖出窗口 / 卡片右键菜单 handlers 已收拢于 tabs/use-tab-drag.ts（App 顶部 hook 调用点）。
 
   const handleNavigate = useCallback(
     async (url: string) => {
@@ -1400,73 +1064,9 @@ export function App() {
     );
   }, [rightExpandedWidth]);
 
-  // 当前 URL 对应的书签 ID（若已收藏），用于 toggle 时删除。
-  // 通过 bookmark.search 查询当前 URL 是否已被收藏，实现按钮亮/灭状态同步。
-  const [currentBookmarkId, setCurrentBookmarkId] = useState<string | null>(null);
-
-  // 刷新当前 URL 的收藏状态：activeTab.url 变化时或创建/删除书签后调用
-  const refreshBookmarkSaved = useCallback(async (url: string | undefined) => {
-    if (!url || !isBookmarkable(url)) {
-      setBookmarkSaved(false);
-      setCurrentBookmarkId(null);
-      return;
-    }
-    try {
-      const result = (await window.urchin.invoke('bookmark.search', {
-        query: url,
-        limit: 50,
-      })) as { bookmarks: readonly { id: string; title: string; url?: string }[] };
-      // search 对 title/url 做子串匹配，需精确匹配 url 字段
-      const match = result.bookmarks.find((bm) => bm.url === url);
-      setBookmarkSaved(!!match);
-      setCurrentBookmarkId(match ? match.id : null);
-    } catch (e) {
-      console.error('Failed to check bookmark status:', e);
-      setBookmarkSaved(false);
-      setCurrentBookmarkId(null);
-    }
-  }, []);
-
-  // toggle 收藏：已收藏则删除，未收藏则弹出收藏夹面板选择文件夹保存（dev.120）。
-  // 未收藏分支不再直接 bookmark.create 到根级——改由面板 picker 模式让用户选目标文件夹。
-  const handleSaveBookmark = useCallback(async () => {
-    if (!activeTab?.url || !isBookmarkable(activeTab.url)) return;
-    try {
-      if (bookmarkSaved && currentBookmarkId) {
-        // 已收藏 → 删除
-        await window.urchin.invoke('bookmark.delete', { id: currentBookmarkId });
-        setBookmarkSaved(false);
-        setCurrentBookmarkId(null);
-        setBookmarkToast('已从书签移除');
-        setTimeout(() => setBookmarkToast(null), 2000);
-        void refreshBookmarkSaved(activeTab.url);
-      } else {
-        // 未收藏 → 弹出收藏夹面板（picker 模式）选文件夹保存
-        await window.urchin.invoke('ui.panel.saveBookmarkPicker', {});
-        // 实际保存由面板内完成；bookmark:changed 广播后 refreshBookmarkSaved 会刷新星标
-      }
-    } catch (e) {
-      console.error('Failed to toggle bookmark:', e);
-      setBookmarkToast('书签操作失败');
-      setTimeout(() => setBookmarkToast(null), 2000);
-    }
-  }, [activeTab?.url, bookmarkSaved, currentBookmarkId, refreshBookmarkSaved]);
-
-  // URL 变化时重新检查收藏状态（修复：此前仅 setBookmarkSaved(false) 未查询实际状态）
-  useEffect(() => {
-    void refreshBookmarkSaved(activeTab?.url);
-  }, [activeTab?.url, refreshBookmarkSaved]);
-
-  // 书签变更同步：主进程广播 bookmark:changed（收藏夹面板取消收藏等场景），
-  // 重新查询当前 URL 收藏状态，让地址栏星标亮/灭与数据一致。
-  useEffect(() => {
-    const unsubscribe = window.urchin.on('bookmark:changed', () => {
-      void refreshBookmarkSaved(activeTab?.url);
-    });
-    return () => {
-      unsubscribe();
-    };
-  }, [activeTab?.url, refreshBookmarkSaved]);
+  // 书签状态与 toggle（收拢于 omnibox/use-bookmark.ts，真源仍归 App 域：
+  // statusBarState 消费 bookmarkSaved/bookmarkToast，动作分发消费 handleSaveBookmark）
+  const { bookmarkSaved, bookmarkToast, handleSaveBookmark } = useBookmark(activeTab?.url);
 
   const leftWidth = leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED;
   // 右侧栏有效展开：固定展开 OR 折叠态下的悬停预览

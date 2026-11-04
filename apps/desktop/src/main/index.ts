@@ -81,6 +81,7 @@ import type { AppContext } from './bootstrap/app-context';
 import { installEventLoopWatchdog } from './bootstrap/watchdog';
 import { performCleanup } from './lifecycle/cleanup';
 import { registerIpcHandlers } from './bootstrap/handlers';
+import { installSignalHandlers } from './lifecycle/signals';
 
 const log = createLogger('main');
 
@@ -1372,20 +1373,8 @@ app.on('before-quit', (event) => {
   });
 });
 
-/**
- * 信号处理：Ctrl+C (SIGINT) 和 kill 命令 (SIGTERM)。
- * 转发到统一异步清理流程，完成后再 app.exit()。
- * 注意：Electron 主进程默认不处理 SIGINT/SIGTERM，需显式注册。
- */
-process.on('SIGINT', () => {
-  log.info('SIGINT received, performing cleanup');
-  void performCleanup(ctx).then(() => app.exit(0));
-});
-
-process.on('SIGTERM', () => {
-  log.info('SIGTERM received, performing cleanup');
-  void performCleanup(ctx).then(() => app.exit(0));
-});
+// 信号处理（SIGINT/SIGTERM → 统一清理，实现见 lifecycle/signals.ts）
+installSignalHandlers(ctx);
 
 // 第二实例聚焦已有窗口（单实例锁配合）
 // Windows 文件关联场景：应用已在运行再双击关联文件 → 系统启动第二实例，

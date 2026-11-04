@@ -47,7 +47,6 @@ import {
   getLayoutState,
   setLayoutState,
   WINDOW_FRAME_WIDTH,
-  type TabViewIntegrationHandle,
   type BrowserViewLike,
 } from './tabs';
 import { HistoryManager, registerHistoryHandlers, type HistoryPersistence } from './history';
@@ -59,17 +58,8 @@ import { registerImportHandlers } from './import';
 import { registerAiHandlers } from './ai';
 import { registerAiInputHandlers } from './ai/input-handlers';
 import type { ProviderConfigStore } from './ai';
-import {
-  createDshLauncher,
-  registerDshHandlers,
-  bindTabCloseToStop,
-  type DshLauncher,
-} from './deepseek-harness';
-import {
-  createPiWebHostLauncher,
-  registerPiWebHostHandlers,
-  type PiWebHostLauncher,
-} from './pi-web-host';
+import { createDshLauncher, registerDshHandlers, bindTabCloseToStop } from './deepseek-harness';
+import { createPiWebHostLauncher, registerPiWebHostHandlers } from './pi-web-host';
 import { registerPageContextHandlers } from './page-context';
 import {
   registerFileHandlers,
@@ -84,7 +74,7 @@ import { electronProcessFactory } from './orchestrator/electron-factory';
 import { StorageLayer, createSqliteDatabase, ElectronSafeStorage } from './storage';
 import { registerUrchinSchemePrivileged, registerUrchinProtocol } from './protocol';
 import { FaviconService } from './favicons/favicon-service';
-import { createGenOfficeIntegration, type GenOfficeIntegration } from './genoffice/integration';
+import { createGenOfficeIntegration } from './genoffice/integration';
 import { getGenOfficeSchemePrivileges, loadGenOfficeEmbed } from './genoffice/loader';
 import { createAiPanelPrefsStore } from './genoffice/host-channels';
 import { registerGenOfficeHomeHandlers } from './genoffice/home-handlers';
@@ -131,6 +121,7 @@ import { resolvePortableUserData } from './portable';
 import { createUpdateService, registerUpdateHandlers, UPDATE_EVENT_CHANNEL } from './update';
 import { DevtoolsManager, registerDevtoolsHandlers, installDevtoolsShortcuts } from './devtools';
 import { DEVTOOLS_EVENT_CHANNEL, DEVTOOLS_TOGGLE_CHANNEL } from '@urchin/ipc-contract';
+import type { AppContext } from './bootstrap/app-context';
 
 const log = createLogger('main');
 
@@ -204,13 +195,6 @@ if (!process.env.PLAYWRIGHT) {
   }
 }
 
-/**
- * 当前生效的用户数据目录（DD1 决策；app ready 前解析，供截图等按数据目录落盘的功能读取）。
- * 提前到顶层解析：app.setPath('sessionData') 必须在 app ready 之前调用，
- * 而 sessionData 目标依赖数据目录。
- */
-let currentDataDir = '';
-
 // 数据目录解析（DD1 决策，提前到 app ready 前）：
 // - dataDir = 用户个人数据目录（可配置，书签/历史/设置/摘要/截图/下载/网页保存）。
 //   默认位置：开发模式 <软件根目录>/data（apps/desktop/data）；打包后软件根为只读
@@ -226,7 +210,10 @@ migrateLegacyPiData(startupUserDataPath);
 // 让需要隔离设置库的 E2E 不再共享 apps/desktop/data（避免卡片模式等设置残留）。
 const testDataDir = process.env.URCHIN_TEST_DATA_DIR;
 const defaultDataRoot = testDataDir ?? (app.isPackaged ? startupUserDataPath : app.getAppPath());
-currentDataDir = resolveDataLocation(startupUserDataPath, defaultDataRoot);
+// 当前生效的用户数据目录（DD1 决策；app ready 前解析，供截图等按数据目录
+// 落盘的功能读取）。app.setPath('sessionData') 必须在 app ready 之前调用，
+// 而 sessionData 目标依赖数据目录。启动后经 AppContext 传递（ctx.currentDataDir）。
+const currentDataDir = resolveDataLocation(startupUserDataPath, defaultDataRoot);
 
 // cookies 及网页存储（sessionData：cookies / localStorage / IndexedDB / service worker 等）
 // 重定向到 <数据目录>/cookies（必须在 app ready 之前调用，否则不生效）。
@@ -304,15 +291,62 @@ const windowManager = new WindowManager(createBrowserWindow);
  * 通过工厂函数注入，使核心逻辑可测试。
  *
  * TP7 工作区：工厂按标签的工作区 id 解析 session（自定义工作区 = 持久化分区）。
- * workspaceSessions 在 whenReady 内初始化——首个标签在 whenReady 完成前不会创建，
+ * ctx.workspaceSessions 在 whenReady 内初始化——首个标签在 whenReady 完成前不会创建，
  * 因此闭包运行时该绑定恒已就绪；未就绪兜底走默认 session。
  */
 const tabManager = new TabManager((workspaceId) =>
   createBrowserView(
     workspaceId,
-    workspaceSessions ? (id) => workspaceSessions.resolve(id) : () => session.defaultSession,
+    ctx.workspaceSessions
+      ? (id) => ctx.workspaceSessions.resolve(id)
+      : () => session.defaultSession,
   ),
 );
+
+/**
+ * 全局应用上下文：把 performCleanup / registerIpcHandlers 闭包引用的可变
+ * 状态打包成显式对象（docs/refactor-plan-p2.md §1.2），后续拆分到独立文件
+ * 时只移动函数体并传入 ctx。字段语义与初始化时序见 bootstrap/app-context.ts。
+ *
+ * ctx.historyManager 等 8 个字段原先为 `let x!: T`（确信赋值断言），在
+ * whenReady 内才初始化；这里以同样的断言方式初始化，保持「使用方信任
+ * 初始化顺序」的原语义不变。
+ */
+const ctx: AppContext = {
+  windowManager,
+  tabManager,
+  currentDataDir,
+  historyManager: undefined as unknown as HistoryManager,
+  bookmarkManager: undefined as unknown as BookmarkManager,
+  faviconService: undefined,
+  settingsManager: undefined as unknown as SettingsManager,
+  workspaceRegistry: undefined as unknown as WorkspaceRegistry,
+  workspaceSessions: undefined as unknown as WorkspaceSessionManager,
+  providerRegistry: undefined as unknown as ProviderRegistry,
+  orchestrator: undefined as unknown as Orchestrator,
+  providerConfigStore: undefined as unknown as ProviderConfigStore,
+  tabViewIntegration: null,
+  disposeContextMenu: null,
+  disposeZoomControl: null,
+  disposeDragInjection: null,
+  disposeTranslateManager: null,
+  translateManagerRef: null,
+  disposeDevtoolsManager: null,
+  disposeDevtoolsShortcuts: null,
+  genofficeIntegration: null,
+  bookmarkPanel: null,
+  bookmarkPickerContext: null,
+  statusBarOverlay: null,
+  statusBarBall: null,
+  aiHandlersDispose: null,
+  dshLauncher: null,
+  unbindDshTabClose: null,
+  piWebHostLauncher: null,
+  storageLayer: null,
+  mailContentStore: null,
+  isCleaningUp: false,
+  cleanupDone: false,
+};
 
 /**
  * 打开本地文件（Windows 文件关联 / 命令行启动 / GenOffice Home 打开动作）。
@@ -356,8 +390,8 @@ function routeLocalFile(windowId: number, path: string): boolean {
       xlsx: 'sheets',
     };
     const genofficeApp = genofficeAppByKind[kind];
-    if (genofficeApp && genofficeIntegration) {
-      const resolved = genofficeIntegration.resolveTabCreate(
+    if (genofficeApp && ctx.genofficeIntegration) {
+      const resolved = ctx.genofficeIntegration.resolveTabCreate(
         `urchin://genoffice/?kind=${encodeURIComponent(genofficeApp)}&path=${encodeURIComponent(path)}`,
       );
       tabManager.create({
@@ -425,68 +459,11 @@ function createGenOfficeShellHomeView(): unknown {
 }
 
 /**
- * 全局 HistoryManager 实例（M6）。
- * 在 app.whenReady() 中初始化，注入 StorageLayer 持久化。
- * 启动时从 SQLite 加载已有历史记录，变更时同步写入。
- */
-let historyManager!: HistoryManager;
-
-/**
- * 全局 BookmarkManager 实例（M5）。
- * 在 app.whenReady() 中初始化，注入 StorageLayer 持久化。
- * 启动时从 SQLite 加载已有书签，变更时同步写入。
- */
-let bookmarkManager!: BookmarkManager;
-
-/**
- * 全局 favicon 缓存服务（M2 图标链路）。
- * 在 app.whenReady() 中按当前数据目录初始化；协议与 TabManager 共用。
- */
-let faviconService: FaviconService | undefined;
-
-/**
- * 全局 SettingsManager 实例（M7）。
- * 在 app.whenReady() 中初始化，注入 StorageLayer 持久化。
- */
-let settingsManager!: SettingsManager;
-
-/**
- * 全局 WorkspaceRegistry / WorkspaceSessionManager 实例（TP7 工作区）。
- * 在 app.whenReady() 中初始化（依赖 SettingsManager 持久化 + 下载管理器）。
- * workspaceRegistry 只管元数据；session 分区在首开工作区标签时惰性配置。
- */
-let workspaceRegistry!: WorkspaceRegistry;
-let workspaceSessions!: WorkspaceSessionManager;
-
-/**
  * 全局 DownloadManager 实例（M23）。
  * v0.1 W2 基础实现：下载项状态管理 + 进度跟踪。
  */
 const downloadManager = new DownloadManager();
 
-/**
- * Provider 注册表（M11）：扫描 %APPDATA%/Urchin/providers/ 目录。
- * 在 app.whenReady() 内初始化，避免模块加载阶段触碰文件系统。
- */
-let providerRegistry!: ProviderRegistry;
-let orchestrator!: Orchestrator;
-let providerConfigStore!: ProviderConfigStore;
-let tabViewIntegration: TabViewIntegrationHandle | null = null;
-/** 右键菜单（复制/粘贴/保存网页）卸载句柄（installTabContextMenu 返回）。退出时移除 created 监听。 */
-let disposeContextMenu: (() => void) | null = null;
-/** Ctrl+滚轮缩放卸载句柄（installZoomControl 返回）。退出时移除 created 监听。 */
-let disposeZoomControl: (() => void) | null = null;
-/** 中转区拖拽注入卸载句柄（installDragInjection 返回）。退出时移除 created 监听。 */
-let disposeDragInjection: (() => void) | null = null;
-/** 网页翻译管理器卸载句柄（dev.80，M24：停轮询/移除导航钩子/清状态）。 */
-let disposeTranslateManager: (() => void) | null = null;
-/** 网页翻译管理器引用（dev.81：右键菜单翻译动作与划词结果回传使用）。 */
-let translateManagerRef: TranslateManager | null = null;
-/** M15 DevTools 管理器卸载句柄（dev.121，CDP 会话清理 + F12 快捷键卸载）。 */
-let disposeDevtoolsManager: (() => void) | null = null;
-let disposeDevtoolsShortcuts: (() => void) | null = null;
-/** GenOffice 编辑器集成（阶段 2）：tab.create 分流 / tab.close 与窗口关闭守卫。 */
-let genofficeIntegration: GenOfficeIntegration | null = null;
 /** 已挂 GenOffice 整窗关闭守卫的窗口（防止重复挂接）。 */
 const genofficeCloseGuardedWindows = new Set<number>();
 
@@ -509,14 +486,14 @@ function installGenOfficeWindowCloseGuard(): void {
       const dirty = tabManager
         .query({ windowId })
         .some((t) => t.viewKind === 'genoffice' && t.dirty);
-      if (!dirty || !genofficeIntegration) {
+      if (!dirty || !ctx.genofficeIntegration) {
         allowClose = true;
         return;
       }
       const event = args[0] as { preventDefault?: () => void } | undefined;
       event?.preventDefault?.();
       void (async () => {
-        const ok = await genofficeIntegration?.confirmWindowClose(windowId);
+        const ok = await ctx.genofficeIntegration?.confirmWindowClose(windowId);
         if (ok) {
           allowClose = true;
           win.close();
@@ -619,18 +596,18 @@ function handleTransitDragData(
 
 /**
  * 下发悬浮球配置（主题 + 上下/左右灵敏度）给球窗口。
- * 灵敏度从 settingsManager 读取，设置变更或状态同步时调用。
+ * 灵敏度从 ctx.settingsManager 读取，设置变更或状态同步时调用。
  */
 function sendBallConfig(): void {
-  if (!statusBarBall) return;
-  const v = settingsManager.get('ui.statusBall.sensitivityVertical');
-  const h = settingsManager.get('ui.statusBall.sensitivityHorizontal');
-  const theme = (settingsManager.get('theme') as 'light' | 'dark' | undefined) ?? 'light';
+  if (!ctx.statusBarBall) return;
+  const v = ctx.settingsManager.get('ui.statusBall.sensitivityVertical');
+  const h = ctx.settingsManager.get('ui.statusBall.sensitivityHorizontal');
+  const theme = (ctx.settingsManager.get('theme') as 'light' | 'dark' | undefined) ?? 'light';
   const sensitivityVertical =
     typeof v === 'number' && Number.isFinite(v) ? Math.max(0.1, Math.min(5, v)) : 1;
   const sensitivityHorizontal =
     typeof h === 'number' && Number.isFinite(h) ? Math.max(0.1, Math.min(5, h)) : 1;
-  statusBarBall.sendConfig({ theme, sensitivityVertical, sensitivityHorizontal });
+  ctx.statusBarBall.sendConfig({ theme, sensitivityVertical, sensitivityHorizontal });
 }
 
 /**
@@ -675,64 +652,6 @@ function focusActivePage(): void {
     log.warn('focus active page failed', { error: String(err) });
   }
 }
-/** 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
-let bookmarkPanel: BookmarkPanel | null = null;
-/**
- * picker 模式待存页面上下文（星标按钮未收藏时 ui.panel.saveBookmarkPicker 写入，
- * 面板加载 ?mode=picker 后经 ui.panel.getPickerContext 读取）。
- */
-let bookmarkPickerContext: { url: string; title: string } | null = null;
-/** 底部悬浮状态栏（独立透明子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
-let statusBarOverlay: StatusBarOverlay | null = null;
-/** 悬浮球（独立透明子窗口，网页区右侧）。在 whenReady 内初始化。 */
-let statusBarBall: StatusBarBall | null = null;
-/**
- * AI IPC handlers 的 dispose 句柄（由 registerAiHandlers 返回）。
- * 进程退出时调用 dispose()，abort 所有活跃 chat/agent 流，
- * 间接触发 stream.ts / pi-event-bridge.ts 的 cleanup()，
- * 释放 listener、MessagePort 和 HTTP 连接。
- */
-let aiHandlersDispose: (() => void) | null = null;
-/**
- * DeepSeek Harness 启动器：系统 Node 子进程运行 vendor/deepseek-harness (dsh web)。
- * 进程退出时 performCleanup 调用 dispose() 终止子进程树。
- * 标签关闭后自动停止后端（bindTabCloseToStop）。
- */
-let dshLauncher: DshLauncher | null = null;
-/** dsh 标签关闭→停止 unbind 函数（performCleanup 调用） */
-let unbindDshTabClose: (() => void) | null = null;
-/**
- * pi 阶段 2 自研托管服务启动器：Electron utilityProcess 运行 @urchin/pi-web-host
- * （HTTP 静态 + WebSocket + 随机 token 鉴权）。进程退出时 performCleanup 调用
- * dispose() 终止 utility 子进程。阶段 1（pi-web-ui）已于 M2C 退役。
- */
-let piWebHostLauncher: PiWebHostLauncher | null = null;
-/**
- * 全局 StorageLayer 引用（在 whenReady 中赋值）。
- * 退出时需调用 close() 以释放 better-sqlite3 原生句柄，
- * 避免进程退出后残留线程或 WAL 文件未 checkpoint。
- */
-let storageLayer: StorageLayer | null = null;
-
-/**
- * M25 邮箱正文内容库（在 whenReady 中赋值）。
- * 协议路由 urchin://mail-content/<token> 据此取已 sanitize 的 HTML 下发；
- * registerUrchinProtocol 的 getMailContent 回调以闭包引用本变量（惰性求值——
- * 请求到达时本变量已初始化，无启动时序问题）。
- */
-let mailContentStore: MailContentStore | null = null;
-
-/**
- * 退出清理标志位：避免 before-quit 与 window-all-closed / SIGINT 重复执行清理。
- * 第一次进入清理流程时置为 true，后续直接退出。
- */
-let isCleaningUp = false;
-
-/**
- * 清理完成标志位：异步清理完成后置为 true，
- * 使 before-quit 重入时不再 preventDefault，允许进程真正退出。
- */
-let cleanupDone = false;
 
 /**
  * 向所有窗口的渲染进程广播 Provider 事件（W5-D4）。
@@ -801,7 +720,7 @@ function applyTheme(theme: 'light' | 'dark' | 'system'): void {
  */
 function registerIpcHandlers(): void {
   // M1 window 域 handler
-  registerWindowHandlers(ipcMain, windowManager);
+  registerWindowHandlers(ipcMain, ctx.windowManager);
 
   // GenOffice 编辑器集成（阶段 2-4）：注册宿主通道、初始化嵌入包、
   // 挂 dirty 旁路与关闭守卫。产物缺失时 available=false，标签全部回落
@@ -810,15 +729,15 @@ function registerIpcHandlers(): void {
   const genofficeAiPanelPrefs = createAiPanelPrefsStore();
   const genofficeEmbed = GENOFFICE_DISABLED ? null : loadGenOfficeEmbed();
   if (!GENOFFICE_DISABLED) {
-    genofficeIntegration = createGenOfficeIntegration({
+    ctx.genofficeIntegration = createGenOfficeIntegration({
       ipcMain,
-      tabManager,
-      windowManager,
+      tabManager: ctx.tabManager,
+      windowManager: ctx.windowManager,
       getTheme: () => nativeTheme.themeSource,
       aiPanelPrefs: genofficeAiPanelPrefs,
       createHomeView: () => createGenOfficeShellHomeView(),
     });
-    genofficeIntegration.install();
+    ctx.genofficeIntegration.install();
     installGenOfficeWindowCloseGuard();
   }
 
@@ -832,7 +751,7 @@ function registerIpcHandlers(): void {
     // <数据目录>/documents。用户可通过设置弹窗的「更改」按钮自定义（写入同一文件）。
     {
       const settingsPath = join(app.getPath('userData'), 'app-settings.json');
-      const documentsRoot = join(currentDataDir, 'documents');
+      const documentsRoot = join(ctx.currentDataDir, 'documents');
       try {
         const raw = existsSync(settingsPath)
           ? (JSON.parse(readFileSync(settingsPath, 'utf8')) as Record<string, unknown>)
@@ -847,8 +766,8 @@ function registerIpcHandlers(): void {
     }
     registerGenOfficeHomeHandlers({
       ipcMain,
-      store: new GenOfficeHomeStore(join(currentDataDir, 'genoffice-home.json')),
-      documentsRoot: join(currentDataDir, 'documents'),
+      store: new GenOfficeHomeStore(join(ctx.currentDataDir, 'genoffice-home.json')),
+      documentsRoot: join(ctx.currentDataDir, 'documents'),
       getTheme: () => nativeTheme.themeSource,
       setTheme: (theme) => {
         if (theme === 'light' || theme === 'dark' || theme === 'system') applyTheme(theme);
@@ -859,7 +778,7 @@ function registerIpcHandlers(): void {
       openBlankDocument: (kind) => {
         const view = genofficeEmbed?.createGenOfficeBlankView?.(kind);
         if (!view) return false;
-        tabManager.create({
+        ctx.tabManager.create({
           windowId: defaultWindowId(),
           url: `urchin://genoffice/?kind=${encodeURIComponent(kind)}`,
           active: true,
@@ -878,18 +797,18 @@ function registerIpcHandlers(): void {
   }
 
   // M2 tab 域 handler（注入 GenOffice 集成：tab.create 分流 + tab.close 守卫）
-  registerTabHandlers(ipcMain, tabManager, {
-    genoffice: genofficeIntegration ?? undefined,
+  registerTabHandlers(ipcMain, ctx.tabManager, {
+    genoffice: ctx.genofficeIntegration ?? undefined,
   });
 
   // M6 history 域 handler
-  registerHistoryHandlers(ipcMain, historyManager);
+  registerHistoryHandlers(ipcMain, ctx.historyManager);
 
   // M5 bookmark 域 handler
   // 新建书签时从当前标签快照取已缓存图标（主进程可信来源，渲染层不可伪造）。
-  registerBookmarkHandlers(ipcMain, bookmarkManager, {
+  registerBookmarkHandlers(ipcMain, ctx.bookmarkManager, {
     getFavicon: (url) => {
-      const tabs = tabManager.query({});
+      const tabs = ctx.tabManager.query({});
       return (
         tabs.find((tab) => tab.active && tab.url === url) ?? tabs.find((tab) => tab.url === url)
       )?.favicon;
@@ -897,15 +816,15 @@ function registerIpcHandlers(): void {
   });
 
   // M7 settings 域 handler
-  registerSettingsHandlers(ipcMain, settingsManager);
+  registerSettingsHandlers(ipcMain, ctx.settingsManager);
 
   // TP7 workspace 域 handler：CRUD + 清空数据；变更广播所有窗口刷新。
   registerWorkspaceHandlers(ipcMain, {
-    registry: workspaceRegistry,
-    sessions: workspaceSessions,
-    tabManager,
+    registry: ctx.workspaceRegistry,
+    sessions: ctx.workspaceSessions,
+    tabManager: ctx.tabManager,
     broadcastChanged: () => {
-      for (const managed of windowManager.getAllWindows()) {
+      for (const managed of ctx.windowManager.getAllWindows()) {
         managed.browserWindow.webContents.send('workspace:changed', {});
       }
     },
@@ -916,7 +835,7 @@ function registerIpcHandlers(): void {
 
   // D 导入域 handler（dev.119）：从其他浏览器导入收藏夹
   // （HTML 文件 + Chrome/Edge/Firefox profile 自动检测；解析器/检测器 DI 注入便于单测）
-  registerImportHandlers({ ipcMain, bookmarkManager });
+  registerImportHandlers({ ipcMain, bookmarkManager: ctx.bookmarkManager });
 
   // M20 update 域 handler（dev.114 提前落地）：设置页更新按钮 → GitHub Releases
   // dev 预发布通道。electron-updater 懒加载（首次检查才 dynamic import，不拖
@@ -945,8 +864,8 @@ function registerIpcHandlers(): void {
   // 生产环境未设置该变量时使用真实免费接口端点。
   const translateTestBase = process.env.URCHIN_TRANSLATE_TEST_BASE;
   const translateManager = new TranslateManager({
-    tabManager,
-    settings: settingsManager,
+    tabManager: ctx.tabManager,
+    settings: ctx.settingsManager,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     // 进度事件发往主窗口渲染层（页面 world 无监听能力，dev.82 修正）
     notifyProgress: (tabId, payload) => sendToMainWindow(TRANSLATE_PROGRESS_CHANNEL, payload),
@@ -972,35 +891,35 @@ function registerIpcHandlers(): void {
       ),
     },
   });
-  registerTranslateHandlers({ ipcMain, translateManager, tabManager });
-  disposeTranslateManager = () => translateManager.dispose();
-  translateManagerRef = translateManager;
+  registerTranslateHandlers({ ipcMain, translateManager, tabManager: ctx.tabManager });
+  ctx.disposeTranslateManager = () => translateManager.dispose();
+  ctx.translateManagerRef = translateManager;
 
   // M15 DevTools（dev.121，CDP 采集检视面板）：会话管理 + IPC handler。
   // 事件推送复用 sendToMainWindow（devtools:event）；F12 toggle 走 devtools:toggle。
   const devtoolsManager = new DevtoolsManager({
-    tabManager,
+    tabManager: ctx.tabManager,
     notify: (payload) => sendToMainWindow(DEVTOOLS_EVENT_CHANNEL, payload),
   });
   registerDevtoolsHandlers(ipcMain, devtoolsManager);
-  disposeDevtoolsManager = () => devtoolsManager.dispose();
+  ctx.disposeDevtoolsManager = () => devtoolsManager.dispose();
 
   // 截图域 handler（地址栏截图按钮）：弹出整屏框选覆盖窗口，确认后裁剪保存到
   // <数据目录>/screenshots/。CaptureOverlay 单例持覆盖窗口与截图缓存。
   const captureOverlay = new CaptureOverlay({
     createWindow: (opts) => new BrowserWindow(opts),
     preloadPath: join(__dirname, '..', 'preload', 'index.js'),
-    dataDir: currentDataDir,
+    dataDir: ctx.currentDataDir,
   });
   registerScreenshotHandlers(ipcMain, { overlay: captureOverlay });
 
   // 剪藏域 handler（地址栏剪藏按钮，M26）：面板 + 页面快照 + 多格式落盘。
   // 保存目录固定为 <数据目录>/documents/clipper；面板失焦自动关闭。
   const clipperStore = new ClipperStore({
-    documentsRoot: join(currentDataDir, 'documents'),
+    documentsRoot: join(ctx.currentDataDir, 'documents'),
   });
   const clipperPanel = new ClipperPanel({
-    getParentWindow: () => windowManager.getAllWindows()[0]?.browserWindow ?? null,
+    getParentWindow: () => ctx.windowManager.getAllWindows()[0]?.browserWindow ?? null,
     preloadPath: join(__dirname, '..', 'preload', 'index.js'),
     getLayout: () => {
       const state = getLayoutState();
@@ -1027,8 +946,8 @@ function registerIpcHandlers(): void {
   });
   registerClipperHandlers({
     ipcMain,
-    tabManager,
-    settings: settingsManager,
+    tabManager: ctx.tabManager,
+    settings: ctx.settingsManager,
     panel: clipperPanel,
     store: clipperStore,
     embedApi: genofficeEmbed,
@@ -1054,19 +973,21 @@ function registerIpcHandlers(): void {
   });
 
   // M13 AI 域 handler（provider.list/install/remove/config + ai.chat.start/abort + ai.agent.start/abort）
-  // agentConfigProvider 复用 settingsManager + providerConfigStore 的合并逻辑，为 pi 适配层提供 apiKey/baseUrl
-  // 注意：providerConfigStore.get 返回 Promise（aiStore.get 是 async），必须 await
+  // agentConfigProvider 复用 ctx.settingsManager + ctx.providerConfigStore 的合并逻辑，为 pi 适配层提供 apiKey/baseUrl
+  // 注意：ctx.providerConfigStore.get 返回 Promise（aiStore.get 是 async），必须 await
   const agentConfigProvider = {
     async get(providerId: string): Promise<{ apiKey?: string; baseUrl?: string }> {
       // 等待敏感键预加载完成，确保 pi.apiKey 已从 secretStore 读入内存
-      await settingsManager.ensureSecretsLoaded();
-      const perProvider = providerConfigStore ? await providerConfigStore.get(providerId) : null;
+      await ctx.settingsManager.ensureSecretsLoaded();
+      const perProvider = ctx.providerConfigStore
+        ? await ctx.providerConfigStore.get(providerId)
+        : null;
       const cfg =
         typeof perProvider === 'object' && perProvider !== null
           ? (perProvider as Record<string, unknown>)
           : {};
-      const globalApiKey = settingsManager.get('pi.apiKey');
-      const globalBaseUrl = settingsManager.get('pi.baseUrl');
+      const globalApiKey = ctx.settingsManager.get('pi.apiKey');
+      const globalBaseUrl = ctx.settingsManager.get('pi.baseUrl');
       return {
         apiKey:
           typeof cfg.apiKey === 'string'
@@ -1086,12 +1007,12 @@ function registerIpcHandlers(): void {
   // 保存 AI handlers 的 dispose 句柄，退出时用于 abort 活跃流
   const aiHandlers = registerAiHandlers(
     ipcMain,
-    orchestrator,
-    providerRegistry,
-    providerConfigStore,
+    ctx.orchestrator,
+    ctx.providerRegistry,
+    ctx.providerConfigStore,
     agentConfigProvider,
   );
-  aiHandlersDispose = () => aiHandlers.dispose();
+  ctx.aiHandlersDispose = () => aiHandlers.dispose();
 
   // pi 模块前端加号菜单三项：截图、上传文件、设置工作目录
   registerAiInputHandlers(ipcMain);
@@ -1125,7 +1046,7 @@ function registerIpcHandlers(): void {
     if (!existsSync(dshPackagedCliPath)) {
       log.error('@deepseek-ai/dsh CLI not found in app.asar.unpacked', { dshPackagedCliPath });
     }
-    dshLauncher = createDshLauncher({
+    ctx.dshLauncher = createDshLauncher({
       cwdDir: dshDataDir,
       cliEntry: dshPackagedCliPath,
       nodePath: dshNodeExePath,
@@ -1149,7 +1070,7 @@ function registerIpcHandlers(): void {
         },
       );
     }
-    dshLauncher = createDshLauncher({
+    ctx.dshLauncher = createDshLauncher({
       cwdDir: dshVendorDir,
       cliEntry: 'apps/cli/src/bin.ts',
       nodePath: dshDevNodeExePath,
@@ -1157,8 +1078,8 @@ function registerIpcHandlers(): void {
       dataDir: dshDataDir,
     });
   }
-  registerDshHandlers(ipcMain, dshLauncher);
-  unbindDshTabClose = bindTabCloseToStop(tabManager, dshLauncher);
+  registerDshHandlers(ipcMain, ctx.dshLauncher);
+  ctx.unbindDshTabClose = bindTabCloseToStop(ctx.tabManager, ctx.dshLauncher);
 
   // pi 阶段 2 自研托管服务启动器（docs/pi-web-评估.md 阶段 2）：utilityProcess 内运行
   // @urchin/pi-web-host（HTTP 静态 + WebSocket + 随机 token 鉴权，前端 apps/pi-web）。
@@ -1166,15 +1087,15 @@ function registerIpcHandlers(): void {
   // forkTarget = dist/main/pi-web-host.js（scripts/build-pi-web.mjs 产物，dev/打包同构）；
   // wwwDir = dist/pi-web（apps/pi-web 构建产物）。数据落 userData/pi/self-host（DD1）。
   const piWebHostDataDir = join(startupUserDataPath, PI_DIR_NAME, 'self-host');
-  piWebHostLauncher = createPiWebHostLauncher({
+  ctx.piWebHostLauncher = createPiWebHostLauncher({
     forkTarget: join(__dirname, 'pi-web-host.js'),
     wwwDir: join(app.getAppPath(), 'dist', 'pi-web'),
     dataDir: piWebHostDataDir,
     // M2B：fork 时从 settings + agentConfigProvider 解析当前凭据/模型（支持运行时变更）
     agentCredsProvider: async () => {
-      await settingsManager.ensureSecretsLoaded();
-      const providerId = settingsManager.get('pi.providerId') as string | undefined;
-      const modelId = settingsManager.get('pi.model') as string | undefined;
+      await ctx.settingsManager.ensureSecretsLoaded();
+      const providerId = ctx.settingsManager.get('pi.providerId') as string | undefined;
+      const modelId = ctx.settingsManager.get('pi.model') as string | undefined;
       if (!providerId || !modelId) return null;
       const cfg = await agentConfigProvider.get(providerId);
       if (!cfg.apiKey) return null;
@@ -1193,21 +1114,21 @@ function registerIpcHandlers(): void {
       if (typeof msg !== 'object' || msg === null) return;
       const m = msg as { type?: string; providerId?: string; modelId?: string };
       if (m.type === 'piSettingsChanged') {
-        if (m.providerId) settingsManager.set('pi.providerId', m.providerId);
-        if (m.modelId) settingsManager.set('pi.model', m.modelId);
+        if (m.providerId) ctx.settingsManager.set('pi.providerId', m.providerId);
+        if (m.modelId) ctx.settingsManager.set('pi.model', m.modelId);
       }
     },
   });
-  registerPiWebHostHandlers(ipcMain, piWebHostLauncher);
+  registerPiWebHostHandlers(ipcMain, ctx.piWebHostLauncher);
 
   // dev.122（ADR-014）：pi 服务改为应用级常驻——关 pi 标签不再停止后端，
   // 服务活到应用退出（performCleanup 调 dispose）。仅 dsh 保留「关标签停后端」。
-  tabManager.setPiIconPinner((sourceUrl) => {
+  ctx.tabManager.setPiIconPinner((sourceUrl) => {
     try {
       const origin = new URL(sourceUrl).origin;
-      const phUrl = piWebHostLauncher?.status().url;
+      const phUrl = ctx.piWebHostLauncher?.status().url;
       if (phUrl && new URL(phUrl).origin === origin) return 'urchin://pi-icon/';
-      const dshUrl = dshLauncher?.status().url;
+      const dshUrl = ctx.dshLauncher?.status().url;
       if (dshUrl && new URL(dshUrl).origin === origin) return 'urchin://dsh-icon/';
     } catch {
       /* invalid URL → no pin */
@@ -1216,7 +1137,7 @@ function registerIpcHandlers(): void {
   });
 
   // M14 page context 域 handler（page.extract）
-  registerPageContextHandlers(ipcMain, tabManager);
+  registerPageContextHandlers(ipcMain, ctx.tabManager);
 
   // 本地文件域 handler（file.stat / file.read / file.write / file.saveAs / file.open / file.dir）
   // 支撑「以网页形式打开本地文件」：音视频/PDF/图片原生渲染，文本类文档查看器渲染
@@ -1224,7 +1145,7 @@ function registerIpcHandlers(): void {
 
   // 编辑器草稿域（editor.*，会话内自动临时保存）：
   // 启动清扫上一会话残留草稿后注册（目录已由 ensureDataDir 预创建）
-  const editorDraftsDir = join(currentDataDir, 'editor-drafts');
+  const editorDraftsDir = join(ctx.currentDataDir, 'editor-drafts');
   void sweepDrafts(editorDraftsDir);
   registerEditorHandlers({ ipcMain, draftsDir: editorDraftsDir });
 
@@ -1237,22 +1158,26 @@ function registerIpcHandlers(): void {
   });
 
   // M25 邮箱域 handler（imapflow + nodemailer + postal-mime）
-  if (storageLayer) {
-    if (!translateManagerRef) {
+  if (ctx.storageLayer) {
+    if (!ctx.translateManagerRef) {
       throw new Error('translateManager must be registered before mail handlers');
     }
-    mailContentStore = new MailContentStore();
+    ctx.mailContentStore = new MailContentStore();
     const mailStorage = new MailStorage(
-      storageLayer.mainStore.query.bind(storageLayer.mainStore),
-      storageLayer.mainStore.run.bind(storageLayer.mainStore),
+      ctx.storageLayer.mainStore.query.bind(ctx.storageLayer.mainStore),
+      ctx.storageLayer.mainStore.run.bind(ctx.storageLayer.mainStore),
     );
-    const mailManager = new MailManager(mailStorage, storageLayer.secrets, mailContentStore);
+    const mailManager = new MailManager(
+      mailStorage,
+      ctx.storageLayer.secrets,
+      ctx.mailContentStore,
+    );
     registerMailHandlers({
       ipcMain,
       mailManager,
-      translateManager: translateManagerRef,
+      translateManager: ctx.translateManagerRef,
       getMainWindow: () => {
-        const managed = windowManager.getAllWindows()[0];
+        const managed = ctx.windowManager.getAllWindows()[0];
         const wc = managed?.browserWindow?.webContents;
         if (!wc) return null;
         return wc as unknown as import('electron').WebContents;
@@ -1271,11 +1196,11 @@ function registerIpcHandlers(): void {
       devtoolsWidth: req.devtoolsWidth,
     });
     // 立即刷新所有窗口的 BrowserView bounds
-    tabViewIntegration?.refreshAllViewBounds();
+    ctx.tabViewIntegration?.refreshAllViewBounds();
     // 布局变化（如右侧栏宽度拖拽调节）时，悬浮面板与状态栏跟随重新定位
-    bookmarkPanel?.refreshPosition();
-    statusBarOverlay?.refreshPosition();
-    statusBarBall?.refreshPosition();
+    ctx.bookmarkPanel?.refreshPosition();
+    ctx.statusBarOverlay?.refreshPosition();
+    ctx.statusBarBall?.refreshPosition();
     log.info('layout state updated', {
       leftWidth: newState.leftWidth,
       rightWidth: newState.rightWidth,
@@ -1295,34 +1220,34 @@ function registerIpcHandlers(): void {
 
   // UI 域 handler：收藏夹悬浮面板开关（独立子窗口，悬浮于网页之上）
   registerHandler(ipcMain, 'ui.panel.toggle', () => {
-    const open = bookmarkPanel?.toggle() ?? false;
+    const open = ctx.bookmarkPanel?.toggle() ?? false;
     return { open };
   });
 
   // UI 域 handler：以 picker 模式打开面板（星标按钮未收藏时调用）。
   // 解析活动标签 url/title 存上下文，面板加载 ?mode=picker 后渲染「选择文件夹保存」视图。
   registerHandler(ipcMain, 'ui.panel.saveBookmarkPicker', () => {
-    const tabs = tabManager.query({});
+    const tabs = ctx.tabManager.query({});
     const active = tabs.find((t) => t.active) ?? tabs[0];
     const url = active?.url ?? '';
     // 仅 http/https 可收藏（与渲染层 isBookmarkable 一致；星标本就禁用，此处防御式校验）
     if (!/^https?:\/\//i.test(url)) {
       return { ok: true as const, reason: 'not-bookmarkable' };
     }
-    bookmarkPickerContext = { url, title: active?.title ?? url };
-    bookmarkPanel?.openPicker();
+    ctx.bookmarkPickerContext = { url, title: active?.title ?? url };
+    ctx.bookmarkPanel?.openPicker();
     return { ok: true as const };
   });
 
   // UI 域 handler：面板 picker 模式加载时拉取待存页面上下文
   registerHandler(ipcMain, 'ui.panel.getPickerContext', () => {
-    const ctx = bookmarkPickerContext;
-    return { url: ctx?.url ?? null, title: ctx?.title ?? null };
+    const pickerCtx = ctx.bookmarkPickerContext;
+    return { url: pickerCtx?.url ?? null, title: pickerCtx?.title ?? null };
   });
 
   // UI 域 handler：关闭面板（picker 保存成功后面板主动调用，面板窗口无法直接关 BrowserWindow）
   registerHandler(ipcMain, 'ui.panel.close', () => {
-    bookmarkPanel?.close();
+    ctx.bookmarkPanel?.close();
     return { ok: true as const };
   });
 
@@ -1342,9 +1267,10 @@ function registerIpcHandlers(): void {
   // UI 域 handler：按住侧边栏空白处拖动窗口（相对位移）。
   // 渲染层发屏幕坐标增量，主进程移动窗口位置（手动拖拽实现，兼容双击/悬停展开）。
   // 多窗口：按 sender 反查所属窗口移动（不再硬编码 windowId=1，新窗口拖拽不再误移原窗口）。
-  registerHandler(ipcMain, 'ui.window.dragBy', (req, ctx) => {
-    const sender = ctx.event.sender;
-    const managed = windowManager.getWindowByWebContents(sender) ?? windowManager.getWindow(1);
+  registerHandler(ipcMain, 'ui.window.dragBy', (req, callCtx) => {
+    const sender = callCtx.event.sender;
+    const managed =
+      ctx.windowManager.getWindowByWebContents(sender) ?? ctx.windowManager.getWindow(1);
     const win = managed?.browserWindow;
     if (!win?.getPosition || !win.setPosition) {
       return { ok: true as const }; // 测试环境无真实 BrowserWindow 位置 API
@@ -1358,7 +1284,7 @@ function registerIpcHandlers(): void {
 
   // UI 域 handler：状态栏状态同步（主渲染 → 主进程，缓存并转发给悬浮层）
   registerHandler(ipcMain, 'ui.statusbar.sync', (req) => {
-    statusBarOverlay?.handleSync(req);
+    ctx.statusBarOverlay?.handleSync(req);
     // 主题 + 灵敏度同步给球（球在所有页面常驻，可见性由主进程独立管理）
     sendBallConfig();
     return { ok: true as const };
@@ -1366,18 +1292,18 @@ function registerIpcHandlers(): void {
 
   // UI 域 handler：悬浮层取缓存状态（悬浮层 → 主进程）
   registerHandler(ipcMain, 'ui.statusbar.getState', () => {
-    return statusBarOverlay?.getState() ?? DEFAULT_STATUS_BAR_STATE;
+    return ctx.statusBarOverlay?.getState() ?? DEFAULT_STATUS_BAR_STATE;
   });
 
   // UI 域 handler：悬浮层上报建议/提示展开高度（悬浮层 → 主进程，重定位窗口）
   registerHandler(ipcMain, 'ui.statusbar.setExpanded', (req) => {
-    statusBarOverlay?.setExpanded(req.panelHeight);
+    ctx.statusBarOverlay?.setExpanded(req.panelHeight);
     return { ok: true as const };
   });
 
   // UI 域 handler：折叠/展开地址栏（折叠按钮调用）
   registerHandler(ipcMain, 'ui.statusbar.collapse', (req) => {
-    statusBarOverlay?.setCollapsed(req.collapsed);
+    ctx.statusBarOverlay?.setCollapsed(req.collapsed);
     return { ok: true as const };
   });
 
@@ -1389,13 +1315,13 @@ function registerIpcHandlers(): void {
 
   // UI 域 handler：悬浮球右键拖动改变位置
   registerHandler(ipcMain, 'ui.statusbar.ball.move', (req) => {
-    statusBarBall?.moveBy(req.dx, req.dy);
+    ctx.statusBarBall?.moveBy(req.dx, req.dy);
     return { ok: true as const };
   });
 
   // UI 域 handler：悬浮球点击切换折叠/展开
   registerHandler(ipcMain, 'ui.statusbar.ball.click', () => {
-    statusBarOverlay?.toggleCollapsed();
+    ctx.statusBarOverlay?.toggleCollapsed();
     return { ok: true as const };
   });
 
@@ -1419,16 +1345,16 @@ function registerIpcHandlers(): void {
 
   // Window 域 handler：查询当前渲染进程所属窗口 id（多窗口下渲染层不再硬编码 windowId=1）。
   // 经 event.sender 反查 ManagedWindow；找不到（如测试/非受管 webContents）回退 windowId=1。
-  registerHandler(ipcMain, 'window.getCurrent', (_req, ctx) => {
-    const sender = ctx.event.sender;
-    const managed = windowManager.getWindowByWebContents(sender);
+  registerHandler(ipcMain, 'window.getCurrent', (_req, callCtx) => {
+    const sender = callCtx.event.sender;
+    const managed = ctx.windowManager.getWindowByWebContents(sender);
     return { windowId: managed?.id ?? 1 };
   });
 
   // Window 域 handler：新浏览器窗口打开 URL（侧边栏标签/书签拖出窗口触发）。
   // 新窗口默认打开新标签页，随后把目标 URL 导航到活跃标签（tab.loadUrl）——
   // 直接给 createWindow 传 url 不会导航（create-window.ts 仅用 url 参数决定加载源）。
-  // v0.1 单窗口化：windowManager.createWindow 恒分配 windowId=2（原窗口为 1）。
+  // v0.1 单窗口化：ctx.windowManager.createWindow 恒分配 windowId=2（原窗口为 1）。
   // x/y（拖出瞬间屏幕坐标）：窗口左上角定位到拖拽位置，避免新窗口重叠在原窗口上；
   // clamp 到主屏工作区（至少留 120px 窗口主体可见），测试环境无 screen 时跳过定位。
   registerHandler(ipcMain, 'window.createWithUrl', (req) => {
@@ -1438,8 +1364,8 @@ function registerIpcHandlers(): void {
       y: req.y,
       workspaceId: req.workspaceId,
     });
-    const managed = windowManager.createWindow({});
-    tabManager.create({
+    const managed = ctx.windowManager.createWindow({});
+    ctx.tabManager.create({
       windowId: managed.id,
       url: req.url,
       active: true,
@@ -1537,37 +1463,37 @@ void app.whenReady().then(() => {
     // dsh 品牌图标（SVG）——favicon 重定向目标（urchin://dsh-icon）。
     dshIconPath: join(app.getAppPath(), 'dist', 'renderer', 'dsh-icon.svg'),
     // M25：邮箱正文内容查询（urchin://mail-content/<token>）——
-    // 惰性闭包引用模块级 mailContentStore（请求到达时已初始化）
-    getMailContent: (token) => mailContentStore?.get(token) ?? null,
+    // 惰性闭包引用模块级 ctx.mailContentStore（请求到达时已初始化）
+    getMailContent: (token) => ctx.mailContentStore?.get(token) ?? null,
     // 网站图标缓存（M2）：标签栏/书签/历史统一读取主进程缓存。
-    // faviconService 在下面 StorageLayer 初始化后创建；回调在请求到达时才执行。
-    getFavicon: (name) => faviconService?.serve(name) ?? Promise.resolve(null),
+    // ctx.faviconService 在下面 StorageLayer 初始化后创建；回调在请求到达时才执行。
+    getFavicon: (name) => ctx.faviconService?.serve(name) ?? Promise.resolve(null),
     // 中转区拖拽（路径 B）：页面 dragstart 注入脚本 POST JSON 到 urchin://transit-drag。
     // text/link → 写 md 文档到 documents/；image/video → 直接传 URL 到主窗口。
     onTransitDrag: (data) => {
-      handleTransitDragData(data, currentDataDir, sendToMainWindow);
+      handleTransitDragData(data, ctx.currentDataDir, sendToMainWindow);
     },
   });
 
   // 初始化需要文件系统 / SQLite 的模块（W6：移入 whenReady 避免模块加载阶段崩溃）
-  // userDataPath 与 dataDir（currentDataDir）已在模块顶层解析（DD1 决策，
+  // userDataPath 与 dataDir（ctx.currentDataDir）已在模块顶层解析（DD1 决策，
   // sessionData/cookies 重定向需 app ready 前完成），此处直接复用。
   const userDataPath = startupUserDataPath;
   const providersDir = join(userDataPath, 'providers');
-  providerRegistry = new ProviderRegistry(providersDir);
+  ctx.providerRegistry = new ProviderRegistry(providersDir);
 
-  const dataDir = currentDataDir;
+  const dataDir = ctx.currentDataDir;
   const piDir = join(userDataPath, PI_DIR_NAME);
   const sl = new StorageLayer(dataDir, piDir, new ElectronSafeStorage(), createSqliteDatabase);
-  storageLayer = sl;
+  ctx.storageLayer = sl;
   // 图标缓存随数据目录迁移；目录在服务内异步创建，不阻塞启动关键路径。
-  faviconService = new FaviconService(dataDir);
+  ctx.faviconService = new FaviconService(dataDir);
   markStartup('main:storage');
 
   // 初始化 SettingsManager，注入 StorageLayer 持久化（设置变更自动写入 SQLite）。
   // DD1 决策：pi 键（pi.*）持久化到 pi 库 + pi 密钥存储，
   // 其余（书签/历史/普通设置）走主库。启动时迁移旧主库残留的 pi 键到 pi 库。
-  settingsManager = new SettingsManager(sl.mainStore, sl.secrets, {
+  ctx.settingsManager = new SettingsManager(sl.mainStore, sl.secrets, {
     piPersistence: sl.aiStore,
     piSecretStore: sl.secrets,
     legacyPiKeysScan: () => {
@@ -1592,24 +1518,24 @@ void app.whenReady().then(() => {
   // 持久化记录形状 { version, workspaces }；cookies 由 Chromium 分区自动落盘
   // （<sessionData>/Partitions），不进 SQLite。
   const workspacePersistence: WorkspacePersistence = {
-    load: () => settingsManager.get('workspaces.registry'),
-    save: (record) => settingsManager.set('workspaces.registry', record),
+    load: () => ctx.settingsManager.get('workspaces.registry'),
+    save: (record) => ctx.settingsManager.set('workspaces.registry', record),
   };
-  workspaceRegistry = new WorkspaceRegistry(workspacePersistence);
-  workspaceSessions = new WorkspaceSessionManager();
-  workspaceSessions.setSessionConfigure((ses) => {
+  ctx.workspaceRegistry = new WorkspaceRegistry(workspacePersistence);
+  ctx.workspaceSessions = new WorkspaceSessionManager();
+  ctx.workspaceSessions.setSessionConfigure((ses) => {
     // 分区 session 也需可访问 urchin:// 内部页（settings/ai/newtab 等 React 占位页）
     registerUrchinProtocol(
       {
-        getFavicon: (name) => faviconService?.serve(name) ?? Promise.resolve(null),
+        getFavicon: (name) => ctx.faviconService?.serve(name) ?? Promise.resolve(null),
       },
       ses,
     );
     // 账号分区内的下载同样走统一保存位置策略（TP7：否则静默落入默认目录无 UI）
     installWillDownloadForSession(ses, {
-      getSetting: (key) => settingsManager.get(key) as string | undefined,
-      setSetting: (key, value) => settingsManager.set(key, value),
-      getDataDir: () => currentDataDir,
+      getSetting: (key) => ctx.settingsManager.get(key) as string | undefined,
+      setSetting: (key, value) => ctx.settingsManager.set(key, value),
+      getDataDir: () => ctx.currentDataDir,
       downloadManager,
     });
   });
@@ -1617,10 +1543,10 @@ void app.whenReady().then(() => {
   // 图标解析：按标签所属工作区选择 session（Cookie/代理与页面一致），
   // 由 FaviconService 下载、校验并落盘，返回 urchin://favicon/<hash>。
   tabManager.setFaviconResolver(async ({ pageUrl, candidates, workspaceId }) => {
-    if (!faviconService) return undefined;
+    if (!ctx.faviconService) return undefined;
     try {
-      const ses = workspaceSessions.resolve(workspaceId);
-      return await faviconService.resolve({ pageUrl, candidates, session: ses });
+      const ses = ctx.workspaceSessions.resolve(workspaceId);
+      return await ctx.faviconService.resolve({ pageUrl, candidates, session: ses });
     } catch {
       // 非法工作区/会话已销毁：图标失败不影响页面本身。
       return undefined;
@@ -1665,7 +1591,7 @@ void app.whenReady().then(() => {
       sl.mainStore.run('DELETE FROM bookmarks WHERE id = ?', id);
     },
   };
-  bookmarkManager = new BookmarkManager(bookmarkPersistence);
+  ctx.bookmarkManager = new BookmarkManager(bookmarkPersistence);
 
   // 书签变更广播（create/update/delete）：推送到所有窗口的渲染进程。
   // 场景：收藏夹面板（独立子窗口）取消收藏/重命名后，主窗口地址栏星标需同步熄灭。
@@ -1675,9 +1601,9 @@ void app.whenReady().then(() => {
       managed.browserWindow.webContents.send('bookmark:changed', { url: bookmark.url ?? null });
     }
   };
-  bookmarkManager.on('created', broadcastBookmarkChanged);
-  bookmarkManager.on('updated', broadcastBookmarkChanged);
-  bookmarkManager.on('deleted', broadcastBookmarkChanged);
+  ctx.bookmarkManager.on('created', broadcastBookmarkChanged);
+  ctx.bookmarkManager.on('updated', broadcastBookmarkChanged);
+  ctx.bookmarkManager.on('deleted', broadcastBookmarkChanged);
 
   // 初始化 HistoryManager，注入 SQLite 持久化适配器。
   // 启动时从 history 表加载已有记录到内存，record/delete/clear 时同步写入 SQLite。
@@ -1714,13 +1640,13 @@ void app.whenReady().then(() => {
       sl.mainStore.run('DELETE FROM history');
     },
   };
-  historyManager = new HistoryManager(historyPersistence);
+  ctx.historyManager = new HistoryManager(historyPersistence);
 
   markStartup('main:managers');
 
   // 数据目录设置变更（DD1 决策）：写入 data-location 指针，重启后整体迁移生效。
   // pi 数据（ai.db / secrets / providers）固定 userData/pi，不受此变更影响。
-  settingsManager.on('changed', (key, value) => {
+  ctx.settingsManager.on('changed', (key, value) => {
     if (key === 'data.directory') {
       const next = typeof value === 'string' ? value : '';
       if (!next.trim()) return; // 留空 = 恢复默认 userData/data，无需写指针
@@ -1738,13 +1664,13 @@ void app.whenReady().then(() => {
   // 统一处理保存位置（downloadsPath 设置 > 系统对话框询问 > 数据目录/downloads 默认）。
   // 对话框需要主窗口句柄，故在窗口创建后安装（installWillDownload 内部懒取）。
   installWillDownload({
-    getSetting: (key) => settingsManager.get(key) as string | undefined,
-    setSetting: (key, value) => settingsManager.set(key, value),
-    getDataDir: () => currentDataDir,
+    getSetting: (key) => ctx.settingsManager.get(key) as string | undefined,
+    setSetting: (key, value) => ctx.settingsManager.set(key, value),
+    getDataDir: () => ctx.currentDataDir,
     downloadManager,
   });
 
-  providerConfigStore = {
+  ctx.providerConfigStore = {
     get(providerId: string): unknown {
       return sl.aiStore.get<unknown>(`provider_config:${providerId}`);
     },
@@ -1760,17 +1686,17 @@ void app.whenReady().then(() => {
    * 合并到 provider config 中，使 OpenAI 兼容 Provider 能直接使用设置页配置的密钥和端点。
    * per-provider 配置（provider_config:<id>）优先级高于全局设置，允许覆盖。
    *
-   * 注意：providerConfigStore.get 返回 Promise（aiStore.get 是 async），必须 await。
+   * 注意：ctx.providerConfigStore.get 返回 Promise（aiStore.get 是 async），必须 await。
    * 若不 await，Promise 对象被展开会把 then/catch/finally 函数注入 config，
    * 经 port.postMessage 结构化克隆会抛 "An object could not be cloned"。
    */
   const mergedConfigProvider = async (providerId: string): Promise<unknown> => {
     // 等待敏感键预加载完成，确保 pi.apiKey 已从 secretStore 读入内存
-    await settingsManager.ensureSecretsLoaded();
-    const perProvider = await providerConfigStore.get(providerId);
-    const globalApiKey = settingsManager.get('pi.apiKey');
-    const globalBaseUrl = settingsManager.get('pi.baseUrl');
-    const globalModel = settingsManager.get('pi.model');
+    await ctx.settingsManager.ensureSecretsLoaded();
+    const perProvider = await ctx.providerConfigStore.get(providerId);
+    const globalApiKey = ctx.settingsManager.get('pi.apiKey');
+    const globalBaseUrl = ctx.settingsManager.get('pi.baseUrl');
+    const globalModel = ctx.settingsManager.get('pi.model');
     const merged: Record<string, unknown> = {
       ...(typeof perProvider === 'object' && perProvider !== null
         ? (perProvider as Record<string, unknown>)
@@ -1789,8 +1715,8 @@ void app.whenReady().then(() => {
     return merged;
   };
 
-  orchestrator = new Orchestrator({
-    registry: providerRegistry,
+  ctx.orchestrator = new Orchestrator({
+    registry: ctx.providerRegistry,
     processFactory: electronProcessFactory,
     configProvider: mergedConfigProvider,
     events: {
@@ -1813,15 +1739,15 @@ void app.whenReady().then(() => {
   // 注入链接打开行为解析器：根据设置决定点击链接时在当前/新标签页打开
   // 设置 links.openInNewTab = true 时新标签页打开，否则当前标签页打开（默认）
   tabManager.setLinkBehaviorResolver(() => {
-    const openInNewTab = settingsManager.get('links.openInNewTab') === true;
+    const openInNewTab = ctx.settingsManager.get('links.openInNewTab') === true;
     return openInNewTab ? 'new-tab' : 'current';
   });
 
   // 广告浮窗屏蔽（DB1 决策）：默认开启，由设置 blockAds 控制。
   // 初始化读取设置；监听设置变更实时更新——开启时对现有 tab 补注入
   // （新页面加载由 tab-manager 的 did-finish-load 自动注入）。
-  tabManager.setAdBlockEnabled(settingsManager.get('blockAds') !== false);
-  settingsManager.on('changed', (key, value) => {
+  tabManager.setAdBlockEnabled(ctx.settingsManager.get('blockAds') !== false);
+  ctx.settingsManager.on('changed', (key, value) => {
     if (key !== 'blockAds') return;
     const enabled = value !== false;
     tabManager.setAdBlockEnabled(enabled);
@@ -1837,7 +1763,7 @@ void app.whenReady().then(() => {
   //
   // 根因：history.record IPC handler 存在但从未被调用，导致历史记录始终为空。
   // 修复：监听 TabManager 的 'updated' 事件，当页面加载完成（loading=false）
-  // 且 URL 为 http/https 时记录到 historyManager。
+  // 且 URL 为 http/https 时记录到 ctx.historyManager。
   // 通过 lastUrlPerTab 去重，避免同一 URL 因 title 更新等事件被重复记录。
   const lastUrlPerTab = new Map<number, string>();
   // 图标通常晚于页面加载完成到达：记录每个 tab 最近一次已处理的图标，
@@ -1850,8 +1776,8 @@ void app.whenReady().then(() => {
 
     if (isHttp && favicon && lastFaviconPerTab.get(snapshot.id) !== favicon) {
       lastFaviconPerTab.set(snapshot.id, favicon);
-      historyManager.setFavicon(url, favicon);
-      if (bookmarkManager.updateFaviconByUrl(url, favicon) > 0) {
+      ctx.historyManager.setFavicon(url, favicon);
+      if (ctx.bookmarkManager.updateFaviconByUrl(url, favicon) > 0) {
         broadcastBookmarkChanged({ url });
       }
     } else if (!favicon) {
@@ -1863,16 +1789,16 @@ void app.whenReady().then(() => {
     if (snapshot.loading) return;
     // 仅记录 http/https URL（排除 about:blank / urchin:// 等内部页面）
     if (!isHttp) return;
-    // 去重：同一 tab 的同一 URL 只记录一次（后续重复访问由 historyManager.record 内部递增 visitCount）
+    // 去重：同一 tab 的同一 URL 只记录一次（后续重复访问由 ctx.historyManager.record 内部递增 visitCount）
     if (lastUrlPerTab.get(snapshot.id) === url) return;
     lastUrlPerTab.set(snapshot.id, url);
-    historyManager.record(url, snapshot.title, favicon);
+    ctx.historyManager.record(url, snapshot.title, favicon);
   });
 
   // 监听 AI 设置变更：当 pi.apiKey / pi.baseUrl / pi.model / pi.providerId 变化时，
   // dispose 已加载的 Provider 子进程，下次调用 ai.chat.start 时会以新配置重新 spawn。
   // 这是必要的，因为 Provider 子进程在 init 时接收配置并缓存，不会主动重新读取。
-  settingsManager.on('changed', (key) => {
+  ctx.settingsManager.on('changed', (key) => {
     if (
       key === 'pi.apiKey' ||
       key === 'pi.baseUrl' ||
@@ -1880,7 +1806,7 @@ void app.whenReady().then(() => {
       key === 'pi.providerId'
     ) {
       log.info('AI settings changed, disposing providers for config reload', { key });
-      void orchestrator.disposeAll();
+      void ctx.orchestrator.disposeAll();
     }
   });
 
@@ -1888,25 +1814,25 @@ void app.whenReady().then(() => {
   // setImmediate 延迟块（启动优化 B3）
 
   // 安装 TabManager ↔ WindowManager 集成（BrowserView 挂载 + 事件推送）
-  tabViewIntegration = installTabViewIntegration(tabManager, windowManager);
+  ctx.tabViewIntegration = installTabViewIntegration(tabManager, windowManager);
 
   // 右键菜单（复制 / 粘贴 / 保存网页）：对每个网页 tab 的 webContents 挂接
   // context-menu 监听，菜单动作全部在主进程执行。
   // 保存网页单独立项（用户决策 2026-08-18）：默认目录 <数据目录>/saved-pages/，
   // 不依赖下载相关设计（不读 downloadsPath、不接入 DownloadManager），仅需数据目录。
   const contextMenuDeps = {
-    getDataDir: () => currentDataDir,
+    getDataDir: () => ctx.currentDataDir,
     // 网页翻译动作（M24 dev.81）：划词结果经事件回传渲染层结果卡（坐标为窗口相对坐标，
     // 与右键菜单 popup 同一补偿口径）。窗口动态解析（此处早于主窗口创建）。
     translate: {
-      isActive: (tabId: number) => translateManagerRef?.getStatus(tabId).active ?? false,
+      isActive: (tabId: number) => ctx.translateManagerRef?.getStatus(tabId).active ?? false,
       translatePage: (tabId: number) => {
-        void translateManagerRef?.start(tabId).catch((err) => {
+        void ctx.translateManagerRef?.start(tabId).catch((err) => {
           log.warn('context-menu translate page failed', { tabId, error: String(err) });
         });
       },
       translateSelection: (tabId: number, text: string, x: number, y: number) => {
-        const mgr = translateManagerRef;
+        const mgr = ctx.translateManagerRef;
         if (!mgr) return;
         void mgr
           .translateSelection(tabId, text)
@@ -1930,7 +1856,7 @@ void app.whenReady().then(() => {
           });
       },
       restore: (tabId: number) => {
-        void translateManagerRef?.stop(tabId).catch((err) => {
+        void ctx.translateManagerRef?.stop(tabId).catch((err) => {
           log.warn('context-menu restore failed', { tabId, error: String(err) });
         });
       },
@@ -1945,7 +1871,7 @@ void app.whenReady().then(() => {
       sourceUrl?: string;
     }) => {
       if (item.kind === 'text' && item.text) {
-        const docsDir = join(currentDataDir, 'documents');
+        const docsDir = join(ctx.currentDataDir, 'documents');
         try {
           mkdirSync(docsDir, { recursive: true });
         } catch (err) {
@@ -1988,13 +1914,13 @@ void app.whenReady().then(() => {
       }
     },
   };
-  disposeContextMenu = installTabContextMenu(tabManager, contextMenuDeps);
+  ctx.disposeContextMenu = installTabContextMenu(tabManager, contextMenuDeps);
 
   // 创建主窗口：恢复上次会话的窗口几何（尺寸/位置/最大化态，窗口状态记忆）。
   // loadWindowState 已校验记录形状与显示器可见性（拔掉显示器/改分辨率后
   // 自动回退默认 1280x800 居中）；screen 不可用（无头测试环境）按无记录处理。
   let mainWindowOpts: CreateWindowOptions = {};
-  const savedWindowState = loadWindowState(settingsManager, () =>
+  const savedWindowState = loadWindowState(ctx.settingsManager, () =>
     screen.getAllDisplays().map((d) => d.bounds),
   );
   if (savedWindowState) {
@@ -2019,7 +1945,7 @@ void app.whenReady().then(() => {
   // 追踪主窗口几何变更（resize/move 防抖 500ms，maximize/close 立即），
   // 落盘 window.bounds 供下次启动恢复。仅主窗口追踪：拖出的新窗口/
   // macOS activate 重建窗口不参与记忆，避免互相覆盖。
-  trackWindowState(mainWindow.browserWindow, settingsManager);
+  trackWindowState(mainWindow.browserWindow, ctx.settingsManager);
 
   // 主窗口 webContents（新标签页/设置页等 React 内部页）也挂右键菜单：
   // 复制/粘贴可用；保存网页对内部页禁用（handleContextMenu 内部按 urchin:// 前缀判断）。
@@ -2049,7 +1975,7 @@ void app.whenReady().then(() => {
     // 扫描 Provider 注册表（W4：加载已安装的 AI Provider）
     // 先确保内置 OpenAI 兼容 Provider 已部署到 userData/providers 目录
     ensureBuiltinProviders(providersDir);
-    providerRegistry.scan();
+    ctx.providerRegistry.scan();
 
     // Ctrl+滚轮缩放（v2，修复 v1 不生效根因）：
     // before-input-event 在 Electron 32 仅键盘事件触发（滚轮不达），v1 失效；
@@ -2059,18 +1985,18 @@ void app.whenReady().then(() => {
     // 每标签独立、切 tab 保留，无需模块级状态。
     // 用户指令 2026-10-23：不向主窗口注入缩放脚本，避免侧栏/地址栏随 Ctrl+滚轮缩放；
     // 仅网页 BrowserView（中区内容页）参与缩放。
-    disposeZoomControl = installZoomControl(tabManager);
+    ctx.disposeZoomControl = installZoomControl(tabManager);
 
     // 中转区拖拽注入（路径 B）：每个网页 tab 的 did-finish-load 后注入 dragstart
     // 监听脚本。脚本收集选中文字/链接/图片/视频信息，fetch urchin://transit-drag
     // 通知主进程 → 写 md 文档 / 推送 transit:add 到主窗口。
     // 复用 zoom 的 created + 存量补挂 + dispose 模式，不注入 BrowserView preload。
-    disposeDragInjection = installDragInjection(tabManager);
+    ctx.disposeDragInjection = installDragInjection(tabManager);
 
     // M15 DevTools F12 快捷键（dev.121）：对每个网页 tab + 主窗口 webContents
     // 挂 before-input-event，命中 F12 → preventDefault + 推送 devtools:toggle
     // 到渲染层（面板开合唯一状态源）。安装/卸载复用 zoom 的 created + 存量补挂模式。
-    disposeDevtoolsShortcuts = installDevtoolsShortcuts(tabManager, mainWebContents, () =>
+    ctx.disposeDevtoolsShortcuts = installDevtoolsShortcuts(tabManager, mainWebContents, () =>
       sendToMainWindow(DEVTOOLS_TOGGLE_CHANNEL, undefined),
     );
 
@@ -2083,7 +2009,7 @@ void app.whenReady().then(() => {
       (details, callback) => {
         try {
           const u = new URL(details.url);
-          const phPort = piWebHostLauncher?.status().port;
+          const phPort = ctx.piWebHostLauncher?.status().port;
           if (
             phPort &&
             u.port === String(phPort) &&
@@ -2095,7 +2021,7 @@ void app.whenReady().then(() => {
             callback({ redirectURL: 'urchin://pi-icon/' });
             return;
           }
-          const dshPort = dshLauncher?.status().port;
+          const dshPort = ctx.dshLauncher?.status().port;
           if (
             dshPort &&
             u.port === String(dshPort) &&
@@ -2116,7 +2042,7 @@ void app.whenReady().then(() => {
 
     // 初始化收藏夹悬浮面板（子窗口，悬浮于网页之上；随主窗口移动/缩放重定位）。
     // 面板定位避开底部地址栏与右侧边栏：布局尺寸从 view-integration 的 layoutState 读取。
-    bookmarkPanel = new BookmarkPanel({
+    ctx.bookmarkPanel = new BookmarkPanel({
       getParentWindow: () => windowManager.getWindow(mainWindow.id)?.browserWindow ?? null,
       preloadPath: join(__dirname, '..', 'preload', 'index.js'),
       getLayout: () => {
@@ -2131,7 +2057,7 @@ void app.whenReady().then(() => {
 
     // 初始化底部悬浮状态栏（透明子窗口，悬浮于网页之上；网页内容铺到窗口底部）。
     // 状态由主渲染进程经 ui.statusbar.sync 推送；悬浮层动作经 ui.statusbar.action 转发。
-    statusBarOverlay = new StatusBarOverlay({
+    ctx.statusBarOverlay = new StatusBarOverlay({
       getParentWindow: () =>
         (windowManager.getWindow(mainWindow.id)?.browserWindow ??
           null) as unknown as StatusBarHostWindow | null,
@@ -2162,12 +2088,12 @@ void app.whenReady().then(() => {
         // 此回调保留为扩展点，当前无需额外处理。
         void action;
       },
-      getBallY: () => statusBarBall?.getY() ?? null,
+      getBallY: () => ctx.statusBarBall?.getY() ?? null,
     });
     // 悬浮层懒创建：在主渲染同步状态 visible=true（外部网页）时由 applyVisibility 创建。
 
     // 悬浮球：独立透明子窗口，位于网页区右侧；点击切换折叠，拖动滚动网页。
-    statusBarBall = new StatusBarBall({
+    ctx.statusBarBall = new StatusBarBall({
       getParentWindow: () =>
         (windowManager.getWindow(mainWindow.id)?.browserWindow ??
           null) as unknown as StatusBarBallHostWindow | null,
@@ -2185,10 +2111,10 @@ void app.whenReady().then(() => {
           });
         }
       },
-      onToggleCollapse: () => statusBarOverlay?.toggleCollapsed(),
+      onToggleCollapse: () => ctx.statusBarOverlay?.toggleCollapsed(),
       onScroll: (dx, dy) => scrollActivePage(dx, dy),
-      onPositionChanged: () => statusBarOverlay?.refreshPosition(),
-      getBarBounds: () => statusBarOverlay?.getBounds() ?? null,
+      onPositionChanged: () => ctx.statusBarOverlay?.refreshPosition(),
+      getBarBounds: () => ctx.statusBarOverlay?.getBounds() ?? null,
       getLayout: () => {
         const state = getLayoutState();
         return {
@@ -2199,10 +2125,10 @@ void app.whenReady().then(() => {
       },
     });
     // 悬浮球在所有页面常驻（仅全屏/最小化隐藏），启动即创建显示
-    statusBarBall.setVisible(true);
+    ctx.statusBarBall.setVisible(true);
     // 初始下发配置 + 监听灵敏度设置变化
     sendBallConfig();
-    settingsManager.on('changed', (key: string) => {
+    ctx.settingsManager.on('changed', (key: string) => {
       if (key.startsWith('ui.statusBall.')) {
         sendBallConfig();
       }
@@ -2213,14 +2139,14 @@ void app.whenReady().then(() => {
       if (!snapshot.active) return;
       const tab = tabManager.getTab(snapshot.id);
       const fs = tab?.htmlFullscreen ?? false;
-      statusBarOverlay?.setHtmlFullscreen(fs);
-      statusBarBall?.setSuppressed(fs);
+      ctx.statusBarOverlay?.setHtmlFullscreen(fs);
+      ctx.statusBarBall?.setSuppressed(fs);
     });
     tabManager.on('activated', (snapshot) => {
       const tab = tabManager.getTab(snapshot.id);
       const fs = tab?.htmlFullscreen ?? false;
-      statusBarOverlay?.setHtmlFullscreen(fs);
-      statusBarBall?.setSuppressed(fs);
+      ctx.statusBarOverlay?.setHtmlFullscreen(fs);
+      ctx.statusBarBall?.setSuppressed(fs);
     });
 
     markStartup('main:deferred-end');
@@ -2231,8 +2157,8 @@ void app.whenReady().then(() => {
   // 则恢复这些标签（创建 + 激活上次活跃的）；否则创建单个主页占位。
   // 其他工作区的标签不在此恢复——由渲染层在切换到该工作区时懒恢复。
   {
-    const restoreDefault = settingsManager.get('startup.restoreTabs') === true;
-    const savedAll = settingsManager.get('session.lastTabs');
+    const restoreDefault = ctx.settingsManager.get('startup.restoreTabs') === true;
+    const savedAll = ctx.settingsManager.get('session.lastTabs');
     const savedTabs = Array.isArray(savedAll)
       ? (savedAll as { url: string; title: string; workspaceId: string; active: boolean }[])
       : [];
@@ -2301,90 +2227,90 @@ app.on('window-all-closed', () => {
  * 退出清理流程：在进程退出前释放所有原生资源。
  *
  * 清理顺序（先停止外部 I/O，再关闭本地句柄）：
- * 1. orchestrator.disposeAll()：kill 所有 Provider utility process，清理心跳/空闲定时器，关闭 MessagePort
+ * 1. ctx.orchestrator.disposeAll()：kill 所有 Provider utility process，清理心跳/空闲定时器，关闭 MessagePort
  * 2. tabManager.disposeAll()：显式 destroy 所有 tab 的 webContents（释放渲染进程线程 + GPU）
  * 3. windowManager：destroy 所有 BrowserWindow
- * 4. tabViewIntegration.dispose()：清理 tab 事件节流定时器
+ * 4. ctx.tabViewIntegration.dispose()：清理 tab 事件节流定时器
  * 5. 等待短暂宽限期让 utility process 实际退出（kill 信号异步生效）
- * 6. storageLayer.close()：关闭所有 better-sqlite3 连接（main / ai / 命名空间连接池），触发 WAL checkpoint
+ * 6. ctx.storageLayer.close()：关闭所有 better-sqlite3 连接（main / ai / 命名空间连接池），触发 WAL checkpoint
  *
  * 设计要点：
  * - 异步执行并 await disposeAll，确保子进程 kill 信号发出后再继续
- * - 使用 isCleaningUp + cleanupDone 双标志位处理 before-quit 重入
+ * - 使用 ctx.isCleaningUp + ctx.cleanupDone 双标志位处理 before-quit 重入
  * - 清理完成后由调用方 app.exit(0) 真正退出
  */
 async function performCleanup(): Promise<void> {
-  if (isCleaningUp) return;
-  isCleaningUp = true;
+  if (ctx.isCleaningUp) return;
+  ctx.isCleaningUp = true;
   try {
     // 0. abort 所有活跃 AI 流（chat + agent）
-    //    必须在 orchestrator.disposeAll 之前调用：先 abort 流间接触发 stream.ts / pi-event-bridge.ts
+    //    必须在 ctx.orchestrator.disposeAll 之前调用：先 abort 流间接触发 stream.ts / pi-event-bridge.ts
     //    的 cleanup()，释放 listener 和 rendererPort；再 disposeAll kill 子进程。
     //    若先 kill 子进程，stream 会因 port 断开间接终止，但 cleanup() 不会被调用，listener 泄漏。
-    if (aiHandlersDispose) {
+    if (ctx.aiHandlersDispose) {
       try {
-        aiHandlersDispose();
+        ctx.aiHandlersDispose();
       } catch (e) {
         log.error('Failed to dispose AI handlers on quit', { error: String(e) });
       }
-      aiHandlersDispose = null;
+      ctx.aiHandlersDispose = null;
     }
 
     // 0.52 终止 pi 阶段 2 托管服务 utility 子进程（ADR-014：常驻服务随应用退出终止）
-    if (piWebHostLauncher) {
+    if (ctx.piWebHostLauncher) {
       try {
-        await piWebHostLauncher.dispose();
+        await ctx.piWebHostLauncher.dispose();
       } catch (e) {
         log.error('Failed to dispose piWebHost launcher on quit', { error: String(e) });
       }
-      piWebHostLauncher = null;
+      ctx.piWebHostLauncher = null;
     }
 
     // 0.55 停 GenOffice Rust sidecar 子进程（dev.109 上游 shell 的 before-quit 对应钩子；
     //      Windows 上父进程退出不自动杀 spawn 子进程，不显式停会遗留 xlsx-sidecar.exe）
-    if (genofficeIntegration) {
+    if (ctx.genofficeIntegration) {
       try {
-        genofficeIntegration.stopProcesses();
+        ctx.genofficeIntegration.stopProcesses();
       } catch (e) {
         log.error('Failed to stop genoffice sidecar on quit', { error: String(e) });
       }
     }
 
     // 0.6 终止 DeepSeek Harness 子进程树 + 解绑标签关闭监听
-    unbindDshTabClose?.();
-    unbindDshTabClose = null;
-    if (dshLauncher) {
+    ctx.unbindDshTabClose?.();
+    ctx.unbindDshTabClose = null;
+    if (ctx.dshLauncher) {
       try {
-        await dshLauncher.dispose();
+        await ctx.dshLauncher.dispose();
       } catch (e) {
         log.error('Failed to dispose dsh launcher on quit', { error: String(e) });
       }
-      dshLauncher = null;
+      ctx.dshLauncher = null;
     }
 
     // 0.65 卸载 DevTools 管理器（CDP 会话清理）+ F12 快捷键监听——dev.121
-    if (disposeDevtoolsManager) {
+    if (ctx.disposeDevtoolsManager) {
       try {
-        disposeDevtoolsManager();
+        ctx.disposeDevtoolsManager();
       } catch (e) {
         log.error('Failed to dispose devtools manager on quit', { error: String(e) });
       }
-      disposeDevtoolsManager = null;
+      ctx.disposeDevtoolsManager = null;
     }
-    if (disposeDevtoolsShortcuts) {
+    if (ctx.disposeDevtoolsShortcuts) {
       try {
-        disposeDevtoolsShortcuts();
+        ctx.disposeDevtoolsShortcuts();
       } catch (e) {
         log.error('Failed to dispose devtools shortcuts on quit', { error: String(e) });
       }
-      disposeDevtoolsShortcuts = null;
+      ctx.disposeDevtoolsShortcuts = null;
     }
 
     // 1. 清理 AI Provider 子进程（utility process）+ 定时器 + MessagePort
-    if (orchestrator) {
+    if (ctx.orchestrator) {
       try {
         // await 确保 disposeAll 内所有 kill/postMessage/port.close 同步执行完毕
-        await orchestrator.disposeAll();
+        await ctx.orchestrator.disposeAll();
       } catch (e) {
         log.error('Failed to dispose orchestrator on quit', { error: String(e) });
       }
@@ -2394,7 +2320,7 @@ async function performCleanup(): Promise<void> {
     //     始终保存（不受 startup.restoreTabs 开关影响——其他工作区懒恢复需要此数据）。
     //     过滤掉总览页和 GenOffice 编辑器（瞬态视图/需预构建视图，不可恢复）。
     try {
-      const tabSnapshots = tabManager
+      const tabSnapshots = ctx.tabManager
         .query({})
         .filter(
           (t) =>
@@ -2406,7 +2332,7 @@ async function performCleanup(): Promise<void> {
           workspaceId: t.workspaceId,
           active: t.active,
         }));
-      settingsManager.set('session.lastTabs', tabSnapshots);
+      ctx.settingsManager.set('session.lastTabs', tabSnapshots);
       log.info('tab session persisted', { count: tabSnapshots.length });
     } catch (e) {
       log.error('Failed to persist tab session', { error: String(e) });
@@ -2414,14 +2340,14 @@ async function performCleanup(): Promise<void> {
 
     // 2. 显式销毁所有 tab 的 webContents（BrowserView webContents 不会随 window 自动回收）
     try {
-      tabManager.disposeAll();
+      ctx.tabManager.disposeAll();
     } catch (e) {
       log.error('Failed to dispose tabs on quit', { error: String(e) });
     }
 
     // 3. 销毁所有 BrowserWindow
     try {
-      for (const win of windowManager.getAllWindows()) {
+      for (const win of ctx.windowManager.getAllWindows()) {
         if (!win.browserWindow.isDestroyed()) {
           win.browserWindow.destroy();
         }
@@ -2431,71 +2357,71 @@ async function performCleanup(): Promise<void> {
     }
 
     // 4. 清理 tab 集成的节流定时器（view-integration.ts 的 updatedThrottleTimer）
-    if (tabViewIntegration) {
+    if (ctx.tabViewIntegration) {
       try {
-        tabViewIntegration.dispose();
+        ctx.tabViewIntegration.dispose();
       } catch (e) {
         log.error('Failed to dispose tabViewIntegration on quit', { error: String(e) });
       }
-      tabViewIntegration = null;
+      ctx.tabViewIntegration = null;
     }
 
     // 4.5 移除右键菜单的 created 监听（webContents 的 context-menu 监听随 destroy 释放）
-    if (disposeContextMenu) {
+    if (ctx.disposeContextMenu) {
       try {
-        disposeContextMenu();
+        ctx.disposeContextMenu();
       } catch (e) {
         log.error('Failed to dispose context menu on quit', { error: String(e) });
       }
-      disposeContextMenu = null;
+      ctx.disposeContextMenu = null;
     }
 
     // 4.6 移除 Ctrl+滚轮缩放的 created 监听（webContents 的 before-input-event 随 destroy 释放）
-    if (disposeZoomControl) {
+    if (ctx.disposeZoomControl) {
       try {
-        disposeZoomControl();
+        ctx.disposeZoomControl();
       } catch (e) {
         log.error('Failed to dispose zoom control on quit', { error: String(e) });
       }
-      disposeZoomControl = null;
+      ctx.disposeZoomControl = null;
     }
 
     // 4.6a 移除中转区拖拽注入的 created/did-finish-load 监听
-    if (disposeDragInjection) {
+    if (ctx.disposeDragInjection) {
       try {
-        disposeDragInjection();
+        ctx.disposeDragInjection();
       } catch (e) {
         log.error('Failed to dispose drag injection on quit', { error: String(e) });
       }
-      disposeDragInjection = null;
+      ctx.disposeDragInjection = null;
     }
 
     // 4.6.1 销毁底部悬浮状态栏子窗口（不受 WindowManager 管理，需显式释放）
-    if (statusBarOverlay) {
+    if (ctx.statusBarOverlay) {
       try {
-        statusBarOverlay.destroy();
+        ctx.statusBarOverlay.destroy();
       } catch (e) {
         log.error('Failed to dispose status bar overlay on quit', { error: String(e) });
       }
-      statusBarOverlay = null;
+      ctx.statusBarOverlay = null;
     }
-    if (statusBarBall) {
+    if (ctx.statusBarBall) {
       try {
-        statusBarBall.destroy();
+        ctx.statusBarBall.destroy();
       } catch (e) {
         log.error('Failed to dispose status bar ball on quit', { error: String(e) });
       }
-      statusBarBall = null;
+      ctx.statusBarBall = null;
     }
 
     // 4.9 网页翻译管理器清理（dev.79）：停 pending 轮询、移除 did-finish-load 钩子、清每 tab 状态
-    if (disposeTranslateManager) {
+    if (ctx.disposeTranslateManager) {
       try {
-        disposeTranslateManager();
+        ctx.disposeTranslateManager();
       } catch (e) {
         log.error('Failed to dispose translate manager on quit', { error: String(e) });
       }
-      disposeTranslateManager = null;
+      ctx.disposeTranslateManager = null;
     }
 
     // 5. 宽限期：utility process 的 kill 信号已发出但进程实际退出需要短暂时间，
@@ -2503,20 +2429,20 @@ async function performCleanup(): Promise<void> {
     await new Promise<void>((resolve) => setTimeout(resolve, 150));
 
     // 6. 关闭 SQLite 数据库连接（释放 better-sqlite3 原生线程，触发 WAL checkpoint）
-    if (storageLayer) {
+    if (ctx.storageLayer) {
       try {
-        storageLayer.close();
+        ctx.storageLayer.close();
       } catch (e) {
         log.error('Failed to close storageLayer on quit', { error: String(e) });
       }
-      storageLayer = null;
+      ctx.storageLayer = null;
     }
 
-    cleanupDone = true;
+    ctx.cleanupDone = true;
     log.info('cleanup completed, exiting process');
   } catch (e) {
     log.error('Unexpected error during cleanup', { error: String(e) });
-    cleanupDone = true;
+    ctx.cleanupDone = true;
   }
 }
 
@@ -2524,11 +2450,11 @@ async function performCleanup(): Promise<void> {
  * before-quit：Electron 退出流程的最后机会，覆盖所有平台（含 macOS Cmd+Q）。
  *
  * 第一次进入：preventDefault 阻止默认退出 → 异步执行 performCleanup → 完成后 app.exit(0)。
- * app.exit(0) 会再次触发 before-quit，此时 cleanupDone=true 直接放行，进程真正退出。
+ * app.exit(0) 会再次触发 before-quit，此时 ctx.cleanupDone=true 直接放行，进程真正退出。
  */
 app.on('before-quit', (event) => {
-  if (cleanupDone) return; // 清理已完成，让默认退出继续
-  if (isCleaningUp) {
+  if (ctx.cleanupDone) return; // 清理已完成，让默认退出继续
+  if (ctx.isCleaningUp) {
     // 清理进行中，阻止重复退出
     event.preventDefault();
     return;

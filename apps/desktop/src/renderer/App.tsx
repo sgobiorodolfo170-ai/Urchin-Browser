@@ -19,18 +19,17 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppTitleBar } from './components/app-titlebar';
-import { MailView } from './mail/MailView';
-import { NotebookView } from './notebook/NotebookView';
 import { parseTransitDrag } from './transit/drag-utils';
 import { resolveDroppedFilePath } from './transit/file-path';
-import { SettingsPage } from './settings/SettingsPage';
-import { NewTabPage } from './home/NewTabPage';
-import { GenOfficeHome } from './home/GenOfficeHome';
-import { FileViewer } from './files/FileViewer';
 import { DevToolsPanel } from './devtools/DevToolsPanel';
 import { DEVTOOLS_TOGGLE_CHANNEL } from '@urchin/ipc-contract';
-import { ConfirmDialog } from './components/ui/confirm-dialog';
-import { getEditGuardSession, closeNeedsGuard, switchNeedsGuard } from './lib/edit-guard';
+import {
+  getEditGuardSession,
+  closeNeedsGuard,
+  switchNeedsGuard,
+  type EditorGuardAsk,
+} from './lib/edit-guard';
+import { ContentArea } from './content/ContentArea';
 import { useTheme } from './theme/theme-provider';
 import type { StatusBarState, StatusBarAction } from '@urchin/ipc-contract';
 import type { Suggestion } from './omnibox/types';
@@ -38,10 +37,7 @@ import { buildSuggestions } from './omnibox/build-suggestions';
 import { cn } from './lib/utils';
 import { getCurrentWindowId } from './lib/current-window';
 import type { WorkspaceSwitcherMode } from './workspaces/WorkspaceSwitcher';
-import {
-  WorkspaceOverviewPage,
-  type WorkspaceOverviewItem,
-} from './workspaces/WorkspaceOverviewPage';
+import type { WorkspaceOverviewItem } from './workspaces/WorkspaceOverviewPage';
 import { TabCardContextMenu } from './workspaces/TabCardContextMenu';
 import { WorkspaceManagerDialog } from './workspaces/WorkspaceManagerDialog';
 import { captureWindowSnapshot } from './workspaces/window-snapshot';
@@ -53,9 +49,6 @@ import { RightSidebar } from './sidebar/RightSidebar';
 import { useWindowDrag } from './lib/use-window-drag';
 import {
   BOTTOM_HEIGHT,
-  CONTENT_ZOOM_MAX,
-  CONTENT_ZOOM_MIN,
-  CONTENT_ZOOM_STEP,
   LEFT_COLLAPSED,
   LEFT_EXPANDED,
   RIGHT_COLLAPSED,
@@ -142,36 +135,13 @@ export function App() {
   const workspaceSnapshotInFlightRef = useRef(false);
   /** 各工作区上次快照时间（滚轮快速切换时限流，避免每步都抓图卡顿）。 */
   const lastWorkspaceSnapshotAtRef = useRef<Record<string, number>>({});
-  /** 内容区 DOM 引用：整窗快照叠加网页截图时用于取 BrowserView 对应矩形。 */
-  const contentAreaRef = useRef<HTMLDivElement | null>(null);
-  /** 中区内部页缩放倍率（Ctrl+滚轮；网页标签由主进程单独缩放 BrowserView）。 */
-  const [contentZoom, setContentZoom] = useState(1);
-  /** 笔记页不参与内容区 Ctrl+滚轮缩放（画布有自己的滚轮缩放），用 ref 在 wheel 闭包里读取。 */
-  const isNotebookTabRef = useRef(false);
+  /** 内容区 DOM 引用：整窗快照叠加网页截图时用于取 BrowserView 对应矩形
+   *  （ref 传给 ContentArea 挂载，真源仍在 App；类型与侧栏 asideRef 同模式）。 */
+  const contentAreaRef = useRef<HTMLDivElement>(null);
   /** M15 DevTools 检视列开关（F12 / 侧栏按钮触发 devtools:toggle）。 */
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
   /** 检视列宽度（0 = 折叠；拖宽时同步主进程 BrowserView bounds）。 */
   const [devtoolsWidth, setDevtoolsWidth] = useState(360);
-
-  // Ctrl+滚轮仅缩放中区内部页（设置/主页/邮箱等 React 页面）。
-  // 侧边栏与地址栏尺寸保持固定；网页标签的缩放由主进程注入脚本作用于 BrowserView，
-  // 不会经过这里，因此也不会带动浏览器 chrome 缩放。
-  useEffect(() => {
-    const el = contentAreaRef.current;
-    if (!el) return undefined;
-    const handleWheel = (e: WheelEvent): void => {
-      if (!e.ctrlKey) return;
-      // 笔记页画布自行处理滚轮缩放，且页面整体不应被 Ctrl+滚轮缩放
-      if (isNotebookTabRef.current) return;
-      e.preventDefault();
-      setContentZoom((prev) => {
-        const raw = e.deltaY < 0 ? prev * CONTENT_ZOOM_STEP : prev / CONTENT_ZOOM_STEP;
-        return Math.min(CONTENT_ZOOM_MAX, Math.max(CONTENT_ZOOM_MIN, Math.round(raw * 100) / 100));
-      });
-    };
-    el.addEventListener('wheel', handleWheel, { passive: false });
-    return () => el.removeEventListener('wheel', handleWheel);
-  }, []);
 
   /** 每工作区最近一次激活的标签（切回该工作区时恢复）。 */
   const lastActiveByWorkspaceRef = useRef<Record<string, number>>({});
@@ -590,11 +560,7 @@ export function App() {
     [doSelectTab],
   );
 
-  const [editorGuardAsk, setEditorGuardAsk] = useState<{
-    kind: 'close' | 'switch';
-    tabId: number;
-    run: () => void;
-  } | null>(null);
+  const [editorGuardAsk, setEditorGuardAsk] = useState<EditorGuardAsk | null>(null);
 
   // 编辑器轻提示（保存失败等）：稳定引用（useEditSession 依赖稳定性需要）
   const showEditorToast = useCallback((msg: string): void => {
@@ -717,17 +683,9 @@ export function App() {
 
   // ===== 网页翻译（M24 dev.81） =====
 
-  /** 翻译激活态镜像（活跃 tab；地址栏按钮高亮/恢复原文判定，主进程为权威源） */
+  /** 翻译激活态镜像（活跃 tab；地址栏按钮高亮/恢复原文判定，主进程为权威源；
+   *  悬浮状态栏快照消费，真源留在 App。划词结果卡在 ContentArea。） */
   const [translateActive, setTranslateActive] = useState(false);
-
-  /** 划词翻译结果卡（右键菜单 → 主进程翻译 → translate:selection-result 事件回传；坐标为窗口相对坐标） */
-  const [selectionCard, setSelectionCard] = useState<{
-    x: number;
-    y: number;
-    source: string;
-    result?: string;
-    error?: string;
-  } | null>(null);
 
   /**
    * 网页翻译开关（地址栏按钮）：未激活 → translate.start（引擎/目标语言取设置）；
@@ -775,7 +733,7 @@ export function App() {
     };
   }, [activeTabId, activeTab?.url]);
 
-  // 翻译进度事件 + 划词结果卡事件订阅（只响应活跃 tab，避免后台 tab 噪音）
+  // 翻译进度事件订阅（只响应活跃 tab，避免后台 tab 噪音；划词结果卡订阅在 ContentArea）
   useEffect(() => {
     const offProgress = window.urchin.on('translate:progress', (payload) => {
       const data = payload as {
@@ -802,27 +760,8 @@ export function App() {
         setActionToast(data.message ?? '翻译失败');
       }
     });
-    const offSelection = window.urchin.on('translate:selection-result', (payload) => {
-      const data = payload as {
-        tabId: number;
-        source: string;
-        result?: string;
-        error?: string;
-        x: number;
-        y: number;
-      };
-      if (data.tabId !== activeTabIdRef.current) return;
-      setSelectionCard({
-        x: data.x,
-        y: data.y,
-        source: data.source,
-        result: data.result,
-        error: data.error,
-      });
-    });
     return () => {
       offProgress();
-      offSelection();
     };
   }, []);
 
@@ -1619,18 +1558,13 @@ export function App() {
     void notifyLayout(leftWidth, rightWidth, devtoolsOpen ? devtoolsWidth : 0);
   }, [devtoolsOpen, devtoolsWidth, leftWidth, rightWidth, notifyLayout]);
 
-  // 中区内容判断
+  // 中区内容页判断（供整窗快照叠加判定 / 状态栏导航禁用判定；
+  // 内容分支渲染已迁至 ContentArea，两处各自做纯派生、无状态真源）
   // 注意：urchin://settings 会被 Electron URL 规范化为带末尾斜杠，
   // 所以用 startsWith 判断而非严格相等，避免匹配失败导致组件不渲染。
   const isSettingsTab = !!activeTab?.url?.startsWith('urchin://settings');
   const isMailTab = !!activeTab?.url?.startsWith('urchin://mail');
   const isNotebookTab = !!activeTab?.url?.startsWith('urchin://notebook');
-  isNotebookTabRef.current = isNotebookTab;
-
-  // 进入笔记页时重置内容区缩放：笔记页不参与 Ctrl+滚轮缩放，避免残留倍率导致三区不铺满。
-  useEffect(() => {
-    if (isNotebookTab) setContentZoom(1);
-  }, [isNotebookTab]);
   const isGenOfficeHomeTab = !!activeTab?.url?.startsWith('urchin://genoffice-home');
   const isNewTab = !!activeTab?.url?.startsWith('urchin://newtab');
   const isWorkspacesTab = !!activeTab?.url?.startsWith('urchin://workspaces');
@@ -1654,16 +1588,6 @@ export function App() {
     isFileViewerTab ||
     isGenOfficeTab;
 
-  // 设置页深链参数（?tab=<key>）：调用方以 key 绑定该值驱动 SettingsPage 初始选项卡
-  const settingsInitialTab = (() => {
-    if (!isSettingsTab) return undefined;
-    try {
-      const value = new URL(activeTab?.url ?? '').searchParams.get('tab');
-      return value ?? undefined;
-    } catch {
-      return undefined;
-    }
-  })();
   // ── TP7 工作区操作 ──
 
   /**
@@ -1823,6 +1747,65 @@ export function App() {
       if (ws) handleSwitchWorkspace(ws.id);
     },
     [handleCreateWorkspace, handleSwitchWorkspace],
+  );
+
+  // 工作区总览页（urchin://workspaces）点卡切换：激活该工作区的最近激活标签（或第一个），
+  // 再关闭总览页；空工作区则新建主页标签。原为 WorkspaceOverviewPage JSX 内联闭包，
+  // 随 ContentArea 抽取提升为具名回调（逻辑原样，闭包依赖不变）。
+  const handleOverviewSwitch = useCallback(
+    (workspaceId: string) => {
+      void (async () => {
+        // 排除总览页自身：总览 tab 归属当前工作区，若将其作为「最近激活标签」
+        // 激活后再关闭，会导致主进程移除 active tab 时自动激活到任意剩余 tab
+        const list = tabs.filter(
+          (t) =>
+            (t.workspaceId ?? DEFAULT_WORKSPACE_ID) === workspaceId &&
+            !t.url.startsWith('urchin://workspaces'),
+        );
+        const last = lastActiveByWorkspaceRef.current[workspaceId];
+        const target = list.find((t) => t.id === last) ?? list[0];
+        setCurrentWorkspaceId(workspaceId);
+        if (target) {
+          // 先激活目标标签（总览页变为 inactive），再关闭总览页；
+          // 否则关闭 active 的总览页会让主进程激活任意剩余 tab
+          if (target.id !== activeTabId) await doSelectTab(target.id);
+        } else {
+          // 空工作区：新建主页标签（目标工作区）
+          const windowId = await getCurrentWindowId();
+          await window.urchin.invoke('tab.create', {
+            windowId,
+            url: 'urchin://newtab',
+            active: true,
+            workspaceId,
+          });
+        }
+        // 此刻总览页已非 active，安全关闭
+        if (activeTabId != null) handleCloseTab(activeTabId);
+      })();
+    },
+    [tabs, activeTabId, doSelectTab, handleCloseTab],
+  );
+
+  // 工作区总览页新建工作区：创建后切到新工作区——先在工作区内新建主页标签（await 确保
+  // 标签已激活），再关闭总览页——否则关闭总览页时标签管理器会自动激活旧工作区的标签，
+  // 导致 currentWorkspaceId 被同步回旧工作区，新创建的工作区看起来像被"自动删除"了。
+  // 空工作区在 registry 中持久化保留，不因无存储标签而被删除。
+  const handleOverviewCreate = useCallback(
+    async (name: string, color: WorkspaceColor) => {
+      const ws = await handleCreateWorkspace(name, color);
+      if (ws) {
+        setCurrentWorkspaceId(ws.id);
+        const windowId = await getCurrentWindowId();
+        await window.urchin.invoke('tab.create', {
+          windowId,
+          url: 'urchin://newtab',
+          active: true,
+          workspaceId: ws.id,
+        });
+        if (activeTabId != null) handleCloseTab(activeTabId);
+      }
+    },
+    [handleCreateWorkspace, activeTabId, handleCloseTab],
   );
 
   const handleUpdateWorkspace = useCallback(
@@ -2051,8 +2034,10 @@ export function App() {
   ]);
 
   // ── 底部悬浮状态栏：状态同步 + 动作分发 ──
-  // 状态栏为独立透明子窗口（main/status-bar/status-bar-overlay.ts），主渲染进程
-  // 仍是 tab/建议/书签/toast/主题 的单一真源；此处组装快照并同步给主进程转发。
+  // 状态栏为独立透明子窗口悬浮于网页之上（main/status-bar/status-bar-overlay.ts），
+  // 不在主窗口 React 层渲染。主渲染进程仍是 tab/建议/书签/toast/主题 的单一真源；
+  // 此处组装快照经 ui.statusbar.sync 同步给主进程转发，用户动作经 ui.statusbar.action
+  // 回传分发到既有 handler（见下方 effect）。
   const statusBarState = useMemo<StatusBarState>(() => {
     // 所有页面（含 GenOffice 与 pi 聊天页）均用悬浮地址栏
     const statusBarVisible = true;
@@ -2238,206 +2223,25 @@ export function App() {
             onOpenSettings={() => void handleOpenSettings()}
           />
 
-          {/* === 中间列：ContentArea + 下侧地址栏 === */}
-          <main className="flex flex-1 flex-col overflow-hidden">
-            {/* ContentArea
-             *  背景透明：透出窗口级统一渐变。本 div 位于网页 BrowserView 之下，
-             *  DPI 取整级缝隙处会透出此层，因此不能再使用独立 surface 色块；
-             *  内部页面（设置/主页/文件查看器）自带满幅背景，不受影响。 */}
-            <div ref={contentAreaRef} className="flex-1 overflow-hidden bg-transparent">
-              {/* 中区内部页缩放容器（Ctrl+滚轮）：仅缩放内容，侧栏/地址栏尺寸固定 */}
-              <div
-                className="h-full w-full"
-                style={
-                  contentZoom === 1
-                    ? undefined
-                    : {
-                        width: `${100 / contentZoom}%`,
-                        height: `${100 / contentZoom}%`,
-                        transform: `scale(${contentZoom})`,
-                        transformOrigin: 'top left',
-                      }
-                }
-              >
-                {
-                  isSettingsTab ? (
-                    /* 设置页：React 组件渲染；key 随 ?tab= 深链变化重挂载以定位选项卡 */
-                    <SettingsPage
-                      key={settingsInitialTab ?? 'settings'}
-                      initialTab={settingsInitialTab}
-                    />
-                  ) : isMailTab ? (
-                    /* M25 邮箱模块：IMAP 收信 + 邮件阅读（ADR-010）。
-                     * 引擎在主进程（imapflow），UI 在渲染进程，IPC 走 zod 契约。 */
-                    <MailView />
-                  ) : isNotebookTab ? (
-                    /* M27 笔记 / 便利贴：三区（导航 / 笔记任务 / 无限画布）。
-                     * 状态持久化到 settings 键 notebook.state。 */
-                    <NotebookView />
-                  ) : isGenOfficeHomeTab && !isGenOfficeTab ? (
-                    /* GenOffice 文档主页保底（阶段 4.6）：正常情况下主进程以
-                     *  GenOffice shell Home 视图承载（viewKind=genoffice，React 留空）；
-                     *  仅当 shell 产物缺失时回落本 React 页面（浏览器标签） */
-                    <GenOfficeHome onOpenFile={() => void handleOpenFilePicker()} />
-                  ) : isNewTab || tabs.length === 0 ? (
-                    /* 主页：React 组件渲染（内嵌，无法自由更换）。
-                     * 关闭最后一个标签后 activeTab 为空，此时同样回落到主页 */
-                    <NewTabPage onNavigate={(url) => void handleNavigate(url)} />
-                  ) : isWorkspacesTab ? (
-                    /* 工作区总览页（urchin://workspaces，参考 ego-lite Space 卡片设计）：
-                     * 卡片网格展示全部工作区 + 各工作区网页缩略图；点卡切换并关闭本页
-                     * 注：即使目标 == 当前工作区（例如总览页本身归属当前工作区），
-                     * 也需主动激活其最近激活标签，避免关闭总览页后主进程回落到任意 tab */
-                    <WorkspaceOverviewPage
-                      items={workspaceOverviewItems}
-                      currentWorkspaceId={currentWorkspaceId}
-                      onSwitch={(workspaceId) => {
-                        void (async () => {
-                          // 排除总览页自身：总览 tab 归属当前工作区，若将其作为「最近激活标签」
-                          // 激活后再关闭，会导致主进程移除 active tab 时自动激活到任意剩余 tab
-                          const list = tabs.filter(
-                            (t) =>
-                              (t.workspaceId ?? DEFAULT_WORKSPACE_ID) === workspaceId &&
-                              !t.url.startsWith('urchin://workspaces'),
-                          );
-                          const last = lastActiveByWorkspaceRef.current[workspaceId];
-                          const target = list.find((t) => t.id === last) ?? list[0];
-                          setCurrentWorkspaceId(workspaceId);
-                          if (target) {
-                            // 先激活目标标签（总览页变为 inactive），再关闭总览页；
-                            // 否则关闭 active 的总览页会让主进程激活任意剩余 tab
-                            if (target.id !== activeTabId) await doSelectTab(target.id);
-                          } else {
-                            // 空工作区：新建主页标签（目标工作区）
-                            const windowId = await getCurrentWindowId();
-                            await window.urchin.invoke('tab.create', {
-                              windowId,
-                              url: 'urchin://newtab',
-                              active: true,
-                              workspaceId,
-                            });
-                          }
-                          // 此刻总览页已非 active，安全关闭
-                          if (activeTabId != null) handleCloseTab(activeTabId);
-                        })();
-                      }}
-                      onCreate={async (name, color) => {
-                        const ws = await handleCreateWorkspace(name, color);
-                        // 创建后切到新工作区：先在工作区内新建主页标签（await 确保标签
-                        // 已激活），再关闭总览页——否则关闭总览页时标签管理器会自动激活
-                        // 旧工作区的标签，导致 currentWorkspaceId 被同步回旧工作区，
-                        // 新创建的工作区看起来像被"自动删除"了。
-                        // 空工作区在 registry 中持久化保留，不因无存储标签而被删除。
-                        if (ws) {
-                          setCurrentWorkspaceId(ws.id);
-                          const windowId = await getCurrentWindowId();
-                          await window.urchin.invoke('tab.create', {
-                            windowId,
-                            url: 'urchin://newtab',
-                            active: true,
-                            workspaceId: ws.id,
-                          });
-                          if (activeTabId != null) handleCloseTab(activeTabId);
-                        }
-                      }}
-                    />
-                  ) : isFileViewerTab ? (
-                    /* 本地文件查看器/文件夹浏览器：React 组件渲染（urchin://file-viewer），
-                     * ?path= 查看文件（媒体/PDF/图片内嵌 + 同类型连续切换），?dir= 浏览文件夹。
-                     * onNavigate 走 handleNavigate：同标签导航（上/下一个、进入子目录）不堆标签 */
-                    <FileViewer
-                      url={activeTab?.url ?? ''}
-                      onNavigate={(u) => void handleNavigate(u)}
-                      tabId={activeTabId ?? undefined}
-                      onToast={showEditorToast}
-                    />
-                  ) : null /* 普通网页：由 Electron BrowserView 渲染，React 仅留空 */
-                }
-              </div>
-            </div>
-
-            {/* 编辑守卫确认弹窗（关闭/切换标签时目标涉及脏编辑会话） */}
-            <ConfirmDialog
-              open={editorGuardAsk !== null}
-              title={editorGuardAsk?.kind === 'close' ? '关闭前保存更改？' : '切换前保存更改？'}
-              message="当前文档有未保存的修改。（保存写入原文件；失败可改用查看器右上角「另存为」）"
-              onDismiss={() => setEditorGuardAsk(null)}
-              actions={[
-                {
-                  label: editorGuardAsk?.kind === 'close' ? '保存并关闭' : '保存并切换',
-                  variant: 'primary',
-                  autoFocus: true,
-                  onClick: () => {
-                    void (async () => {
-                      const s = getEditGuardSession();
-                      if (!s || !editorGuardAsk) {
-                        setEditorGuardAsk(null);
-                        return;
-                      }
-                      const ok = await s.save();
-                      setEditorGuardAsk(null);
-                      if (ok) editorGuardAsk.run();
-                    })();
-                  },
-                },
-                {
-                  label: '不保存',
-                  variant: 'danger',
-                  onClick: () => {
-                    void (async () => {
-                      const s = getEditGuardSession();
-                      const ask = editorGuardAsk;
-                      setEditorGuardAsk(null);
-                      if (s && ask) await s.discard();
-                      if (ask) ask.run();
-                    })();
-                  },
-                },
-                {
-                  label: '取消',
-                  onClick: () => setEditorGuardAsk(null),
-                },
-              ]}
-            />
-
-            {/* 底部状态栏已改为独立透明子窗口悬浮于网页之上（main/status-bar/status-bar-overlay.ts），
-             * 不再在主窗口 React 层渲染。状态经 ui.statusbar.sync 同步给悬浮层，
-             * 用户动作经 ui.statusbar.action 回传（见下方 effect）。 */}
-
-            {/* 划词翻译结果卡（M24 dev.81）：右键菜单触发，主进程翻译后经事件回传。
-             * 定位用右键菜单同款窗口相对坐标（已含 BrowserView 偏移补偿），防溢出夹边。
-             * 注意：BrowserView 在网页标签时覆盖主窗口 React，此卡仅在落入底部状态栏区域或
-             * 内部 React 页面时可见；网页中部命中时层级受限是既有行为，本次不改变。 */}
-            {!isGenOfficeTab && !isGenOfficeHomeTab && selectionCard && (
-              <div
-                className="fixed z-50 max-w-md rounded-lg border border-border bg-surface p-3 shadow-dropdown"
-                style={{
-                  left: Math.max(8, Math.min(selectionCard.x, window.innerWidth - 420)),
-                  top: Math.min(selectionCard.y + 12, window.innerHeight - 180),
-                }}
-              >
-                <div className="mb-1.5 flex items-start justify-between gap-3">
-                  <div
-                    className="min-w-0 flex-1 truncate text-xs text-text-secondary"
-                    title={selectionCard.source}
-                  >
-                    {selectionCard.source}
-                  </div>
-                  <button
-                    type="button"
-                    className="shrink-0 text-text-secondary hover:text-text"
-                    onClick={() => setSelectionCard(null)}
-                    aria-label="关闭划词翻译"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="whitespace-pre-wrap text-sm leading-relaxed text-text">
-                  {selectionCard.error ?? selectionCard.result}
-                </div>
-              </div>
-            )}
-          </main>
+          {/* === 中间列：ContentArea（内容区 + 编辑守卫弹窗 + 划词翻译卡） ===
+           *  展示组件见 content/ContentArea.tsx（refactor-plan-p2 §2.3 步骤 4）；
+           *  标签/工作区/守卫触发的真源仍在 App（tab 生命周期被侧栏列表、
+           *  右键菜单、tab:event 弹回守卫多处消费）。 */}
+          <ContentArea
+            contentAreaRef={contentAreaRef}
+            activeTab={activeTab}
+            activeTabId={activeTabId}
+            tabCount={tabs.length}
+            onNavigate={(url) => void handleNavigate(url)}
+            onOpenFilePicker={() => void handleOpenFilePicker()}
+            onFileViewerToast={showEditorToast}
+            workspaceOverviewItems={workspaceOverviewItems}
+            currentWorkspaceId={currentWorkspaceId}
+            onOverviewSwitch={handleOverviewSwitch}
+            onOverviewCreate={handleOverviewCreate}
+            guardAsk={editorGuardAsk}
+            onGuardDismiss={() => setEditorGuardAsk(null)}
+          />
 
           {/* M15 DevTools 检视列（F12 开关；右侧栏左侧的第三列） */}
           {devtoolsOpen && (

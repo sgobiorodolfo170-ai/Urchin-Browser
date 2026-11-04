@@ -39,3 +39,10 @@ export function closeNeedsGuard(tabId: number): boolean {
 export function switchNeedsGuard(targetTabId: number): boolean {
   return active !== null && active.tabId !== targetTabId && active.isDirty();
 }
+
+/** 三键确认请求（关闭/切换守卫弹出）：run 为用户确认后要继续执行的落位动作。 */
+export interface EditorGuardAsk {
+  kind: 'close' | 'switch';
+  tabId: number;
+  run: () => void;
+}

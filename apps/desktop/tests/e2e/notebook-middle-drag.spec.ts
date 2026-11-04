@@ -18,6 +18,10 @@ test('middle-button drags sticky anywhere', async () => {
       NODE_ENV: 'production',
       PLAYWRIGHT: '1',
       URCHIN_TEST_USER_DATA: userDataDir,
+      // 数据目录也隔离到临时目录：共享设置库中残留的 notebook.state（上次运行
+      // 的笔记/便利贴）会让 [data-sticky].first() 选中错误元素，用例互污
+      // （见 workspaces.spec 同款注释）。
+      URCHIN_TEST_DATA_DIR: join(userDataDir, 'data'),
       NODE_OPTIONS: '',
     },
     timeout: 30_000,

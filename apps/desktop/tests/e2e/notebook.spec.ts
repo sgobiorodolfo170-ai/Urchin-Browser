@@ -31,6 +31,10 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
       NODE_ENV: 'production',
       PLAYWRIGHT: '1',
       URCHIN_TEST_USER_DATA: userDataDir,
+      // 数据目录也隔离到临时目录：笔记状态（notebook.state）存在共享设置库中，
+      // 不隔离则上次运行打开的笔记（activeNoteId）会让「新建笔记」按钮隐藏，
+      // 用例互污（见 workspaces.spec 同款注释）。
+      URCHIN_TEST_DATA_DIR: join(userDataDir, 'data'),
       NODE_OPTIONS: '',
     },
     timeout: 30_000,

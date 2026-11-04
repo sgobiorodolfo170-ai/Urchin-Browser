@@ -122,6 +122,10 @@ async function launchApp(
       NODE_ENV: 'production',
       PLAYWRIGHT: '1',
       URCHIN_TEST_USER_DATA: userDataDir,
+      // 数据目录也隔离到临时目录：翻译设置（translate.engine / translate.autoTranslate）
+      // 存在共享设置库中，用户真实设置（如 autoTranslate=true）会让翻译用例
+      // 点击后实际执行恢复原文（见 workspaces.spec 同款注释）。
+      URCHIN_TEST_DATA_DIR: join(userDataDir, 'data'),
       NODE_OPTIONS: '',
       ...env,
     },

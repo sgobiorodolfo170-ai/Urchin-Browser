@@ -10,18 +10,15 @@ import { useDevtools } from './use-devtools';
 import { NetworkView } from './network-view';
 import { ConsoleView } from './console-view';
 import { EvaluateBox } from './evaluate-box';
+import type { TabSnapshot } from '../tabs/types';
 
 /** 检视列范围尺寸 */
 const MIN_WIDTH = 260;
 const MAX_WIDTH = 720;
 
 export interface DevToolsPanelProps {
-  /** 当前活跃标签 id（用于「绑定当前标签」按钮） */
-  activeTabId: number | null;
-  /** 当前活跃标签标题（面板头部显示） */
-  activeTabTitle: string;
-  /** 当前活跃标签是否可检视（非内部页/genoffice） */
-  activeTabInspectable: boolean;
+  /** 当前活跃标签快照（标题/绑定/可检视判定均由此派生，派生逻辑在组件内） */
+  activeTab: TabSnapshot | null;
   /** 列宽变化通知（同步主进程 BrowserView bounds） */
   onWidthChange: (width: number) => void;
   /** 当前面板宽度（受外部折叠/展开控制） */
@@ -31,7 +28,13 @@ export interface DevToolsPanelProps {
 type ViewTab = 'network' | 'console' | 'evaluate';
 
 export function DevToolsPanel(props: DevToolsPanelProps): React.ReactElement {
-  const { activeTabId, activeTabTitle, activeTabInspectable, onWidthChange, width } = props;
+  const { activeTab, onWidthChange, width } = props;
+  // 活跃标签派生（refactor-plan-p2 §2.3 步骤 5：原 App JSX 内联派生迁入唯一消费方）
+  const activeTabId = activeTab?.id ?? null;
+  const activeTabTitle = activeTab?.title ?? activeTab?.url ?? '';
+  /** 当前活跃标签是否可检视（非内部页/genoffice） */
+  const activeTabInspectable =
+    !!activeTab && !activeTab.url?.startsWith('urchin://') && activeTab.viewKind !== 'genoffice';
   const dt = useDevtools();
   const [view, setView] = useState<ViewTab>('network');
   const [resizing, setResizing] = useState(false);

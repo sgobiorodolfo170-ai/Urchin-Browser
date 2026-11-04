@@ -22,7 +22,7 @@ import { AppTitleBar } from './components/app-titlebar';
 import { parseTransitDrag } from './transit/drag-utils';
 import { resolveDroppedFilePath } from './transit/file-path';
 import { DevToolsPanel } from './devtools/DevToolsPanel';
-import { DEVTOOLS_TOGGLE_CHANNEL } from '@urchin/ipc-contract';
+import { useDevtoolsColumn } from './devtools/use-devtools-column';
 import {
   getEditGuardSession,
   closeNeedsGuard,
@@ -138,10 +138,9 @@ export function App() {
   /** 内容区 DOM 引用：整窗快照叠加网页截图时用于取 BrowserView 对应矩形
    *  （ref 传给 ContentArea 挂载，真源仍在 App；类型与侧栏 asideRef 同模式）。 */
   const contentAreaRef = useRef<HTMLDivElement>(null);
-  /** M15 DevTools 检视列开关（F12 / 侧栏按钮触发 devtools:toggle）。 */
-  const [devtoolsOpen, setDevtoolsOpen] = useState(false);
-  /** 检视列宽度（0 = 折叠；拖宽时同步主进程 BrowserView bounds）。 */
-  const [devtoolsWidth, setDevtoolsWidth] = useState(360);
+  // M15 DevTools 检视列开合/宽度（真源仍归 App：width 驱动主进程 BrowserView
+  // bounds；hook 收拢状态与 F12 订阅，见 devtools/use-devtools-column.ts）
+  const { devtoolsOpen, devtoolsWidth, setDevtoolsWidth } = useDevtoolsColumn();
 
   /** 每工作区最近一次激活的标签（切回该工作区时恢复）。 */
   const lastActiveByWorkspaceRef = useRef<Record<string, number>>({});
@@ -242,19 +241,6 @@ export function App() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleOpenFilePicker]);
-
-  // M15 DevTools F12 toggle 订阅（主进程 before-input-event 拦截 F12 → 推送 devtools:toggle）。
-  // 渲染层为面板开合唯一状态源；列宽随开合同步主进程 BrowserView bounds。
-  useEffect(() => {
-    const off = window.urchin.on(DEVTOOLS_TOGGLE_CHANNEL, () => {
-      setDevtoolsOpen((prev) => {
-        const next = !prev;
-        setDevtoolsWidth(next ? 360 : 0);
-        return next;
-      });
-    });
-    return off;
-  }, []);
 
   // 通用 toast 自动消失（3 秒后清除）
   useEffect(() => {
@@ -2243,16 +2229,12 @@ export function App() {
             onGuardDismiss={() => setEditorGuardAsk(null)}
           />
 
-          {/* M15 DevTools 检视列（F12 开关；右侧栏左侧的第三列） */}
+          {/* M15 DevTools 检视列（F12 开关；右侧栏左侧的第三列）。
+           *  开合/宽度真源在 App（useDevtoolsColumn：width 驱动主进程
+           *  BrowserView bounds），派生逻辑在 DevToolsPanel 内部。 */}
           {devtoolsOpen && (
             <DevToolsPanel
-              activeTabId={activeTabId ?? null}
-              activeTabTitle={activeTab?.title ?? activeTab?.url ?? ''}
-              activeTabInspectable={
-                !!activeTab &&
-                !activeTab.url?.startsWith('urchin://') &&
-                activeTab.viewKind !== 'genoffice'
-              }
+              activeTab={activeTab}
               onWidthChange={setDevtoolsWidth}
               width={devtoolsWidth}
             />

@@ -78,6 +78,7 @@ import { installDragInjection, type TransitDragData } from './transit/drag-injec
 import { resolvePortableUserData } from './portable';
 import { installDevtoolsShortcuts } from './devtools';
 import type { AppContext } from './bootstrap/app-context';
+import { installEventLoopWatchdog } from './bootstrap/watchdog';
 import { performCleanup } from './lifecycle/cleanup';
 import { registerIpcHandlers } from './bootstrap/handlers';
 
@@ -208,27 +209,7 @@ process.stderr.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EPIPE') return;
 });
 
-/**
- * 事件循环阻塞 watchdog（2026-08-17 加，排查主进程偶发 100% CPU 卡死）。
- *
- * 现象：主进程偶发占满一个核（采样到 3s/3s），期间浏览器窗口冻结。
- * 若为异步事件风暴型阻塞（IPC 高频、setBounds 风暴等），定时器延迟会暴露：
- * 每 500ms 一个 tick，检测到延迟 >2s 即把调用栈打到 stderr——下次卡死可定位热点。
- * 注意：同步死循环会连 tick 都跑不了（watchdog 自身也被占），此种情况靠外部采样。
- */
-function installEventLoopWatchdog(): void {
-  let last = Date.now();
-  const tick = (): void => {
-    const now = Date.now();
-    const lag = now - last - 500;
-    if (lag > 2000) {
-      console.error(`[watchdog] event loop blocked ${lag}ms`, new Error('blocked').stack);
-    }
-    last = now;
-    setTimeout(tick, 500);
-  };
-  setTimeout(tick, 500);
-}
+// 事件循环阻塞 watchdog（自 bootstrap/watchdog.ts，原位调用保持启动时序）
 installEventLoopWatchdog();
 
 /**

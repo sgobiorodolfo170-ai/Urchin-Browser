@@ -15,6 +15,11 @@ import { getCurrentWindowId } from '../lib/current-window';
 import { displayNameForLocale } from '../../shared/brand';
 import { useSettings } from './use-settings';
 import { SettingsSection, type SettingField } from './settings-form';
+import { AiSection } from './sections/AiSection';
+import { ClipperSection } from './sections/ClipperSection';
+import { DataSection } from './sections/DataSection';
+import { GeneralSection } from './sections/GeneralSection';
+import { PrivacySection } from './sections/PrivacySection';
 
 // 类型定义（FieldType/SettingField/ProfileApi 等）与共享表单机件
 // （SettingsSection/FieldControl/ProfileSelect/toStr）在 ./settings-form
@@ -52,80 +57,6 @@ const TABS: readonly TabDef[] = [
 
 // ───────────────── 设置项分组（按选项卡组织） ─────────────────
 
-const GENERAL_FIELDS: readonly SettingField[] = [
-  {
-    key: 'language',
-    label: '界面语言',
-    desc: '应用界面显示语言（默认中文）',
-    type: 'select',
-    options: [
-      { value: 'zh-CN', label: '简体中文' },
-      { value: 'en-US', label: 'English' },
-    ],
-  },
-  {
-    key: 'searchEngine',
-    label: '搜索引擎',
-    desc: '地址栏搜索使用的引擎（与 parse-input 的 SEARCH_ENGINE_TEMPLATES 表对应）',
-    type: 'select',
-    options: [
-      { value: 'google', label: 'Google' },
-      { value: 'bing', label: 'Bing' },
-      { value: 'baidu', label: '百度' },
-      { value: 'duckduckgo', label: 'DuckDuckGo' },
-      { value: 'sogou', label: '搜狗' },
-      { value: 'so360', label: '360 搜索' },
-    ],
-  },
-  {
-    key: 'links.openInNewTab',
-    label: '在新标签页打开链接',
-    desc: '点击网页内链接时在新标签页打开（关闭则在当前标签页打开）',
-    type: 'toggle',
-  },
-  {
-    key: 'startup.restoreTabs',
-    label: '启动时继续浏览上次打开的网页',
-    desc: '关闭浏览器时保存当前打开的标签页，下次启动时自动恢复默认工作区的标签；其他工作区的标签在切换到该工作区时自动恢复',
-    type: 'toggle',
-  },
-  {
-    key: 'translate.targetLang',
-    label: '网页翻译目标语言',
-    desc: '整页翻译与划词翻译的目标语言（默认简体中文）',
-    type: 'select',
-    options: [
-      { value: 'zh-CN', label: '简体中文' },
-      { value: 'zh-TW', label: '繁體中文' },
-      { value: 'en', label: 'English' },
-      { value: 'ja', label: '日本語' },
-      { value: 'ko', label: '한국어' },
-      { value: 'fr', label: 'Français' },
-      { value: 'de', label: 'Deutsch' },
-      { value: 'ru', label: 'Русский' },
-      { value: 'es', label: 'Español' },
-    ],
-  },
-  {
-    key: 'translate.engine',
-    label: '翻译引擎',
-    desc: '自动（推荐）：直连网络优先 MyMemory 翻译、走代理优先谷歌翻译，引擎失败自动切换至其他可用引擎（三引擎互为兜底）；也可手动锁定单一引擎。注：微软免费端点已于 2026-09 关闭，保留选项但可能不可用',
-    type: 'select',
-    options: [
-      { value: 'auto', label: '自动（推荐）' },
-      { value: 'mymemory', label: 'MyMemory 翻译（国内直连可用）' },
-      { value: 'google', label: '谷歌翻译（需代理）' },
-      { value: 'microsoft', label: '微软翻译（端点已关闭，可能不可用）' },
-    ],
-  },
-  {
-    key: 'translate.autoTranslate',
-    label: '自动翻译外语页面',
-    desc: '开启后打开外语网页时自动翻译为目标语言（默认关闭）。隐私提示：翻译时页面文本将发送至所选翻译服务（微软/谷歌）；关闭时仅在手动点击翻译后发送',
-    type: 'toggle',
-  },
-];
-
 const OPS_FIELDS: readonly SettingField[] = [
   {
     key: 'ui.rightSidebarAutoExpand',
@@ -162,110 +93,6 @@ const OPS_FIELDS: readonly SettingField[] = [
       { value: 'wheel', label: '滚轮循环切换' },
       { value: 'cards', label: '点击卡片' },
     ],
-  },
-];
-
-const CLIPPER_FIELDS: readonly SettingField[] = [
-  {
-    key: 'clipper.defaultFormat',
-    label: '默认保存格式',
-    desc: '打开剪藏面板时预选的格式。MHTML/PDF/截图用于图文网页存档；OCR 暂未实现',
-    type: 'select',
-    options: [
-      { value: 'markdown', label: 'Markdown（可编辑）' },
-      { value: 'mhtml', label: 'MHTML（图文整页）' },
-      { value: 'pdf', label: 'PDF（打印版）' },
-      { value: 'screenshot', label: '截图（整页 PNG）' },
-    ],
-  },
-  {
-    key: 'clipper.cleanSnapshot',
-    label: '快照默认正文清洗',
-    desc: 'MHTML/PDF/截图默认使用 Defuddle 正文重新排版，去掉广告、导航、侧栏等；关闭则保留原页版式',
-    type: 'toggle',
-  },
-  {
-    key: 'clipper.selectionPriority',
-    label: '优先剪藏选中内容',
-    desc: 'Markdown 剪藏时，如果页面有选中文本则优先使用选中内容；可在面板中临时切换',
-    type: 'toggle',
-  },
-  {
-    key: 'clipper.loadLazyContent',
-    label: '快照前滚动加载懒加载内容',
-    desc: '快照格式保存前先分步滚动页面，尽量加载懒加载图片（最多 20 步，可能较慢）',
-    type: 'toggle',
-  },
-  {
-    key: 'clipper.trimBoilerplate',
-    label: '剪除正文末尾信息栏',
-    desc: '自动去掉正文末尾的「来源：/作者：/评论：/责编：」等中文信息栏短行（只剪末尾连续短行，不动正文中间的合法引用）',
-    type: 'toggle',
-  },
-  {
-    key: 'clipper.localizeImages',
-    label: 'Markdown 剪藏时下载图片到本地',
-    desc: '剪藏为 Markdown 时把远程图片下载到 assets/ 目录，md 中改为本地相对路径。下载失败的图片保留原链接。需 GenOffice 编辑器可用',
-    type: 'toggle',
-  },
-  {
-    key: 'clipper.noteNameFormat',
-    label: '文件名模板',
-    desc: '支持 {{title}} / {{date}} / {{domain}} 等变量；最终文件名由主进程净化',
-    type: 'text',
-  },
-  {
-    key: 'clipper.properties',
-    label: '页面属性模板',
-    desc: '每行一条「key: 值模板」，保存为 YAML frontmatter。留空则不生成属性区。可用变量：{{title}} {{url}} {{author}} {{published}} {{date}} {{description}} {{site}} {{content}} {{selection}}',
-    type: 'textarea',
-    rows: 8,
-  },
-  {
-    key: 'clipper.content',
-    label: '正文模板',
-    desc: 'Markdown 正文模板；{{content}} 为抽取正文，{{selection}} 为选中内容。属性区之外的内容都写在这里',
-    type: 'textarea',
-    rows: 5,
-  },
-];
-
-/** 剪藏保存目录说明（固定路径，不开放修改） */
-function ClipperLocationHint() {
-  return (
-    <div className="mt-4 rounded-md border border-border bg-surface-secondary px-4 py-3 text-xs leading-6 text-text-secondary">
-      <div className="text-sm font-medium text-text">保存位置</div>
-      所有剪藏文件固定保存到 <code className="rounded bg-surface px-1">documents/clipper</code>
-      （用户数据目录下）。Markdown / MHTML / PDF / 截图共用该目录，重名自动追加序号。
-      <br />
-      MHTML 为只读图文快照，可在浏览器 MHTML 查看器中打开；也可从 GenOffice 文档主页打开。
-    </div>
-  );
-}
-
-const DATA_FIELDS: readonly SettingField[] = [
-  {
-    key: 'data.directory',
-    label: '数据存储位置',
-    desc: '书签、历史、设置、截图、下载、网页保存的根目录（留空使用默认位置）。修改后重启生效；pi 对话数据与设置固定存于 userData/pi，不随此目录变动',
-    type: 'directory',
-  },
-  {
-    key: 'downloadsPath',
-    label: '下载位置',
-    desc: '下载保存目录（留空 = 每次下载询问保存位置，确认时可设为默认）',
-    type: 'directory',
-  },
-];
-
-const PRIVACY_FIELDS: readonly SettingField[] = [
-  { key: 'blockTrackers', label: '拦截追踪器', desc: '阻止第三方追踪脚本', type: 'toggle' },
-  { key: 'doNotTrack', label: '请勿追踪', desc: '发送 DNT 头', type: 'toggle' },
-  {
-    key: 'blockAds',
-    label: '屏蔽广告浮窗',
-    desc: '隐藏网页内悬浮/弹窗类广告（如固定悬浮广告层、弹窗遮罩）',
-    type: 'toggle',
   },
 ];
 
@@ -344,52 +171,13 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-8 py-6 pb-16">
           {activeTab === 'general' && (
-            <>
-              <SettingsSection
-                title="通用"
-                fields={GENERAL_FIELDS}
-                entries={entries}
-                onChange={updateField}
-              />
-              <ImportBookmarksBlock onToast={showToast} />
-            </>
+            <GeneralSection entries={entries} onChange={updateField} onToast={showToast} />
           )}
-          {activeTab === 'clipper' && (
-            <>
-              <SettingsSection
-                title="剪藏"
-                fields={CLIPPER_FIELDS}
-                entries={entries}
-                onChange={updateField}
-              />
-              <ClipperLocationHint />
-            </>
-          )}
+          {activeTab === 'clipper' && <ClipperSection entries={entries} onChange={updateField} />}
           {activeTab === 'ops' && <OpsTab entries={entries} onChange={updateField} />}
-          {activeTab === 'ai' && (
-            <section>
-              <h1 className="mb-6 text-2xl font-semibold">AI 助手</h1>
-              <div className="rounded-md border border-border bg-surface-secondary px-6 py-12 text-center">
-                <p className="text-sm text-text-secondary">AI 助手功能正在开发中，敬请期待。</p>
-              </div>
-            </section>
-          )}
-          {activeTab === 'data' && (
-            <SettingsSection
-              title="数据"
-              fields={DATA_FIELDS}
-              entries={entries}
-              onChange={updateField}
-            />
-          )}
-          {activeTab === 'privacy' && (
-            <SettingsSection
-              title="隐私与安全"
-              fields={PRIVACY_FIELDS}
-              entries={entries}
-              onChange={updateField}
-            />
-          )}
+          {activeTab === 'ai' && <AiSection />}
+          {activeTab === 'data' && <DataSection entries={entries} onChange={updateField} />}
+          {activeTab === 'privacy' && <PrivacySection entries={entries} onChange={updateField} />}
           {activeTab === 'files' && <FilesTab onToast={showToast} />}
           {activeTab === 'help' && <HelpTab />}
           {activeTab === 'feedback' && <FeedbackTab />}
@@ -1225,164 +1013,6 @@ interface GroupStatus {
   readonly registered: number;
   readonly total: number;
   readonly extensions: readonly string[];
-}
-
-/**
- * 「从其他浏览器导入收藏夹」区块（通用选项卡底部，dev.119）。
- *
- * 交互：
- * - 「从书签 HTML 文件导入…」→ import.bookmarksFromFile（主进程弹文件选择器）
- * - 「检测本机浏览器」→ import.detectBrowsers → 列表，每行「导入收藏夹」按钮
- *   → import.bookmarksFromBrowser（按 id 导入指定 profile）
- * - 结果 toast：「已导入 N 个书签、M 个文件夹（跳过 K）」；取消时 toast「已取消」
- *
- * 导入的书签放入收藏夹根目录下「导入自 <浏览器> (YYYY-MM-DD)」文件夹，
- * 完整保留原目录结构，可整夹删除回退（详见 docs/数据导入评估.md）。
- */
-function ImportBookmarksBlock({ onToast }: { readonly onToast: (msg: string) => void }) {
-  const [browsers, setBrowsers] = useState<ImportedBrowserInfo[]>([]);
-  const [detecting, setDetecting] = useState(false);
-  const [importing, setImporting] = useState<string | null>(null);
-  const [fileImporting, setFileImporting] = useState(false);
-
-  const handleDetect = useCallback(async () => {
-    setDetecting(true);
-    try {
-      const res = (await window.urchin.invoke('import.detectBrowsers', {})) as {
-        browsers: ImportedBrowserInfo[];
-      };
-      setBrowsers(res.browsers ?? []);
-      if ((res.browsers ?? []).length === 0) {
-        onToast('未检测到可导入的浏览器');
-      }
-    } catch (e) {
-      onToast('检测失败：' + String(e));
-    } finally {
-      setDetecting(false);
-    }
-  }, [onToast]);
-
-  const handleFromFile = useCallback(async () => {
-    setFileImporting(true);
-    try {
-      const res = (await window.urchin.invoke('import.bookmarksFromFile', {})) as {
-        canceled: boolean;
-        summary: ImportSummaryInfo | null;
-      };
-      if (res.canceled || !res.summary) {
-        onToast('已取消');
-        return;
-      }
-      onToast(summaryToast(res.summary));
-    } catch (e) {
-      onToast('导入失败：' + String(e));
-    } finally {
-      setFileImporting(false);
-    }
-  }, [onToast]);
-
-  const handleFromBrowser = useCallback(
-    async (id: string) => {
-      setImporting(id);
-      try {
-        const res = (await window.urchin.invoke('import.bookmarksFromBrowser', { id })) as {
-          canceled: boolean;
-          summary: ImportSummaryInfo | null;
-        };
-        if (res.canceled || !res.summary) {
-          onToast('已取消');
-          return;
-        }
-        onToast(summaryToast(res.summary));
-      } catch (e) {
-        onToast('导入失败：' + String(e));
-      } finally {
-        setImporting(null);
-      }
-    },
-    [onToast],
-  );
-
-  return (
-    <section className="mt-8">
-      <h2 className="mb-2 text-lg font-semibold">从其他浏览器导入</h2>
-      <p className="mb-4 text-sm text-text-secondary">
-        导入 Chrome / Edge / Firefox 的收藏夹，或从书签 HTML 文件导入。导入的书签会放入
-        收藏夹根目录下「导入自 &lt;浏览器&gt;
-        (&lt;日期&gt;)」文件夹，完整保留原目录结构，可整夹删除回退。
-      </p>
-
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={fileImporting}
-          onClick={() => void handleFromFile()}
-        >
-          {fileImporting ? '导入中…' : '从书签 HTML 文件导入…'}
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={detecting}
-          onClick={() => void handleDetect()}
-        >
-          {detecting ? '检测中…' : '检测本机浏览器'}
-        </Button>
-      </div>
-
-      {browsers.length > 0 && (
-        <div className="mt-4 space-y-2">
-          {browsers.map((b) => {
-            const key = b.id;
-            return (
-              <div
-                key={key}
-                className="flex items-center justify-between rounded-md border border-border bg-surface-secondary px-4 py-2.5"
-              >
-                <div className="min-w-0">
-                  <div className="font-medium">{b.displayName}</div>
-                  <div className="mt-0.5 text-xs text-text-secondary">{b.profileName}</div>
-                </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={importing === b.id}
-                  onClick={() => void handleFromBrowser(b.id)}
-                >
-                  {importing === b.id ? '导入中…' : '导入收藏夹'}
-                </Button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
-
-/** 已检测浏览器 profile 的最小结构（与 ipc-contract ImportedBrowser 对齐）。 */
-interface ImportedBrowserInfo {
-  readonly id: string;
-  readonly kind: 'chrome' | 'edge' | 'firefox';
-  readonly displayName: string;
-  readonly profileName: string;
-  readonly profileDir: string;
-  readonly bookmarksSource: 'chromium-json' | 'firefox-places';
-}
-
-/** 导入结果摘要（与 ipc-contract ImportSummary 对齐）。 */
-interface ImportSummaryInfo {
-  readonly folders: number;
-  readonly bookmarks: number;
-  readonly skipped: number;
-  readonly rootFolderId: string;
-  readonly rootFolderTitle: string;
-}
-
-/** 摘要 → toast 文案。 */
-function summaryToast(s: ImportSummaryInfo): string {
-  return `已导入 ${s.bookmarks} 个书签、${s.folders} 个文件夹${s.skipped > 0 ? `（跳过 ${s.skipped}）` : ''}`;
 }
 
 /**

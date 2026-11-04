@@ -19,8 +19,6 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Plus,
-  X,
   Moon,
   Sun,
   Settings as SettingsIcon,
@@ -45,15 +43,12 @@ import { DevToolsPanel } from './devtools/DevToolsPanel';
 import { DEVTOOLS_TOGGLE_CHANNEL } from '@urchin/ipc-contract';
 import { ConfirmDialog } from './components/ui/confirm-dialog';
 import { getEditGuardSession, closeNeedsGuard, switchNeedsGuard } from './lib/edit-guard';
-import { useDragScroll } from './lib/use-drag-scroll';
-import { lookupBuiltinSite, builtinIconUrl } from './home/site-directory-lookup';
 import { useTheme } from './theme/theme-provider';
 import type { StatusBarState, StatusBarAction } from '@urchin/ipc-contract';
 import type { Suggestion } from './omnibox/types';
 import { buildSuggestions } from './omnibox/build-suggestions';
 import { cn } from './lib/utils';
 import { getCurrentWindowId } from './lib/current-window';
-import { getGenOfficeTabIcon } from './components/genoffice-icons';
 import { WorkspaceBar } from './workspaces/WorkspaceBar';
 import { WorkspaceSwitcher, type WorkspaceSwitcherMode } from './workspaces/WorkspaceSwitcher';
 import {
@@ -65,32 +60,21 @@ import { WorkspaceManagerDialog } from './workspaces/WorkspaceManagerDialog';
 import { captureWindowSnapshot } from './workspaces/window-snapshot';
 import type { Workspace, WorkspaceColor } from './workspaces/types';
 import { DEFAULT_WORKSPACE_ID } from './workspaces/types';
-
-// Tab 快照类型（与主进程 TabSnapshot 对齐）
-interface TabSnapshot {
-  readonly id: number;
-  readonly windowId: number;
-  readonly url: string;
-  readonly title: string;
-  readonly favicon?: string;
-  readonly active: boolean;
-  readonly loading: boolean;
-  readonly canGoBack: boolean;
-  readonly canGoForward: boolean;
-  readonly crashed: boolean;
-  readonly indexInWindow: number;
-  /** 视图类型（阶段 2 GenOffice 融合）：genoffice = 编辑器视图，隐藏地址栏 */
-  readonly viewKind?: 'browser' | 'genoffice';
-  /** 编辑器未保存修改标记（侧栏脏点） */
-  readonly dirty?: boolean;
-  /** 所属工作区（TP7）：决定 session 分区；缺失时按 'default' 处理 */
-  readonly workspaceId?: string;
-}
-
-interface TabEventPayload {
-  readonly type: 'created' | 'updated' | 'removed' | 'activated' | 'crashed';
-  readonly snapshot: TabSnapshot;
-}
+import { TabBar } from './tabs/TabBar';
+import type { TabEventPayload, TabSnapshot } from './tabs/types';
+import {
+  BOTTOM_HEIGHT,
+  CONTENT_ZOOM_MAX,
+  CONTENT_ZOOM_MIN,
+  CONTENT_ZOOM_STEP,
+  LEFT_COLLAPSED,
+  LEFT_EXPANDED,
+  RIGHT_COLLAPSED,
+  RIGHT_EXPANDED,
+  RIGHT_MAX,
+  RIGHT_MIN,
+  RIGHT_SIDEBAR_WIDTH_KEY,
+} from './lib/layout-constants';
 
 declare global {
   interface Window {
@@ -116,22 +100,7 @@ declare global {
   }
 }
 
-/** 布局尺寸常量（与主进程 view-integration.ts 对齐） */
-const LEFT_EXPANDED = 220;
-const LEFT_COLLAPSED = 44;
-const RIGHT_EXPANDED = 360;
-const RIGHT_COLLAPSED = 44;
-const BOTTOM_HEIGHT = 48;
-/** Ctrl+滚轮内部页缩放步长与范围（仅作用于中区 React 内容，侧栏/地址栏不受影响） */
-const CONTENT_ZOOM_STEP = 1.1;
-const CONTENT_ZOOM_MIN = 0.25;
-const CONTENT_ZOOM_MAX = 5;
-/** 右侧边栏宽度拖拽调节范围（px） */
-const RIGHT_MIN = 120;
-const RIGHT_MAX = 600;
-/** 右侧边栏宽度持久化 settings key（拖拽调节后记录位置，重启恢复） */
-const RIGHT_SIDEBAR_WIDTH_KEY = 'ui.rightSidebarWidth';
-
+/** URL → 安全状态（地址栏锁图标）：https 视为安全，其余不安全 */
 function getSecurityState(url: string): 'secure' | 'insecure' | 'mixed' {
   if (url.startsWith('https://')) return 'secure';
   return 'insecure';
@@ -139,101 +108,6 @@ function getSecurityState(url: string): 'secure' | 'insecure' | 'mixed' {
 
 function isBookmarkable(url: string): boolean {
   return /^https?:\/\//i.test(url);
-}
-
-/** 标签页图标（展开态与折叠态共用）：
- *  加载中 → spinner；崩溃 → 红叉；urchin://settings → 齿轮；
- *  普通网页 → 优先封装库内置图标（site-directory 命中 → 本地 /sites/<key>.png，离线可用），
- *  未命中内置 → 网页真实 favicon（主进程 page-favicon-updated 抓取）；
- *  图标加载失败逐级回退，皆不可用 → 灰点占位。 */
-function TabFavicon({ tab, className }: { tab: TabSnapshot; className?: string }) {
-  if (tab.loading) {
-    return (
-      <div
-        className={cn(
-          'shrink-0 animate-spin rounded-full border-2 border-primary border-t-transparent',
-          className ?? 'h-3 w-3',
-        )}
-      />
-    );
-  }
-  if (tab.crashed) {
-    return <X className={cn('shrink-0 text-error', className ?? 'h-3 w-3')} />;
-  }
-  if (tab.url?.startsWith('urchin://settings')) {
-    return <SettingsIcon className={cn('shrink-0 text-text-secondary', className ?? 'h-3 w-3')} />;
-  }
-  // 内部页标签图标与左侧栏入口按钮对齐（settings/ai 已上方处理）
-  if (tab.url?.startsWith('urchin://newtab')) {
-    return <Home className={cn('shrink-0 text-text-secondary', className ?? 'h-3 w-3')} />;
-  }
-  if (tab.url?.startsWith('urchin://mail')) {
-    return <MailIcon className={cn('shrink-0 text-text-secondary', className ?? 'h-3 w-3')} />;
-  }
-  if (tab.url?.startsWith('urchin://notebook')) {
-    return <PenLine className={cn('shrink-0 text-text-secondary', className ?? 'h-3 w-3')} />;
-  }
-  if (tab.url?.startsWith('urchin://genoffice')) {
-    const iconClass = cn('shrink-0', className ?? 'h-3 w-3');
-    const genofficeIcon = getGenOfficeTabIcon(tab.url, iconClass);
-    if (genofficeIcon) return genofficeIcon;
-    return <FileText className={cn('shrink-0 text-text-secondary', className ?? 'h-3 w-3')} />;
-  }
-  const builtin = lookupBuiltinSite(tab.url ?? '');
-  const builtinSrc = builtin ? builtinIconUrl(builtin) : undefined;
-  return (
-    <TabSiteIcon
-      src={builtinSrc ?? tab.favicon}
-      fallbackSrc={builtinSrc && tab.favicon ? tab.favicon : undefined}
-      className={className}
-    />
-  );
-}
-
-/** 标签页网站图标 <img>：加载失败逐级回退（内置图标 → 网页 favicon → 浏览器图标半透明占位）。
- *  src 变化（同一标签页导航到新站点）时重置回退状态，重新从最新源尝试。 */
-function TabSiteIcon({
-  src,
-  fallbackSrc,
-  className,
-}: {
-  src?: string;
-  fallbackSrc?: string;
-  className?: string;
-}) {
-  const [step, setStep] = useState(0);
-  useEffect(() => {
-    setStep(0);
-  }, [src, fallbackSrc]);
-  // 过滤空源并去重：首个加载失败后严格推进到下一候选，两个都失败才显示占位。
-  // 旧实现 step>0 时始终取 fallbackSrc，fallback 也失败会反复渲染破图。
-  const sourceList = [src, fallbackSrc].filter(
-    (value): value is string => typeof value === 'string' && value.length > 0,
-  );
-  const sources = sourceList.filter((value, index) => sourceList.indexOf(value) === index);
-  const current = sources[step];
-  if (!current) {
-    // 完全无法识别（无内置图标、网页无 favicon 或加载失败）：
-    // 用浏览器图标半透明占位，淡化显示避免与真实站点图标混淆
-    // 相对路径：生产页面从 file:// 加载，绝对路径会解析到磁盘根导致 404
-    return (
-      <img
-        src="./browser-icon.png"
-        alt=""
-        draggable={false}
-        className={cn('shrink-0 object-contain opacity-40', className ?? 'h-3 w-3')}
-      />
-    );
-  }
-  return (
-    <img
-      src={current}
-      alt=""
-      draggable={false}
-      className={cn('shrink-0 object-contain', className ?? 'h-3 w-3')}
-      onError={() => setStep((s) => s + 1)}
-    />
-  );
 }
 
 /**
@@ -381,10 +255,6 @@ export function App() {
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
   /** 检视列宽度（0 = 折叠；拖宽时同步主进程 BrowserView bounds）。 */
   const [devtoolsWidth, setDevtoolsWidth] = useState(360);
-  /** 展开态标签列表滚动容器（隐藏滚动条；长按左键上下拖动平移）。 */
-  const expandedTabListRef = useDragScroll<HTMLDivElement>();
-  /** 折叠态标签图标列表滚动容器（同上）。 */
-  const collapsedTabListRef = useDragScroll<HTMLDivElement>();
 
   // Ctrl+滚轮仅缩放中区内部页（设置/主页/邮箱等 React 页面）。
   // 侧边栏与地址栏尺寸保持固定；网页标签的缩放由主进程注入脚本作用于 BrowserView，
@@ -1412,6 +1282,21 @@ export function App() {
 
   const handleTabPointerEnd = useCallback(() => {
     tabDragRef.current = null;
+  }, []);
+
+  /** 标签卡片右键菜单：记录点击位置与标签快照（跨工作区打开/关闭标签）。 */
+  const handleTabContextMenu = useCallback((e: React.MouseEvent, tab: TabSnapshot) => {
+    e.preventDefault();
+    setTabCardMenu({
+      x: e.clientX,
+      y: e.clientY,
+      tab: {
+        id: tab.id,
+        url: tab.url,
+        title: tab.title || tab.url || '新标签页',
+        workspaceId: tab.workspaceId ?? DEFAULT_WORKSPACE_ID,
+      },
+    });
   }, []);
 
   const handleNavigate = useCallback(
@@ -2847,93 +2732,18 @@ export function App() {
                 />
 
                 {/* 标签列表：凸起悬浮感（卡片浮于底色之上，带阴影 + 微光边框 + 顶部高光） */}
-                <div className="flex-1 overflow-hidden flex flex-col">
-                  <div
-                    ref={expandedTabListRef}
-                    className="flex-1 select-none overflow-y-auto p-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                  >
-                    {visibleTabs.length === 0 && (
-                      <p className="px-2 py-4 text-center text-xs text-text-secondary">
-                        暂无标签页
-                      </p>
-                    )}
-                    {visibleTabs.map((tab) => (
-                      <div
-                        key={tab.id}
-                        data-tab-card
-                        draggable={false}
-                        onPointerDown={(e) => handleTabPointerDown(e, tab)}
-                        onPointerMove={handleTabPointerMove}
-                        onPointerUp={handleTabPointerEnd}
-                        onPointerCancel={handleTabPointerEnd}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          setTabCardMenu({
-                            x: e.clientX,
-                            y: e.clientY,
-                            tab: {
-                              id: tab.id,
-                              url: tab.url,
-                              title: tab.title || tab.url || '新标签页',
-                              workspaceId: tab.workspaceId ?? DEFAULT_WORKSPACE_ID,
-                            },
-                          });
-                        }}
-                        className={cn(
-                          // 凸起悬浮感：圆角卡片 + 投影 + 细边框 + 顶部高光线；
-                          // 激活态更亮（主色投影 + 高对比文字）
-                          'group relative mb-1.5 flex cursor-default items-center gap-2 rounded-lg border px-2.5 py-2 text-sm shadow-sm',
-                          'border-border/60 bg-surface',
-                          'before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:rounded-full before:bg-white/70',
-                          tab.id === activeTabId
-                            ? 'border-primary/40 bg-surface text-text shadow-[0_2px_8px_-2px_rgba(37,99,235,0.35)]'
-                            : 'text-text-secondary shadow-[0_1px_4px_-1px_rgba(0,0,0,0.25)] hover:bg-surface-secondary hover:text-text',
-                        )}
-                        onClick={() => void handleSelectTab(tab.id)}
-                        onDoubleClick={() => void handleCloseTab(tab.id)}
-                      >
-                        {/* 图标铺满标签高度：36px 与折叠态一致，卡片高度随内容撑开约 52px，
-                         *  items-center 垂直居中，object-contain 保持比例不变形 */}
-                        <TabFavicon tab={tab} className="h-9 w-9" />
-                        <span className="flex-1 truncate">
-                          {tab.title || tab.url || '新标签页'}
-                        </span>
-                        {/* GenOffice 编辑器未保存修改标记（阶段 2） */}
-                        {tab.dirty && (
-                          <span
-                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
-                            title="有未保存的修改"
-                            aria-label="有未保存的修改"
-                          />
-                        )}
-                        <button
-                          className="shrink-0 rounded p-0.5 opacity-0 hover:bg-error/10 group-hover:opacity-100"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleCloseTab(tab.id);
-                          }}
-                          aria-label="关闭标签"
-                        >
-                          <X className="h-3 w-3 text-error" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  {/* 新建标签：高度与底部地址栏一致（BOTTOM_HEIGHT=48），底边对齐 */}
-                  <div
-                    className="flex shrink-0 items-center border-t border-border px-2"
-                    style={{ height: BOTTOM_HEIGHT }}
-                  >
-                    <button
-                      className="flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-sm text-text-secondary hover:bg-surface hover:text-text"
-                      onClick={() => void handleNewTab()}
-                      aria-label="新建标签"
-                    >
-                      <Plus className="h-4 w-4" />
-                      新建标签
-                    </button>
-                  </div>
-                </div>
+                <TabBar
+                  expanded
+                  tabs={visibleTabs}
+                  activeTabId={activeTabId}
+                  onSelectTab={handleSelectTab}
+                  onCloseTab={handleCloseTab}
+                  onNewTab={() => void handleNewTab()}
+                  onTabPointerDown={handleTabPointerDown}
+                  onTabPointerMove={handleTabPointerMove}
+                  onTabPointerEnd={handleTabPointerEnd}
+                  onTabContextMenu={handleTabContextMenu}
+                />
               </>
             ) : (
               // 折叠状态：顶部单工作区图标（滚轮切换）+ 当前工作区的标签图标。
@@ -2950,56 +2760,18 @@ export function App() {
                   onPointerEnter={handleWorkspaceAvatarEnter}
                   onPointerLeave={handleWorkspaceAvatarLeave}
                 />
-                <div
-                  ref={collapsedTabListRef}
-                  className="mt-1 flex w-full flex-1 select-none flex-col items-center gap-0.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                >
-                  {visibleTabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      draggable={false}
-                      onPointerDown={(e) => handleTabPointerDown(e, tab)}
-                      onPointerMove={handleTabPointerMove}
-                      onPointerUp={handleTabPointerEnd}
-                      onPointerCancel={handleTabPointerEnd}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        setTabCardMenu({
-                          x: e.clientX,
-                          y: e.clientY,
-                          tab: {
-                            id: tab.id,
-                            url: tab.url,
-                            title: tab.title || tab.url || '新标签页',
-                            workspaceId: tab.workspaceId ?? DEFAULT_WORKSPACE_ID,
-                          },
-                        });
-                      }}
-                      className={cn(
-                        // 折叠态图标：方形小圆角（区别于展开态卡片的圆角更大），激活态带主色描边。
-                        // 尺寸 40px = 折叠栏宽 44px - 左右各留 2px 边界空隙
-                        'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md border bg-surface shadow-sm',
-                        'border-border/60 before:pointer-events-none before:absolute before:inset-x-1 before:top-0 before:h-px before:rounded-full before:bg-white/70',
-                        tab.id === activeTabId
-                          ? 'border-primary/50 text-text shadow-[0_2px_6px_-1px_rgba(37,99,235,0.4)]'
-                          : 'text-text-secondary hover:bg-surface-secondary hover:text-text',
-                      )}
-                      onClick={() => void handleSelectTab(tab.id)}
-                      onDoubleClick={() => void handleCloseTab(tab.id)}
-                      aria-label={`切换到标签 ${tab.title || tab.url || '新标签页'}`}
-                      title={tab.title || tab.url || '新标签页'}
-                    >
-                      <TabFavicon tab={tab} className="h-9 w-9" />
-                      {/* GenOffice 编辑器未保存修改标记（折叠态角标） */}
-                      {tab.dirty && (
-                        <span
-                          className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary"
-                          aria-label="有未保存的修改"
-                        />
-                      )}
-                    </button>
-                  ))}
-                </div>
+                <TabBar
+                  expanded={false}
+                  tabs={visibleTabs}
+                  activeTabId={activeTabId}
+                  onSelectTab={handleSelectTab}
+                  onCloseTab={handleCloseTab}
+                  onNewTab={() => void handleNewTab()}
+                  onTabPointerDown={handleTabPointerDown}
+                  onTabPointerMove={handleTabPointerMove}
+                  onTabPointerEnd={handleTabPointerEnd}
+                  onTabContextMenu={handleTabContextMenu}
+                />
               </div>
             )}
 

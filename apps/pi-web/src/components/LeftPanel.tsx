@@ -135,7 +135,7 @@ interface LeftPanelProps {
   uiLeftRunning?: UiSlotEntry[];
   /** P2：`leftpanel.history` 历史行内嵌区的条目（与 leftpanel.sessions 并集）。 */
   uiLeftHistory?: UiSlotEntry[];
-  /** DSH Agent 预设名录（id → 显示名；左栏会话徽标用，缺省显示 id）。 */
+  /** Agent 预设名录（id → 显示名；左栏会话徽标用，缺省显示 id）。历史命名带 dsh 前缀，pi 在用。 */
   presetNames?: Record<string, string>;
   /** 路径补全（用于项目管理面板的目录浏览与补全）。 */
   pathCompletions?: { name: string; path: string; type: 'dir' | 'file' }[];

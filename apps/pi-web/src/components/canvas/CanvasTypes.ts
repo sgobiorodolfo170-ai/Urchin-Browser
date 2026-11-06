@@ -16,7 +16,8 @@ export interface EngineMeta {
   desc: string;
 }
 
-export const ENGINE_METAS: Record<CanvasEngineId, EngineMeta> = {
+/** 画布节点可用引擎元数据。产品已收敛为 pi 单引擎（协议 CanvasEngineId 保留全量兼容）。 */
+export const ENGINE_METAS: Partial<Record<CanvasEngineId, EngineMeta>> = {
   pi: {
     id: 'pi',
     name: 'Pi 原生',
@@ -24,30 +25,6 @@ export const ENGINE_METAS: Record<CanvasEngineId, EngineMeta> = {
     color: 'var(--accent, #a855f7)',
     bgColor: 'color-mix(in srgb, var(--accent, #a855f7) 15%, transparent)',
     desc: '支持完整插件生态、工具延迟加载与全局子代理编排',
-  },
-  dsh: {
-    id: 'dsh',
-    name: 'DSH 极速',
-    badge: 'DSH',
-    color: 'var(--info-blue, #38bdf8)',
-    bgColor: 'color-mix(in srgb, var(--info-blue, #38bdf8) 15%, transparent)',
-    desc: '基于 Hashline 补丁引擎，擅长极速高频代码重构与打补丁',
-  },
-  claude: {
-    id: 'claude',
-    name: 'Claude Code',
-    badge: 'CLAUDE',
-    color: 'var(--amber, #f97316)',
-    bgColor: 'color-mix(in srgb, var(--amber, #f97316) 15%, transparent)',
-    desc: 'Anthropic 官方基座，擅长跨模块复杂逻辑与疑难排错',
-  },
-  durable: {
-    id: 'durable',
-    name: 'Durable 自愈',
-    badge: 'DURABLE',
-    color: 'var(--green, #22c55e)',
-    bgColor: 'color-mix(in srgb, var(--green, #22c55e) 15%, transparent)',
-    desc: '事务化长任务自愈引擎，专攻端到端自动化测试与自愈修复',
   },
 };
 

@@ -100,34 +100,6 @@ export const zh = {
   sessionMessages: '会话消息数',
   messages: '消息',
   pluginStatus: '插件状态',
-  engineBadge: '引擎',
-  engineSwitchTip: '点击切换智能体引擎（零重启秒级热切）',
-  engineTagFull: '原生引擎',
-  engineTagFast: '通用驱动 · DSH',
-  enginePickerDesc: '零重启热切换智能体引擎，不同标签页可同时运行不同引擎',
-  settingsEngineSection: '智能体引擎',
-  settingsEngineHint:
-    '支持零重启秒级热切换：切换后本标签页立即接入目标引擎，原引擎后台运行中的对话不会中断；也可打开多个浏览器标签页同时分别进行 pi 与 DSH 对话。',
-  settingsEnginePiTitle: 'PI',
-  settingsEnginePiDesc: '完整插件生态、扩展与技能、工具延迟加载、审批门禁、目标模式 2.0 与子代理',
-  settingsEngineDshTitle: 'DSH',
-  settingsEngineDshDesc:
-    '轻量级代码编辑循环、hashline 补丁引擎、Agent 预设与三档权限控制，基于通用底座驱动',
-  settingsEngineClaudeTitle: 'CLAUDE',
-  settingsEngineClaudeDesc: 'Anthropic 官方编码智能体，基于通用底座驱动，开箱即用',
-  settingsEngineDurableTitle: 'DURABLE',
-  settingsEngineDurableDesc:
-    '基于事件溯源与事务化持久化（SQLite/WAL）的长任务自愈执行引擎，支持原生任务图与插话纠错',
-  engineTagUniversal: '通用驱动 · Claude',
-  engineTagDurable: '持久自愈 · Durable',
-  engineNotInstalled: '未安装',
-  engineInstall: '安装',
-  engineInstallTip: '未检测到该引擎的全局安装包，安装后即可切换',
-  installEngineTabTitle: '安装 {name} 引擎',
-  engineUpdate: '更新',
-  engineUpdating: '更新中…',
-  engineUpdateAvailable: '可更新',
-  engineUpdateTip: '发现新版本：v{current} → v{latest}，点击更新全局包',
   working: '工作中',
   queued: '排队',
   enterPath: '输入路径，Enter 切换',
@@ -353,8 +325,6 @@ export const zh = {
   toolApprovalEnabled: '工具执行审批（人机协同）',
   toolApprovalEnabledDesc:
     '开：高危操作（rm -rf / 破坏性 git / 敏感文件 / 工作区外写入 / 插件要求确认）弹窗等你批准、拒绝或改参数；关：一切审批都不弹（内置高危检测直接放行，插件要求确认也按放行处理）。',
-  toolApprovalDshNotice:
-    'DSH 引擎运行于远程沙箱容器，交互式审批规则在 DSH 下不生效；命令与文件权限由下方的沙箱预设统一管控。',
   toolApprovalPolicyTitle: '已记住的放行（本对话）',
   toolApprovalPolicyAllowAll: '本对话全部允许审批',
   toolApprovalPolicyRevoke: '撤销',
@@ -762,12 +732,6 @@ export const zh = {
   questionTimeoutExpired: '提问已超时，正在恢复对话…',
   questionNoneAvailable: '当前条件下没有可回答的问题',
   modelNoVision: '当前模型 {name} 不支持图片，请切换到 DeepSeek V4 Flash Vision (exp)',
-  dshSkillsNote: 'DSH 引擎使用运行时内置技能（dsh-skill），暂不支持在设置面板启停',
-  dshReviewPromptNote:
-    'DSH 无独立审查会话：此指令将随目标轮次附加到系统提示词，供模型在目标轮次中遵守',
-  dshNoReviewModel: 'DSH 无独立审查模型：目标由模型自判定完成/受阻，轮次上限即自动迭代次数',
-
-  /* sound settings */
   soundHeader: '声音提示',
   enableSound: '启用声音',
   preview: '试听',
@@ -964,6 +928,9 @@ export const zh = {
   contextPresetTooltip: '快捷设为 {label} 上下文',
   addModelRow: '添加模型行',
   builtinProviderTitle: '官方内置服务商：{name}',
+  officialOnlyBadge: '待本地内置',
+  officialOnlyHint:
+    '该服务商已上架 pi 官方目录（刷新官方目录拉取），本地内置目录尚未包含；升级内置目录后可配置使用。',
   apiKeyManagement: 'API 密钥管理',
   addBuiltinOverlay: '追加官方模型覆盖 (Overlay)',
   overlayModelIdPlaceholder: '模型 ID (必填)',
@@ -984,12 +951,6 @@ export const zh = {
   presetTagCloud: '云端',
   presetTagLocal: '本地',
   presetTagProxy: '反代',
-  engineClaudeModelDesc:
-    '当前由 Claude Code CLI 引擎驱动。您在「模型与服务商」中配置的 Anthropic 兼容端点 BaseURL、API 密钥以及自定义中转模型，将自动注入到 Claude CLI 子进程中运行（无需外部 cc-switch 工具）。',
-  engineDshModelDesc:
-    '当前由 DSH 引擎驱动。支持 DeepSeek 官方及第三方端点与模型密钥配置。在此处配置的模型（包括 OpenAI 兼容中转端点）将自动注入 BaseURL 与 API Key 到 DSH 运行时中供其调用执行。',
-  enginePiModelDesc:
-    '当前由 Pi 原生引擎驱动。支持任意 OpenAI / Anthropic / Gemini / DeepSeek 兼容端点、多密钥与模型元数据管理。',
   approvalRuleActionLabel: '命中动作',
   approvalRuleLabelPlaceholder: '例如：拦截 Docker 危险操作',
   approvalRuleToolsPlaceholder: 'bash, write, edit (或 * 通配)',
@@ -1409,23 +1370,6 @@ export const zh = {
   promptHistoryClearConfirm: '确认清空？',
   promptHistoryCount: '当前 {n} 条',
   promptHistoryEmpty: '暂无历史记录，上/下键暂无可循环内容',
-  dshPromptModeLabel: '注入模式',
-  dshPromptModeAppend: '追加模式 (推荐)',
-  dshPromptModeAppendDesc:
-    '在 DSH 官方提示词与预设人设后追加独立段落，安全兼容各预设且不破坏内置工具',
-  dshPromptModeReplace: '替换人设模式',
-  dshPromptModeReplaceDesc: '作为部署人设 (DSH_PERSONA) 注入，优先替换官方默认的基础人设',
-  dshCustomPromptLabel: '自定义系统提示词',
-  dshCustomPromptPlaceholder: '输入你想注入给 DSH 引擎的自定义系统提示词...',
-  dshCustomPromptChars: '字符数',
-  dshPromptQuickPresets: '快捷模板',
-  dshPromptPresetAntiRefusal: '强指令 (恢复本地规则权威/防拒答)',
-  dshPromptPresetCoder: '专注代码',
-  dshPromptPresetClear: '清空',
-  dshPromptSectionsTitle: 'DSH 系统提示词分段明细',
-  dshPromptSectionsDesc: 'DSH 运行时根据当前预设与环境组装的各层提示词片段',
-  dshPromptSectionsCount: '共 {n} 个分段',
-  dshPromptSectionChars: '{n} 字符',
   promptModeAppend: '追加',
   promptModeReplace: '替换',
   // 组合模板（compose）文案：模板里 {{token}} 展开为对应来源；每来源可单独覆盖。
@@ -1951,38 +1895,6 @@ export const zh = {
   pluginPhaseIdle: '纯前端',
   pluginRescan: '重新扫描',
   pluginRescanHint: '重新扫描插件目录（新增/修复后生效；失败记录清空重记）',
-  dshPlugins: '插件',
-  dshPluginsDesc:
-    'DSH 运行时插件与补丁（Cordis 架构）。新增/修改后点「重扫」重启运行时生效；失败的文件会被跳过并打印到运行时 stderr。',
-  dshPatchesRescan: '重扫',
-  dshPatchesRescanHint: '重新扫描补丁目录并重启 DSH 运行时使新补丁生效',
-  dshPatchesEmpty: '未放置补丁文件',
-  dshPatchesPath: '补丁目录：',
-  dshPatchSpecPlaceholder: '输入包名或绝对路径 (如 E:/dsh-our-free-model)',
-  dshPatchAdd: '添加',
-  dshPatchActive: '已启用',
-  dshPatchDisabled: '已停用',
-  dshPatchToggleOn: '启用此补丁',
-  dshPatchToggleOff: '停用此补丁',
-  dshPatchDeleteConfirm: '确定要删除此补丁文件吗？',
-  dshMarketTitle: '插件市场',
-  dshMarketSubtitle: '探索与一键安装 DeepSeek Harness 社区插件',
-  dshMarketSubmit: '提交插件 ↗',
-  dshMarketTabDiscover: '探索',
-  dshMarketTabInstalled: '已安装',
-  dshMarketSearchPlaceholder: '搜索插件：模型、终端、记忆、侧边栏...',
-  dshMarketAll: '全部',
-  dshMarketInstall: '安装',
-  dshMarketInstalled: '已安装',
-  dshMarketRefresh: '刷新市场',
-  dshMarketDisclaimerTitle: '兼容性提示',
-  dshMarketDisclaimerText:
-    '模型、工具、能力、记忆与工作流插件在当前引擎中完全有效；纯 DSH WebUI 视图注入类插件（专为官方 DSH 前端编写）在当前界面中很可能无效。',
-  dshMarketWebuiTag: 'WebUI 视图类',
-  dshMarketWebuiWarn: '此插件为官方 DSH 前端视图扩展，在当前界面中很可能无效',
-  dshMarketPrevPage: '上一页',
-  dshMarketNextPage: '下一页',
-  dshMarketPageInfo: '第 {page} / {total} 页 · 共 {count} 个插件',
   dshPreset: 'Agent 预设',
   dshPresetNewChat: '以此预设开新对话',
   dshPresetLocked: '已锁定',
@@ -1993,6 +1905,8 @@ export const zh = {
   dshPresetMinimalNote: '极简模式：仅持久 shell；宿主插件工具与问卷不可用',
   dshDefaultPreset: '默认预设',
   dshDefaultPresetDesc: '新对话使用的预设；空白会话可随时切换，首轮发言后锁定',
+  dshPresetsPageDesc:
+    '轻量级代码编辑循环、hashline 补丁引擎、Agent 预设与三档权限控制，基于通用底座驱动',
   dshPresetUserNote:
     '自建预设来自用户预设目录（与 shell 同等信任）；用裸包名的自建组合在此无法挂载（已知限制）',
   /* pi 引擎内置五档预设：文案随界面语言定，译文不再由服务端单方面下发。
@@ -2050,10 +1964,6 @@ export const zh = {
   settingsPresets: '预设',
   settingsModelsAndProviders: '模型与服务商',
   settingsModelsDesc: '配置与管理各引擎通用的大模型服务商、API 密钥、代理端点与自定义模型列表。',
-  manageModelsAndProviders: '模型与服务商管理面板',
-  manageModelsAndProvidersHint:
-    '添加第三方 API 服务商、中转端点，管理多 API 密钥，探测端点模型列表及测试连通性。',
-  openModelManager: '打开管理面板',
   settingsSubagentTemplates: '子代理模板',
   settingsSubagentTemplatesDesc:
     '配置子代理预设（角色系统提示词 + 技能/扩展白名单 + 可选模型与思考强度）。AI 派生子代理时可选用模板（subagent_spawn 的 template 参数），也可不传按默认运行；停用的模板保留在面板但对 AI 不可见。',
@@ -2526,37 +2436,6 @@ export const en: Record<keyof typeof zh, string> = {
   sessionMessages: 'Session messages',
   messages: 'messages',
   pluginStatus: 'Plugin status',
-  engineBadge: 'Engine',
-  engineSwitchTip: 'Click to switch agent engine (zero-restart hot switch)',
-  engineTagFull: 'Native Engine',
-  engineTagFast: 'Universal Driver · DSH',
-  enginePickerDesc:
-    'Hot-switch agent engine in-place; tabs can run different engines simultaneously',
-  settingsEngineSection: 'Agent Engine',
-  settingsEngineHint:
-    'Zero-restart hot switch: switches this tab immediately while keeping background runs in the other engine alive; you can also open multiple tabs to run pi and DSH conversations simultaneously.',
-  settingsEnginePiTitle: 'PI',
-  settingsEnginePiDesc:
-    'Full plugin ecosystem, extensions & skills, lazy tool loading, approval rules, Goal Mode 2.0 & subagents',
-  settingsEngineDshTitle: 'DSH',
-  settingsEngineDshDesc:
-    'Lightweight coding loop, hashline patch engine, Agent presets & 3-tier permission presets, driven by universal base',
-  settingsEngineClaudeTitle: 'CLAUDE',
-  settingsEngineClaudeDesc:
-    'Official Anthropic coding agent driven by universal base adapter, ready out of the box',
-  settingsEngineDurableTitle: 'DURABLE',
-  settingsEngineDurableDesc:
-    'Event-sourced and transactional durable execution engine (SQLite/WAL) with crash-resilience, native task graphs, and mid-run steering',
-  engineTagUniversal: 'Universal Driver · Claude',
-  engineTagDurable: 'Crash-Resilient · Durable',
-  engineNotInstalled: 'Not installed',
-  engineInstall: 'Install',
-  engineInstallTip: 'Global package not found for this engine; install it to switch',
-  installEngineTabTitle: 'Install {name} engine',
-  engineUpdate: 'Update',
-  engineUpdating: 'Updating...',
-  engineUpdateAvailable: 'Update available',
-  engineUpdateTip: 'New version available: v{current} → v{latest}, click to update global package',
   working: 'Working',
   queued: 'queued',
   enterPath: 'Type a path, Enter to switch',
@@ -2795,8 +2674,6 @@ export const en: Record<keyof typeof zh, string> = {
   toolApprovalEnabled: 'Tool execution approval (human-in-the-loop)',
   toolApprovalEnabledDesc:
     'On: high-risk operations (rm -rf / destructive git / sensitive files / writes outside the workspace / plugin confirmation requests) pop a dialog for you to approve, deny or edit the parameters. Off: no approvals at all (built-in detection passes silently, plugin confirmation requests are treated as allowed).',
-  toolApprovalDshNotice:
-    'DSH engine runs in a remote sandbox container; interactive approval rules do not take effect under DSH. Permissions are governed by the sandbox preset below.',
   toolApprovalPolicyTitle: 'Remembered allowances (this conversation)',
   toolApprovalPolicyAllowAll: 'All approvals allowed in this conversation',
   toolApprovalPolicyRevoke: 'Revoke',
@@ -3218,13 +3095,6 @@ export const en: Record<keyof typeof zh, string> = {
   questionNoneAvailable: 'No answerable questions under the current conditions',
   modelNoVision:
     "Current model {name} doesn't support images — switch to DeepSeek V4 Flash Vision (exp)",
-  dshSkillsNote:
-    'DSH uses runtime-built-in skills (dsh-skill); toggling is not supported in settings yet',
-  dshReviewPromptNote:
-    'DSH has no separate reviewer: this text is appended to the system prompt for goal rounds',
-  dshNoReviewModel:
-    'DSH has no separate reviewer model — the model self-certifies goal completion; max rounds = auto-iteration count',
-  /* sound settings */
   soundHeader: 'Sound notifications',
   enableSound: 'Enable sound',
   preview: 'Preview',
@@ -3430,6 +3300,9 @@ export const en: Record<keyof typeof zh, string> = {
   contextPresetTooltip: 'Quick set to {label} context',
   addModelRow: 'Add Model Row',
   builtinProviderTitle: 'Official Provider: {name}',
+  officialOnlyBadge: 'Awaiting local',
+  officialOnlyHint:
+    "Listed in pi's official catalog (fetched via Refresh Official Catalog) but not yet in the local built-in catalog; configurable after the vendored catalog is upgraded.",
   apiKeyManagement: 'API Key Management',
   addBuiltinOverlay: 'Add Official Model Overlay',
   overlayModelIdPlaceholder: 'Model ID (required)',
@@ -3450,12 +3323,6 @@ export const en: Record<keyof typeof zh, string> = {
   presetTagCloud: 'Cloud',
   presetTagLocal: 'Local',
   presetTagProxy: 'Proxy',
-  engineClaudeModelDesc:
-    'Currently driven by Claude Code CLI engine. Anthropic-compatible BaseURL, API keys, and custom proxy models configured in "Models & Providers" are automatically injected into the Claude CLI subprocess (no external cc-switch tool required).',
-  engineDshModelDesc:
-    'Currently driven by DSH engine. Supports official and third-party DeepSeek endpoints and model keys. Models configured here (including OpenAI-compatible proxies) will automatically have their BaseURL and API Key injected into the DSH runtime.',
-  enginePiModelDesc:
-    'Currently driven by native Pi engine. Supports any OpenAI / Anthropic / Gemini / DeepSeek-compatible endpoint, multiple keys, and model metadata management.',
   approvalRuleActionLabel: 'Trigger Action',
   approvalRuleLabelPlaceholder: 'e.g. Block dangerous Docker commands',
   approvalRuleToolsPlaceholder: 'bash, write, edit (or * wildcard)',
@@ -3881,25 +3748,6 @@ export const en: Record<keyof typeof zh, string> = {
   promptHistoryClearConfirm: 'Confirm clear?',
   promptHistoryCount: '{n} entries',
   promptHistoryEmpty: 'No history yet — ↑/↓ has nothing to cycle',
-  dshPromptModeLabel: 'Injection Mode',
-  dshPromptModeAppend: 'Append (Recommended)',
-  dshPromptModeAppendDesc:
-    'Appends an independent section after default DSH instructions, safely compatible with all presets',
-  dshPromptModeReplace: 'Replace Persona',
-  dshPromptModeReplaceDesc:
-    'Injects as deployment persona (DSH_PERSONA), replacing the baseline persona',
-  dshCustomPromptLabel: 'Custom System Prompt',
-  dshCustomPromptPlaceholder: 'Enter custom system prompt for DSH engine...',
-  dshCustomPromptChars: 'characters',
-  dshPromptQuickPresets: 'Quick Templates',
-  dshPromptPresetAntiRefusal: 'Mandatory Directives (Anti-Refusal)',
-  dshPromptPresetCoder: 'Concise Coder',
-  dshPromptPresetClear: 'Clear',
-  dshPromptSectionsTitle: 'DSH System Prompt Sections Breakdown',
-  dshPromptSectionsDesc:
-    'Prompt sections assembled by DSH runtime for current preset & environment',
-  dshPromptSectionsCount: '{n} sections in total',
-  dshPromptSectionChars: '{n} chars',
   promptModeAppend: 'Append',
   promptModeReplace: 'Replace',
   promptComposeHint:
@@ -4462,40 +4310,6 @@ export const en: Record<keyof typeof zh, string> = {
   pluginRescan: 'Rescan',
   pluginRescanHint:
     'Re-scan the plugin directory (picks up new/fixed plugins; failure records are cleared and re-evaluated)',
-  dshPlugins: 'Plugins',
-  dshPluginsDesc:
-    "DSH runtime plugins and patches (Cordis architecture). New/edited files take effect after 'Rescan' restarts the runtime; broken files are skipped and logged to runtime stderr.",
-  dshPatchesRescan: 'Rescan',
-  dshPatchesRescanHint:
-    'Re-scan the patch directory and restart the DSH runtime so new patches take effect',
-  dshPatchesEmpty: 'No patch files yet',
-  dshPatchesPath: 'Patch directory: ',
-  dshPatchSpecPlaceholder: 'Enter package name or absolute path (e.g. E:/dsh-our-free-model)',
-  dshPatchAdd: 'Add',
-  dshPatchActive: 'Enabled',
-  dshPatchDisabled: 'Disabled',
-  dshPatchToggleOn: 'Enable this patch',
-  dshPatchToggleOff: 'Disable this patch',
-  dshPatchDeleteConfirm: 'Are you sure you want to delete this patch file?',
-  dshMarketTitle: 'Plugin Market',
-  dshMarketSubtitle: 'Discover community plugins for DeepSeek Harness',
-  dshMarketSubmit: 'Submit a plugin ↗',
-  dshMarketTabDiscover: 'Discover',
-  dshMarketTabInstalled: 'Installed',
-  dshMarketSearchPlaceholder: 'Search plugins: model, terminal, memory, sidebar...',
-  dshMarketAll: 'All',
-  dshMarketInstall: 'Install',
-  dshMarketInstalled: 'Installed',
-  dshMarketRefresh: 'Refresh market',
-  dshMarketDisclaimerTitle: 'Compatibility Notice',
-  dshMarketDisclaimerText:
-    'Models, tools, capabilities, memory, and workflow plugins work natively in this engine; official DSH WebUI view-injection plugins are likely ineffective in this web interface.',
-  dshMarketWebuiTag: 'WebUI View',
-  dshMarketWebuiWarn:
-    'This plugin is an official DSH frontend view extension and is likely ineffective in this interface',
-  dshMarketPrevPage: 'Previous',
-  dshMarketNextPage: 'Next',
-  dshMarketPageInfo: 'Page {page} of {total} · {count} plugins',
   dshPreset: 'Agent preset',
   dshPresetNewChat: 'New chat with this preset',
   dshPresetLocked: 'Locked',
@@ -4508,6 +4322,8 @@ export const en: Record<keyof typeof zh, string> = {
   dshDefaultPreset: 'Default preset',
   dshDefaultPresetDesc:
     'Preset for new chats; blank sessions can switch anytime, locked after the first message',
+  dshPresetsPageDesc:
+    'Lightweight coding loop, hashline patch engine, Agent presets & 3-tier permission presets, driven by universal base',
   dshPresetUserNote:
     'Custom presets come from the user preset directory (trusted like shell access); compositions using bare package names cannot mount here (known limitation)',
   'preset.standard': 'Full access',
@@ -4570,10 +4386,6 @@ export const en: Record<keyof typeof zh, string> = {
   settingsModelsAndProviders: 'Models & Providers',
   settingsModelsDesc:
     'Configure and manage LLM providers, API keys, proxy endpoints, and custom models across all engines.',
-  manageModelsAndProviders: 'Models & Providers Management',
-  manageModelsAndProvidersHint:
-    'Add third-party API providers, proxy endpoints, manage multiple API keys, probe model lists, and test connectivity.',
-  openModelManager: 'Open Manager',
   settingsSubagentTemplates: 'Subagent templates',
   settingsSubagentTemplatesDesc:
     'Presets for spawned subagents (role system prompt + skills/extensions whitelist + optional model and thinking level). AI may pick a template (subagent_spawn template param) or spawn without one; disabled templates stay in the panel but are invisible to AI tools.',

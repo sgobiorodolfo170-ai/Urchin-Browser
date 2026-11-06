@@ -50,9 +50,6 @@ import type {
   UiMcpServer,
   RemoteMcpServer,
   RemoteSkillSummary,
-  DshPatchFileInfo,
-  DshMarketPlugin,
-  EngineStatus,
   UpdateItemKind,
 } from './types';
 
@@ -256,19 +253,6 @@ export interface PluginInstallInspectState {
   };
 }
 
-/** DSH 引擎专有状态命名空间（切换引擎时物理整体清空，杜绝散落字段残留与死键）。 */
-export interface DshEngineState {
-  patches: { patchDir: string; files: DshPatchFileInfo[] } | null;
-  market: {
-    count: number;
-    updated?: string;
-    categories: Record<string, { en: string; zh: string }>;
-    plugins: DshMarketPlugin[];
-  } | null;
-  presets: { presets: UiAgentPreset[]; defaultPreset: string } | null;
-  permission: { options: DshPermissionOption[]; defaultPreset: string } | null;
-}
-
 export interface ChatState {
   status: ConnStatus;
   /** True once the server confirmed the agent session is ready (hello processed). */
@@ -291,8 +275,6 @@ export interface ChatState {
   serverVersion?: string;
   /** 引擎标识（pi | dsh）—— ready 消息携带，底栏显示徽标。 */
   engine?: string;
-  /** 引擎安装探测结果列表（包含各引擎是否已在宿主中安装、对应包名与版本）。 */
-  engines?: EngineStatus[];
   /** PI_WEB_MANAGED=1 on the server: updates and plugin installs come from
    *  whoever deploys this instance, so the interface does not offer them.
    *  The server refuses those messages regardless (server/managed.ts). */
@@ -543,20 +525,10 @@ export interface ChatState {
     models?: string[];
     reason?: string;
   }[];
-  /** DSH engine: 专属状态命名空间（切换引擎时一键清空）。 */
-  dsh: DshEngineState | null;
-  /** DSH engine: <dataDir>/dsh-patches user patch files (list + dir)（兼容镜像）。 */
-  dshPatches: { patchDir: string; files: DshPatchFileInfo[] } | null;
-  /** DSH engine: awesome-dsh-plugin / dsh-market 社区插件市场数据（兼容镜像）。 */
-  dshMarket: {
-    count: number;
-    updated?: string;
-    categories: Record<string, { en: string; zh: string }>;
-    plugins: DshMarketPlugin[];
-  } | null;
-  /** DSH engine: Agent 预设名录（兼容镜像）。 */
+  /** Agent 预设名录（pi 内置五档 + 自定义；消息名 dsh_presets 为历史命名）。
+   *  null = 尚未就绪（composer 模式下拉与工具过滤横幅隐藏）。 */
   dshPresets: { presets: UiAgentPreset[]; defaultPreset: string } | null;
-  /** DSH engine: 权限预设选项表 + 新会话默认（兼容镜像）。 */
+  /** 权限预设选项表 + 新会话默认（pi 内置三档；消息名 dsh_permission 为历史命名）。 */
   dshPermission: { options: DshPermissionOption[]; defaultPreset: string } | null;
   /** Increments when the server reports the watched git dir changed
    *  outside the panel — SCMPanel refreshes on change while visible. */
@@ -634,9 +606,7 @@ type Action =
       tabs?: string[];
       service?: UiServiceInfo;
       latencyMs?: number | null;
-      engines?: EngineStatus[];
     }
-  | { type: 'engines_status'; engines: EngineStatus[] }
   | { type: 'sessions'; sessions: SessionSummary[] }
   | {
       type: 'conversations';
@@ -886,18 +856,6 @@ type Action =
       req: { id: string; pluginId: string; path: string; reason?: string };
     }
   | { type: 'plugin_path_resolved'; id: string }
-  | {
-      type: 'dsh_patches';
-      patchDir: string;
-      files: DshPatchFileInfo[];
-    }
-  | {
-      type: 'dsh_market_data';
-      count: number;
-      updated?: string;
-      categories: Record<string, { en: string; zh: string }>;
-      plugins: DshMarketPlugin[];
-    }
   | { type: 'dsh_presets'; presets: UiAgentPreset[]; defaultPreset: string }
   | { type: 'dsh_permission'; options: DshPermissionOption[]; defaultPreset: string }
   | { type: 'sync_cached_sessions'; sessions: SessionSummary[] }
@@ -1116,7 +1074,6 @@ function reducer(state: ChatState, action: Action): ChatState {
         managed: action.managed === true,
         tabs: action.tabs,
         ready: true,
-        ...(action.engines ? { engines: action.engines } : {}),
         ...(engineChanged
           ? ({
               state: null,
@@ -1124,9 +1081,6 @@ function reducer(state: ChatState, action: Action): ChatState {
               sessions: readCachedSessions(state.state?.cwd, action.engine),
               conversations: [],
               terminals: [],
-              dsh: null,
-              dshPatches: null,
-              dshMarket: null,
               dshPresets: null,
               dshPermission: null,
             } satisfies Partial<ChatState>)
@@ -1350,8 +1304,6 @@ function reducer(state: ChatState, action: Action): ChatState {
         ...state,
         notices: state.notices.filter((n) => n.id !== action.id),
       };
-    case 'engines_status':
-      return { ...state, engines: action.engines };
     case 'sessions':
       writeCachedSessions(state.state?.cwd, action.sessions, state.engine);
       return { ...state, sessions: action.sessions };
@@ -1563,55 +1515,16 @@ function reducer(state: ChatState, action: Action): ChatState {
     case 'plugin_install_inspect_result':
       // 只留最近一次（输入框下面的那一句话），旧的直接丢掉。
       return { ...state, installInspect: action.result };
-    case 'dsh_patches': {
-      const patches = { patchDir: action.patchDir, files: action.files };
+    case 'dsh_presets':
       return {
         ...state,
-        dsh: {
-          ...(state.dsh ?? { patches: null, market: null, presets: null, permission: null }),
-          patches,
-        },
-        dshPatches: patches,
+        dshPresets: { presets: action.presets, defaultPreset: action.defaultPreset },
       };
-    }
-    case 'dsh_market_data': {
-      const market = {
-        count: action.count,
-        updated: action.updated,
-        categories: action.categories,
-        plugins: action.plugins,
-      };
+    case 'dsh_permission':
       return {
         ...state,
-        dsh: {
-          ...(state.dsh ?? { patches: null, market: null, presets: null, permission: null }),
-          market,
-        },
-        dshMarket: market,
+        dshPermission: { options: action.options, defaultPreset: action.defaultPreset },
       };
-    }
-    case 'dsh_presets': {
-      const presets = { presets: action.presets, defaultPreset: action.defaultPreset };
-      return {
-        ...state,
-        dsh: {
-          ...(state.dsh ?? { patches: null, market: null, presets: null, permission: null }),
-          presets,
-        },
-        dshPresets: presets,
-      };
-    }
-    case 'dsh_permission': {
-      const permission = { options: action.options, defaultPreset: action.defaultPreset };
-      return {
-        ...state,
-        dsh: {
-          ...(state.dsh ?? { patches: null, market: null, presets: null, permission: null }),
-          permission,
-        },
-        dshPermission: permission,
-      };
-    }
     case 'terminal_add':
       return { ...state, terminals: [...state.terminals, action.meta] };
     case 'terminal_remove':
@@ -2072,14 +1985,11 @@ export function useChat() {
     pluginPermissions: [],
     pathRequests: [],
     permRequests: [],
-    dsh: null,
-    dshPatches: null,
-    dshMarket: null,
+    dshPresets: null,
+    dshPermission: null,
     mcpMarketResult: null,
     skillMarketResult: null,
     skillContentResult: null,
-    dshPresets: null,
-    dshPermission: null,
     protocolMismatch: false,
     transition: null,
     sandboxDiff: null,
@@ -2297,7 +2207,7 @@ export function useChat() {
    *
    *  为什么需要它：question_pending 是即时通道，只推给「提问那一刻在线」的连接；
    *  刷新/重连后前端拿不到那条历史消息，而服务端还在阻塞等人回答——问卷就从眼前
-   *  消失（DshQuestionDialog 无入口）。快照是权威态，据此把面板补回来。
+   *  消失（QuestionDialog 无入口）。快照是权威态，据此把面板补回来。
    *  判定规则（含三条边界）全在纯函数 resolvePendingQuestion。 */
   const syncPendingQuestion = useCallback(
     (p: UiPendingQuestion | null | undefined, activeConversationId: string) => {
@@ -2422,7 +2332,6 @@ export function useChat() {
             serverVersion: msg.serverVersion,
             service: msg.service,
             ...(msg.engineCapabilities ? { engineCapabilities: msg.engineCapabilities } : {}),
-            ...(msg.engines ? { engines: msg.engines } : {}),
           });
           const initialLatencyMs =
             helloSentAt > 0 ? Math.max(0, Math.round(performance.now() - helloSentAt)) : null;
@@ -2436,7 +2345,6 @@ export function useChat() {
             tabs: msg.tabs,
             service: msg.service,
             latencyMs: initialLatencyMs,
-            engines: msg.engines,
           });
           // Reconnect/attach: clear answered questions cache and stale dialog so
           // freshly started server runs don't collide on restarted question counters (e.g. q-1).
@@ -2531,10 +2439,6 @@ export function useChat() {
         }
         case 'transition_progress':
           dispatch({ type: 'transition_progress', msg });
-          break;
-        case 'engines_status':
-          setAppGlobals({ engines: msg.engines });
-          dispatch({ type: 'engines_status', engines: msg.engines });
           break;
         case 'sessions':
           dispatch({ type: 'sessions', sessions: msg.sessions });
@@ -3118,12 +3022,6 @@ export function useChat() {
               ...(msg.error ? { error: msg.error } : {}),
             },
           });
-          break;
-        case 'dsh_patches':
-          dispatch({ type: 'dsh_patches', patchDir: msg.patchDir, files: msg.files });
-          break;
-        case 'dsh_market_data':
-          dispatch(msg);
           break;
         case 'dsh_presets':
           dispatch({ type: 'dsh_presets', presets: msg.presets, defaultPreset: msg.defaultPreset });

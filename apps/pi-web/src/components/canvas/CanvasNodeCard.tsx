@@ -573,9 +573,6 @@ export function CanvasNodeCard({
                 onChange={(e) => onUpdate(node.id, { engine: e.target.value as CanvasEngineId })}
               >
                 <option value="pi">Pi 原生</option>
-                <option value="dsh">DSH 极速</option>
-                <option value="claude">Claude Code</option>
-                <option value="durable">Durable 自愈</option>
               </select>
             </div>
 

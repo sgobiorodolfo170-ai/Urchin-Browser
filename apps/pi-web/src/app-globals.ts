@@ -4,11 +4,11 @@
  * 任何组件 `useAppGlobals()` 直接读，不用再一层层传 props。
  *
  * 为什么不用 props / Context：
- *  - `engine`（pi | dsh）、`managed`（PI_WEB_MANAGED）、`tabs`（PI_WEB_TABS）、
+ *  - `engine`（pi）、`managed`（PI_WEB_MANAGED）、`tabs`（PI_WEB_TABS）、
  *    `service`（是否被平台服务托管，更新面板的「重启服务」靠它）、版本号这些是
  *    「整棵树都要知道、整个连接内只变一次」的信息，却要钻进
  *    GoalBar / SettingsModal / PiSetupModal / ChatInput…… 传参版漏一个就是一个看不见的
- *    分支走错（DSH 少一道 gating、managed 实例多出安装按钮）。
+ *    分支走错（managed 实例多出安装按钮）。
  *  - 它们也不属于快照流（只在 `ready` 消息里来一次），用 Context 还得在每个可能被
  *    单独渲染的子树里再包 Provider（插件视图、portal 弹窗最容易漏）。
  *
@@ -35,13 +35,7 @@
  */
 
 import { useSyncExternalStore } from 'react';
-import type {
-  ClientMessage,
-  ConnStatus,
-  UiServiceInfo,
-  AgentEngineCapabilities,
-  EngineStatus,
-} from './types';
+import type { ClientMessage, ConnStatus, UiServiceInfo, AgentEngineCapabilities } from './types';
 
 /** 出厂默认能力声明：镜像 server/engine-capabilities.ts 的 DEFAULT_PI_CAPABILITIES。
  *  老服务端不发 capabilities 时前端就用它（全能力）。
@@ -67,7 +61,7 @@ export const DEFAULT_ENGINE_CAPABILITIES: AgentEngineCapabilities = {
 };
 
 export interface AppGlobals {
-  /** 引擎标识（"pi" | "dsh"）。缺省 "pi" —— 老服务端不发这个字段。 */
+  /** 引擎标识（"pi"）。缺省 "pi" —— 老服务端不发这个字段。 */
   engine: string;
   /** PI_WEB_MANAGED=1：更新与插件安装由部署方负责，界面不提供入口。 */
   managed: boolean;
@@ -97,8 +91,6 @@ export interface AppGlobals {
   desktopDir: string;
   /** 当前底座能力声明（Capabilities）—— 前端据此自适应隐藏不支持的入口。 */
   engineCapabilities: AgentEngineCapabilities;
-  /** 引擎安装探测结果列表（包含各引擎是否已在宿主中安装、对应包名与版本）。 */
-  engines?: EngineStatus[];
 }
 
 export const DEFAULT_APP_GLOBALS: AppGlobals = {
@@ -124,9 +116,8 @@ function sameArray(a?: string[], b?: string[]): boolean {
 }
 
 /** 逐字段浅比：字段集合取两边 key 的并集，新增字段自动参与比较。
- *  手写白名单漏字段 = 真变更被当成「没变」丢进黑洞（曾发生：引擎 `updating` /
- *  `hasUpdate` 与能力 `steer` / `ephemeralChat` 漏比，界面上永远看不到「正在更新」
- *  和引擎差异）；值都是标量，Object.is 足够。 */
+ *  手写白名单漏字段 = 真变更被当成「没变」丢进黑洞（曾发生：能力 `steer` /
+ *  `ephemeralChat` 漏比，界面上永远看不到引擎差异）；值都是标量，Object.is 足够。 */
 function sameShallow<T extends object>(a: T | undefined, b: T | undefined): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
@@ -136,12 +127,6 @@ function sameShallow<T extends object>(a: T | undefined, b: T | undefined): bool
       return false;
   }
   return true;
-}
-
-function sameEngines(a?: EngineStatus[], b?: EngineStatus[]): boolean {
-  if (a === b) return true;
-  if (!a || !b || a.length !== b.length) return false;
-  return a.every((v, i) => sameShallow(v, b[i]));
 }
 
 function same(a: AppGlobals, b: AppGlobals): boolean {
@@ -160,7 +145,6 @@ function same(a: AppGlobals, b: AppGlobals): boolean {
     a.desktopDir === b.desktopDir &&
     sameArray(a.tabs, b.tabs) &&
     sameShallow(a.engineCapabilities, b.engineCapabilities) &&
-    sameEngines(a.engines, b.engines) &&
     // ready 每次重连都会带一份新的 service 对象——比字段，避免白重渲染。
     sameShallow(a.service, b.service)
   );
@@ -215,16 +199,6 @@ export function useAppField<K extends keyof AppGlobals>(key: K): AppGlobals[K] {
     () => cached[key],
     () => cached[key],
   );
-}
-
-/** 当前是否 DSH 引擎（最常用的那个判断：DSH 缺一堆 pi 才有的能力）。 */
-export function useIsDsh(): boolean {
-  return useAppField('engine') === 'dsh';
-}
-
-/** 订阅全部引擎的探测安装状态列表。 */
-export function useEngineStatuses(): EngineStatus[] {
-  return useAppField('engines') ?? [];
 }
 
 /** 实例是否受管（PI_WEB_MANAGED=1）。 */

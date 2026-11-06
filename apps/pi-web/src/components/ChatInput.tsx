@@ -17,7 +17,7 @@ import type {
   UiState,
 } from '../types';
 import { isZhLocale, useT, useI18n } from '../i18n';
-import { appSend, useAppField, useIsDsh, useEngineCapabilities } from '../app-globals';
+import { appSend, useAppField, useEngineCapabilities } from '../app-globals';
 import {
   applyTemplateFill,
   mergeRecalledDraft,
@@ -170,21 +170,20 @@ interface ChatInputProps {
   /** 输入框上方的快捷短语（点击即发送；与文件引用 chips 是两套独立 UI，互不干扰）。 */
   quickPhrases: string[];
   quickPhrasesEnabled: boolean;
-  /** DSH 引擎：权限下拉（思考强度右侧；undefined/空 = 非 dsh 或未就绪，不渲染）。 */
+  /** 权限预设下拉（思考强度右侧；undefined/空 = 未就绪，不渲染）。历史命名带 dsh 前缀，pi 在用。 */
   dshPermCurrent?: string | null;
   dshPermOptions?: DshPermissionOption[];
   dshPermDefault?: string;
-  /** DSH 引擎：模式下拉（思考强度右侧；undefined/空 = 非 dsh 或未就绪，不渲染）。 */
+  /** Agent 模式（预设）下拉（思考强度右侧；undefined/空 = 未就绪，不渲染）。 */
   dshPreset?: DshPresetInfo | null;
   dshPresets?: UiAgentPreset[];
   dshPresetDefault?: string;
   dshBlank?: boolean;
-  /** 会话 id（dsh 下拉切换会话时重置选中值）。 */
+  /** 会话 id（下拉切换会话时重置选中值）。 */
   conversationId?: string;
   /** 当前会话是否处于只读规划模式。 */
   planMode?: boolean;
-  /** 服务端存过的未发送草稿（全量快照携带，issue #166 单中心文件方案；
-   *  DSH 引擎不填，传了也忽略）。 */
+  /** 服务端存过的未发送草稿（全量快照携带，issue #166 单中心文件方案）。 */
   sessionDraft?: { text: string; ts: number } | null;
   /** 当前会话的 sessionId（草稿跨重启的稳定 key；空 = 未就绪，不存不取）。 */
   sessionId?: string;
@@ -233,9 +232,6 @@ export const ChatInput = memo(function ChatInput({
   const t = useT();
   /** 连接/会话就绪：走全局（web/src/app-globals.ts），不再从 App 传。 */
   const ready = useAppField('ready');
-  /** DSH 无 mid-run steering（isStreaming 时 prompt 全部走 followUp，
-   *  见 server/dsh/dsh-agent-service.ts）—— 只渲染「排队」半段，不摆一个说了不算的「插队」。 */
-  const isDsh = useIsDsh();
   const capabilities = useEngineCapabilities();
   const effectivePlanMode = Boolean(planMode && capabilities.planMode);
   const { locale } = useI18n();
@@ -456,7 +452,7 @@ export const ChatInput = memo(function ChatInput({
   // 但同步写过的 L1 还在）+ L2 服务端 <dataDir>/composer-drafts.json
   //（draft_update：防抖 2s + blur/切会话即时刷，保重启/换 tab）。
   // 恢复只在「本地没动过且输入框为空」时做（绝不覆盖用户正在打的字、撤回/注入/
-  // 历史导航进来的内容），服务端快照 vs 本地 L1 按 ts 新的赢。DSH 引擎不参与。
+  // 历史导航进来的内容），服务端快照 vs 本地 L1 按 ts 新的赢。
   const DRAFT_TEXT_CAP = 20000; // 与服务端 DRAFT_TEXT_MAX 同值（两端各自截断）
   const DRAFT_SAVE_DEBOUNCE_MS = 2000;
   const draftSessionKey = sessionId ? `${conversationId ?? ''}${sessionId}` : null;
@@ -1492,7 +1488,7 @@ export const ChatInput = memo(function ChatInput({
   );
   // 输入框槽位是否已接线（App 传全量 slot 数组，含 hidden；单测/未传时回落旧硬编码顺序）。
   const composerWired = composerActions !== undefined;
-  // 接线后的统一分组：宿主内置（上传/模板/模型/思考/DSH/发送）+ 插件贡献按合并顺序来，
+  // 接线后的统一分组：宿主内置（上传/模板/模型/思考/发送）+ 插件贡献按合并顺序来，
   // hidden 已滤掉；align=start 落左列，center 居中，end 落右列（发送簇 align=end）。
   const composerGroups = useMemo(
     () => groupByAlign((composerActions ?? []).filter((it) => !it.hidden)),
@@ -1546,10 +1542,10 @@ export const ChatInput = memo(function ChatInput({
   // 空输入（含无附件）时只显示停止键（蓝圆），插队/排队胶囊隐藏；
   // 一旦有可发送内容（canSubmit）则胶囊出现、停止键隐藏。
   // 胶囊：左半 = 排队（followUp，整轮结束才发），右半 = 插队（steer，回车语义，
-  // 本回合立刻响应）；两半同宽、中间一条细分隔线。DSH 引擎没有 mid-run
+  // 本回合立刻响应）；两半同宽、中间一条细分隔线。
   // 是否支持 mid-run steering（插话打断）：由引擎底座 capabilities 声明驱动。
   // 不支持时只留下左半边单一排队按钮（.single 收成 38px）。
-  const canSteer = Boolean(capabilities.steer !== false && !isDsh);
+  const canSteer = Boolean(capabilities.steer !== false);
   const renderActions = () => (
     <div className="inputbox-actions">
       {streaming ? (
@@ -1608,7 +1604,7 @@ export const ChatInput = memo(function ChatInput({
     </div>
   );
   /** 宿主内置输入框节点（key = composer.actions 条目 id；显隐与顺序由 composerGroups 决定）。
-   *  DSH 两项自带运行时条件（非 DSH / 未就绪时画 null，不占位）；发送簇含发送/排队/停止三种形态。 */
+   *  发送簇含发送/排队/停止三种形态。 */
   const composerHostNodes: Record<string, ReactNode> = {
     'host:composer-upload': (
       <button
@@ -2006,9 +2002,7 @@ export const ChatInput = memo(function ChatInput({
           placeholder={
             connected
               ? streaming
-                ? isDsh
-                  ? t('placeholderStreamingQueued')
-                  : t('placeholderStreaming')
+                ? t('placeholderStreaming')
                 : effectivePlanMode
                   ? t('placeholderPlanMode')
                   : isModEnter
@@ -2108,7 +2102,7 @@ export const ChatInput = memo(function ChatInput({
                   defaultModel={defaultModel}
                   compact
                 />
-                {/* DSH 引擎：权限 + 模式下拉（思考强度右侧，只留按钮）。 */}
+                {/* 权限 + 模式下拉（思考强度右侧，只留按钮）。 */}
                 {dshPermOptions && dshPermOptions.length > 0 && dshPermDefault !== undefined && (
                   <DshPermissionBar
                     compact

@@ -1772,35 +1772,6 @@ export class ClientStateStore {
     this.save();
   }
 
-  /** 读取某客户端（标签页）上次使用的引擎（未设置返回 undefined）。 */
-  getClientEngine(clientId: string): EngineId | undefined {
-    const eng = this.load()[clientId]?.engine;
-    return eng === 'dsh' || eng === 'pi' || eng === 'claude' || eng === 'durable' ? eng : undefined;
-  }
-
-  /** 保存某客户端（标签页）当前使用的引擎。 */
-  saveClientEngine(clientId: string, engine: EngineId): void {
-    const all = this.load();
-    const state = (all[clientId] ??= { projects: [] });
-    state.engine = engine;
-    this.touchClient(all, clientId);
-    this.save();
-  }
-
-  /** 读取全局默认引擎（存在 __settings__ 下，新标签页及服务重启后默认跟随）。 */
-  getDefaultEngine(): EngineId | undefined {
-    const eng = this.load()[ClientStateStore.GLOBAL_SETTINGS_KEY]?.defaultEngine;
-    return eng === 'dsh' || eng === 'pi' || eng === 'claude' || eng === 'durable' ? eng : undefined;
-  }
-
-  /** 保存全局默认引擎。 */
-  saveDefaultEngine(engine: EngineId): void {
-    const all = this.load();
-    const state = (all[ClientStateStore.GLOBAL_SETTINGS_KEY] ??= { projects: [] });
-    state.defaultEngine = engine;
-    this.save();
-  }
-
   /** 保存指定会话的自定义标题（按 cwd + sessionKey 索引，跨重启存活） */
   saveSessionTitle(cwd: string, sessionKey: string, title: string): void {
     const all = this.load();

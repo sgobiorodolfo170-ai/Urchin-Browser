@@ -21,7 +21,6 @@ interface FooterBarProps {
  *  降级路径没有 slot 数据，分区只能按这张静态表（正常链路一律走 entry.align）。 */
 const FALLBACK_BOTTOMBAR: { id: string; align: 'start' | 'end' }[] = [
   { id: 'host:conn', align: 'start' },
-  { id: 'host:engine', align: 'start' },
   { id: 'host:ctx', align: 'start' },
   { id: 'host:cost', align: 'start' },
   { id: 'host:cache', align: 'start' },

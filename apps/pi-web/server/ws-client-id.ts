@@ -3,7 +3,7 @@
  * （`server/index.ts` 起 WS + SDK，不适合在单测里 import）。
  *
  * 背景：hello.clientId 原样进入 service.attach → ClientSession → saveUpload
- * （`<dataDir>/uploads/<clientId>/`，见 attachments.ts / dsh-agent-service.ts），
+ * （`<dataDir>/uploads/<clientId>/`，见 attachments.ts），
  * 无校验时外部可传对象/数字/路径穿越串。合法客户端用 uuid（含连字符，在字符集
  * 内）；服务端伪客户端是 `scheduler:`/`plugin:` 前缀（冒号在字符集内），但那些
  * 不走 WS hello——收进字符集只是不挡未来的复用，不构成放行面。

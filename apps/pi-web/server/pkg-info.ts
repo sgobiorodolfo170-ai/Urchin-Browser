@@ -9,9 +9,9 @@ let cachedAppVersion: string | null = null;
  * 解析 pi-web-ui 包的根目录。
  * 兼容：
  * - 源码开发模式：server/ (tsx)
- * - 源码子模块：server/dsh/ (tsx)
+
  * - 生产构建模式：dist/server/
- * - 生产构建子模块：dist/server/dsh/
+
  * - 环境变量显式指定：process.env.PI_WEB_PKG_ROOT
  */
 export function getPkgRoot(fromUrl: string = import.meta.url): string {

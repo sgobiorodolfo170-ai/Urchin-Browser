@@ -1480,7 +1480,6 @@ export function App() {
         send({ type: 'extensions_reload' });
         send({ type: 'plugins_reload' });
         send({ type: 'check_updates_all', force: true });
-        send({ type: 'check_engines', force: true });
       }
     }
   }, [chat.terminals, send]);
@@ -1602,7 +1601,7 @@ export function App() {
     streamExtractorRef.current?.feed(rawText);
   }, [chat.state?.messages, chat.state?.isStreaming, chat.state?.conversationId, tts]);
 
-  // Questionnaire cue — each new dialog id + each new DSH question id.
+  // Questionnaire cue — each new dialog id + each new question id.
   // dialog = 扩展 select/confirm/input；question = ask_user_question 问卷。
   // 按 ID 集合去重，彻底避免在不同对话间切换时重复响铃和弹通知。
   useEffect(() => {
@@ -2388,10 +2387,10 @@ export function App() {
                 renderPluginSectionBody={renderLeftPluginSectionBody}
                 uiLeftRunning={uiLeftRunning}
                 uiLeftHistory={uiLeftHistory}
+                presetNames={presetNames}
                 uiPluginRunning={chat.pluginPanelGroups}
                 onPluginRunningAction={onPluginRunningAction}
                 onUiAction={onUiAction}
-                presetNames={presetNames}
                 transition={chat.transition}
                 onOpenSandboxModal={() => setSandboxModalMode('create')}
               />
@@ -2853,6 +2852,13 @@ export function App() {
                 composerLeading={uiSlots['composer.leading']}
                 composerActions={uiSlots['composer.actions']}
                 onUiAction={onUiAction}
+                dshPermCurrent={chat.state?.permission ?? null}
+                dshPermOptions={chat.dshPermission?.options ?? undefined}
+                dshPermDefault={chat.dshPermission?.defaultPreset}
+                dshPreset={chat.state?.agentPreset ?? null}
+                dshPresets={chat.dshPresets?.presets ?? undefined}
+                dshPresetDefault={chat.dshPresets?.defaultPreset}
+                dshBlank={(chat.state?.messages?.length ?? 0) === 0}
                 streaming={chat.state?.isStreaming ?? false}
                 planMode={chat.state?.planMode ?? false}
                 messages={chat.state?.messages ?? EMPTY_MESSAGES}
@@ -2882,13 +2888,6 @@ export function App() {
                         !!chat.state?.streamingMessage)
                 }
                 recallDrafts={recallDrafts}
-                dshPermCurrent={chat.state?.permission ?? null}
-                dshPermOptions={chat.dshPermission?.options ?? undefined}
-                dshPermDefault={chat.dshPermission?.defaultPreset}
-                dshPreset={chat.state?.agentPreset ?? null}
-                dshPresets={chat.dshPresets?.presets ?? undefined}
-                dshPresetDefault={chat.dshPresets?.defaultPreset}
-                dshBlank={(chat.state?.messages?.length ?? 0) === 0}
                 conversationId={chat.activeConversationId || chat.state?.conversationId || ''}
                 sessionDraft={chat.state?.draft ?? null}
                 sessionId={chat.state?.sessionId ?? ''}
@@ -3108,10 +3107,6 @@ export function App() {
           onSwitchToTerminal={() => setView('terminal')}
           onClose={() => setSettingsOpen(false)}
           onOpenIconEdit={() => setIconEditOpen(true)}
-          onOpenManageModels={() => {
-            setSettingsOpen(false);
-            setManageModelsOpen(true);
-          }}
           sound={sound}
           onSoundChange={setSound}
           tts={tts}

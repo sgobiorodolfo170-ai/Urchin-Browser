@@ -2172,7 +2172,7 @@
    - 中段（一个 spacer 之后）：按钮下方居中；
    - 右段（.tb-spacer-end 或两个 spacer 之后）：保持 base 的向左展开（right: 0），防右侧溢出；
    - 任何实测视觉位置靠左的条目（data-tip-align="right"）：强制向右偏移展开，防窄屏/空左段时靠左图标的气泡向左越界。
-   同时覆盖嵌套包裹容器（Dropdown / BrowserControl / bar-item-wrap / bar-item-engine-wrap）内的触发器。
+   同时覆盖嵌套包裹容器（Dropdown / BrowserControl / bar-item-wrap）内的触发器。
    直流外的两个右缘入口（⋯ 按钮、手机端 📁 固定位）同样向左展开。 */
   .topbar .topbar-flow > [data-tip]::after,
   .topbar .topbar-flow > :not(.tb-spacer) [data-tip]::after,
@@ -4803,364 +4803,6 @@
     color: var(--accent);
   }
 
-  /* 引擎徽标（pi 与 DSH 引擎常驻显示，点击可一键零重启热切） */
-  .engine-badge {
-    padding: 0 5px;
-    border-radius: 3px;
-    font-size: 9.5px;
-    font-weight: 700;
-    letter-spacing: 0.3px;
-    line-height: 1.6;
-    cursor: pointer;
-    user-select: none;
-    transition:
-      opacity 0.15s ease,
-      transform 0.1s ease;
-  }
-  .engine-badge:hover {
-    opacity: 0.88;
-  }
-  .engine-badge.engine-pi {
-    color: var(--accent);
-    background: var(--accent-soft, rgba(139, 92, 246, 0.16));
-    border: 1px solid rgba(139, 92, 246, 0.35);
-  }
-  .engine-badge.engine-dsh {
-    color: #0b0f14;
-    background: linear-gradient(135deg, #4fc3f7, #7c4dff);
-  }
-  .engine-badge.engine-claude {
-    color: #fff;
-    background: linear-gradient(135deg, #d97706, #ea580c);
-  }
-  .engine-badge.engine-durable {
-    color: #fff;
-    background: linear-gradient(135deg, #059669, #0d9488);
-  }
-
-  /* 引擎选择器（EnginePicker：顶栏/底栏常驻显式切换胶囊，支持任意多引擎扩展） */
-  .engine-picker-wrap {
-    display: inline-flex;
-    align-items: center;
-  }
-  .engine-picker-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 8px;
-    border-radius: 6px;
-    background: var(--chip-bg, rgba(255, 255, 255, 0.05));
-    border: 1px solid var(--border);
-    cursor: pointer;
-    transition: all 0.15s ease;
-    user-select: none;
-  }
-  .engine-picker-btn:hover {
-    background: var(--bg-elev2);
-    border-color: var(--accent);
-  }
-  .engine-picker-icon {
-    font-size: 12px;
-    color: var(--accent);
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .engine-picker-btn.engine-pi .engine-picker-icon,
-  .engine-picker-wrap.engine-pi .engine-picker-icon {
-    color: var(--accent);
-  }
-  .engine-picker-btn.engine-dsh .engine-picker-icon,
-  .engine-picker-wrap.engine-dsh .engine-picker-icon {
-    color: #4fc3f7;
-  }
-  .engine-picker-btn.engine-claude .engine-picker-icon,
-  .engine-picker-wrap.engine-claude .engine-picker-icon {
-    color: #ea580c;
-  }
-  .engine-picker-btn.engine-durable .engine-picker-icon,
-  .engine-picker-wrap.engine-durable .engine-picker-icon {
-    color: #10b981;
-  }
-  .engine-picker-name {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text);
-    white-space: nowrap;
-  }
-  /* 状态栏紧凑样式：现代一体化微胶囊微型徽标（Micro-Pill），消灭图标与文字割裂感 */
-  .statusbar .engine-picker-btn,
-  .footer .engine-picker-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 3.5px;
-    height: 18px;
-    min-height: 18px;
-    line-height: 18px;
-    padding: 0 6px;
-    border-radius: 4px;
-    box-shadow: none;
-    cursor: pointer;
-    user-select: none;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.4px;
-    transition:
-      background 0.15s ease,
-      border-color 0.15s ease,
-      color 0.15s ease;
-  }
-  .statusbar .engine-picker-btn .engine-picker-name,
-  .footer .engine-picker-btn .engine-picker-name {
-    font-size: 10.5px;
-    line-height: 1;
-  }
-  .statusbar .engine-picker-btn .engine-picker-icon,
-  .footer .engine-picker-btn .engine-picker-icon {
-    font-size: 11px;
-    width: 11px;
-    height: 11px;
-    color: inherit;
-    opacity: 0.9;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-  .statusbar .engine-picker-btn .engine-badge,
-  .footer .engine-picker-btn .engine-badge {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-    line-height: 1;
-    padding: 0;
-    background: transparent;
-    border: none;
-    color: inherit;
-    box-shadow: none;
-  }
-
-  /* 方案 C 纯平精益流：引擎选择按钮常态完全纯平无边框，与普通条目融为一体，Hover 出利落小矩形 */
-  .statusbar .engine-picker-btn,
-  .footer .engine-picker-btn {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 2px;
-    padding: 0 4px;
-    color: var(--text-dim);
-  }
-  .statusbar .engine-picker-btn:hover,
-  .footer .engine-picker-btn:hover {
-    background: var(--glow-12);
-    border-color: transparent;
-    color: var(--text);
-  }
-  .statusbar .engine-picker-btn.engine-pi .engine-picker-icon,
-  .footer .engine-picker-btn.engine-pi .engine-picker-icon {
-    color: var(--accent);
-  }
-  .statusbar .engine-picker-btn.engine-dsh .engine-picker-icon,
-  .footer .engine-picker-btn.engine-dsh .engine-picker-icon {
-    color: #38bdf8;
-  }
-  .statusbar .engine-picker-btn.engine-claude .engine-picker-icon,
-  .footer .engine-picker-btn.engine-claude .engine-picker-icon {
-    color: #f97316;
-  }
-  .statusbar .engine-picker-btn.engine-durable .engine-picker-icon,
-  .footer .engine-picker-btn.engine-durable .engine-picker-icon {
-    color: #10b981;
-  }
-  .engine-picker-menu {
-    min-width: 290px;
-    max-width: 340px;
-    padding: 8px;
-    border-radius: 9px;
-    background: var(--menu-bg, var(--bg-elev2));
-    border: 1px solid var(--border);
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
-    z-index: 9999;
-  }
-  .statusbar .engine-picker-wrap .engine-picker-menu,
-  .footer .engine-picker-wrap .engine-picker-menu,
-  .dropdown.dd-up .engine-picker-menu {
-    top: auto;
-    bottom: calc(100% + 6px);
-  }
-  .engine-picker-header {
-    padding: 2px 4px 8px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 6px;
-  }
-  .engine-picker-title {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 600;
-    font-size: 12px;
-    color: var(--text);
-  }
-  .engine-picker-subtitle {
-    font-size: 11px;
-    color: var(--text-dim);
-    margin-top: 3px;
-    line-height: 1.35;
-  }
-  .engine-picker-list {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
-  .engine-picker-item {
-    width: 100%;
-    text-align: left;
-    background: var(--glow-025);
-    border: 1px solid transparent;
-    border-radius: 7px;
-    padding: 8px 10px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .engine-picker-item:hover {
-    background: var(--bg-elev3);
-    border-color: var(--border);
-  }
-  .engine-picker-item.active {
-    background: var(--accent-soft);
-    border-color: rgba(139, 92, 246, 0.35);
-  }
-  .engine-picker-item-head {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .engine-picker-item-name {
-    font-weight: 600;
-    font-size: 12.5px;
-    color: var(--text);
-  }
-  .engine-picker-item-icon {
-    font-size: 13px;
-    color: var(--accent);
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-  }
-  .engine-picker-item.engine-dsh .engine-picker-item-icon {
-    color: #4fc3f7;
-  }
-  .engine-picker-item.engine-claude .engine-picker-item-icon {
-    color: #ea580c;
-  }
-  .engine-picker-item.engine-durable .engine-picker-item-icon {
-    color: #10b981;
-  }
-  .engine-picker-item-tag {
-    font-size: 10px;
-    padding: 1px 5px;
-    border-radius: 3px;
-    background: var(--bg-elev3);
-    color: var(--text-dim);
-    border: 1px solid var(--border);
-    letter-spacing: 0.2px;
-    flex-shrink: 0;
-  }
-  .engine-picker-item-tag.uninstalled {
-    background: color-mix(in srgb, var(--amber) 12%, transparent);
-    color: var(--amber);
-    border-color: rgba(251, 191, 36, 0.3);
-  }
-  .engine-picker-item-tag.update-available {
-    background: var(--green-soft);
-    color: var(--green);
-    border-color: rgba(52, 211, 153, 0.35);
-  }
-  .engine-picker-item.uninstalled {
-    opacity: 0.88;
-  }
-  .engine-picker-item.uninstalled:hover {
-    opacity: 1;
-  }
-  .engine-picker-install-btn {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 500;
-    border-radius: 4px;
-    border: 1px solid rgba(139, 92, 246, 0.35);
-    background: var(--accent);
-    color: var(--accent-contrast, #fff);
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: all 0.15s ease;
-  }
-  .engine-picker-install-btn:hover {
-    background: color-mix(in srgb, var(--accent) 80%, black);
-    border-color: var(--accent);
-  }
-  .engine-picker-install-btn:active {
-    transform: scale(0.96);
-  }
-  .engine-picker-update-btn {
-    margin-left: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 500;
-    border-radius: 4px;
-    border: 1px solid color-mix(in srgb, var(--green) 40%, transparent);
-    background: var(--green);
-    color: var(--on-green);
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: all 0.15s ease;
-  }
-  .engine-picker-update-btn:hover {
-    background: color-mix(in srgb, var(--green) 85%, black);
-    border-color: var(--green);
-  }
-  .engine-picker-update-btn:active {
-    transform: scale(0.96);
-  }
-  .engine-picker-update-btn:disabled {
-    opacity: 0.65;
-    cursor: not-allowed;
-    transform: none;
-  }
-  .engine-update-icon.spinning {
-    animation: spin 1s linear infinite;
-  }
-  .engine-install-icon,
-  .engine-update-icon {
-    font-size: 11px;
-    flex-shrink: 0;
-  }
-  .set-mode-btn.uninstalled {
-    opacity: 0.88;
-  }
-  .set-mode-btn.uninstalled:hover {
-    opacity: 1;
-  }
-  .engine-picker-check {
-    margin-left: auto;
-    color: var(--accent);
-    font-size: 14px;
-    flex-shrink: 0;
-  }
-  .engine-picker-item-desc {
-    font-size: 11px;
-    color: var(--text-dim);
-    margin-top: 4px;
-    line-height: 1.4;
-    overflow-wrap: anywhere;
-  }
-
   .working-spin {
     width: 8px;
     height: 8px;
@@ -5888,10 +5530,7 @@
   .topbar.no-labels
     .panel-toggle
     > span:not(.plugin-icon-svg):not(.plugin-icon-glyph):not(.chip-emoji),
-  .topbar.no-labels .brand-name,
-  .topbar.no-labels .engine-picker-btn .engine-badge,
-  .topbar.no-labels .engine-picker-btn .engine-picker-name,
-  .topbar.no-labels .engine-picker-btn .dd-caret {
+  .topbar.no-labels .brand-name {
     display: none;
   }
   /* 「只显示图标」模式下把**纯图标**控件做成圆形（宽 = 高 = --topbar-ctl-h，圆角 50%）：
@@ -7008,8 +6647,7 @@
   .topbar .tb-tab > svg,
   .topbar .panel-toggle > svg,
   .topbar .plugin-topbar-item > svg,
-  .topbar button > svg,
-  .topbar .engine-picker-icon {
+  .topbar button > svg {
     color: inherit;
     stroke: currentColor;
   }
@@ -25439,9 +25077,7 @@
   }
 
   /* 在侧边停靠栏（.side-dock）中：只显示纯图标，隐藏文字，宽高固定为 30px × 30px 正圆形，默认不显示边框 */
-  .side-dock .bar-item-wrap,
-  .side-dock .bar-item-engine-wrap,
-  .side-dock .engine-picker-wrap {
+  .side-dock .bar-item-wrap {
     width: auto;
     display: inline-flex;
     justify-content: center;
@@ -25449,12 +25085,6 @@
   }
 
   .side-dock .bar-item-text {
-    display: none;
-  }
-
-  .side-dock .engine-picker-btn .engine-badge,
-  .side-dock .engine-picker-btn .engine-picker-name,
-  .side-dock .engine-picker-btn .dd-caret {
     display: none;
   }
 

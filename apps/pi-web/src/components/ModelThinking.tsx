@@ -22,8 +22,7 @@ interface Props {
    *  keys renders its model list once per key so clicking a model under a key
    *  switches the active key on the fly (no static model-list copy). */
   providerKeys?: Record<string, ProviderKeyInfo[]>;
-  /** 全局默认模型（"provider/id"，null = 未设置，undefined = 功能隐藏
-   *  —— DSH 引擎无此概念，App 侧按 engine 传）。 */
+  /** 全局默认模型（"provider/id"，null = 未设置，undefined = 功能隐藏）。 */
   defaultModel?: string | null;
   /** Compact triggers for narrow toolbars (mobile input row). */
   compact?: boolean;

@@ -48,7 +48,6 @@ import {
   useAppField,
   useAppGlobals,
   useEngineCapabilities,
-  useIsDsh,
   useIsManaged,
   useServiceInfo,
 } from '../app-globals';
@@ -61,7 +60,6 @@ import { useFloatingPanel } from '../use-floating-panel';
 import { isDesktopShell } from '../desktop';
 import { desktopReleasesUrl, useDesktopUpdater } from '../desktop-updater';
 import { BarItem } from './BarItem';
-import { EnginePicker } from './EnginePicker';
 import { WindowControls } from './WindowControls';
 import { appUrl } from '../base-url';
 
@@ -262,10 +260,9 @@ export function TopBar({
   const [pluginManagerFocusId, setPluginManagerFocusId] = useState<string | null>(null);
   const cwd = useAppField('cwd');
   const workspaceRoots = useAppField('workspaceRoots');
-  /* 临时会话能力由引擎底座 capabilities.ephemeralChat 事实源驱动（DSH 不提供，Pi 与 Universal 提供）。 */
-  const isDsh = useIsDsh();
+  /* 临时会话能力由引擎底座 capabilities.ephemeralChat 事实源驱动。 */
   const capabilities = useEngineCapabilities();
-  const supportsEphemeral = Boolean(capabilities.ephemeralChat !== false && !isDsh);
+  const supportsEphemeral = Boolean(capabilities.ephemeralChat !== false);
   const cwdClickTimerRef = useRef<number | null>(null);
   useEffect(() => {
     return () => {
@@ -322,7 +319,6 @@ export function TopBar({
   const FALLBACK_TOPBAR_IDS = [
     'host:history',
     'host:brand',
-    'host:engine',
     'host:open-project',
     'host:chat',
     'host:terminal',
@@ -1457,7 +1453,6 @@ export function TopBar({
         <span className="chip-sub">{chat.status}</span>
       </span>
     ),
-    'host:engine': <EnginePicker direction="down" align="left" caret={false} bar="top" />,
     'host:ctx': (
       <span className="chip" data-tip={t('contextUsage')}>
         <span className="chip-sub">
@@ -1521,7 +1516,6 @@ export function TopBar({
     'host:theme',
     'host:update',
     'host:browser',
-    'host:engine',
   ]);
   /** TABS 白名单门禁（历史口径，不扩大）：search/tasks/settings 的显隐还受白名单管，
    *  其余宿主入口只看 slot（各节点工厂内部自行判断，见 hostNodes）。 */

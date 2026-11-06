@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FiActivity,
   FiCheck,
@@ -98,6 +98,50 @@ interface ModelConfigModalProps {
   /** 全局默认模型（"provider/id"，null = 未设置，undefined = 功能隐藏）。 */
   defaultModel?: string | null;
   onClose: () => void;
+}
+
+/** 内嵌面板 props：设置页「模型与服务商」直接渲染工作台本体（无 backdrop）。
+ *  `onClose` 可省略——省略时隐藏右上角关闭按钮，关闭交由宿主（设置弹窗自身）。
+ *  `embedded` = 内嵌模式：不渲染「模型管理」标题行（顶栏控制组由宿主放到页面标题行），
+ *  并去掉卡片外框（样式见 model-management.css `.model-studio-panel`）。 */
+export type ModelConfigPanelProps = Omit<ModelConfigModalProps, 'onClose'> & {
+  onClose?: () => void;
+  embedded?: boolean;
+};
+
+/** 「拉取官方目录」按钮的状态机：reqId 回执匹配 + 忙碌/结果反馈。
+ *  弹窗顶栏与设置页标题行各有一个实例，各自独立计数。该能力是 pi 引擎专属
+ *  （官方目录 = pi.dev 内嵌提供商目录，写入 models-store.json）；服务端对
+ *  无 ModelRuntime 的场景如实回执失败（见 model-admin.ts refreshBuiltinModels）。 */
+export function useBuiltinCatalogRefresh(result: ModelConfigModalProps['refreshBuiltinResult']): {
+  busy: boolean;
+  msg: { ok: boolean; text: string } | null;
+  refresh: () => void;
+} {
+  const t = useT();
+  const [busy, setBusy] = useState(false);
+  const [reqId, setReqId] = useState(0);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const handled = useRef(0);
+  useEffect(() => {
+    if (!result || result.reqId === handled.current) return;
+    handled.current = result.reqId;
+    setBusy(false);
+    setMsg(
+      result.ok
+        ? { ok: true, text: t('refreshBuiltinOk') }
+        : { ok: false, text: result.error || t('refreshBuiltinFail') },
+    );
+  }, [result, t]);
+  const refresh = useCallback(() => {
+    if (busy) return;
+    setBusy(true);
+    setMsg(null);
+    const next = reqId + 1;
+    setReqId(next);
+    appSend({ type: 'refresh_builtin_models', reqId: next });
+  }, [busy, reqId]);
+  return { busy, msg, refresh };
 }
 
 const API_TYPES = [
@@ -495,7 +539,7 @@ function CandidatePickerModal({
   );
 }
 
-export function ModelConfigModal({
+export function ModelConfigPanel({
   providers,
   providerStatus,
   providerKeys,
@@ -511,7 +555,8 @@ export function ModelConfigModal({
   appendBuiltinResult,
   defaultModel,
   onClose,
-}: ModelConfigModalProps) {
+  embedded,
+}: ModelConfigPanelProps) {
   const t = useT();
 
   // 导航状态：选中的是内置服务商 (builtin) 还是自定义服务商 (custom)
@@ -587,11 +632,8 @@ export function ModelConfigModal({
   const [hintText] = useState('');
   const handledEnrichReq = useRef(0);
 
-  // 刷新官方内置目录
-  const [builtinBusy, setBuiltinBusy] = useState(false);
-  const [builtinReqId, setBuiltinReqId] = useState(0);
-  const [builtinMsg, setBuiltinMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const handledBuiltinReq = useRef(0);
+  // 刷新官方内置目录（状态机抽为 useBuiltinCatalogRefresh，与设置页标题行共用）
+  const builtinCat = useBuiltinCatalogRefresh(refreshBuiltinResult);
 
   // 追加内置模型覆盖
   const [appendingFor, setAppendingFor] = useState<string | null>(null);
@@ -725,18 +767,6 @@ export function ModelConfigModal({
     }
   }, [enrichModelsResult, t]);
 
-  // 处理内置目录刷新结果
-  useEffect(() => {
-    if (!refreshBuiltinResult || refreshBuiltinResult.reqId === handledBuiltinReq.current) return;
-    handledBuiltinReq.current = refreshBuiltinResult.reqId;
-    setBuiltinBusy(false);
-    if (refreshBuiltinResult.ok) {
-      setBuiltinMsg({ ok: true, text: t('refreshBuiltinOk') });
-    } else {
-      setBuiltinMsg({ ok: false, text: refreshBuiltinResult.error || t('refreshBuiltinFail') });
-    }
-  }, [refreshBuiltinResult, t]);
-
   // 处理追加模型结果
   useEffect(() => {
     if (!appendBuiltinResult || appendBuiltinResult.reqId === handledAppendReq.current) return;
@@ -763,13 +793,20 @@ export function ModelConfigModal({
     if (cloneProviderResult.ok) {
       const cs = (cloneProviderResult as { configs?: UiProviderConfig[] }).configs;
       if (cs && cs.length > 1) {
+        // 多 api 服务商（如 opencode）一个克隆出多份草稿：批量模式逐份编辑。
         // 克隆草稿不带凭据（服务端保证），apiKey 缓冲天然为空、hasApiKey=false。
         setBatch(cs.map((c) => toDraft(c)));
         setBatchKey('');
         return;
       }
+      // 单配置克隆：直接进标准编辑器预填（新 providerId + 空 apiKey 待用户填写）。
+      // 原实现写 setAddKeyDraft 但该状态从未被渲染（继承缺陷），克隆点了没反应。
       if (cloneProviderResult.config) {
-        setAddKeyDraft(toDraft(cloneProviderResult.config));
+        const draft = toDraft(cloneProviderResult.config);
+        setEditing(draft);
+        setActiveNav({ type: 'custom', id: draft.providerId });
+        setConnFeedback(null);
+        setFetchMsg(null);
       }
     }
   }, [cloneProviderResult]);
@@ -930,7 +967,8 @@ export function ModelConfigModal({
       models,
     };
     appSend({ type: 'save_model_config', providerId, config });
-    onClose();
+    // 内嵌模式（设置页）无 onClose：省略时只发保存，不关闭宿主。
+    onClose?.();
   };
 
   const setModelRow = (i: number, patch: Partial<DraftModel>) => {
@@ -1036,163 +1074,213 @@ export function ModelConfigModal({
     });
   };
 
-  const refreshBuiltin = () => {
-    if (builtinBusy) return;
-    setBuiltinBusy(true);
-    setBuiltinMsg(null);
-    const reqId = builtinReqId + 1;
-    setBuiltinReqId(reqId);
-    appSend({ type: 'refresh_builtin_models', reqId });
-  };
-
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal model-studio-modal" onClick={(e) => e.stopPropagation()}>
-        {/* 顶栏 */}
-        <div className="studio-header">
-          <div className="studio-header-left">
-            <div className="studio-header-icon-box">
-              <FiCpu />
-            </div>
-            <div className="studio-header-title-wrap">
-              <h2 className="studio-header-title">{t('modelManagementTitle')}</h2>
-              <span className="studio-header-badge">Studio</span>
-            </div>
-          </div>
-          <div className="studio-header-actions">
-            {defaultModel !== undefined && defaultModel && (
-              <div
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '3px 8px',
-                  borderRadius: 6,
-                  background: 'rgba(251, 191, 36, 0.08)',
-                  border: '1px solid rgba(251, 191, 36, 0.3)',
-                  fontSize: 11.5,
-                  color: 'var(--amber)',
-                }}
-                title={t('defaultModelLabel', { model: defaultModel })}
-              >
-                <span>★</span>
-                <span
-                  style={{
-                    maxWidth: 120,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    fontFamily: 'var(--mono)',
-                  }}
-                >
-                  {defaultModel.split('/').slice(1).join('/')}
-                </span>
-                <button
-                  type="button"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--amber)',
-                    cursor: 'pointer',
-                    fontSize: 10,
-                    padding: '0 2px',
-                    opacity: 0.7,
-                  }}
-                  title={t('clearDefaultModel')}
-                  onClick={() => appSend({ type: 'clear_default_model' })}
-                >
-                  ✕
-                </button>
+    <div
+      className={`modal model-studio-modal${embedded ? ' model-studio-panel' : ''}`}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* 顶栏（仅弹窗模式：内嵌设置页时标题行与控制组由宿主渲染，见 SettingsModal models 页） */}
+      {!embedded && (
+        <>
+          <div className="studio-header">
+            <div className="studio-header-left">
+              <div className="studio-header-icon-box">
+                <FiCpu />
               </div>
-            )}
-            <button
-              type="button"
-              className="studio-header-btn"
-              title={t('refreshBuiltinHint')}
-              disabled={builtinBusy}
-              onClick={refreshBuiltin}
-            >
-              <FiDownload />
-              <span>{builtinBusy ? t('refreshBuiltinBusy') : t('refreshBuiltinCatalog')}</span>
-            </button>
-            <button
-              type="button"
-              className="studio-header-iconbtn"
-              title={t('reloadModelsHint')}
-              onClick={() => appSend({ type: 'reload_models_config' })}
-            >
-              <FiRefreshCw />
-            </button>
-            <button
-              type="button"
-              className="studio-header-iconbtn close-btn"
-              aria-label={t('close')}
-              onClick={onClose}
-            >
-              <FiX />
-            </button>
-          </div>
-        </div>
-        {builtinMsg && (
-          <div
-            style={{
-              padding: '6px 20px',
-              background: 'var(--bg-elev2)',
-              fontSize: 12,
-              borderBottom: '1px solid var(--border-soft)',
-            }}
-          >
-            <span className={`fetch-msg ${builtinMsg.ok ? 'ok' : 'err'}`}>{builtinMsg.text}</span>
-          </div>
-        )}
-
-        {/* 分栏主体 */}
-        <div className="model-studio-body">
-          {/* 左侧侧边栏 */}
-          <div className="model-studio-sidebar">
-            <div style={{ padding: '12px 10px 6px' }}>
-              <button
-                type="button"
-                className="btn primary sm"
-                style={{ width: '100%', justifyContent: 'center' }}
-                onClick={() => {
-                  setActiveNav({ type: 'custom', id: '' });
-                  setEditing(emptyDraft());
-                  setConnFeedback(null);
-                  setFetchMsg(null);
-                }}
-              >
-                <FiPlus /> {t('addCustomProvider')}
-              </button>
+              <div className="studio-header-title-wrap">
+                <h2 className="studio-header-title">{t('modelManagementTitle')}</h2>
+                <span className="studio-header-badge">Studio</span>
+              </div>
             </div>
-
-            {/* 自定义服务商列表 */}
-            <div className="studio-sidebar-section">
-              <span className="studio-sidebar-title">
-                {t('customProvidersCount', { n: providers.length })}
-              </span>
-              {providers.length === 0 && (
-                <div style={{ fontSize: 11.5, color: 'var(--text-faint)', padding: '6px 8px' }}>
-                  {t('noCustomProviders')}
-                </div>
-              )}
-              {providers.map((p) => {
-                const active = activeNav.type === 'custom' && activeNav.id === p.providerId;
-                return (
-                  <div
-                    key={p.providerId}
-                    className={`studio-nav-item ${active ? 'active' : ''}`}
-                    onClick={() => {
-                      setActiveNav({ type: 'custom', id: p.providerId });
-                      setEditing(toDraft(p));
-                      setConnFeedback(null);
-                      setFetchMsg(null);
+            <div className="studio-header-actions">
+              {defaultModel !== undefined && defaultModel && (
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '3px 8px',
+                    borderRadius: 6,
+                    background: 'rgba(251, 191, 36, 0.08)',
+                    border: '1px solid rgba(251, 191, 36, 0.3)',
+                    fontSize: 11.5,
+                    color: 'var(--amber)',
+                  }}
+                  title={t('defaultModelLabel', { model: defaultModel })}
+                >
+                  <span>★</span>
+                  <span
+                    style={{
+                      maxWidth: 120,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      fontFamily: 'var(--mono)',
                     }}
                   >
-                    <span className="studio-nav-label">
-                      <span className="studio-nav-dot configured" />
-                      <span>{p.name || p.providerId}</span>
-                    </span>
+                    {defaultModel.split('/').slice(1).join('/')}
+                  </span>
+                  <button
+                    type="button"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--amber)',
+                      cursor: 'pointer',
+                      fontSize: 10,
+                      padding: '0 2px',
+                      opacity: 0.7,
+                    }}
+                    title={t('clearDefaultModel')}
+                    onClick={() => appSend({ type: 'clear_default_model' })}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+              <button
+                type="button"
+                className="studio-header-btn"
+                title={t('refreshBuiltinHint')}
+                disabled={builtinCat.busy}
+                onClick={builtinCat.refresh}
+              >
+                <FiDownload />
+                <span>
+                  {builtinCat.busy ? t('refreshBuiltinBusy') : t('refreshBuiltinCatalog')}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="studio-header-iconbtn"
+                title={t('reloadModelsHint')}
+                onClick={() => appSend({ type: 'reload_models_config' })}
+              >
+                <FiRefreshCw />
+              </button>
+              {onClose && (
+                <button
+                  type="button"
+                  className="studio-header-iconbtn close-btn"
+                  aria-label={t('close')}
+                  onClick={onClose}
+                >
+                  <FiX />
+                </button>
+              )}
+            </div>
+          </div>
+          {builtinCat.msg && (
+            <div
+              style={{
+                padding: '6px 20px',
+                background: 'var(--bg-elev2)',
+                fontSize: 12,
+                borderBottom: '1px solid var(--border-soft)',
+              }}
+            >
+              <span className={`fetch-msg ${builtinCat.msg.ok ? 'ok' : 'err'}`}>
+                {builtinCat.msg.text}
+              </span>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* 分栏主体 */}
+      <div className="model-studio-body">
+        {/* 左侧侧边栏 */}
+        <div className="model-studio-sidebar">
+          <div style={{ padding: '12px 10px 6px' }}>
+            <button
+              type="button"
+              className="btn primary sm"
+              style={{ width: '100%', justifyContent: 'center' }}
+              onClick={() => {
+                setActiveNav({ type: 'custom', id: '' });
+                setEditing(emptyDraft());
+                setConnFeedback(null);
+                setFetchMsg(null);
+              }}
+            >
+              <FiPlus /> {t('addCustomProvider')}
+            </button>
+          </div>
+
+          {/* 自定义服务商列表 */}
+          <div className="studio-sidebar-section">
+            <span className="studio-sidebar-title">
+              {t('customProvidersCount', { n: providers.length })}
+            </span>
+            {providers.length === 0 && (
+              <div style={{ fontSize: 11.5, color: 'var(--text-faint)', padding: '6px 8px' }}>
+                {t('noCustomProviders')}
+              </div>
+            )}
+            {providers.map((p) => {
+              const active = activeNav.type === 'custom' && activeNav.id === p.providerId;
+              return (
+                <div
+                  key={p.providerId}
+                  className={`studio-nav-item ${active ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveNav({ type: 'custom', id: p.providerId });
+                    setEditing(toDraft(p));
+                    setConnFeedback(null);
+                    setFetchMsg(null);
+                  }}
+                >
+                  <span className="studio-nav-label">
+                    <span className="studio-nav-dot configured" />
+                    <span>{p.name || p.providerId}</span>
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      color: 'var(--text-faint)',
+                      fontFamily: 'var(--mono)',
+                    }}
+                  >
+                    {p.models.length}m
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 内置服务商列表。「刷新官方目录」拉回的 pi.dev 提供商索引中，
+              本地尚未内置的服务商以 officialOnly 占位行出现在列表尾部
+              （灰显、不可点，升级内置目录后转为可配置）。 */}
+          <div className="studio-sidebar-section">
+            <span className="studio-sidebar-title">
+              {t('builtinProvidersCount', { n: providerStatus.length })}
+            </span>
+            {providerStatus.map((p) => {
+              const active = activeNav.type === 'builtin' && activeNav.id === p.id;
+              const pkeys = providerKeys[p.id] ?? [];
+              return (
+                <div
+                  key={p.id}
+                  className={`studio-nav-item ${active ? 'active' : ''}`}
+                  title={p.officialOnly ? t('officialOnlyHint') : undefined}
+                  style={p.officialOnly ? { opacity: 0.55 } : undefined}
+                  onClick={
+                    p.officialOnly
+                      ? undefined
+                      : () => {
+                          setActiveNav({ type: 'builtin', id: p.id });
+                          setEditing(null);
+                        }
+                  }
+                >
+                  <span className="studio-nav-label">
+                    <span className={`studio-nav-dot ${p.configured ? 'configured' : ''}`} />
+                    <span>{p.name}</span>
+                    {p.officialOnly && (
+                      <span className="studio-nav-official-badge">{t('officialOnlyBadge')}</span>
+                    )}
+                  </span>
+                  {pkeys.length > 0 && (
                     <span
                       style={{
                         fontSize: 10.5,
@@ -1200,667 +1288,636 @@ export function ModelConfigModal({
                         fontFamily: 'var(--mono)',
                       }}
                     >
-                      {p.models.length}m
+                      {pkeys.length}k
                     </span>
-                  </div>
-                );
-              })}
-            </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
-            {/* 内置服务商列表 */}
-            <div className="studio-sidebar-section">
-              <span className="studio-sidebar-title">
-                {t('builtinProvidersCount', { n: providerStatus.length })}
-              </span>
-              {providerStatus.map((p) => {
-                const active = activeNav.type === 'builtin' && activeNav.id === p.id;
-                const pkeys = providerKeys[p.id] ?? [];
-                return (
-                  <div
-                    key={p.id}
-                    className={`studio-nav-item ${active ? 'active' : ''}`}
-                    onClick={() => {
-                      setActiveNav({ type: 'builtin', id: p.id });
-                      setEditing(null);
-                    }}
-                  >
-                    <span className="studio-nav-label">
-                      <span className={`studio-nav-dot ${p.configured ? 'configured' : ''}`} />
-                      <span>{p.name}</span>
-                    </span>
-                    {pkeys.length > 0 && (
-                      <span
-                        style={{
-                          fontSize: 10.5,
-                          color: 'var(--text-faint)',
-                          fontFamily: 'var(--mono)',
-                        }}
-                      >
-                        {pkeys.length}k
+        {/* 右侧主工作区 */}
+        <div className="model-studio-main">
+          {/* 处于编辑/新建自定义服务商状态 */}
+          {editing && (
+            <div className="studio-card">
+              <div className="studio-card-head">
+                <div className="studio-card-title">
+                  <span>
+                    {editing.providerId
+                      ? t('editProviderTitle', { id: editing.providerId })
+                      : t('newCustomProviderTitle')}
+                  </span>
+                  {editing.providerId &&
+                    providers.some((p) => p.providerId === editing.providerId) && (
+                      <>
+                        <button
+                          type="button"
+                          className="iconbtn sm"
+                          title={t('refreshModels')}
+                          disabled={refreshing[editing.providerId]}
+                          onClick={() => refreshProvider(editing.providerId)}
+                        >
+                          <FiRefreshCw className={refreshing[editing.providerId] ? 'spin' : ''} />
+                        </button>
+                        <button
+                          type="button"
+                          className="iconbtn danger sm"
+                          title={t('deleteProviderTooltip')}
+                          onClick={() => {
+                            const target = providers.find(
+                              (p) => p.providerId === editing.providerId,
+                            );
+                            if (target) removeProvider(target);
+                          }}
+                        >
+                          <FiTrash2 />
+                        </button>
+                      </>
+                    )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {/* 连通性测试按钮 */}
+                  <div className="conn-test-box">
+                    <button
+                      type="button"
+                      className="conn-test-btn"
+                      disabled={testingConn || !editing.baseUrl.trim()}
+                      onClick={runTestConnection}
+                    >
+                      <FiActivity /> {testingConn ? t('testingConnection') : t('testConnection')}
+                    </button>
+                    {connFeedback && (
+                      <span className={`ping-indicator ${connFeedback.ok ? 'ok' : 'err'}`}>
+                        <span className="ping-dot" />
+                        <span>
+                          {connFeedback.ok
+                            ? t('connSuccess', { latency: connFeedback.latencyMs ?? 0 })
+                            : t('connFailed')}
+                        </span>
                       </span>
                     )}
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                  <button type="button" className="btn primary sm" onClick={saveCustomProvider}>
+                    {t('save')}
+                  </button>
+                </div>
+              </div>
 
-          {/* 右侧主工作区 */}
-          <div className="model-studio-main">
-            {/* 处于编辑/新建自定义服务商状态 */}
-            {editing && (
-              <div className="studio-card">
-                <div className="studio-card-head">
-                  <div className="studio-card-title">
-                    <span>
-                      {editing.providerId
-                        ? t('editProviderTitle', { id: editing.providerId })
-                        : t('newCustomProviderTitle')}
-                    </span>
-                    {editing.providerId &&
-                      providers.some((p) => p.providerId === editing.providerId) && (
-                        <>
+              {/* 快捷芯片区 */}
+              <div className="quick-chips-wrapper">
+                <span className="quick-chips-label">{t('quickPresetsLabel')}</span>
+                <div className="quick-chips-grid">
+                  {QUICK_PRESETS.map((preset) => (
+                    <button
+                      type="button"
+                      key={preset.id}
+                      className="quick-chip"
+                      onClick={() => applyQuickPreset(preset)}
+                    >
+                      <span className="quick-chip-name">{preset.name}</span>
+                      {preset.tag && (
+                        <span className="quick-chip-tag">{getPresetTagLabel(preset.tag, t)}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 基础连接表单 */}
+              <div className="form-grid">
+                <label className="field">
+                  <span className="field-label">
+                    {t('providerId')} <em>{t('providerIdHint')}</em>
+                  </span>
+                  <input
+                    type="text"
+                    value={editing.providerId}
+                    disabled={providers.some((p) => p.providerId === editing.providerId)}
+                    onChange={(e) => setEditing({ ...editing, providerId: e.target.value })}
+                    placeholder={t('providerIdPlaceholder')}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">{t('displayName')}</span>
+                  <input
+                    type="text"
+                    value={editing.name}
+                    onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                    placeholder={t('displayNamePh')}
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">{t('apiType')}</span>
+                  <select
+                    value={editing.api}
+                    onChange={(e) => setEditing({ ...editing, api: e.target.value })}
+                  >
+                    {API_TYPES.map((a) => (
+                      <option key={a} value={a}>
+                        {a}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span className="field-label">
+                    baseUrl <em>{t('baseUrlHint')}</em>
+                  </span>
+                  <input
+                    type="text"
+                    value={editing.baseUrl}
+                    onChange={(e) => setEditing({ ...editing, baseUrl: e.target.value })}
+                    placeholder="https://api.deepseek.com/v1"
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">{t('apiKey')}</span>
+                  <input
+                    type="password"
+                    value={editing.apiKey}
+                    onChange={(e) => setEditing({ ...editing, apiKey: e.target.value })}
+                    // 明文不再回显：已保存时留空 = 保持不变
+                    placeholder={editing.hasApiKey ? t('apiKeySavedHint') : t('apiKeyHint')}
+                  />
+                </label>
+                <label className="field check" style={{ alignSelf: 'center', paddingTop: 16 }}>
+                  <input
+                    type="checkbox"
+                    checked={editing.authHeader}
+                    onChange={(e) => setEditing({ ...editing, authHeader: e.target.checked })}
+                  />
+                  <span>{t('authHeader')}</span>
+                </label>
+              </div>
+
+              {/* 模型列表管理矩阵 */}
+              <div style={{ marginTop: 8 }}>
+                <div className="model-section-head">
+                  <span className="form-section-title" style={{ fontSize: 13, fontWeight: 600 }}>
+                    {t('modelMatrixCount', {
+                      n: editing.models.filter((m) => m.id.trim()).length,
+                    })}
+                  </span>
+                  <div className="model-section-actions">
+                    {fetchMsg && (
+                      <span
+                        className={`fetch-msg ${fetchMsg.ok ? 'ok' : 'err'}`}
+                        title={fetchMsg.text}
+                      >
+                        {fetchMsg.text}
+                      </span>
+                    )}
+                    {enrichMsg && (
+                      <span
+                        className={`fetch-msg ${enrichMsg.ok ? 'ok' : 'err'}`}
+                        title={enrichMsg.text}
+                      >
+                        {enrichMsg.text}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className="btn sm"
+                      disabled={fetching || !editing.baseUrl.trim()}
+                      title={t('fetchModelsHint')}
+                      onClick={fetchModels}
+                    >
+                      <FiDownload /> {fetching ? t('fetchingModels') : t('autoFetchAndAdopt')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn sm"
+                      disabled={enriching}
+                      title={t('enrichModelsHint')}
+                      onClick={sendEnrich}
+                    >
+                      <FiDownload /> {enriching ? t('enrichingModels') : t('enrichModels')}
+                    </button>
+                    {enriching && (
+                      <button
+                        type="button"
+                        className="btn sm"
+                        disabled={enrichCancelling}
+                        title={t('enrichModelsAbort')}
+                        onClick={abortEnrich}
+                        style={{ color: 'var(--red)' }}
+                      >
+                        <FiX /> {enrichCancelling ? t('enrichCancelling') : t('enrichModelsCancel')}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 模型行列表 */}
+                <div className="model-matrix-list">
+                  {editing.models.map((m, idx) => (
+                    <div key={idx} className="model-matrix-card">
+                      {/* 主行：模型 ID、显示名称与能力开关 */}
+                      <div className="matrix-main-row">
+                        <div className="matrix-input-group id-group">
+                          <span className="matrix-input-prefix">
+                            <FiCpu /> ID
+                          </span>
+                          <input
+                            type="text"
+                            className="matrix-input-field mono"
+                            value={m.id}
+                            onChange={(e) => setModelRow(idx, { id: e.target.value })}
+                            placeholder={t('modelIdPlaceholder')}
+                          />
+                        </div>
+
+                        <div className="matrix-input-group name-group">
+                          <span className="matrix-input-prefix">{t('modelAliasPrefix')}</span>
+                          <input
+                            type="text"
+                            className="matrix-input-field"
+                            value={m.name}
+                            onChange={(e) => setModelRow(idx, { name: e.target.value })}
+                            placeholder={t('modelAliasPlaceholder')}
+                          />
+                        </div>
+
+                        <div className="matrix-toggles">
                           <button
                             type="button"
-                            className="iconbtn sm"
-                            title={t('refreshModels')}
-                            disabled={refreshing[editing.providerId]}
-                            onClick={() => refreshProvider(editing.providerId)}
+                            className={`matrix-toggle-tag ${m.input === 'text-image' ? 'active vision' : ''}`}
+                            onClick={() =>
+                              setModelRow(idx, {
+                                input: m.input === 'text-image' ? 'text' : 'text-image',
+                              })
+                            }
+                            title={t('visionCheckboxTitle')}
                           >
-                            <FiRefreshCw className={refreshing[editing.providerId] ? 'spin' : ''} />
+                            {t('visionCheckboxLabel')}
                           </button>
                           <button
                             type="button"
-                            className="iconbtn danger sm"
-                            title={t('deleteProviderTooltip')}
-                            onClick={() => {
-                              const target = providers.find(
-                                (p) => p.providerId === editing.providerId,
+                            className={`matrix-toggle-tag ${m.reasoning ? 'active reasoning' : ''}`}
+                            onClick={() => setModelRow(idx, { reasoning: !m.reasoning })}
+                            title={t('reasoningCheckboxTitle')}
+                          >
+                            {t('reasoningCheckboxLabel')}
+                          </button>
+                          {defaultModel !== undefined &&
+                            m.id.trim() &&
+                            (() => {
+                              const fullId = `${editing.providerId}/${m.id.trim()}`;
+                              const isDefault =
+                                defaultModel === fullId || defaultModel === m.id.trim();
+                              return (
+                                <button
+                                  type="button"
+                                  className={`matrix-star-btn ${isDefault ? 'active' : ''}`}
+                                  title={
+                                    isDefault ? t('cancelDefaultTooltip') : t('setDefaultTooltip')
+                                  }
+                                  onClick={() => {
+                                    if (isDefault) {
+                                      appSend({ type: 'clear_default_model' });
+                                    } else {
+                                      appSend({ type: 'set_default_model', modelId: fullId });
+                                    }
+                                  }}
+                                >
+                                  <span className="matrix-star-icon">{isDefault ? '★' : '☆'}</span>
+                                  <span>
+                                    {isDefault ? t('defaultModelBadge') : t('setDefaultModelBtn')}
+                                  </span>
+                                </button>
                               );
-                              if (target) removeProvider(target);
-                            }}
+                            })()}
+                          <button
+                            type="button"
+                            className="matrix-delete-btn"
+                            title={t('delete')}
+                            onClick={() => removeModelRow(idx)}
                           >
                             <FiTrash2 />
                           </button>
-                        </>
-                      )}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {/* 连通性测试按钮 */}
-                    <div className="conn-test-box">
-                      <button
-                        type="button"
-                        className="conn-test-btn"
-                        disabled={testingConn || !editing.baseUrl.trim()}
-                        onClick={runTestConnection}
-                      >
-                        <FiActivity /> {testingConn ? t('testingConnection') : t('testConnection')}
-                      </button>
-                      {connFeedback && (
-                        <span className={`ping-indicator ${connFeedback.ok ? 'ok' : 'err'}`}>
-                          <span className="ping-dot" />
-                          <span>
-                            {connFeedback.ok
-                              ? t('connSuccess', { latency: connFeedback.latencyMs ?? 0 })
-                              : t('connFailed')}
-                          </span>
-                        </span>
+                        </div>
+                      </div>
+
+                      {/* 次行：规格控制条 (Spec Control Bar) */}
+                      <div className="matrix-spec-bar">
+                        {/* Context Window Combobox */}
+                        <div className="spec-combobox">
+                          <span className="spec-combobox-label">{t('contextWindowLabel')}</span>
+                          <select
+                            className="spec-combobox-select"
+                            value={
+                              CTX_PRESETS.some((p) => p.value === m.contextWindow)
+                                ? m.contextWindow
+                                : 'custom'
+                            }
+                            onChange={(e) => {
+                              if (e.target.value !== 'custom') {
+                                setModelRow(idx, { contextWindow: e.target.value });
+                              }
+                            }}
+                          >
+                            {CTX_PRESETS.map((p) => (
+                              <option key={p.value} value={p.value}>
+                                {p.label} ({Math.round(Number(p.value) / 1024)}K)
+                              </option>
+                            ))}
+                            <option value="custom">{t('customOption')}</option>
+                          </select>
+                          {(!CTX_PRESETS.some((p) => p.value === m.contextWindow) ||
+                            m.contextWindow === '') && (
+                            <input
+                              type="text"
+                              className="spec-combobox-custom-input"
+                              value={m.contextWindow}
+                              onChange={(e) => setModelRow(idx, { contextWindow: e.target.value })}
+                              placeholder={t('contextPlaceholder')}
+                            />
+                          )}
+                        </div>
+
+                        {/* Max Tokens Combobox */}
+                        <div className="spec-combobox">
+                          <span className="spec-combobox-label">{t('maxOutputLabel')}</span>
+                          <select
+                            className="spec-combobox-select"
+                            value={
+                              MAX_TOKENS_PRESETS.some((p) => p.value === m.maxTokens)
+                                ? m.maxTokens
+                                : 'custom'
+                            }
+                            onChange={(e) => {
+                              if (e.target.value !== 'custom') {
+                                setModelRow(idx, { maxTokens: e.target.value });
+                              }
+                            }}
+                          >
+                            {MAX_TOKENS_PRESETS.map((p) => (
+                              <option key={p.value} value={p.value}>
+                                {p.label} ({Math.round(Number(p.value) / 1024)}K)
+                              </option>
+                            ))}
+                            <option value="custom">{t('customOption')}</option>
+                          </select>
+                          {(!MAX_TOKENS_PRESETS.some((p) => p.value === m.maxTokens) ||
+                            m.maxTokens === '') && (
+                            <input
+                              type="text"
+                              className="spec-combobox-custom-input"
+                              value={m.maxTokens}
+                              onChange={(e) => setModelRow(idx, { maxTokens: e.target.value })}
+                              placeholder={t('maxOutputPlaceholder')}
+                            />
+                          )}
+                        </div>
+
+                        {/* 快捷点击药丸 */}
+                        <div className="matrix-spec-quick-pills">
+                          {['32K', '128K', '200K'].map((lbl) => {
+                            const match = CTX_PRESETS.find((p) => p.label === lbl);
+                            if (!match) return null;
+                            return (
+                              <button
+                                type="button"
+                                key={lbl}
+                                className={`param-pill ${m.contextWindow === match.value ? 'active' : ''}`}
+                                onClick={() => setModelRow(idx, { contextWindow: match.value })}
+                                title={t('contextPresetTooltip', { label: lbl })}
+                              >
+                                {lbl}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    className="btn sm"
+                    style={{ alignSelf: 'flex-start', marginTop: 4 }}
+                    onClick={addModelRow}
+                  >
+                    <FiPlus /> {t('addModelRow')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 处于查看官方内置服务商状态 */}
+          {activeNav.type === 'builtin' &&
+            (() => {
+              const p = providerStatus.find((x) => x.id === activeNav.id);
+              if (!p) return null;
+              const pkeys = providerKeys[p.id] ?? [];
+              return (
+                <div className="studio-card">
+                  <div className="studio-card-head">
+                    <div className="studio-card-title">
+                      <span>{t('builtinProviderTitle', { name: p.name })}</span>
+                      {p.configured && <span className="auth-badge">{t('configuredBadge')}</span>}
+                      {p.source && !p.configured && (
+                        <span className="auth-badge dim">{p.source}</span>
                       )}
                     </div>
-                    <button type="button" className="btn primary sm" onClick={saveCustomProvider}>
-                      {t('save')}
-                    </button>
-                  </div>
-                </div>
-
-                {/* 快捷芯片区 */}
-                <div className="quick-chips-wrapper">
-                  <span className="quick-chips-label">{t('quickPresetsLabel')}</span>
-                  <div className="quick-chips-grid">
-                    {QUICK_PRESETS.map((preset) => (
-                      <button
-                        type="button"
-                        key={preset.id}
-                        className="quick-chip"
-                        onClick={() => applyQuickPreset(preset)}
-                      >
-                        <span className="quick-chip-name">{preset.name}</span>
-                        {preset.tag && (
-                          <span className="quick-chip-tag">{getPresetTagLabel(preset.tag, t)}</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 基础连接表单 */}
-                <div className="form-grid">
-                  <label className="field">
-                    <span className="field-label">
-                      {t('providerId')} <em>{t('providerIdHint')}</em>
-                    </span>
-                    <input
-                      type="text"
-                      value={editing.providerId}
-                      disabled={providers.some((p) => p.providerId === editing.providerId)}
-                      onChange={(e) => setEditing({ ...editing, providerId: e.target.value })}
-                      placeholder={t('providerIdPlaceholder')}
-                    />
-                  </label>
-                  <label className="field">
-                    <span className="field-label">{t('displayName')}</span>
-                    <input
-                      type="text"
-                      value={editing.name}
-                      onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                      placeholder={t('displayNamePh')}
-                    />
-                  </label>
-                  <label className="field">
-                    <span className="field-label">{t('apiType')}</span>
-                    <select
-                      value={editing.api}
-                      onChange={(e) => setEditing({ ...editing, api: e.target.value })}
-                    >
-                      {API_TYPES.map((a) => (
-                        <option key={a} value={a}>
-                          {a}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="field">
-                    <span className="field-label">
-                      baseUrl <em>{t('baseUrlHint')}</em>
-                    </span>
-                    <input
-                      type="text"
-                      value={editing.baseUrl}
-                      onChange={(e) => setEditing({ ...editing, baseUrl: e.target.value })}
-                      placeholder="https://api.deepseek.com/v1"
-                    />
-                  </label>
-                  <label className="field">
-                    <span className="field-label">{t('apiKey')}</span>
-                    <input
-                      type="password"
-                      value={editing.apiKey}
-                      onChange={(e) => setEditing({ ...editing, apiKey: e.target.value })}
-                      // 明文不再回显：已保存时留空 = 保持不变
-                      placeholder={editing.hasApiKey ? t('apiKeySavedHint') : t('apiKeyHint')}
-                    />
-                  </label>
-                  <label className="field check" style={{ alignSelf: 'center', paddingTop: 16 }}>
-                    <input
-                      type="checkbox"
-                      checked={editing.authHeader}
-                      onChange={(e) => setEditing({ ...editing, authHeader: e.target.checked })}
-                    />
-                    <span>{t('authHeader')}</span>
-                  </label>
-                </div>
-
-                {/* 模型列表管理矩阵 */}
-                <div style={{ marginTop: 8 }}>
-                  <div className="model-section-head">
-                    <span className="form-section-title" style={{ fontSize: 13, fontWeight: 600 }}>
-                      {t('modelMatrixCount', {
-                        n: editing.models.filter((m) => m.id.trim()).length,
-                      })}
-                    </span>
-                    <div className="model-section-actions">
-                      {fetchMsg && (
-                        <span
-                          className={`fetch-msg ${fetchMsg.ok ? 'ok' : 'err'}`}
-                          title={fetchMsg.text}
-                        >
-                          {fetchMsg.text}
-                        </span>
-                      )}
-                      {enrichMsg && (
-                        <span
-                          className={`fetch-msg ${enrichMsg.ok ? 'ok' : 'err'}`}
-                          title={enrichMsg.text}
-                        >
-                          {enrichMsg.text}
-                        </span>
-                      )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <button
                         type="button"
                         className="btn sm"
-                        disabled={fetching || !editing.baseUrl.trim()}
-                        title={t('fetchModelsHint')}
-                        onClick={fetchModels}
+                        title={t('cloneProvider')}
+                        disabled={cloning === p.id}
+                        onClick={() => cloneBuiltin(p)}
                       >
-                        <FiDownload /> {fetching ? t('fetchingModels') : t('autoFetchAndAdopt')}
+                        <FiCopy /> {t('cloneProvider')}
                       </button>
                       <button
                         type="button"
                         className="btn sm"
-                        disabled={enriching}
-                        title={t('enrichModelsHint')}
-                        onClick={sendEnrich}
+                        onClick={() => {
+                          setAppendingFor(appendingFor === p.id ? null : p.id);
+                          setAppendMsg(null);
+                        }}
                       >
-                        <FiDownload /> {enriching ? t('enrichingModels') : t('enrichModels')}
+                        <FiPlus /> {t('appendModel')}
                       </button>
-                      {enriching && (
+                      {p.supportsApiKey && p.source === 'stored' && !p.usingOAuth && (
                         <button
                           type="button"
-                          className="btn sm"
-                          disabled={enrichCancelling}
-                          title={t('enrichModelsAbort')}
-                          onClick={abortEnrich}
-                          style={{ color: 'var(--red)' }}
+                          className="btn sm danger"
+                          title={t('clearKeyTitle')}
+                          onClick={() => clearBuiltinKey(p.id)}
                         >
-                          <FiX />{' '}
-                          {enrichCancelling ? t('enrichCancelling') : t('enrichModelsCancel')}
+                          <FiTrash2 /> {t('clearKey')}
                         </button>
                       )}
                     </div>
                   </div>
 
-                  {/* 模型行列表 */}
-                  <div className="model-matrix-list">
-                    {editing.models.map((m, idx) => (
-                      <div key={idx} className="model-matrix-card">
-                        {/* 主行：模型 ID、显示名称与能力开关 */}
-                        <div className="matrix-main-row">
-                          <div className="matrix-input-group id-group">
-                            <span className="matrix-input-prefix">
-                              <FiCpu /> ID
-                            </span>
-                            <input
-                              type="text"
-                              className="matrix-input-field mono"
-                              value={m.id}
-                              onChange={(e) => setModelRow(idx, { id: e.target.value })}
-                              placeholder={t('modelIdPlaceholder')}
-                            />
-                          </div>
+                  {/* OAuth 登录交互 */}
+                  {p.supportsOAuth && (
+                    <ProviderOAuthControls
+                      provider={p}
+                      flow={providerOAuthFlows.find((f) => f.provider === p.id)}
+                      result={providerOAuthResults[p.id]}
+                    />
+                  )}
 
-                          <div className="matrix-input-group name-group">
-                            <span className="matrix-input-prefix">{t('modelAliasPrefix')}</span>
-                            <input
-                              type="text"
-                              className="matrix-input-field"
-                              value={m.name}
-                              onChange={(e) => setModelRow(idx, { name: e.target.value })}
-                              placeholder={t('modelAliasPlaceholder')}
-                            />
-                          </div>
-
-                          <div className="matrix-toggles">
+                  {/* 多密钥列表与管理 */}
+                  {p.supportsApiKey && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+                        {t('apiKeyManagement')}
+                      </span>
+                      <div className="provider-keys">
+                        {pkeys.length === 0 && (
+                          <div className="provider-key-empty">{t('noKeyYet')}</div>
+                        )}
+                        {pkeys.map((k) => (
+                          <div
+                            className={`provider-key-item ${k.active ? 'active' : ''}`}
+                            key={k.name}
+                          >
+                            <span className="provider-key-dot">{k.active ? '●' : '○'}</span>
+                            <span className="provider-key-label">{k.name}</span>
+                            {!k.active && (
+                              <button
+                                type="button"
+                                className="iconbtn"
+                                title={t('activateKey')}
+                                onClick={() => activateKey(p.id, k.name)}
+                              >
+                                <FiCheck />
+                              </button>
+                            )}
                             <button
                               type="button"
-                              className={`matrix-toggle-tag ${m.input === 'text-image' ? 'active vision' : ''}`}
-                              onClick={() =>
-                                setModelRow(idx, {
-                                  input: m.input === 'text-image' ? 'text' : 'text-image',
-                                })
-                              }
-                              title={t('visionCheckboxTitle')}
-                            >
-                              {t('visionCheckboxLabel')}
-                            </button>
-                            <button
-                              type="button"
-                              className={`matrix-toggle-tag ${m.reasoning ? 'active reasoning' : ''}`}
-                              onClick={() => setModelRow(idx, { reasoning: !m.reasoning })}
-                              title={t('reasoningCheckboxTitle')}
-                            >
-                              {t('reasoningCheckboxLabel')}
-                            </button>
-                            {defaultModel !== undefined &&
-                              m.id.trim() &&
-                              (() => {
-                                const fullId = `${editing.providerId}/${m.id.trim()}`;
-                                const isDefault =
-                                  defaultModel === fullId || defaultModel === m.id.trim();
-                                return (
-                                  <button
-                                    type="button"
-                                    className={`matrix-star-btn ${isDefault ? 'active' : ''}`}
-                                    title={
-                                      isDefault ? t('cancelDefaultTooltip') : t('setDefaultTooltip')
-                                    }
-                                    onClick={() => {
-                                      if (isDefault) {
-                                        appSend({ type: 'clear_default_model' });
-                                      } else {
-                                        appSend({ type: 'set_default_model', modelId: fullId });
-                                      }
-                                    }}
-                                  >
-                                    <span className="matrix-star-icon">
-                                      {isDefault ? '★' : '☆'}
-                                    </span>
-                                    <span>
-                                      {isDefault ? t('defaultModelBadge') : t('setDefaultModelBtn')}
-                                    </span>
-                                  </button>
-                                );
-                              })()}
-                            <button
-                              type="button"
-                              className="matrix-delete-btn"
-                              title={t('delete')}
-                              onClick={() => removeModelRow(idx)}
+                              className="iconbtn danger"
+                              title={t('removeKey')}
+                              onClick={() => removeKey(p.id, k.name)}
                             >
                               <FiTrash2 />
                             </button>
                           </div>
-                        </div>
-
-                        {/* 次行：规格控制条 (Spec Control Bar) */}
-                        <div className="matrix-spec-bar">
-                          {/* Context Window Combobox */}
-                          <div className="spec-combobox">
-                            <span className="spec-combobox-label">{t('contextWindowLabel')}</span>
-                            <select
-                              className="spec-combobox-select"
-                              value={
-                                CTX_PRESETS.some((p) => p.value === m.contextWindow)
-                                  ? m.contextWindow
-                                  : 'custom'
-                              }
-                              onChange={(e) => {
-                                if (e.target.value !== 'custom') {
-                                  setModelRow(idx, { contextWindow: e.target.value });
-                                }
-                              }}
-                            >
-                              {CTX_PRESETS.map((p) => (
-                                <option key={p.value} value={p.value}>
-                                  {p.label} ({Math.round(Number(p.value) / 1024)}K)
-                                </option>
-                              ))}
-                              <option value="custom">{t('customOption')}</option>
-                            </select>
-                            {(!CTX_PRESETS.some((p) => p.value === m.contextWindow) ||
-                              m.contextWindow === '') && (
-                              <input
-                                type="text"
-                                className="spec-combobox-custom-input"
-                                value={m.contextWindow}
-                                onChange={(e) =>
-                                  setModelRow(idx, { contextWindow: e.target.value })
-                                }
-                                placeholder={t('contextPlaceholder')}
-                              />
-                            )}
-                          </div>
-
-                          {/* Max Tokens Combobox */}
-                          <div className="spec-combobox">
-                            <span className="spec-combobox-label">{t('maxOutputLabel')}</span>
-                            <select
-                              className="spec-combobox-select"
-                              value={
-                                MAX_TOKENS_PRESETS.some((p) => p.value === m.maxTokens)
-                                  ? m.maxTokens
-                                  : 'custom'
-                              }
-                              onChange={(e) => {
-                                if (e.target.value !== 'custom') {
-                                  setModelRow(idx, { maxTokens: e.target.value });
-                                }
-                              }}
-                            >
-                              {MAX_TOKENS_PRESETS.map((p) => (
-                                <option key={p.value} value={p.value}>
-                                  {p.label} ({Math.round(Number(p.value) / 1024)}K)
-                                </option>
-                              ))}
-                              <option value="custom">{t('customOption')}</option>
-                            </select>
-                            {(!MAX_TOKENS_PRESETS.some((p) => p.value === m.maxTokens) ||
-                              m.maxTokens === '') && (
-                              <input
-                                type="text"
-                                className="spec-combobox-custom-input"
-                                value={m.maxTokens}
-                                onChange={(e) => setModelRow(idx, { maxTokens: e.target.value })}
-                                placeholder={t('maxOutputPlaceholder')}
-                              />
-                            )}
-                          </div>
-
-                          {/* 快捷点击药丸 */}
-                          <div className="matrix-spec-quick-pills">
-                            {['32K', '128K', '200K'].map((lbl) => {
-                              const match = CTX_PRESETS.find((p) => p.label === lbl);
-                              if (!match) return null;
-                              return (
-                                <button
-                                  type="button"
-                                  key={lbl}
-                                  className={`param-pill ${m.contextWindow === match.value ? 'active' : ''}`}
-                                  onClick={() => setModelRow(idx, { contextWindow: match.value })}
-                                  title={t('contextPresetTooltip', { label: lbl })}
-                                >
-                                  {lbl}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
+                        ))}
                       </div>
-                    ))}
 
-                    <button
-                      type="button"
-                      className="btn sm"
-                      style={{ alignSelf: 'flex-start', marginTop: 4 }}
-                      onClick={addModelRow}
-                    >
-                      <FiPlus /> {t('addModelRow')}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 处于查看官方内置服务商状态 */}
-            {activeNav.type === 'builtin' &&
-              (() => {
-                const p = providerStatus.find((x) => x.id === activeNav.id);
-                if (!p) return null;
-                const pkeys = providerKeys[p.id] ?? [];
-                return (
-                  <div className="studio-card">
-                    <div className="studio-card-head">
-                      <div className="studio-card-title">
-                        <span>{t('builtinProviderTitle', { name: p.name })}</span>
-                        {p.configured && <span className="auth-badge">{t('configuredBadge')}</span>}
-                        {p.source && !p.configured && (
-                          <span className="auth-badge dim">{p.source}</span>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {/* 添加新 Key */}
+                      <div className="provider-add-key" style={{ marginTop: 6 }}>
+                        <input
+                          type="text"
+                          className="key-input key-input-name"
+                          placeholder={t('keyNamePh')}
+                          value={addKeyNames[p.id] ?? ''}
+                          onChange={(e) =>
+                            setAddKeyNames((k) => ({ ...k, [p.id]: e.target.value }))
+                          }
+                        />
+                        <input
+                          type="password"
+                          className="key-input key-input-value"
+                          placeholder={t('addKeyPlaceholder')}
+                          value={addKeys[p.id] ?? ''}
+                          onChange={(e) => setAddKeys((k) => ({ ...k, [p.id]: e.target.value }))}
+                        />
                         <button
                           type="button"
-                          className="btn sm"
-                          title={t('cloneProvider')}
-                          disabled={cloning === p.id}
-                          onClick={() => cloneBuiltin(p)}
+                          className="btn primary sm"
+                          disabled={!(addKeys[p.id] ?? '').trim() || addKeyBusy === p.id}
+                          onClick={() => addKey(p)}
                         >
-                          <FiCopy /> {t('cloneProvider')}
+                          <FiPlus /> {addKeyBusy === p.id ? t('savingKey') : t('addKey')}
                         </button>
-                        <button
-                          type="button"
-                          className="btn sm"
-                          onClick={() => {
-                            setAppendingFor(appendingFor === p.id ? null : p.id);
-                            setAppendMsg(null);
-                          }}
-                        >
-                          <FiPlus /> {t('appendModel')}
-                        </button>
-                        {p.supportsApiKey && p.source === 'stored' && !p.usingOAuth && (
-                          <button
-                            type="button"
-                            className="btn sm danger"
-                            title={t('clearKeyTitle')}
-                            onClick={() => clearBuiltinKey(p.id)}
-                          >
-                            <FiTrash2 /> {t('clearKey')}
-                          </button>
-                        )}
                       </div>
                     </div>
+                  )}
 
-                    {/* OAuth 登录交互 */}
-                    {p.supportsOAuth && (
-                      <ProviderOAuthControls
-                        provider={p}
-                        flow={providerOAuthFlows.find((f) => f.provider === p.id)}
-                        result={providerOAuthResults[p.id]}
-                      />
-                    )}
-
-                    {/* 多密钥列表与管理 */}
-                    {p.supportsApiKey && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 600 }}>
-                          {t('apiKeyManagement')}
-                        </span>
-                        <div className="provider-keys">
-                          {pkeys.length === 0 && (
-                            <div className="provider-key-empty">{t('noKeyYet')}</div>
-                          )}
-                          {pkeys.map((k) => (
-                            <div
-                              className={`provider-key-item ${k.active ? 'active' : ''}`}
-                              key={k.name}
-                            >
-                              <span className="provider-key-dot">{k.active ? '●' : '○'}</span>
-                              <span className="provider-key-label">{k.name}</span>
-                              {!k.active && (
-                                <button
-                                  type="button"
-                                  className="iconbtn"
-                                  title={t('activateKey')}
-                                  onClick={() => activateKey(p.id, k.name)}
-                                >
-                                  <FiCheck />
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                className="iconbtn danger"
-                                title={t('removeKey')}
-                                onClick={() => removeKey(p.id, k.name)}
-                              >
-                                <FiTrash2 />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* 添加新 Key */}
-                        <div className="provider-add-key" style={{ marginTop: 6 }}>
-                          <input
-                            type="text"
-                            className="key-input key-input-name"
-                            placeholder={t('keyNamePh')}
-                            value={addKeyNames[p.id] ?? ''}
-                            onChange={(e) =>
-                              setAddKeyNames((k) => ({ ...k, [p.id]: e.target.value }))
-                            }
-                          />
-                          <input
-                            type="password"
-                            className="key-input key-input-value"
-                            placeholder={t('addKeyPlaceholder')}
-                            value={addKeys[p.id] ?? ''}
-                            onChange={(e) => setAddKeys((k) => ({ ...k, [p.id]: e.target.value }))}
-                          />
-                          <button
-                            type="button"
-                            className="btn primary sm"
-                            disabled={!(addKeys[p.id] ?? '').trim() || addKeyBusy === p.id}
-                            onClick={() => addKey(p)}
-                          >
-                            <FiPlus /> {addKeyBusy === p.id ? t('savingKey') : t('addKey')}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 追加覆盖模型 */}
-                    {appendingFor === p.id && (
-                      <div
+                  {/* 追加覆盖模型 */}
+                  {appendingFor === p.id && (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: 12,
+                        background: 'var(--bg)',
+                        borderRadius: 8,
+                        border: '1px dashed var(--border-soft)',
+                      }}
+                    >
+                      <span
                         style={{
-                          marginTop: 12,
-                          padding: 12,
-                          background: 'var(--bg)',
-                          borderRadius: 8,
-                          border: '1px dashed var(--border-soft)',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          display: 'block',
+                          marginBottom: 8,
                         }}
                       >
+                        {t('addBuiltinOverlay')}
+                      </span>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <input
+                          type="text"
+                          className="key-input"
+                          placeholder={t('overlayModelIdPlaceholder')}
+                          value={appendId}
+                          onChange={(e) => setAppendId(e.target.value)}
+                        />
+                        <input
+                          type="text"
+                          className="key-input"
+                          placeholder={t('overlayModelNamePlaceholder')}
+                          value={appendName}
+                          onChange={(e) => setAppendName(e.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="btn primary sm"
+                          disabled={!appendId.trim() || appendBusy}
+                          onClick={() => submitAppend(p.id)}
+                        >
+                          <FiPlus /> {t('submitOverlayBtn')}
+                        </button>
+                      </div>
+                      {appendMsg && (
                         <span
                           style={{
                             fontSize: 12,
-                            fontWeight: 600,
-                            display: 'block',
-                            marginBottom: 8,
+                            color: appendMsg.ok ? 'var(--green)' : 'var(--red)',
+                            marginTop: 6,
                           }}
                         >
-                          {t('addBuiltinOverlay')}
+                          {appendMsg.text}
                         </span>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <input
-                            type="text"
-                            className="key-input"
-                            placeholder={t('overlayModelIdPlaceholder')}
-                            value={appendId}
-                            onChange={(e) => setAppendId(e.target.value)}
-                          />
-                          <input
-                            type="text"
-                            className="key-input"
-                            placeholder={t('overlayModelNamePlaceholder')}
-                            value={appendName}
-                            onChange={(e) => setAppendName(e.target.value)}
-                          />
-                          <button
-                            type="button"
-                            className="btn primary sm"
-                            disabled={!appendId.trim() || appendBusy}
-                            onClick={() => submitAppend(p.id)}
-                          >
-                            <FiPlus /> {t('submitOverlayBtn')}
-                          </button>
-                        </div>
-                        {appendMsg && (
-                          <span
-                            style={{
-                              fontSize: 12,
-                              color: appendMsg.ok ? 'var(--green)' : 'var(--red)',
-                              marginTop: 6,
-                            }}
-                          >
-                            {appendMsg.text}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-          </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
         </div>
-
-        {/* 候选模型采纳器弹窗 */}
-        {candidateList && (
-          <CandidatePickerModal
-            candidates={candidateList}
-            preselectedIds={editing?.models.map((m) => m.id.trim()).filter(Boolean) ?? []}
-            onAdopt={adoptSelectedModels}
-            onClose={() => setCandidateList(null)}
-          />
-        )}
       </div>
+
+      {/* 候选模型采纳器弹窗 */}
+      {candidateList && (
+        <CandidatePickerModal
+          candidates={candidateList}
+          preselectedIds={editing?.models.map((m) => m.id.trim()).filter(Boolean) ?? []}
+          onAdopt={adoptSelectedModels}
+          onClose={() => setCandidateList(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** 弹窗壳：backdrop + 内嵌 {@link ModelConfigPanel}。模型选择器等聊天侧入口
+ *  （ChatInput / UniversalModelPicker / ModelThinking）仍走本组件；设置页
+ *  「模型与服务商」改用面板内嵌，不再经由此弹窗。 */
+export function ModelConfigModal(props: ModelConfigModalProps) {
+  return (
+    <div className="modal-backdrop" onClick={props.onClose}>
+      <ModelConfigPanel {...props} />
     </div>
   );
 }

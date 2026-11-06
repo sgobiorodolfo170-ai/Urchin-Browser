@@ -50,7 +50,6 @@ import {
 import { Dropdown, DropdownItem } from './Dropdown';
 import { BrowserControl } from './BrowserControl';
 import { BROWSER_PAGE_TOOL_NAME } from '../server/tool-manager';
-import { EnginePicker } from './EnginePicker';
 import { appUrl } from '../base-url';
 
 export type ViewName = 'chat' | 'terminal' | 'git' | 'canvas' | `plugin:${string}`;
@@ -148,8 +147,6 @@ export function BarItem({
 }: BarItemProps) {
   const t = useT();
   const { locale, packs, setLocale } = useI18n();
-  const { engine } = useAppGlobals();
-  const isDsh = engine === 'dsh';
 
   const [langOpen, setLangOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -418,29 +415,6 @@ export function BarItem({
          * 用户看不出「亮着的是绿灯还是黄灯」，所以文字保留（窄屏≤768px 由 CSS 单独隐藏文字）。 */}
         <span className="status-conn-label bar-item-text">{withName(connLabel)}</span>
         {latencyText && <span className={`status-latency ${latencyClass}`}>{latencyText}</span>}
-      </span>
-    );
-  }
-
-  // 3. 特殊条目：引擎选择器（常驻显示下拉胶囊，支持任意多引擎扩展）
-  if (id === 'host:engine') {
-    return (
-      <span
-        onContextMenu={handleContextMenu}
-        data-bar-item={id}
-        className="bar-item-engine-wrap"
-        style={{ display: 'inline-flex', alignItems: 'center' }}
-      >
-        <EnginePicker
-          direction={
-            bar === 'bottom' ? 'up' : bar === 'left' ? 'right' : bar === 'right' ? 'left' : 'down'
-          }
-          align={entry.align === 'end' || bar === 'right' ? 'right' : 'left'}
-          caret={false}
-          bar={bar}
-          portal={true}
-          label={entry.labelExplicit ? entry.label : undefined}
-        />
       </span>
     );
   }
@@ -931,7 +905,6 @@ export function BarItem({
       };
       break;
     case 'host:new-ephemeral-chat':
-      if (isDsh) return null;
       iconNode = <LuMessageSquareDashed className="bar-item-icon" />;
       labelText = named(t('newChatEphemeral'));
       extraClasses = 'chip newchat ephemeral-chat-btn';

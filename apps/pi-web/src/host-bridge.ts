@@ -837,12 +837,6 @@ export class HostBridgeWebSocket {
       case 'canvas_card_delete':
       case 'canvas_get_log':
       case 'canvas_clear_log':
-      // DSH（pi 引擎不提供 dsh_* 消息，忽略）
-      case 'dsh_patches_list':
-      case 'dsh_patches_rescan':
-      case 'dsh_preset_apply':
-      case 'dsh_permission_apply':
-        break;
 
       default:
         // 其他消息——透传到 pi-web-host（后续批次逐步对接）

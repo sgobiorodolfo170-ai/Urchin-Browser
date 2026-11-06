@@ -243,7 +243,7 @@ export function applyUiSlotCardinality<T extends { id: string; hidden: boolean }
  *                    右键 → 「显示工具详细信息」，弹窗内容由 get_tool_info 现取，
  *                    渲染与分派都在 ToolCallBlock 内）。
  *   composer.actions 输入框动作区（ChatInput.tsx 的 .composer-tools）：上传 / 模板库 /
- *                    模型 / 思考强度 / DSH 权限 / DSH 预设 / 发送簇，全部是宿主内置条目
+ *                    模型 / 思考强度 / 权限与模式（历史命名带 dsh 前缀，pi 在用）/ 发送簇，全部是宿主内置条目
  *                    （align=start，发送簇 align=end），与插件贡献的动作按同一顺序统一渲染。
  *                    隐藏只藏按钮（回车仍可发送）；发送簇藏掉后运行中的停止键一起消失，
  *                    需要停止时从布局页恢复。composer.leading 仍是纯插件位（无内置条目），
@@ -557,15 +557,6 @@ export const BUILTIN_UI_ITEMS: BuiltinUiItem[] = [
     icon: 'dot',
     kind: 'badge',
     order: 5,
-    group: 'status',
-  },
-  {
-    id: 'host:engine',
-    slot: 'bottombar',
-    labelKey: 'engineBadge',
-    icon: 'aperture',
-    kind: 'action',
-    order: 6,
     group: 'status',
   },
   {

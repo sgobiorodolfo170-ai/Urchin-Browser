@@ -161,6 +161,7 @@ export type EngineId = 'pi' | 'dsh' | 'claude' | 'durable';
 
 /**
  * 引擎状态元数据：描述该引擎在宿主系统中的安装就绪状态。
+ * 供更新检查（collectInstalledEngineTargets）把已安装的第三方引擎全局包纳入检查名录。
  */
 export interface EngineStatus {
   /** 引擎唯一标识（如 "pi" | "dsh" | "claude" | "durable" 或第三方扩展标识） */
@@ -171,12 +172,6 @@ export interface EngineStatus {
   packageName?: string;
   /** 检测到的本地已安装版本号（若可用） */
   version?: string;
-  /** npm 远端最新版本号（若可用） */
-  latestVersion?: string | null;
-  /** 是否存在可用新版本 */
-  hasUpdate?: boolean;
-  /** 是否正在后台子进程执行更新 */
-  updating?: boolean;
 }
 
 export interface UiState {
@@ -933,12 +928,6 @@ export type ClientMessage =
    *  this process exits and its supervisor brings it back). The server refuses
    *  when no supervisor manages this instance (foreground / dev / Docker). */
   | { type: 'restart_service' }
-  /** Switch active agent engine ("pi" | "dsh" | "claude" | "durable") for this client tab in-process without restarting. */
-  | { type: 'switch_engine'; engine: EngineId }
-  /** Re-check engine installation statuses (e.g. after installing an engine via terminal). */
-  | { type: 'check_engines'; force?: boolean }
-  /** Update an agent engine to its latest version via background child process (npm i -g <pkg>@latest). */
-  | { type: 'update_engine'; engineId: string }
   // -- pi agent setup ------------------------------------------------------
   /** Auto-install the pi agent (mkdir config dir + npm i -g the CLI). */
   | { type: 'install_pi_agent' }
@@ -1423,9 +1412,6 @@ export type ClientMessage =
        *  upsert by id, keep entries the document doesn't mention). */
       replace?: boolean;
     }
-  // -- DSH engine user patches (<dataDir>/dsh-patches) ---------------------
-  /** List <dataDir>/dsh-patches/*.yml (DSH engine only; pi engine ignores). */
-  | { type: 'dsh_patches_list' }
   /** DSH Agent 预设名录（DSH only；名录变化/attach 后推；legacy 下 presets 空）。 */
   | { type: 'dsh_preset_list' }
   /** 空白会话切换预设（DSH only；首轮后锁定，失败收 warning notice）。 */
@@ -2910,6 +2896,13 @@ export interface ProviderStatus {
   oauthName?: string;
   /** Whether the active stored credential is OAuth. */
   usingOAuth: boolean;
+  /**
+   * Provider exists in the pi.dev official catalog (fetched by
+   * refresh_builtin_models) but is NOT yet registered in the local runtime —
+   * it appears in the builtin list as a placeholder row until the vendored
+   * SDK ships it. Such rows cannot be configured or used for chat yet.
+   */
+  officialOnly?: boolean;
 }
 
 export type ProviderOAuthPromptPayload =
@@ -3486,30 +3479,6 @@ export interface UiSettingsState {
   mcpProjectConfigPath?: string;
 }
 
-/** DSH 用户补丁文件信息（<dataDir>/dsh-patches/*.yml 或 *.yml.disabled）。 */
-export interface DshPatchFileInfo {
-  name: string;
-  path: string;
-  size: number;
-  mtimeMs: number;
-  disabled?: boolean;
-}
-
-/** DSH 社区市场插件条目（来自 awesome-dsh-plugin / dsh-market 数据源）。 */
-export interface DshMarketPlugin {
-  name: string;
-  owner?: string;
-  url?: string;
-  category?: string;
-  description?: { en?: string; zh?: string };
-  npm?: string;
-  version?: string;
-  stars?: number;
-  downloads?: number;
-  capabilities?: string[];
-  install?: string;
-}
-
 export type UpdateItemKind =
   'webui' | 'pi-core' | 'package' | 'git-extension' | 'plugin' | 'engine';
 
@@ -3635,13 +3604,6 @@ export type ServerMessage =
        *  foreground/dev/Docker: no supervisor, so the client hides the
        *  "restart service" action and the server refuses restart_service. */
       service?: UiServiceInfo;
-      /** 引擎安装探测结果列表（pi、dsh、claude 等）。 */
-      engines?: EngineStatus[];
-    }
-  | {
-      /** 引擎安装状态列表（按需/后台探测刷新下发） */
-      type: 'engines_status';
-      engines: EngineStatus[];
     }
   | { type: 'snapshot'; state: UiState }
   | {
@@ -4232,19 +4194,6 @@ export type ServerMessage =
       /** Per-entry install results when install:true was asked. */
       installed?: { id: string; ok: boolean; error?: string }[];
     }
-  /** DSH 插件市场全量清单推送（DSH only；初始化或拉取后推）。 */
-  | {
-      type: 'dsh_market_data';
-      count: number;
-      updated?: string;
-      categories: Record<string, { en: string; zh: string }>;
-      plugins: DshMarketPlugin[];
-    }
-  // -- DSH engine user patches --------------------------------------------
-  /** List of <dataDir>/dsh-patches/*.yml files (DSH engine only; pi engine
-   *  never emits it). Pushed on request (dsh_patches_list) and after a
-   *  rescan (dsh_patches_rescan). */
-  | { type: 'dsh_patches'; patchDir: string; files: DshPatchFileInfo[] }
   /** DSH Agent 预设名录（DSH only；attach/启动/默认变化后推；legacy 下 presets 空）。 */
   | {
       type: 'dsh_presets';

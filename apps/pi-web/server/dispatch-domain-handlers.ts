@@ -5,7 +5,7 @@
  * - handleFileMessage: 文件树浏览、读写、检索、创建/重命名/删除/复制/路径补全、工作区根设置
  * - handleScmMessage: Git 状态查询、提交历史、文件差异、AI 提交信息生成
  * - handleBgServerMessage: 后台常驻服务管理与端口清理
- * - handlePresetAndDshMessage: 预设管理与分享、DSH 预设/补丁切换、审批规则与子代理模板持久化
+ * - handlePresetMessage: 预设管理与分享、Agent 预设与权限、审批规则与子代理模板持久化
  */
 import type { ClientMessage, ServerMessage } from './protocol.js';
 import type { DispatchSession } from './index.js';
@@ -187,12 +187,10 @@ export function handleBgServerMessage(msg: ClientMessage, cs: DispatchSession): 
   }
 }
 
-/** 预设分享、DSH 预设与补丁、审批规则及模板持久化 */
-export function handlePresetAndDshMessage(msg: ClientMessage, cs: DispatchSession): boolean {
+/** 预设分享、Agent 预设与权限、审批规则及模板持久化 */
+export function handlePresetMessage(msg: ClientMessage, cs: DispatchSession): boolean {
   switch (msg.type) {
-    case 'dsh_patches_list':
-      void cs.listDshPatches?.();
-      return true;
+    case 'dsh_preset_list':
     case 'dsh_preset_list':
       void cs.refreshAgentPresets?.();
       return true;
@@ -207,21 +205,6 @@ export function handlePresetAndDshMessage(msg: ClientMessage, cs: DispatchSessio
       return true;
     case 'dsh_permission_default':
       void cs.setDefaultPermissionPreset?.(msg.preset);
-      return true;
-    case 'dsh_patches_rescan':
-      void cs.rescanDshPatches?.();
-      return true;
-    case 'dsh_patch_install':
-      void cs.installDshPatch?.(msg.spec, msg.id);
-      return true;
-    case 'dsh_patch_toggle':
-      void cs.toggleDshPatch?.(msg.name, msg.enabled);
-      return true;
-    case 'dsh_patch_delete':
-      void cs.deleteDshPatch?.(msg.name);
-      return true;
-    case 'dsh_market_fetch':
-      void cs.fetchDshMarket?.(msg.force);
       return true;
     case 'save_preset':
       void cs.savePreset(msg.name);

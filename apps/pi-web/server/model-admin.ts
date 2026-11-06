@@ -23,6 +23,7 @@ import type {
   UiProviderConfig,
   UiThinkingLevelMap,
   ProviderKeyInfo,
+  ProviderStatus,
 } from './protocol.js';
 import { enrichBatch, type EnrichLang } from './model-enrich.js';
 import { pick, type ServerLang } from './i18n.js';
@@ -35,7 +36,7 @@ export interface ModelAdminHost {
   flushSnapshot: () => void;
   isDisposed: () => boolean;
   /** 共享 ModelRuntime（所有对话共用），改动后需 refresh/热更新。非 pi 引擎时可缺省。 */
-  modelRuntime?: () => ModelRuntime;
+  modelRuntime: () => ModelRuntime;
   /** auth/models 变更后 pi 配置检测缓存失效（piConfigured 可能翻转）。 */
   invalidatePiConfig?: () => void;
   /** 变更后重推顶栏模型下拉。 */
@@ -502,19 +503,58 @@ export function ensureCredentialFilePermissions(agentDir: string): void {
 export class ModelAdminService {
   private readonly oauthFlows: ProviderOAuthFlowManager;
   private readonly activeEnrichAbort = new Map<number, AbortController>();
+  /**
+   * pi.dev 官方目录的提供商索引（refresh_builtin_models 时拉取，落盘缓存）。
+   * null = 尚未拉取过。用于把官方已上架、本地内置目录还没有的服务商作为
+   * officialOnly 占位行合入 providers_status（见 listProviders）。
+   */
+  private officialProviderIds: string[] | null = null;
 
   constructor(private readonly host: ModelAdminHost) {
     ensureCredentialFilePermissions(host.agentDir);
+    this.officialProviderIds = this.readOfficialProviderIdsCache();
     this.oauthFlows = new ProviderOAuthFlowManager({
-      modelRuntime:
-        host.modelRuntime ??
-        (() => {
-          throw new Error('OAuth not supported without ModelRuntime');
-        }),
+      modelRuntime: host.modelRuntime,
       emit: host.emit,
       isDisposed: host.isDisposed,
       onLoginSuccess: (provider) => this.onOAuthLoginSuccess(provider),
     });
+  }
+
+  /** 官方提供商索引缓存文件路径（agentDir 下，JSON 数组）。 */
+  private officialProvidersCachePath(): string {
+    return join(this.host.agentDir, 'official-providers.json');
+  }
+
+  /** 读取官方提供商索引缓存（损坏/缺失返回 null，不抛错）。 */
+  private readOfficialProviderIdsCache(): string[] | null {
+    try {
+      const raw = readFileSync(this.officialProvidersCachePath(), 'utf8');
+      const parsed: unknown = JSON.parse(stripJsonComments(raw));
+      if (!Array.isArray(parsed)) return null;
+      const ids = parsed.filter((x): x is string => typeof x === 'string' && x.length > 0);
+      return ids.length > 0 ? ids : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** 拉取 pi.dev 官方提供商索引；失败返回 null（保留既有缓存，不抛错）。
+   *  与 SDK 的 per-provider 目录同源（remote-catalog-provider 的
+   *  /api/models/providers/{id} 的索引端点），默认 base 为 https://pi.dev。 */
+  private async fetchOfficialProviderIds(): Promise<string[] | null> {
+    try {
+      const res = await fetch('https://pi.dev/api/models/providers', {
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) return null;
+      const parsed: unknown = await res.json();
+      if (!Array.isArray(parsed)) return null;
+      const ids = parsed.filter((x): x is string => typeof x === 'string' && x.length > 0);
+      return ids.length > 0 ? ids : null;
+    } catch {
+      return null;
+    }
   }
 
   startProviderOAuth(provider: string): string | null {
@@ -1408,7 +1448,9 @@ export class ModelAdminService {
   /** Enumerate pi's built-in providers with auth capabilities and status. */
   async listProviders(): Promise<void> {
     const mr = this.host.modelRuntime?.();
-    let providers;
+    // 显式 ProviderStatus[]：下方可能合入 officialOnly 占位行，
+    // 依赖 map 推断的字面量类型会因多余属性检查拒绝 push。
+    let providers: ProviderStatus[] | undefined;
     if (mr) {
       try {
         providers = mr.getProviders().map((p) => {
@@ -1449,79 +1491,26 @@ export class ModelAdminService {
         });
         return;
       }
-    } else {
-      // 非 pi 引擎：根据 models.json + auth.json + provider-keys.json + 常见官方列表综合列出
-      let auth: Record<string, unknown> = {};
-      try {
-        auth = JSON.parse(readFileSync(join(this.host.agentDir, 'auth.json'), 'utf8')) as Record<
-          string,
-          unknown
-        >;
-      } catch {
-        /* ignore */
-      }
-      const keyData = this.readProviderKeys();
-      const { providers: custom } = this.readModelsConfig();
-      const builtins = [
-        { id: 'anthropic', name: 'Anthropic' },
-        { id: 'openai', name: 'OpenAI' },
-        { id: 'deepseek', name: 'DeepSeek' },
-        { id: 'google', name: 'Google Gemini' },
-        { id: 'openrouter', name: 'OpenRouter' },
-        { id: 'groq', name: 'Groq' },
-        { id: 'mistral', name: 'Mistral' },
-        { id: 'ollama', name: 'Ollama' },
-        { id: 'llama.cpp', name: 'llama.cpp' },
-      ];
-      const allIds = new Set<string>();
-      providers = [];
-      for (const b of builtins) {
-        allIds.add(b.id);
-        const hasStored = Boolean(auth[b.id] || (keyData[b.id]?.keys.length ?? 0) > 0);
-        const hasEnv = Boolean(
-          (b.id === 'anthropic' && process.env.ANTHROPIC_API_KEY) ||
-          (b.id === 'deepseek' && process.env.DEEPSEEK_API_KEY) ||
-          (b.id === 'openai' && process.env.OPENAI_API_KEY) ||
-          (b.id === 'openrouter' && process.env.OPENROUTER_API_KEY) ||
-          (b.id === 'google' && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY)) ||
-          (b.id === 'llama.cpp' && process.env.LLAMA_BASE_URL),
-        );
-        providers.push({
-          id: b.id,
-          name: b.name,
-          configured: hasStored || hasEnv,
-          source: (hasStored ? 'stored' : hasEnv ? 'environment' : undefined) as
-            'stored' | 'environment' | undefined,
-          supportsApiKey: true,
-          supportsOAuth: false,
-          usingOAuth: false,
-        });
-      }
-      for (const [cid, c] of Object.entries(custom)) {
-        if (!allIds.has(cid)) {
-          allIds.add(cid);
-          const hasKey = typeof c.apiKey === 'string' && c.apiKey.trim() !== '';
-          const hasStored = Boolean(auth[cid] || (keyData[cid]?.keys.length ?? 0) > 0);
+    }
+    // 官方目录提供商索引合入：refresh_builtin_models 拉回的 pi.dev 提供商全集
+    // 中，本地运行时还没注册的 id 以 officialOnly 占位行追加到列表尾部——
+    // 「官方内置服务商」分区因此以官方目录为准（新上架服务商立即可见，
+    // 升级内置 SDK 后转为可配置）。无缓存（从未刷新过官方目录）时不追加。
+    if (providers && this.officialProviderIds) {
+      const known = new Set(providers.map((p) => p.id));
+      for (const id of this.officialProviderIds) {
+        if (!known.has(id)) {
           providers.push({
-            id: cid,
-            name: (c.name as string) || cid,
-            configured: hasKey || hasStored,
-            source: (hasKey ? 'stored' : hasStored ? 'stored' : undefined) as
-              'stored' | 'environment' | undefined,
-            supportsApiKey: true,
+            id,
+            name: id,
+            configured: false,
+            supportsApiKey: false,
             supportsOAuth: false,
             usingOAuth: false,
+            officialOnly: true,
           });
         }
       }
-    }
-    if (providers.length === 0) {
-      this.host.emit({
-        type: 'notice',
-        level: 'warning',
-        text: '服务商列表为空——pi 运行时未注册任何提供商',
-        textEn: 'Provider list is empty — the pi runtime registered no providers',
-      });
     }
     this.host.emit({ type: 'providers_status', providers });
   }
@@ -1954,12 +1943,7 @@ export class ModelAdminService {
     const done = (ok: boolean, error?: string) =>
       this.host.emit({ type: 'refresh_builtin_result', reqId, ok, ...(error ? { error } : {}) });
     try {
-      const mr = this.host.modelRuntime?.();
-      if (!mr) {
-        await this.listProviders();
-        await this.host.pushModels();
-        return done(true);
-      }
+      const mr = this.host.modelRuntime();
       const res = await mr.refresh({
         allowNetwork: true,
         force: true,
@@ -1974,6 +1958,18 @@ export class ModelAdminService {
         await mr.refresh();
       }
       this.host.invalidatePiConfig?.();
+      // 同步拉取 pi.dev 官方提供商索引并落盘缓存（失败不阻断刷新：
+      // 模型目录刷新已成功，索引留在既有缓存/为空即可）。listProviders
+      // 在下方调用，会把 officialOnly 占位行一并推给浏览器。
+      const officialIds = await this.fetchOfficialProviderIds();
+      if (officialIds) {
+        this.officialProviderIds = officialIds;
+        try {
+          writeJsonAtomicSync(this.officialProvidersCachePath(), officialIds);
+        } catch {
+          // 落盘失败只影响重启后的回显，不影响本次会话
+        }
+      }
       await this.host.pushModels();
       await this.listProviders();
       const failures = [...res.errors.entries()].map(([pid, err]) => `${pid} (${err.message})`);

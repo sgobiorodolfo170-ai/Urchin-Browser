@@ -866,6 +866,21 @@
   padding: 0;
 }
 
+/* 设置页「模型与服务商」内嵌模式（ModelConfigPanel embedded）：
+   去掉卡片外框（边框/圆角/投影/底色全部释放），内容直接平铺进设置页；
+   保留定高让内部分栏（侧边栏 + 详情）各自的滚动区生效。 */
+.model-studio-modal.model-studio-panel {
+  width: 100%;
+  max-width: none;
+  height: min(72vh, 680px);
+  max-height: none;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  flex-shrink: 0;
+}
+
 /* 顶栏优化 */
 .studio-header {
   display: flex;
@@ -1000,7 +1015,9 @@
 }
 
 .model-studio-sidebar {
-  width: 250px;
+  /* 175px = 250px 收窄 30%：右分割线左移，「添加自定义服务商」按钮（100% 宽）
+     随之等比收窄，主工作区（新建自定义服务商卡片）同步加宽。 */
+  width: 175px;
   flex-shrink: 0;
   border-right: 1px solid var(--border-soft);
   display: flex;
@@ -1079,6 +1096,19 @@
 
 .studio-nav-dot.active-item {
   background: var(--accent);
+}
+
+/* 官方目录占位行徽标（officialOnly：pi.dev 已上架、本地内置目录还没有） */
+.studio-nav-official-badge {
+  flex-shrink: 0;
+  font-size: 9px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 99px;
+  border: 1px solid var(--border-soft);
+  color: var(--text-faint);
+  background: var(--bg-elev2);
+  white-space: nowrap;
 }
 
 .studio-sidebar-footer {

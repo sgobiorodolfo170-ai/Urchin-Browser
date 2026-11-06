@@ -10,7 +10,7 @@ import {
 } from 'react-icons/fi';
 import type { GoalStatus, ModelInfo } from '../types';
 import { isZhLocale, useT, useI18n } from '../i18n';
-import { appSend, useIsDsh, useEngineCapabilities } from '../app-globals';
+import { appSend, useEngineCapabilities } from '../app-globals';
 import { Dropdown, DropdownItem } from './Dropdown';
 import { UniversalModelPicker, matchesModelId } from './UniversalModelPicker';
 import type { UiSlotEntry } from '../ui-slots';
@@ -44,9 +44,7 @@ export const GoalBar = memo(function GoalBar({
   const goalDetail = !isZhLocale(locale) && goal.statusEn ? goal.statusEn : goal.status || '';
   const wizardDetail =
     !isZhLocale(locale) && goal.wizard?.statusEn ? goal.wizard.statusEn : goal.wizard?.status || '';
-  // DSH：不接目标模式 2.0 的执行对话（隐藏执行模型下拉；轮次上限仍然有效）。
-  // engine 走全局（web/src/app-globals.ts），不再从 App 一路传下来。
-  const isDsh = useIsDsh();
+  // engine 能力走全局（web/src/app-globals.ts），不再从 App 一路传下来。
   const capabilities = useEngineCapabilities();
   // Goals belong to the conversation that created them. The server keeps the
   // status around while switching chats so returning to the owner restores the
@@ -85,7 +83,7 @@ export const GoalBar = memo(function GoalBar({
   // 目标模式 2.0 加固：pi 引擎的新后端在**任何** goal_status 里都带 execModel
   // （makeGoalStatus 一定赋值）；旧后端（进程没重启）把未知字段丢掉，于是这里是
   // undefined。不静默：「新界面 + 旧后端」这种混合态必须当场说出来。
-  const staleBackend = !isDsh && goal.execModel === undefined;
+  const staleBackend = goal.execModel === undefined;
 
   // Draft fields (only meaningful while editing a new goal).
   const [text, setText] = useState('');
@@ -274,9 +272,7 @@ export const GoalBar = memo(function GoalBar({
         <FiChevronUp />
       </button>
     ),
-    'host:goal-model': isDsh ? (
-      <p className="goalbar-dsh-note">{t('dshNoReviewModel')}</p>
-    ) : (
+    'host:goal-model': (
       <Dropdown
         trigger={
           // 标签与值拆成两层：窄屏并排两个下拉时，标签钉死不缩、值省略号收着
@@ -352,7 +348,7 @@ export const GoalBar = memo(function GoalBar({
       </label>
     ),
     // 执行者模型（空 = 跟随主对话）。
-    'host:goal-execmodel': isDsh ? null : (
+    'host:goal-execmodel': (
       <Dropdown
         trigger={
           <span

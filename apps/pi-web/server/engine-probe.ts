@@ -1,18 +1,11 @@
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { VERSION } from '@earendil-works/pi-coding-agent';
 import { runtimeBaseCandidates } from './dsh/preset-clones.js';
-import { killPidTree } from './process-utils.js';
 import type { EngineStatus } from './protocol.js';
 import { probeClaudeCode } from './universal/drivers/claude-code.js';
-import {
-  compareVersions,
-  defaultFetcher,
-  fetchLatest,
-  NPM_DEFAULT_REGISTRY,
-  type LocalPackage,
-} from './update-check.js';
+import type { LocalPackage } from './update-check.js';
 import { probeGlobalPackage } from './global-loader.js';
 
 export interface EnginePackageMeta {
@@ -44,24 +37,15 @@ export const ENGINE_PACKAGES: Record<string, EnginePackageMeta> = {
   },
 };
 
-/** 探针缓存 TTL：5 秒（短时多次连接或 UI 打开时免除重复频繁执行进程调用） */
+/** 探针缓存 TTL：5 秒（短时多次探测免除重复频繁执行进程调用） */
 const CACHE_TTL_MS = 5000;
-/** 远端 npm registry 查询缓存：5 分钟 */
-const REGISTRY_CACHE_TTL_MS = 5 * 60 * 1000;
-
-interface RegistryCacheEntry {
-  at: number;
-  latest: string | null;
-}
-const registryCache = new Map<string, RegistryCacheEntry>();
 
 interface EngineEntry {
   status: EngineStatus;
   probedAt: number;
-  updating: boolean;
 }
 
-/** 引擎状态原子字典：单一事实源，收敛 status / probedAt / updating 三元组，杜绝独立状态撕裂 */
+/** 引擎状态原子字典：单一事实源，收敛 status / probedAt 二元组，杜绝独立状态撕裂 */
 const engineRegistry = new Map<string, EngineEntry>([
   [
     'pi',
@@ -73,7 +57,6 @@ const engineRegistry = new Map<string, EngineEntry>([
         version: VERSION,
       },
       probedAt: 0,
-      updating: false,
     },
   ],
   [
@@ -81,7 +64,6 @@ const engineRegistry = new Map<string, EngineEntry>([
     {
       status: { id: 'dsh', installed: false, packageName: ENGINE_PACKAGES.dsh.packageName },
       probedAt: 0,
-      updating: false,
     },
   ],
   [
@@ -89,7 +71,6 @@ const engineRegistry = new Map<string, EngineEntry>([
     {
       status: { id: 'claude', installed: false, packageName: ENGINE_PACKAGES.claude.packageName },
       probedAt: 0,
-      updating: false,
     },
   ],
   [
@@ -97,65 +78,14 @@ const engineRegistry = new Map<string, EngineEntry>([
     {
       status: { id: 'durable', installed: false, packageName: ENGINE_PACKAGES.durable.packageName },
       probedAt: 0,
-      updating: false,
     },
   ],
 ]);
 
-function toPublicStatus(entry: EngineEntry): EngineStatus {
-  return {
-    ...entry.status,
-    ...(entry.updating ? { updating: true } : {}),
-  };
-}
-
-/**
- * 查询全局包在 npm 远端的最新版本号（带 5 分钟缓存）。
- */
-export async function checkPackageLatest(
-  packageName: string,
-  force = false,
-): Promise<string | null> {
-  const now = Date.now();
-  const cached = registryCache.get(packageName);
-  if (!force && cached && now - cached.at < REGISTRY_CACHE_TTL_MS) {
-    return cached.latest;
-  }
-  try {
-    const res = await fetchLatest(defaultFetcher, packageName, NPM_DEFAULT_REGISTRY, null);
-    registryCache.set(packageName, { at: now, latest: res.latest });
-    return res.latest;
-  } catch {
-    return cached?.latest ?? null;
-  }
-}
-
-/**
- * 为已安装的引擎注入 npm 远端更新检测结果（latestVersion 与 hasUpdate 标记）。
- */
-export async function enrichWithUpdateInfo(
-  status: EngineStatus,
-  force = false,
-): Promise<EngineStatus> {
-  if (!status.installed || !status.packageName || !status.version) {
-    return status;
-  }
-  try {
-    const latest = await checkPackageLatest(status.packageName, force);
-    if (latest) {
-      status.latestVersion = latest;
-      status.hasUpdate = compareVersions(latest, status.version) > 0;
-    }
-  } catch {
-    /* best effort */
-  }
-  return status;
-}
-
 /**
  * 探测 Pi 原生引擎状态（作为内置/捆绑引擎恒存在）。
  */
-export function probePi(): EngineStatus {
+function probePi(): EngineStatus {
   return {
     id: 'pi',
     installed: true,
@@ -169,7 +99,7 @@ export function probePi(): EngineStatus {
  * 1. 优先检查常见全局 node_modules / 候选路径中的 @deepseek-ai/dsh package.json 与 dsh-base；
  * 2. 回退通过命令行探针执行 `dsh --version`。
  */
-export async function probeDsh(): Promise<EngineStatus> {
+async function probeDsh(): Promise<EngineStatus> {
   const pkgName = ENGINE_PACKAGES.dsh.packageName;
 
   // 0. 通用全局包探测器（覆盖 fnm / nvm / pnpm / 全局 prefix 等）
@@ -270,7 +200,7 @@ export async function probeDsh(): Promise<EngineStatus> {
 /**
  * 探测 Claude Code 引擎状态。
  */
-export async function probeClaude(force = false): Promise<EngineStatus> {
+async function probeClaude(force = false): Promise<EngineStatus> {
   const pkgName = ENGINE_PACKAGES.claude.packageName;
   try {
     const res = await probeClaudeCode();
@@ -309,7 +239,7 @@ export async function probeClaude(force = false): Promise<EngineStatus> {
  * 探测 Pi Durable 引擎状态。
  * 检查当前项目或全局环境（npm -g, fnm, nvm 等）下是否安装了 @earendil-works/pi-durable。
  */
-export async function probeDurable(force = false): Promise<EngineStatus> {
+async function probeDurable(force = false): Promise<EngineStatus> {
   const pkgName = ENGINE_PACKAGES.durable.packageName;
   try {
     const probe = probeGlobalPackage(pkgName, { refresh: force });
@@ -328,183 +258,24 @@ export async function probeDurable(force = false): Promise<EngineStatus> {
 }
 
 /**
- * 按引擎 ID 单独探测状态。
+ * 探测全部已知引擎并把结果写入注册表（带 TTL 缓存防抖）。
+ * 引擎选择 UI 已移除：探测结果仅供 collectInstalledEngineTargets 把
+ * 已安装的第三方引擎全局包纳入全量更新检查名录。
  */
-export async function probeEngine(id: string, force = false): Promise<EngineStatus> {
-  if (id === 'pi') return probePi();
-  const entry = engineRegistry.get(id);
-  if (!force && entry && entry.probedAt > 0 && Date.now() - entry.probedAt < CACHE_TTL_MS) {
-    return toPublicStatus(entry);
-  }
-  let result: EngineStatus;
-  if (id === 'dsh') {
-    result = await probeDsh();
-  } else if (id === 'claude') {
-    result = await probeClaude(force);
-  } else if (id === 'durable') {
-    result = await probeDurable(force);
-  } else {
-    result = { id: id as any, installed: false };
-  }
-  await enrichWithUpdateInfo(result, force);
-  const updatedEntry: EngineEntry = {
-    status: result,
-    probedAt: Date.now(),
-    updating: entry?.updating ?? false,
-  };
-  engineRegistry.set(id, updatedEntry);
-  return toPublicStatus(updatedEntry);
-}
-
-/**
- * 探测全部已知引擎并返回最新状态列表（带 TTL 缓存防抖）。
- */
-export async function probeAllEngines(force = false): Promise<EngineStatus[]> {
+async function probeAllEngines(force = false): Promise<void> {
   const now = Date.now();
   const entries = Array.from(engineRegistry.values());
   const allFresh = entries.every((e) => e.probedAt > 0 && now - e.probedAt < CACHE_TTL_MS);
-  if (!force && allFresh && entries.length > 0) {
-    return entries.map(toPublicStatus);
-  }
+  if (allFresh) return;
   const [pi, dsh, claude, durable] = await Promise.all([
     probePi(),
     probeDsh(),
     probeClaude(force),
     probeDurable(force),
   ]);
-  await Promise.all([
-    enrichWithUpdateInfo(pi, force),
-    enrichWithUpdateInfo(dsh, force),
-    enrichWithUpdateInfo(claude, force),
-    enrichWithUpdateInfo(durable, force),
-  ]);
   const timestamp = Date.now();
-  const results = [pi, dsh, claude, durable];
-  for (const res of results) {
-    const existing = engineRegistry.get(res.id);
-    engineRegistry.set(res.id, {
-      status: res,
-      probedAt: timestamp,
-      updating: existing?.updating ?? false,
-    });
-  }
-  return Array.from(engineRegistry.values()).map(toPublicStatus);
-}
-
-/**
- * 同步获取当前缓存的引擎探测结果（握手帧或即时读取使用）。
- */
-export function getCachedEngineStatuses(): EngineStatus[] {
-  return Array.from(engineRegistry.values()).map(toPublicStatus);
-}
-
-/**
- * 查询指定引擎是否正在执行后台更新子进程。
- */
-export function isEngineUpdating(engineId: string): boolean {
-  return engineRegistry.get(engineId)?.updating ?? false;
-}
-
-/**
- * 在后台子进程中执行引擎全局包更新（npm i -g <pkg>@latest）。
- * 避免在可见终端中通过 PTY 模拟输入导致命令首字母丢失或输入不全的问题。
- */
-export async function updateEngineBackground(
-  engineId: string,
-  options?: { timeoutMs?: number },
-): Promise<{ ok: boolean; error?: string; output?: string }> {
-  const meta = ENGINE_PACKAGES[engineId];
-  if (!meta || !meta.packageName) {
-    return { ok: false, error: `不支持或未知的引擎「${engineId}」` };
-  }
-  const currentEntry = engineRegistry.get(engineId);
-  if (currentEntry?.updating) {
-    return { ok: false, error: `引擎「${engineId}」正在后台更新中，请勿重复操作` };
-  }
-
-  if (currentEntry) currentEntry.updating = true;
-  const pkg = meta.packageName;
-  const timeoutMs = Math.max(10_000, Number(options?.timeoutMs ?? 300_000));
-  const isWin = process.platform === 'win32';
-  const spawnCmd = isWin ? process.env.ComSpec || 'cmd.exe' : 'npm';
-  const spawnArgs = isWin
-    ? ['/d', '/s', '/c', 'npm', 'i', '-g', `${pkg}@latest`]
-    : ['i', '-g', `${pkg}@latest`];
-
-  try {
-    const child = spawn(spawnCmd, spawnArgs, {
-      windowsHide: true,
-      detached: !isWin,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        NO_COLOR: '1',
-      },
-    });
-
-    let out = '';
-    const appendOut = (chunk: Buffer | string) => {
-      out = (out + chunk.toString()).slice(-8000);
-    };
-    child.stdout?.on('data', appendOut);
-    child.stderr?.on('data', appendOut);
-
-    const res = await new Promise<{ ok: boolean; code: number | null; error?: string }>(
-      (resolve) => {
-        let done = false;
-        const timer = setTimeout(() => {
-          if (done) return;
-          done = true;
-          if (child.pid) void killPidTree(child.pid);
-          resolve({
-            ok: false,
-            code: null,
-            error: `更新超时（超过 ${Math.round(timeoutMs / 1000)} 秒）`,
-          });
-        }, timeoutMs);
-
-        child.on('error', (err) => {
-          if (done) return;
-          done = true;
-          clearTimeout(timer);
-          resolve({ ok: false, code: null, error: err.message });
-        });
-
-        child.on('close', (code) => {
-          if (done) return;
-          done = true;
-          clearTimeout(timer);
-          resolve({
-            ok: code === 0,
-            code,
-            error: code === 0 ? undefined : `npm 退出码 ${code}`,
-          });
-        });
-      },
-    );
-
-    if (res.ok) {
-      registryCache.delete(pkg);
-      try {
-        await probeAllEngines(true);
-      } catch {
-        /* best effort */
-      }
-    }
-
-    return {
-      ok: res.ok,
-      error: res.error,
-      output: out.trim(),
-    };
-  } catch (err) {
-    return {
-      ok: false,
-      error: (err as Error).message,
-    };
-  } finally {
-    const finalEntry = engineRegistry.get(engineId);
-    if (finalEntry) finalEntry.updating = false;
+  for (const res of [pi, dsh, claude, durable]) {
+    engineRegistry.set(res.id, { status: res, probedAt: timestamp });
   }
 }
 

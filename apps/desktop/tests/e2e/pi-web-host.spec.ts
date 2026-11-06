@@ -2,7 +2,7 @@
  * E2E：pi 阶段 2 自研托管服务链路（docs/pi-web-评估.md 阶段 2 / M2A 骨架）
  *
  * 验证「自研前端 + utilityProcess 托管服务」整链路：
- * 1. 真实 Electron 启动（不 mock）→ 渲染层 preload→IPC 调用 piWebHost.launch
+ * 1. 真实 Electron 启动（不 mock）→ 渲染层 preload→IPC 调用 pihost.launch
  * 2. 主进程 utilityProcess.fork @urchin/pi-web-host → 捕获 stdout 就绪 URL（带 token）
  * 3. 鉴权正确性：带 token → HTTP 200（自研前端页面）；无 token → 401
  * 4. 标签页打开自研前端：WS（hello_ok）握手达成，页面显示「已握手」
@@ -82,7 +82,7 @@ test.describe('pi 阶段 2 自研托管服务（M2A 骨架）', () => {
     const { electronApp, window } = await launchApp();
 
     // 1. 启动托管服务（渲染层 → 主进程 IPC → utilityProcess.fork）
-    const launchRes = (await invoke(window, 'piWebHost.launch', {})) as {
+    const launchRes = (await invoke(window, 'pihost.launch', {})) as {
       ok: boolean;
       url: string;
       port: number;
@@ -94,7 +94,7 @@ test.describe('pi 阶段 2 自研托管服务（M2A 骨架）', () => {
 
     try {
       // 2. 状态快照 running
-      const status = (await invoke(window, 'piWebHost.status', {})) as {
+      const status = (await invoke(window, 'pihost.status', {})) as {
         state: string;
         url?: string;
       };

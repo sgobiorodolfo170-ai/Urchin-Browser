@@ -16,7 +16,7 @@ import { registerHandler, IpcError, IpcErrorCode } from '@urchin/ipc-contract';
 import { createLogger } from '@urchin/logger';
 import type { TabManager } from '../tabs/tab-manager';
 import type { WorkspaceRegistry } from './workspace-registry';
-import type { WorkspaceSessionManager } from './workspace-sessions';
+import type { WorkspaceSessionManager } from './workspace-session-manager';
 
 const log = createLogger('workspace-ipc');
 

@@ -1,7 +1,7 @@
 /**
- * deepseekHarness 域 IPC Handler 注册单元测试
+ * dsh 域 IPC Handler 注册单元测试
  *
- * 验证 deepseekHarness.launch / status / stop 三个通道：
+ * 验证 dsh.launch / status / stop 三个通道：
  * - launch：成功返回 {ok, url, port}；launcher 抛错转为 IpcError(INTERNAL)
  * - launch：注册时使用加长 IPC 超时（覆盖默认 30s，见 dev.111 死路径修复）
  * - status：透传 launcher 状态快照
@@ -71,25 +71,25 @@ describe('registerDshHandlers', () => {
     mocks.capturedOpts.clear();
   });
 
-  it('deepseekHarness.launch should register with extended IPC timeout (override 30s default)', () => {
+  it('dsh.launch should register with extended IPC timeout (override 30s default)', () => {
     const ipcMain = createMockIpcMain();
     const launcher = createMockLauncher();
     registerDshHandlers(ipcMain as never, launcher);
 
     // 180s = dsh 启动上限 120s + 余量；必须 > 120s，否则负载下 IPC 先超时、
     // 渲染层放弃自动开标签（dev.111 修复的死路径）
-    expect(mocks.capturedOpts.get('deepseekHarness.launch')?.timeoutMs).toBe(180_000);
+    expect(mocks.capturedOpts.get('dsh.launch')?.timeoutMs).toBe(180_000);
     // 快操作保持默认 30s（不传 opts）
-    expect(mocks.capturedOpts.get('deepseekHarness.status')).toBeUndefined();
-    expect(mocks.capturedOpts.get('deepseekHarness.stop')).toBeUndefined();
+    expect(mocks.capturedOpts.get('dsh.status')).toBeUndefined();
+    expect(mocks.capturedOpts.get('dsh.stop')).toBeUndefined();
   });
 
-  it('deepseekHarness.launch should return ok with url and port', async () => {
+  it('dsh.launch should return ok with url and port', async () => {
     const ipcMain = createMockIpcMain();
     const launcher = createMockLauncher();
     registerDshHandlers(ipcMain as never, launcher);
 
-    const res = (await ipcMain.invoke('deepseekHarness.launch', {})) as {
+    const res = (await ipcMain.invoke('dsh.launch', {})) as {
       ok: boolean;
       url: string;
       port: number;
@@ -100,13 +100,13 @@ describe('registerDshHandlers', () => {
     expect(launcher.launch).toHaveBeenCalledTimes(1);
   });
 
-  it('deepseekHarness.launch should wrap launcher failure into IpcError', async () => {
+  it('dsh.launch should wrap launcher failure into IpcError', async () => {
     const ipcMain = createMockIpcMain();
     const launcher = createMockLauncher();
     launcher.launch.mockRejectedValue(new Error('启动超时（120s）'));
     registerDshHandlers(ipcMain as never, launcher);
 
-    const err: unknown = await ipcMain.invoke('deepseekHarness.launch', {}).then(
+    const err: unknown = await ipcMain.invoke('dsh.launch', {}).then(
       () => null,
       (e: unknown) => e,
     );
@@ -115,7 +115,7 @@ describe('registerDshHandlers', () => {
     expect((err as IpcError).message).toContain('启动超时');
   });
 
-  it('deepseekHarness.status should pass through launcher snapshot', async () => {
+  it('dsh.status should pass through launcher snapshot', async () => {
     const ipcMain = createMockIpcMain();
     const snapshot: DshStatusSnapshot = {
       state: 'running',
@@ -126,16 +126,16 @@ describe('registerDshHandlers', () => {
     const launcher = createMockLauncher(snapshot);
     registerDshHandlers(ipcMain as never, launcher);
 
-    const res = (await ipcMain.invoke('deepseekHarness.status', {})) as DshStatusSnapshot;
+    const res = (await ipcMain.invoke('dsh.status', {})) as DshStatusSnapshot;
     expect(res).toEqual(snapshot);
   });
 
-  it('deepseekHarness.stop should call launcher.stop and return ok', async () => {
+  it('dsh.stop should call launcher.stop and return ok', async () => {
     const ipcMain = createMockIpcMain();
     const launcher = createMockLauncher();
     const { dispose } = registerDshHandlers(ipcMain as never, launcher);
 
-    const res = (await ipcMain.invoke('deepseekHarness.stop', {})) as { ok: boolean };
+    const res = (await ipcMain.invoke('dsh.stop', {})) as { ok: boolean };
     expect(res.ok).toBe(true);
     expect(launcher.stop).toHaveBeenCalledTimes(1);
 

@@ -20,7 +20,7 @@ import type { Session } from 'electron';
 import { DEFAULT_WORKSPACE_ID } from '@urchin/ipc-contract';
 import { createLogger } from '@urchin/logger';
 
-const log = createLogger('workspace-sessions');
+const log = createLogger('workspace-session-manager');
 
 /** 分区前缀：持久化（persist:）+ 命名空间（urchin-workspace-）。 */
 export const WORKSPACE_PARTITION_PREFIX = 'persist:urchin-workspace-';

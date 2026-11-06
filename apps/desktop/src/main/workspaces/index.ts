@@ -6,6 +6,6 @@
  */
 export { WorkspaceRegistry } from './workspace-registry';
 export type { WorkspacePersistence, WorkspaceStoredRecord } from './workspace-registry';
-export { WorkspaceSessionManager, partitionForWorkspace } from './workspace-sessions';
+export { WorkspaceSessionManager, partitionForWorkspace } from './workspace-session-manager';
 export { registerWorkspaceHandlers } from './register-handlers';
 export type { WorkspaceHandlerDeps } from './register-handlers';

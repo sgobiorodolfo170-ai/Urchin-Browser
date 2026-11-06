@@ -47,7 +47,7 @@ vi.mock('electron', () => ({
 import {
   WorkspaceSessionManager,
   partitionForWorkspace,
-} from '../../src/main/workspaces/workspace-sessions';
+} from '../../src/main/workspaces/workspace-session-manager';
 
 describe('WorkspaceSessionManager', () => {
   beforeEach(() => {

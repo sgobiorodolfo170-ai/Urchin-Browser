@@ -356,7 +356,7 @@ export function App() {
     let alive = true;
     const tick = async (): Promise<void> => {
       try {
-        const s = (await window.urchin.invoke('piWebHost.status', {})) as {
+        const s = (await window.urchin.invoke('pihost.status', {})) as {
           state?: string;
         };
         if (alive) {

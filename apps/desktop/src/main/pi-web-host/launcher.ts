@@ -53,10 +53,10 @@ export type HostForkFn = (
   options: { env: Record<string, string>; cwd: string; stdio: 'pipe' },
 ) => UtilityProcessLike;
 
-/** 状态机状态（与 ipc-contract piWebHostStateSchema 对齐） */
+/** 状态机状态（与 ipc-contract pihostStateSchema 对齐） */
 export type PiWebHostState = 'stopped' | 'starting' | 'running' | 'error';
 
-/** 对外状态快照（与 ipc-contract piWebHostStatusRes 对齐） */
+/** 对外状态快照（与 ipc-contract pihostStatusResSchema 对齐） */
 export interface PiWebHostStatusSnapshot {
   readonly state: PiWebHostState;
   readonly url?: string;

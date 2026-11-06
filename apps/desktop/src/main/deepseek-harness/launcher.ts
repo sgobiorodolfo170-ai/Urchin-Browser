@@ -78,7 +78,7 @@ export type SpawnFn = (
 /** 状态机状态 */
 export type DshState = 'stopped' | 'starting' | 'running' | 'error';
 
-/** 对外状态快照（与 ipc-contract deepseekHarnessStatusRes 对齐） */
+/** 对外状态快照（与 ipc-contract dshStatusResSchema 对齐） */
 export interface DshStatusSnapshot {
   readonly state: DshState;
   readonly url?: string;

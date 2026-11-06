@@ -1365,38 +1365,38 @@ export const aiScreenshotResSchema = z.object({
 export type AiScreenshotRes = z.infer<typeof aiScreenshotResSchema>;
 
 // ============================================================================
-// piWebHost.* —— pi 阶段 2 自研托管服务（utilityProcess 内运行 @urchin/pi-web-host）
+// pihost.* —— pi 阶段 2 自研托管服务（utilityProcess 内运行 @urchin/pi-web-host）
 // ============================================================================
 
 /**
- * piWebHost.launch：启动（或复用）自研 pi 托管服务并返回带 token 的入口 URL。
+ * pihost.launch：启动（或复用）自研 pi 托管服务并返回带 token 的入口 URL。
  *
  * 阶段 2（docs/pi-web-评估.md 阶段 2）：pi 服务以 Electron utilityProcess 运行自研
  * @urchin/pi-web-host（HTTP 静态 + WebSocket + 随机 token 鉴权），与浏览器主体隔离；
  * 就绪 URL 携带 token（capability URL），渲染层直接 tab.open。
  */
-export const piWebHostLaunchReqSchema = z.object({}).default({});
-export type PiWebHostLaunchReq = z.infer<typeof piWebHostLaunchReqSchema>;
+export const pihostLaunchReqSchema = z.object({}).default({});
+export type PihostLaunchReq = z.infer<typeof pihostLaunchReqSchema>;
 
-export const piWebHostLaunchResSchema = z.object({
+export const pihostLaunchResSchema = z.object({
   ok: z.literal(true),
   /** 带 token 的入口 URL（http://127.0.0.1:<port>/?token=...） */
   url: z.string().url(),
   /** 本次服务监听端口 */
   port: z.number().int().min(1).max(65_535),
 });
-export type PiWebHostLaunchRes = z.infer<typeof piWebHostLaunchResSchema>;
+export type PihostLaunchRes = z.infer<typeof pihostLaunchResSchema>;
 
-/** piWebHost.status：查询托管服务状态（不产生副作用） */
-export const piWebHostStatusReqSchema = z.object({}).default({});
-export type PiWebHostStatusReq = z.infer<typeof piWebHostStatusReqSchema>;
+/** pihost.status：查询托管服务状态（不产生副作用） */
+export const pihostStatusReqSchema = z.object({}).default({});
+export type PihostStatusReq = z.infer<typeof pihostStatusReqSchema>;
 
 /** 托管服务运行状态（幂等状态机：stopped → starting → running / error） */
-export const piWebHostStateSchema = z.enum(['stopped', 'starting', 'running', 'error']);
-export type PiWebHostState = z.infer<typeof piWebHostStateSchema>;
+export const pihostStateSchema = z.enum(['stopped', 'starting', 'running', 'error']);
+export type PihostState = z.infer<typeof pihostStateSchema>;
 
-export const piWebHostStatusResSchema = z.object({
-  state: piWebHostStateSchema,
+export const pihostStatusResSchema = z.object({
+  state: pihostStateSchema,
   /** running 时返回入口 URL */
   url: z.string().url().optional(),
   /** 本次服务监听端口（starting/running 时返回） */
@@ -1406,50 +1406,50 @@ export const piWebHostStatusResSchema = z.object({
   /** error 状态时的最后错误信息 */
   lastError: z.string().optional(),
 });
-export type PiWebHostStatusRes = z.infer<typeof piWebHostStatusResSchema>;
+export type PihostStatusRes = z.infer<typeof pihostStatusResSchema>;
 
-/** piWebHost.stop：停止托管服务（终止 utility 子进程；已停时幂等成功） */
-export const piWebHostStopReqSchema = z.object({}).default({});
-export type PiWebHostStopReq = z.infer<typeof piWebHostStopReqSchema>;
+/** pihost.stop：停止托管服务（终止 utility 子进程；已停时幂等成功） */
+export const pihostStopReqSchema = z.object({}).default({});
+export type PihostStopReq = z.infer<typeof pihostStopReqSchema>;
 
-export const piWebHostStopResSchema = z.object({
+export const pihostStopResSchema = z.object({
   ok: z.literal(true),
 });
-export type PiWebHostStopRes = z.infer<typeof piWebHostStopResSchema>;
+export type PihostStopRes = z.infer<typeof pihostStopResSchema>;
 
 // ============================================================================
-// deepseekHarness.* —— DeepSeek Harness 启动器（vendor 子进程运行 dsh web）
+// dsh.* —— DeepSeek Harness 启动器（vendor 子进程运行 dsh web）
 // ============================================================================
 
 /**
- * deepseekHarness.launch：启动（或复用已运行的）DeepSeek Harness Web 服务并返回入口 URL。
+ * dsh.launch：启动（或复用已运行的）DeepSeek Harness Web 服务并返回入口 URL。
  *
  * 架构：dsh web 全部运行在独立的系统 Node 子进程中（vendor/deepseek-harness，
  * tsx ESM loader 直启 apps/cli/src/bin.ts），仅绑定 127.0.0.1 随机端口；
  * Electron 主进程零 dsh 依赖。标签关闭后自动停止后端（与 piWeb 不同）。
  */
-export const deepseekHarnessLaunchReqSchema = z.object({}).default({});
-export type DeepseekHarnessLaunchReq = z.infer<typeof deepseekHarnessLaunchReqSchema>;
+export const dshLaunchReqSchema = z.object({}).default({});
+export type DshLaunchReq = z.infer<typeof dshLaunchReqSchema>;
 
-export const deepseekHarnessLaunchResSchema = z.object({
+export const dshLaunchResSchema = z.object({
   ok: z.literal(true),
   /** 入口 URL（http://127.0.0.1:<port>），渲染层新开标签页加载 */
   url: z.string().url(),
   /** 本次服务监听端口 */
   port: z.number().int().min(1).max(65_535),
 });
-export type DeepseekHarnessLaunchRes = z.infer<typeof deepseekHarnessLaunchResSchema>;
+export type DshLaunchRes = z.infer<typeof dshLaunchResSchema>;
 
-/** deepseekHarness.status：查询服务状态（不产生副作用） */
-export const deepseekHarnessStatusReqSchema = z.object({}).default({});
-export type DeepseekHarnessStatusReq = z.infer<typeof deepseekHarnessStatusReqSchema>;
+/** dsh.status：查询服务状态（不产生副作用） */
+export const dshStatusReqSchema = z.object({}).default({});
+export type DshStatusReq = z.infer<typeof dshStatusReqSchema>;
 
 /** dsh 服务运行状态（有限状态机：stopped → starting → running / error） */
-export const deepseekHarnessStateSchema = z.enum(['stopped', 'starting', 'running', 'error']);
-export type DeepseekHarnessState = z.infer<typeof deepseekHarnessStateSchema>;
+export const dshStateSchema = z.enum(['stopped', 'starting', 'running', 'error']);
+export type DshState = z.infer<typeof dshStateSchema>;
 
-export const deepseekHarnessStatusResSchema = z.object({
-  state: deepseekHarnessStateSchema,
+export const dshStatusResSchema = z.object({
+  state: dshStateSchema,
   /** running 时返回入口 URL */
   url: z.string().url().optional(),
   /** 本次服务监听端口（starting/running 时返回） */
@@ -1459,16 +1459,16 @@ export const deepseekHarnessStatusResSchema = z.object({
   /** error 状态时的最后错误信息 */
   lastError: z.string().optional(),
 });
-export type DeepseekHarnessStatusRes = z.infer<typeof deepseekHarnessStatusResSchema>;
+export type DshStatusRes = z.infer<typeof dshStatusResSchema>;
 
-/** deepseekHarness.stop：停止服务（终止子进程树；已停时幂等成功） */
-export const deepseekHarnessStopReqSchema = z.object({}).default({});
-export type DeepseekHarnessStopReq = z.infer<typeof deepseekHarnessStopReqSchema>;
+/** dsh.stop：停止服务（终止子进程树；已停时幂等成功） */
+export const dshStopReqSchema = z.object({}).default({});
+export type DshStopReq = z.infer<typeof dshStopReqSchema>;
 
-export const deepseekHarnessStopResSchema = z.object({
+export const dshStopResSchema = z.object({
   ok: z.literal(true),
 });
-export type DeepseekHarnessStopRes = z.infer<typeof deepseekHarnessStopResSchema>;
+export type DshStopRes = z.infer<typeof dshStopResSchema>;
 
 // ============================================================================
 // screenshot.* —— 地址栏截图按钮（整屏框选截图，存用户数据目录）
@@ -2696,19 +2696,19 @@ export const ipcSchema = {
   'ai.uploadFile': { req: aiUploadFileReqSchema, res: aiUploadFileResSchema },
   'ai.setWorkdir': { req: aiSetWorkdirReqSchema, res: aiSetWorkdirResSchema },
   // pi 阶段 2 自研托管服务（utilityProcess）：launch / status / stop
-  'piWebHost.launch': { req: piWebHostLaunchReqSchema, res: piWebHostLaunchResSchema },
-  'piWebHost.status': { req: piWebHostStatusReqSchema, res: piWebHostStatusResSchema },
-  'piWebHost.stop': { req: piWebHostStopReqSchema, res: piWebHostStopResSchema },
+  'pihost.launch': { req: pihostLaunchReqSchema, res: pihostLaunchResSchema },
+  'pihost.status': { req: pihostStatusReqSchema, res: pihostStatusResSchema },
+  'pihost.stop': { req: pihostStopReqSchema, res: pihostStopResSchema },
   // DeepSeek Harness 启动器：launch / status / stop（标签关闭后自动停止）
-  'deepseekHarness.launch': {
-    req: deepseekHarnessLaunchReqSchema,
-    res: deepseekHarnessLaunchResSchema,
+  'dsh.launch': {
+    req: dshLaunchReqSchema,
+    res: dshLaunchResSchema,
   },
-  'deepseekHarness.status': {
-    req: deepseekHarnessStatusReqSchema,
-    res: deepseekHarnessStatusResSchema,
+  'dsh.status': {
+    req: dshStatusReqSchema,
+    res: dshStatusResSchema,
   },
-  'deepseekHarness.stop': { req: deepseekHarnessStopReqSchema, res: deepseekHarnessStopResSchema },
+  'dsh.stop': { req: dshStopReqSchema, res: dshStopResSchema },
   // 整屏框选截图（地址栏按钮）：与 ai.screenshot（pi 全屏回传）不同，框选裁剪存数据目录
   'screenshot.capture': { req: screenshotCaptureReqSchema, res: screenshotCaptureResSchema },
   'screenshot.getImageData': {

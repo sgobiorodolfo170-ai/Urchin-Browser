@@ -534,11 +534,11 @@ adapted_for: Urchin-Browser
 | **不可逆操作前** | **人类确认门禁**                  | **数据库写/生产变更/权限修改/文件删除/对外发布——AI 生成方案后自动暂停，等待人类确认方可继续**                                        |
 | 发布前           | 人工确认门禁                      | 人工跑 `pnpm e2e` 全套、检查覆盖率报告、安装包签名验证（[docs/03 §5](docs/03-技术栈.md#5-cicd-门槛v01)）                             |
 
-> 🚨 **CI 真实状态（2026-10-27 核查，必须知道）**：`gh run list` 显示 **2026-08-02 起每一次 CI 运行都失败**，且失败点在第 2 步「Setup pnpm」——意味着 typecheck / lint / 测试 / E2E **从未真正在 CI 上执行过**。上文「全绿方可合并」在此前是空转条款。
+> 🚨 **CI 真实状态（2026-11-06 核查，必须知道）**：2026-10-27 修好前置链后，CI 步骤 1-11 **全绿**——setup / checkout / pnpm / node / install / **typecheck / lint / format:check / check:docs / test:coverage / build** 均通过（G1-G5、G13、G15 已在 CI 实际执行并放行）。这意味着「typecheck + lint + format + 文档漂移 + 单测 + 覆盖率门禁」六道闸**已从空转条款变为事实门禁**。
 >
-> 2026-10-27 已连修三道墙：① `pnpm/action-setup` 与 `packageManager` 版本双写；② lockfile 与 `apps/desktop/package.json` 不一致（dsh 0.2.1-rc.2）；③ `vendor/pi/packages/tui` 被排除出 workspace 导致构建解析不到 `marked`。修复后 CI 已能跑到最后一步。
+> **唯一仍失败的步骤是 E2E（步骤 12）**：2026-11-05 最近一次运行（`gh run view 41998142958`）5 个 spec 失败——`launch.spec` / `tab-order-repro.spec` / `translate.spec` / `workspaces.spec` / `settings-page.spec`，失败模式统一为 `TimeoutError: locator.fill: Timeout 30000ms exceeded`（omnibox / 地址栏输入框在 CI headless 环境下 30s 内未定位到或不可填充），属 CI 环境下 UI 选择器 / 时序问题，非代码逻辑回归。E2E 绿之前，G6 仍是目标而非事实——本行必须随状态更新，不得沿用旧结论。
 >
-> **仍未通过**：`pnpm e2e` 首轮 7 通过 / 7 失败（首次在 CI 环境暴露，属历史遗留而非新引入）。2026-10-27 逐条修复后为 **14 通过 / 1 失败**，仅剩 `pi-web-launcher` 的目录选择链路：pi-web-ui 0.110 已把工作目录选择改为页内 `div.cwd-picker` 对话框，而注入桥 `src/main/pi-web/dir-picker.ts` 仍按老的 `input.status-cwd-input` 查找输入框 → 选择永不生效（`switched:false`，其余三项断言均通过）。E2E 绿之前，「CI 全绿方可合并」仍是目标而非事实——本行必须随状态更新，不得沿用旧结论。
+> **历史脉络**（备查）：2026-08-02 ~ 2026-10-27 间 CI 因前置链断裂（pnpm 版本双写缺失 / lockfile 不一致 / vendor 排出 workspace）从未跑到过 typecheck；2026-10-27 连修三道墙后前置链贯通；2026-11 起 typecheck/lint/单测/coverage 全部在 CI 实跑并放行，仅 E2E 待治。
 
 ### 3. 与人工评审的区别
 

@@ -10,7 +10,7 @@ import { describe, it, expect, vi } from 'vitest';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import { registerWorkspaceHandlers } from '../../src/main/workspaces/register-handlers';
 import type { WorkspaceRegistry } from '../../src/main/workspaces/workspace-registry';
-import type { WorkspaceSessionManager } from '../../src/main/workspaces/workspace-sessions';
+import type { WorkspaceSessionManager } from '../../src/main/workspaces/workspace-session-manager';
 import type { TabManager } from '../../src/main/tabs/tab-manager';
 import { DEFAULT_WORKSPACE_ID } from '@urchin/ipc-contract';
 import type { Workspace, WorkspaceColor } from '@urchin/ipc-contract';

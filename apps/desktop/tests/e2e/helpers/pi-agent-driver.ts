@@ -153,7 +153,7 @@ export class PiDriver {
           };
           if (!w.urchin) return null;
           try {
-            return await w.urchin.invoke('piWebHost.status', {});
+            return await w.urchin.invoke('pihost.status', {});
           } catch {
             return null;
           }

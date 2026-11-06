@@ -407,7 +407,7 @@ describe('App (Browser Shell)', () => {
       if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
       if (channel === 'settings.get') return Promise.resolve({ value: 300 });
       if (channel === 'window.getCurrent') return Promise.resolve({ windowId: 1 });
-      if (channel === 'piWebHost.status') return Promise.resolve({ state: 'running', url: piUrl });
+      if (channel === 'pihost.status') return Promise.resolve({ state: 'running', url: piUrl });
       if (channel === 'tab.create') {
         return Promise.resolve({ tab: makeTab({ id: 2, url: piUrl, title: 'pi' }) });
       }

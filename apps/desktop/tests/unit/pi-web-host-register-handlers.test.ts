@@ -1,7 +1,7 @@
 /**
- * piWebHost 域 IPC Handler 注册单元测试（阶段 2）
+ * pihost 域 IPC Handler 注册单元测试（阶段 2）
  *
- * 验证 piWebHost.launch / status / stop 三个通道：
+ * 验证 pihost.launch / status / stop 三个通道：
  * - launch：成功返回 {ok, url, port}；launcher 抛错转为 IpcError(INTERNAL)
  * - launch：注册时使用加长 IPC 超时（>默认 30s，dev.111 同训的死路径修复）
  * - status：透传 launcher 状态快照
@@ -75,25 +75,25 @@ describe('registerPiWebHostHandlers', () => {
     mocks.capturedOpts.clear();
   });
 
-  it('piWebHost.launch should register with extended IPC timeout (override 30s default)', () => {
+  it('pihost.launch should register with extended IPC timeout (override 30s default)', () => {
     const ipcMain = createMockIpcMain();
     const launcher = createMockLauncher();
     registerPiWebHostHandlers(ipcMain as never, launcher);
 
     // 90s = 启动器上限 60s + 余量；必须 > 60s，否则负载下 IPC 先超时、
     // 渲染层放弃自动开标签（dev.111 同训）
-    expect(mocks.capturedOpts.get('piWebHost.launch')?.timeoutMs).toBeGreaterThan(60_000);
+    expect(mocks.capturedOpts.get('pihost.launch')?.timeoutMs).toBeGreaterThan(60_000);
     // 快操作保持默认 30s（不传 opts）
-    expect(mocks.capturedOpts.get('piWebHost.status')).toBeUndefined();
-    expect(mocks.capturedOpts.get('piWebHost.stop')).toBeUndefined();
+    expect(mocks.capturedOpts.get('pihost.status')).toBeUndefined();
+    expect(mocks.capturedOpts.get('pihost.stop')).toBeUndefined();
   });
 
-  it('piWebHost.launch should return ok with url and port', async () => {
+  it('pihost.launch should return ok with url and port', async () => {
     const ipcMain = createMockIpcMain();
     const launcher = createMockLauncher();
     registerPiWebHostHandlers(ipcMain as never, launcher);
 
-    const res = (await ipcMain.invoke('piWebHost.launch', {})) as {
+    const res = (await ipcMain.invoke('pihost.launch', {})) as {
       ok: boolean;
       url: string;
       port: number;
@@ -104,13 +104,13 @@ describe('registerPiWebHostHandlers', () => {
     expect(launcher.launch).toHaveBeenCalledTimes(1);
   });
 
-  it('piWebHost.launch should wrap launcher failure into IpcError(INTERNAL)', async () => {
+  it('pihost.launch should wrap launcher failure into IpcError(INTERNAL)', async () => {
     const ipcMain = createMockIpcMain();
     const launcher = createMockLauncher();
     launcher.launch.mockRejectedValue(new Error('pi-web-host 启动超时（60s）'));
     registerPiWebHostHandlers(ipcMain as never, launcher);
 
-    const err: unknown = await ipcMain.invoke('piWebHost.launch', {}).then(
+    const err: unknown = await ipcMain.invoke('pihost.launch', {}).then(
       () => null,
       (e: unknown) => e,
     );
@@ -119,7 +119,7 @@ describe('registerPiWebHostHandlers', () => {
     expect((err as IpcError).message).toContain('启动超时');
   });
 
-  it('piWebHost.status should pass through launcher snapshot', async () => {
+  it('pihost.status should pass through launcher snapshot', async () => {
     const ipcMain = createMockIpcMain();
     const snapshot: PiWebHostStatusSnapshot = {
       state: 'running',
@@ -130,16 +130,16 @@ describe('registerPiWebHostHandlers', () => {
     const launcher = createMockLauncher(snapshot);
     registerPiWebHostHandlers(ipcMain as never, launcher);
 
-    const res = (await ipcMain.invoke('piWebHost.status', {})) as PiWebHostStatusSnapshot;
+    const res = (await ipcMain.invoke('pihost.status', {})) as PiWebHostStatusSnapshot;
     expect(res).toEqual(snapshot);
   });
 
-  it('piWebHost.stop should call launcher.stop and return ok; dispose calls launcher.dispose', async () => {
+  it('pihost.stop should call launcher.stop and return ok; dispose calls launcher.dispose', async () => {
     const ipcMain = createMockIpcMain();
     const launcher = createMockLauncher();
     const { dispose } = registerPiWebHostHandlers(ipcMain as never, launcher);
 
-    const res = (await ipcMain.invoke('piWebHost.stop', {})) as { ok: boolean };
+    const res = (await ipcMain.invoke('pihost.stop', {})) as { ok: boolean };
     expect(res.ok).toBe(true);
     expect(launcher.stop).toHaveBeenCalledTimes(1);
 

@@ -97,7 +97,7 @@ export function useModuleOpeners({
     let piUrl: string | null = null;
     let piState: string | undefined;
     try {
-      const s = (await window.urchin.invoke('piWebHost.status', {})) as {
+      const s = (await window.urchin.invoke('pihost.status', {})) as {
         state?: string;
         url?: string;
       };
@@ -121,7 +121,7 @@ export function useModuleOpeners({
       setPiServiceState('starting');
       setActionToast('正在启动 pi…');
       try {
-        const res = (await window.urchin.invoke('piWebHost.launch', {})) as {
+        const res = (await window.urchin.invoke('pihost.launch', {})) as {
           url?: string;
         };
         if (typeof res.url === 'string') {
@@ -236,7 +236,7 @@ export function useModuleOpeners({
     // 查 dsh 服务状态：running 则复用/激活标签
     let dshUrl: string | null = null;
     try {
-      const s = (await window.urchin.invoke('deepseekHarness.status', {})) as {
+      const s = (await window.urchin.invoke('dsh.status', {})) as {
         state?: string;
         url?: string;
       };
@@ -278,7 +278,7 @@ export function useModuleOpeners({
     // 未运行 → launch → 打开标签
     setDshStarting(true);
     try {
-      const res = (await window.urchin.invoke('deepseekHarness.launch', {})) as {
+      const res = (await window.urchin.invoke('dsh.launch', {})) as {
         url: string;
         port: number;
       };

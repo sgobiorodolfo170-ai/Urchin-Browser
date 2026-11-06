@@ -1,9 +1,9 @@
 # 全项目代码审查修复进度跟踪
 
-> **创建时间**：2026-11-05
+> **创建时间**：2026-11-05 · **最近更新**：2026-11-06（四批收尾后）
 > **审查起点**：commit `d7e5b33b`（M28 transit 交付后）
-> **当前 HEAD**：`29143aa6`（进度文档提交后）
-> **verify 状态**：全绿（127 测试文件 / 1440 测试 / 覆盖率 ~68%）
+> **当前 HEAD**：`33c443c8`（第四批提交后）
+> **verify 状态**：全绿（128 测试文件 / 1458 测试 / lint 0 error / 覆盖率 ~68%）
 
 ---
 
@@ -12,10 +12,12 @@
 | 级别 | 发现数 | 已修复 | 剩余 | 完成率 |
 |------|--------|--------|------|--------|
 | P0 阻塞 | 2 | 2 | 0 | 100% |
-| P1 严重 | 14 | 13 | 1 | 93% |
-| P2 一般 | 19 | 11 | 8 | 58% |
+| P1 严重 | 14 | 14 | 0 | **100%** |
+| P2 一般 | 19 | 13 | 6 | 68% |
 | P3 提示 | 12 | 5 | 7 | 42% |
-| **合计** | **47** | **31** | **16** | **66%** |
+| **合计** | **47** | **34** | **13** | **72%** |
+
+P1 全清（最后一个 P1-11 渲染层 logger 已于 2026-11-06 交付）。P2 新增修复：P2-16 CSP 收紧、P2-7 一期（11/35 类型逃逸消除，剩余 24 处逐处评估为合法模式）。
 
 ---
 
@@ -63,59 +65,59 @@
 | 3.V | pnpm verify + pnpm e2e | ✅ | — | |
 | 3.C | git commit | ✅ | `5119a27c` | |
 
-### 批次 4：质量与流程（P1-P2）— ⚠️ 1 步未完成
+### 批次 4：质量与流程（P1-P2）— ✅ 全部完成
 
 | 步骤 | 计划内容 | 状态 | 实际提交 | 备注 |
 |------|----------|------|---------|------|
 | 4.1 | AOCI 产物移出版本控制 | ✅ | `c9853088` | git rm 5 文件 + .gitignore |
 | 4.2 | dev:full 组合脚本 | ✅ | `c9853088` | |
 | 4.3 | perf.ps1 动态路径 | ✅ | `c9853088` | $PSScriptRoot |
-| 4.4 | 空 catch 补日志（12 处） | ❌ | — | **page-snapshot.ts(7处) + snapshot-export.ts(1处) 在注入脚本模板字符串内，未改；transit/drag-injection.ts(4处) + screenshots(1处) 未改** |
+| 4.4 | 空 catch 补日志（12 处） | ✅ | `d3e5515a` | page-snapshot.ts(7) + snapshot-export.ts(1) + drag-injection.ts(4)，注入脚本内统一 `console.warn('[urchin ...]', e)` |
 | 4.5 | devtools 死代码删除 | ✅ | `c9853088` | |
 | 4.6 | pnpm-lock.yaml.bak 移除 | ✅ | `c9853088` | |
 | 4.V | pnpm verify | ✅ | — | |
-| 4.C | git commit | ✅ | `c9853088` | |
+| 4.C | git commit | ✅ | `d3e5515a` | |
 
-### 批次 5：架构治理（P1+P2）— ✅ 5 个子项全部完成，2 个子项细节未做
+### 批次 5：架构治理（P1+P2）— ✅ 主项全部完成，1 子项未做
 
 | 步骤 | 计划内容 | 状态 | 实际提交 | 备注 |
 |------|----------|------|---------|------|
 | 5.1 | Provider 源码外迁 | ✅ | `aeaaf6bc` | 外迁到 openai-compatible.ts + esbuild 编译 + 心跳清理 |
-| 5.1 子项 | HTTPS 请求加 AbortController 超时 | ❌ | — | **未做** |
+| 5.1 子项 | HTTPS 请求加 AbortController 超时 | ✅ | `33c443c8` | request() 120s 硬超时；requestStream 保持无界（流式长生成语义） |
 | 5.1 子项 | 接入 @urchin/ai-provider-contract 类型 | ⚠️ | — | 部分接入（消息类型自定义，未引用 contract 包） |
 | 5.2 | index.ts 拆分（6 步） | ✅ | `5622eaa1`~`bc89f970` | AppContext → cleanup → handlers → watchdog → theme-apply → signals |
-| 5.2 子项 | 冷启动性能测试 P95 ≤ 1011ms | ❌ | — | **未做** |
+| 5.2 子项 | 冷启动性能测试 P95 ≤ 1011ms | ❌ | — | **未做（唯一遗留子项）** |
 | 5.3 | App.tsx 拆分（7 步） | ✅ | `2b5c18b9`~`8fb6ec3d` | TabBar → LeftSidebar → RightSidebar → ContentArea → DevtoolsColumn → Workspaces → hooks |
 | 5.4 | SettingsPage 拆分（7 步） | ✅ | `5e6b2c25`~`5d68e613` | useSettings → form controls → 5 sections → promote tabs |
 | 5.5 | bookmark-panel React 迁移 | ✅ | `838626a6` | BookmarkPanelApp + 3 Tab 组件 + panel.css |
 | 5.V | 每步 verify + e2e | ✅ | — | |
 | 5.C | 每步独立 commit | ✅ | — | 共 18 个提交 |
 
-### 批次 6：仓库卫生（P2-P3）— ❌ 5/6 未完成
+### 批次 6：仓库卫生（P2-P3）— ✅ 全部完成
 
 | 步骤 | 计划内容 | 状态 | 实际提交 | 备注 |
 |------|----------|------|---------|------|
 | 6.1 | 删除 lefthook.yml | ✅ | `c9853088` | 在批次 4 中提前完成 |
-| 6.2 | 删除 build-and-run.cmd/.bat | ❌ | — | **未做（已 gitignore 但文件仍在）** |
-| 6.3 | workspace-sessions.ts 重命名 | ❌ | — | **未做** |
-| 6.4 | IPC 通道命名统一 piWebHost→pihost | ❌ | — | **未做（破坏性变更，v1.0 前必须做）** |
-| 6.5 | docs/事实登记表.md 记录 LRU max=50 | ❌ | — | **未做** |
-| 6.6 | AGENTS.md §九.2 更新 CI 状态 | ❌ | — | **未做** |
-| 6.V | pnpm verify | N/A | — | |
-| 6.C | git commit | N/A | — | |
+| 6.2 | 删除 build-and-run.cmd/.bat | ✅ | `56d9ad0d` | 文件系统删除（本就被 gitignore，未跟踪） |
+| 6.3 | workspace-sessions.ts → workspace-session-manager.ts | ✅ | `56d9ad0d` | git mv + 4 处 import 路径 + logger 名同步 |
+| 6.4 | IPC 通道命名统一 piWebHost→pihost、deepseekHarness→dsh | ✅ | `56d9ad0d` | schema 变量/类型/通道键 + 2 register-handlers + renderer + 测试 + launcher 注释；内部 launcher 对象名（PiWebHostLauncher 等）非通道名，保留 |
+| 6.5 | docs/事实登记表.md 记录 LRU max=50 | ✅ | `56d9ad0d` | 新增 F7（代码即真源 storage-layer.ts DEFAULT_MAX_NAMESPACE_CONNECTIONS） |
+| 6.6 | AGENTS.md §九.2 更新 CI 状态 | ✅ | `56d9ad0d` | 前置链 step 1-11 全绿，仅 E2E step 12 待治 |
+| 6.V | pnpm verify + e2e | ✅ | — | 128 文件 / 1458 测试；E2E 4 passed / 1 failed（右侧栏 dblclick 时序，环境性） |
+| 6.C | git commit | ✅ | `56d9ad0d` | |
 
-### 批次 7：收尾提示项（P3）— ⚠️ 1 步未完成
+### 批次 7：收尾提示项（P3）— ✅ 全部完成
 
 | 步骤 | 计划内容 | 状态 | 实际提交 | 备注 |
 |------|----------|------|---------|------|
 | 7.1 | tab-manager loadUrl 协议白名单兜底 | ✅ | `3d1403b5` | 在批次 2 中提前完成 |
-| 7.2 | mail-manager unref + translate-manager unref | ⚠️ | `255c0da0` | **mail-manager ✅，translate-manager ❌ 未做** |
+| 7.2 | mail-manager unref + translate-manager unref | ✅ | `255c0da0` + `d3e5515a` | mail 在 `255c0da0`；translate-manager:742 pollTimer.unref?.() 在 `d3e5515a` |
 | 7.3 | stubs SQLInputValue 删除 | ✅ | `255c0da0` | |
 | 7.4 | .npmrc ELECTRON_BUILDER_BINARIES_MIRROR | ✅ | `255c0da0` | |
 | 7.5 | index.ts JSON.parse try/catch | ✅ | `255c0da0` | legacyPiKeysScan 容错 |
 | 7.6 | orchestrator markCrashed kill 日志 | ✅ | `255c0da0` | 3 处 catch 加 log.warn |
-| 7.V | pnpm verify | ✅ | — | |
-| 7.C | git commit | ✅ | `255c0da0` | |
+| 7.V | pnpm verify + e2e | ✅ | — | E2E 5 passed / 0 failed |
+| 7.C | git commit | ✅ | `d3e5515a` | |
 
 ---
 
@@ -126,57 +128,34 @@
 | 1 (P0) | 5 | 5 | 0 | 0 | **100%** |
 | 2 (P1 安全) | 6 | 6 | 0 | 0 | **100%** |
 | 3 (P1 资源) | 5 | 5 | 0 | 0 | **100%** |
-| 4 (P1-P2 质量) | 8 | 6 | 1 | 0 | 75% |
-| 5 (架构治理) | 5 主项 + 2 子项 | 5 主项 + 0 子项 | 2 子项 | 1 子项 | 86% |
-| 6 (仓库卫生) | 7 | 2 | 5 | 0 | 29% |
-| 7 (收尾 P3) | 7 | 6 | 0 | 1 | 86% |
-| **合计** | **40+** | **35** | **8** | **2** | **~88%** |
+| 4 (P1-P2 质量) | 8 | 8 | 0 | 0 | **100%** |
+| 5 (架构治理) | 5 主项 + 3 子项 | 5 主项 + 2 子项 | 1 子项 | 1 子项 | **93%** |
+| 6 (仓库卫生) | 7 | 7 | 0 | 0 | **100%** |
+| 7 (收尾 P3) | 7 | 7 | 0 | 0 | **100%** |
+| **合计** | **40+** | **40** | **1** | **1** | **~97%** |
 
 ---
 
-## 五、未完成项明细（10 项）
+## 五、未完成项明细（2026-11-06 四批收尾后，2 项）
 
-### 来自批次 4（1 项）
-
-| 步骤 | 问题 | 位置 | 说明 |
-|------|------|------|------|
-| 4.4 | 空 catch 补日志（12 处） | page-snapshot.ts(7) + snapshot-export.ts(1) + drag-injection.ts(4) | 注入脚本模板字符串内的 `catch (e) {}`，需改为 `console.warn` |
-
-### 来自批次 5（2 项子项）
+### 来自批次 5（1 项）
 
 | 步骤 | 问题 | 说明 |
 |------|------|------|
-| 5.1 子项 | Provider HTTPS 请求加 AbortController 超时 | openai-compatible.ts 的 request() 函数无超时控制 |
-| 5.2 子项 | 冷启动性能测试 P95 ≤ 1011ms 基线验证 | 拆分后未跑性能测试验证未退化 |
+| 5.2 子项 | 冷启动性能测试 P95 ≤ 1011ms 基线验证 | 拆分后未跑性能测试验证未退化；perf.ps1 已就绪（批次 4.3 修好动态路径），待跑基线对比 |
 
-### 来自批次 6（5 项）
-
-| 步骤 | 问题 | 说明 |
-|------|------|------|
-| 6.2 | 删除 build-and-run.cmd/.bat | 已 gitignore 但文件仍在工作区 |
-| 6.3 | workspace-sessions.ts → workspace-session-manager.ts | 同步更新 import 路径 |
-| 6.4 | IPC 通道命名 piWebHost→pihost、deepseekHarness→dsh | 破坏性变更，需同步改 schema+handler+renderer |
-| 6.5 | docs/事实登记表.md 记录 LRU max=50 | 事实漂移记录 |
-| 6.6 | AGENTS.md §九.2 更新 CI 状态 | P0-1 修复后 CI 状态已变 |
-
-### 来自批次 7（1 项）
-
-| 步骤 | 问题 | 位置 | 说明 |
-|------|------|------|------|
-| 7.2 | translate-manager pollTimer 未 unref | translate/translate-manager.ts:742 | 加 .unref?.() |
-
-### 计划外剩余（审查发现但不在原计划中，4 项）
+### 计划外剩余（1 项 + 1 项二期可选）
 
 | 问题 | 位置 | 说明 |
 |------|------|------|
-| P1-11 渲染层 logger | App.tsx(17) + status-bar(6) + omnibox(1) + FileViewer(1) + settings-form(1) | 26 处 console.error → @urchin/logger |
-| P2-7 类型逃逸 as unknown as（35 处） | index.ts(12) + handlers.ts(3) + theme-apply.ts(2) + 其余散布 | BrowserViewLike 用 Pick 消除 |
-| P2-13 vendor/deepseek-harness 整树入库 | vendor/deepseek-harness/ | 16324 tracked 文件 |
-| P2-16 CSP img-src 放行 127.0.0.1 | renderer/index.html:8 | 改走 urchin://pi-icon/ 后移除 |
+| P2-13 vendor/deepseek-harness 整树入库 | vendor/deepseek-harness/ | 16324 tracked 文件，属历史决策范围（计数口径见 AGENTS.md §十一：vendor 不计入模块数），处置需独立决策 |
+| P2-7 残余（24 处 as unknown as） | index.ts 初始化占位(8) + 零散适配边界 | **一期已消除 11 处**（`33c443c8`，BrowserViewLike Pick 化 + WebContentsLike/BrowserWindowLike 加宽）。剩余 24 处逐处评估为合法模式：8 处 ctx 晚期初始化占位、2 处 null 条件、14 处 vendor 适配/动态导入/utilityProcess process.port/流适配。二期可做 AppContext 占位重构 |
+
+> 原「计划外剩余」中的 P1-11 渲染层 logger（✅ `401b006f`）、P2-16 CSP img-src（✅ `33c443c8`）已交付。
 
 ---
 
-## 六、提交历史（审查修复相关，共 31 个提交）
+## 六、提交历史（审查修复相关，共 35 个提交）
 
 | 提交 | 批次 | 说明 |
 |------|------|------|
@@ -210,6 +189,11 @@
 | `f0a7606f` | 测试 | settings-page smoke spec |
 | `838626a6` | 5.5 | bookmark panel React migration |
 | `29143aa6` | 文档 | 进度跟踪文档 |
+| `e9b08fd3` | 文档 | 进度对账重写（对齐原批次计划） |
+| `56d9ad0d` | 6 | P2-P3: IPC 通道改名 pihost/dsh + AGENTS CI 状态 + 事实登记表 F7 + 文件重命名 + 脚本删除 |
+| `d3e5515a` | 7.2+4.4 | P2-P3: translate pollTimer unref + 12 处空 catch 补 console.warn |
+| `401b006f` | P1-11 | P1: renderer/lib/logger.ts + 26 处 console.error → log.error |
+| `33c443c8` | P2 | P2: BrowserViewLike Pick 化消 11 处双重逃逸 + request() AbortController 超时 + CSP img-src 移除 127.0.0.1 |
 
 ---
 
@@ -221,21 +205,15 @@
 |------|------|------|
 | 本进度文档 | `docs/code-review-progress.md` | 你正在读的这份 |
 | P2 拆分蓝图 | `docs/refactor-plan-p2.md` | 已完成，可作参考 |
-| 当前代码状态 | git HEAD `29143aa6` | 直接读文件 |
+| 当前代码状态 | git HEAD `33c443c8` | 直接读文件 |
 | 工作流规则 | `AGENTS.md` | verify + E2E + 构建启动 |
 
-### 未完成项按优先级排序
+### 剩余项（按优先级排序，仅 2 项）
 
-1. **批次 6.4**：IPC 通道命名统一（v1.0 前必须做）
-2. **批次 6.6**：AGENTS.md CI 状态更新
-3. **批次 6.5**：事实登记表 LRU 值
-4. **P1-11**：渲染层 logger（26 处 console.error）
-5. **批次 6.3**：workspace-sessions.ts 重命名
-6. **批次 7.2**：translate-manager unref
-7. **批次 4.4**：空 catch 补日志（12 处）
-8. **批次 6.2**：删除过时辅助脚本
-9. **P2-7**：类型逃逸治理（35 处）
-10. **批次 5.1 子项**：Provider HTTPS 超时
-11. **批次 5.2 子项**：冷启动性能测试
-12. **P2-16**：CSP img-src 收紧
-13. 其余 P3 极低优先级项
+1. **批次 5.2 子项**：冷启动性能测试 P95 ≤ 1011ms 基线验证（perf.ps1 已修好，跑一次对比）
+2. **P2-13**：vendor/deepseek-harness 整树入库处置（需用户决策：外迁为 git 依赖 / submodule / 维持现状）
+
+### 二期可选（非阻塞）
+
+- P2-7 残余：AppContext 晚期初始化占位重构（8 处 `undefined as unknown as X` → builder 模式）；其余 16 处为 vendor 适配/动态导入等合法模式
+- 其余未列举 P3 极低优先级项

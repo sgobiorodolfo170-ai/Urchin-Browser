@@ -135,6 +135,38 @@ describe('DshLauncher（X4 双模式）', () => {
     expect(h.launcher.status().state).toBe('running');
   });
 
+  it('should not log the raw token in "dsh web ready" while the API return keeps it', async () => {
+    // §7.3（2026-11-06）：token 可换 30 天 cookie 属凭据——logger sanitizeMeta
+    // 按 meta 键名脱敏，`url` 键值里的 token 会穿透 JSON console 输出，故
+    // 调用点显式 redactUrlToken。断言两点：日志只出现 token=***；返回值/状态
+    // 快照保留完整认证 URL（首访签发 cookie 与 tab.create 必需）。
+    const TOKEN = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcd';
+    const h = createHarness({ nodePath: 'C:\\fake\\build\\node\\node.exe', usesTsxLoader: true });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    // mockRestore() 会清空 mock.calls（vitest 语义），须在 restore 前先取日志文本
+    let logged = '';
+    try {
+      const pending = h.launcher.launch();
+      await vi.waitFor(() => expect(h.children.length).toBe(1));
+      h.children[0]!.emitStdout(`dsh web: http://127.0.0.1:47001/?token=${TOKEN}\n`);
+      const result = await pending;
+      logged = logSpy.mock.calls
+        .flat()
+        .map((arg) => String(arg))
+        .join('\n');
+
+      expect(result.url).toBe(`http://127.0.0.1:47001/?token=${TOKEN}`);
+      expect(h.launcher.status().url).toBe(`http://127.0.0.1:47001/?token=${TOKEN}`);
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    expect(logged).not.toContain(TOKEN);
+    const readyLine = logged.split('\n').find((line) => line.includes('dsh web ready'));
+    expect(readyLine).toBeDefined();
+    expect(readyLine).toContain('token=***');
+  });
+
   it('fallback (no nodePath) should spawn electron-as-node with ELECTRON_RUN_AS_NODE', async () => {
     const h = createHarness();
     const pending = h.launcher.launch();

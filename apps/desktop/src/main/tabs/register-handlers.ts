@@ -15,6 +15,7 @@ import type { IpcMain } from 'electron';
 import { registerHandler, IpcError, IpcErrorCode } from '@urchin/ipc-contract';
 import { createLogger } from '@urchin/logger';
 import { fallbackGenOfficeUrl } from '../genoffice/url';
+import { redactUrlToken } from '../../shared/redact-url';
 import type { TabManager } from './tab-manager';
 import type { BrowserViewLike } from './types';
 
@@ -54,7 +55,9 @@ export function registerTabHandlers(
   // 集成整体停用（URCHIN_DISABLE_GENOFFICE=1）时 deps.genoffice 缺省，
   // 此处把带路径的伪地址改写为内置查看器，保证降级模式下「打开文件」仍可用。
   registerHandler(ipcMain, 'tab.create', (req) => {
-    log.info('tab.create', { windowId: req.windowId, url: req.url });
+    // §7.3（2026-11-06）：渲染层会把 dsh/pi 认证 URL 原样传入 tab.create——
+    // 入参日志必须打码 token（其它参数/路径保留供排障；业务流用 req.url 原值）
+    log.info('tab.create', { windowId: req.windowId, url: redactUrlToken(req.url) });
 
     const resolved = deps.genoffice?.resolveTabCreate(req.url) ?? {
       url: deps.genoffice ? req.url : fallbackGenOfficeUrl(req.url),

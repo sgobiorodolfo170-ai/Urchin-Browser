@@ -295,4 +295,38 @@ describe('registerTabHandlers', () => {
     };
     expect(result.dataUrl).toBeNull();
   });
+
+  it('should redact token from tab.create INFO log while business flow keeps the raw URL', async () => {
+    // §7.3（2026-11-06）：渲染层把 dsh 认证 URL 原样传入 tab.create——logger 的
+    // sanitizeMeta 按 meta 键名脱敏，url 值里的 token 会穿透；断言日志已打码、
+    // 且业务流（tabManager.create）收到原始 URL 不受影响。
+    const ipcMain = createMockIpcMain();
+    const mgr = createMockTabManager();
+    registerTabHandlers(ipcMain as never, mgr);
+
+    const TOKEN_URL = 'http://127.0.0.1:47001/?token=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcd';
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    // mockRestore() 会清空 mock.calls（vitest 语义），须在 restore 前先取日志文本
+    let logged = '';
+    try {
+      await ipcMain.invoke('tab.create', { windowId: 1, url: TOKEN_URL });
+      logged = logSpy.mock.calls
+        .flat()
+        .map((arg) => String(arg))
+        .join('\n');
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    // 业务流：原始 token URL 交给 TabManager.create（首访签发 cookie 必需）
+    expect(mgr.create).toHaveBeenCalledWith(
+      expect.objectContaining({ windowId: 1, url: TOKEN_URL }),
+    );
+
+    // 日志面：所有 console 输出（logger JSON 行）不出现 43 位 token 明文
+    expect(logged).not.toContain('AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_abcd');
+    // 且 tab.create 日志行确实记录了打码后的 URL（证明日志点已执行而非漏记）
+    expect(logged).toContain('tab.create');
+    expect(logged).toContain('token=***');
+  });
 });

@@ -36,6 +36,7 @@ import { spawn, execFile } from 'node:child_process';
 import { createServer } from 'node:net';
 import { mkdir } from 'node:fs/promises';
 import { createLogger } from '@urchin/logger';
+import { redactUrlToken } from '../../shared/redact-url';
 
 const log = createLogger('dsh-launcher');
 
@@ -365,7 +366,9 @@ export class DshLauncher {
       if (resolvedUrl !== undefined) {
         this.authenticatedUrl = resolvedUrl;
         this.state = 'running';
-        log.info('dsh web ready', { port, url: resolvedUrl, pid: child.pid });
+        // §7.3（2026-11-06）：token 可换 30 天 cookie 属凭据——日志只记打码
+        // 版 URL（port/路径保留供排障）；返回值保留完整 token（首访签发 cookie 必需）
+        log.info('dsh web ready', { port, url: redactUrlToken(resolvedUrl), pid: child.pid });
         return { port, url: resolvedUrl };
       }
       await sleep(this.opts.pollIntervalMs);

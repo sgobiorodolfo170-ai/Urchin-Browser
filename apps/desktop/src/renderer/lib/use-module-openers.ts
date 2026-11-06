@@ -11,6 +11,7 @@ import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { TabSnapshot } from '../tabs/types';
 import { getCurrentWindowId } from './current-window';
+import { sameServiceOrigin } from '../../shared/dsh-url';
 
 /** pi 托管服务状态（ADR-014：常驻服务，侧栏 π 按钮状态灯依据） */
 export type PiServiceState = 'stopped' | 'starting' | 'running' | 'error';
@@ -245,7 +246,12 @@ export function useModuleOpeners({
       // 状态查询失败：回落到启动流程
     }
     if (dshUrl) {
-      const dshTab = tabs.find((t) => t.url?.startsWith(dshUrl));
+      // §7.1 修复（2026-11-06）：认证 URL 在 303 重定向后 tab.url 是干净 URL，
+      // 旧 startsWith(dshUrl) 必然落空 → 已开标签找不到 → 重复开。改为 origin
+      // 匹配（与主进程 tab-lifecycle、pinner 同型），toggle 语义恢复正常。
+      const dshTab = tabs.find(
+        (t) => typeof t.url === 'string' && sameServiceOrigin(t.url, dshUrl),
+      );
       if (dshTab) {
         if (dshTab.id === activeTabId) {
           // 已激活 → 关闭标签（触发后端停止）

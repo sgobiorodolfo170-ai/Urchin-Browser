@@ -18,6 +18,7 @@
 import { utilityProcess } from 'electron';
 import { mkdir } from 'node:fs/promises';
 import { createLogger } from '@urchin/logger';
+import { redactUrlToken } from '../../shared/redact-url';
 
 export const HOST_URL_LINE_RE =
   // eslint-disable-next-line no-control-regex -- token 终止符（与 dsh 同法，防 chunk 截断）
@@ -243,8 +244,13 @@ export class PiWebHostLauncher {
       if (resolvedUrl === undefined) {
         const match = HOST_URL_LINE_RE.exec(stdoutBuffer);
         if (match) {
-          resolvedUrl = match[1];
-          log.info('pi-web-host authenticated URL captured', { url: resolvedUrl });
+          const captured = match[1];
+          if (captured !== undefined) {
+            // HOST_URL_LINE_RE 捕获组保证存在；此处仅满足 noUncheckedIndexedAccess
+            resolvedUrl = captured;
+            // §7.3（2026-11-06）：pi-web 同款凭据 URL（token 可换会话）——日志打码
+            log.info('pi-web-host authenticated URL captured', { url: redactUrlToken(captured) });
+          }
         }
       }
     });

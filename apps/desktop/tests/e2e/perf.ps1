@@ -1,7 +1,15 @@
 # W7 Performance: cold start time + memory
+# NOTE: keep this file ASCII-only. Windows PowerShell 5.1 reads BOM-less
+# UTF-8 .ps1 files as ANSI/GBK, and non-ASCII comments can corrupt parsing.
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$appPath = Join-Path $repoRoot 'apps\desktop'
+# Script lives in apps/desktop/tests/e2e: two levels up = apps/desktop (app root).
+# Fix (2026-11-06): the old code treated two-levels-up as the repo root and
+# joined 'apps\desktop' again -> apps\desktop\apps\desktop (nonexistent dir).
+$appPath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+if (-not $appPath -or -not (Test-Path (Join-Path $appPath 'package.json'))) {
+  # Fallback: resolve from the caller's current directory (repo root)
+  $appPath = Join-Path (Get-Location).Path 'apps\desktop'
+}
 $electron = Join-Path $appPath 'node_modules\electron\dist\electron.exe'
 $totalRuns = 11
 

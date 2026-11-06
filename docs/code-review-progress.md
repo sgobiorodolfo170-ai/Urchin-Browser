@@ -1,8 +1,8 @@
 # 全项目代码审查修复进度跟踪
 
-> **创建时间**：2026-11-05 · **最近更新**：2026-11-06（四批收尾后）
+> **创建时间**：2026-11-05 · **最近更新**：2026-11-06（四批收尾 + perf 基线验证）
 > **审查起点**：commit `d7e5b33b`（M28 transit 交付后）
-> **当前 HEAD**：`33c443c8`（第四批提交后）
+> **当前 HEAD**：本提交（perf 收尾：perf.ps1 重修 + 冷启动基线验证）
 > **verify 状态**：全绿（128 测试文件 / 1458 测试 / lint 0 error / 覆盖率 ~68%）
 
 ---
@@ -71,14 +71,14 @@ P1 全清（最后一个 P1-11 渲染层 logger 已于 2026-11-06 交付）。P2
 |------|----------|------|---------|------|
 | 4.1 | AOCI 产物移出版本控制 | ✅ | `c9853088` | git rm 5 文件 + .gitignore |
 | 4.2 | dev:full 组合脚本 | ✅ | `c9853088` | |
-| 4.3 | perf.ps1 动态路径 | ✅ | `c9853088` | $PSScriptRoot |
+| 4.3 | perf.ps1 动态路径 | ✅ | `c9853088` | $PSScriptRoot。⚠️ 当时修复不完整（两级向上误当仓库根 + 非 ASCII 注释在 PS 5.1 无 BOM 下被按 GBK 误读），2026-11-06 随 5.2 子项实际跑通时重修（见本仓库 perf 收尾提交） |
 | 4.4 | 空 catch 补日志（12 处） | ✅ | `d3e5515a` | page-snapshot.ts(7) + snapshot-export.ts(1) + drag-injection.ts(4)，注入脚本内统一 `console.warn('[urchin ...]', e)` |
 | 4.5 | devtools 死代码删除 | ✅ | `c9853088` | |
 | 4.6 | pnpm-lock.yaml.bak 移除 | ✅ | `c9853088` | |
 | 4.V | pnpm verify | ✅ | — | |
 | 4.C | git commit | ✅ | `d3e5515a` | |
 
-### 批次 5：架构治理（P1+P2）— ✅ 主项全部完成，1 子项未做
+### 批次 5：架构治理（P1+P2）— ✅ 全部完成（1 子项部分接入）
 
 | 步骤 | 计划内容 | 状态 | 实际提交 | 备注 |
 |------|----------|------|---------|------|
@@ -86,7 +86,7 @@ P1 全清（最后一个 P1-11 渲染层 logger 已于 2026-11-06 交付）。P2
 | 5.1 子项 | HTTPS 请求加 AbortController 超时 | ✅ | `33c443c8` | request() 120s 硬超时；requestStream 保持无界（流式长生成语义） |
 | 5.1 子项 | 接入 @urchin/ai-provider-contract 类型 | ⚠️ | — | 部分接入（消息类型自定义，未引用 contract 包） |
 | 5.2 | index.ts 拆分（6 步） | ✅ | `5622eaa1`~`bc89f970` | AppContext → cleanup → handlers → watchdog → theme-apply → signals |
-| 5.2 子项 | 冷启动性能测试 P95 ≤ 1011ms | ❌ | — | **未做（唯一遗留子项）** |
+| 5.2 子项 | 冷启动性能测试 P95 ≤ 1011ms | ✅ | 本仓库 perf 收尾提交 | 实测（2026-11-06，11 跑去 warmup）：**p50=1020ms / P95=1147ms**，NFR 3000ms **PASS**（余量 2.6x）。p50 与 v0.1 基线 1011ms 持平 → 拆分无退化；p95 增量 136ms 属 v0.1→dev.145 间 27+ 模块启动负载演进，非拆分引入。副产：重修 perf.ps1 两处 bug（路径层级 + 非 ASCII 注释编码） |
 | 5.3 | App.tsx 拆分（7 步） | ✅ | `2b5c18b9`~`8fb6ec3d` | TabBar → LeftSidebar → RightSidebar → ContentArea → DevtoolsColumn → Workspaces → hooks |
 | 5.4 | SettingsPage 拆分（7 步） | ✅ | `5e6b2c25`~`5d68e613` | useSettings → form controls → 5 sections → promote tabs |
 | 5.5 | bookmark-panel React 迁移 | ✅ | `838626a6` | BookmarkPanelApp + 3 Tab 组件 + panel.css |
@@ -129,33 +129,26 @@ P1 全清（最后一个 P1-11 渲染层 logger 已于 2026-11-06 交付）。P2
 | 2 (P1 安全) | 6 | 6 | 0 | 0 | **100%** |
 | 3 (P1 资源) | 5 | 5 | 0 | 0 | **100%** |
 | 4 (P1-P2 质量) | 8 | 8 | 0 | 0 | **100%** |
-| 5 (架构治理) | 5 主项 + 3 子项 | 5 主项 + 2 子项 | 1 子项 | 1 子项 | **93%** |
+| 5 (架构治理) | 5 主项 + 3 子项 | 5 主项 + 3 子项 | 0 | 1 子项 | **100%** |
 | 6 (仓库卫生) | 7 | 7 | 0 | 0 | **100%** |
 | 7 (收尾 P3) | 7 | 7 | 0 | 0 | **100%** |
-| **合计** | **40+** | **40** | **1** | **1** | **~97%** |
+| **合计** | **40+** | **41** | **0** | **1** | **~99%** |
 
 ---
 
-## 五、未完成项明细（2026-11-06 四批收尾后，2 项）
+## 五、未完成项明细（2026-11-06 perf 收尾后，仅 1 项）
 
-### 来自批次 5（1 项）
-
-| 步骤 | 问题 | 说明 |
-|------|------|------|
-| 5.2 子项 | 冷启动性能测试 P95 ≤ 1011ms 基线验证 | 拆分后未跑性能测试验证未退化；perf.ps1 已就绪（批次 4.3 修好动态路径），待跑基线对比 |
-
-### 计划外剩余（1 项 + 1 项二期可选）
+### 计划外剩余（1 项）
 
 | 问题 | 位置 | 说明 |
 |------|------|------|
 | P2-13 vendor/deepseek-harness 整树入库 | vendor/deepseek-harness/ | 16324 tracked 文件，属历史决策范围（计数口径见 AGENTS.md §十一：vendor 不计入模块数），处置需独立决策 |
-| P2-7 残余（24 处 as unknown as） | index.ts 初始化占位(8) + 零散适配边界 | **一期已消除 11 处**（`33c443c8`，BrowserViewLike Pick 化 + WebContentsLike/BrowserWindowLike 加宽）。剩余 24 处逐处评估为合法模式：8 处 ctx 晚期初始化占位、2 处 null 条件、14 处 vendor 适配/动态导入/utilityProcess process.port/流适配。二期可做 AppContext 占位重构 |
 
-> 原「计划外剩余」中的 P1-11 渲染层 logger（✅ `401b006f`）、P2-16 CSP img-src（✅ `33c443c8`）已交付。
+> 批次 5.2 子项（冷启动性能测试）已于 2026-11-06 交付：**P95=1147ms（NFR 3000ms PASS）、p50=1020ms 与 v0.1 基线 1011ms 持平**，拆分无退化；副产重修 perf.ps1 两处 bug（见批次 4.3 备注）。P1-11 渲染层 logger（`401b006f`）、P2-16 CSP img-src（`33c443c8`）亦已交付。
 
 ---
 
-## 六、提交历史（审查修复相关，共 35 个提交）
+## 六、提交历史（审查修复相关，共 36 个提交）
 
 | 提交 | 批次 | 说明 |
 |------|------|------|
@@ -194,6 +187,8 @@ P1 全清（最后一个 P1-11 渲染层 logger 已于 2026-11-06 交付）。P2
 | `d3e5515a` | 7.2+4.4 | P2-P3: translate pollTimer unref + 12 处空 catch 补 console.warn |
 | `401b006f` | P1-11 | P1: renderer/lib/logger.ts + 26 处 console.error → log.error |
 | `33c443c8` | P2 | P2: BrowserViewLike Pick 化消 11 处双重逃逸 + request() AbortController 超时 + CSP img-src 移除 127.0.0.1 |
+| `c7ceef3e` | 文档 | 进度对账：四批收尾（批次 4/6/7 全 ✅、P1 全清） |
+| （本次 perf 收尾提交） | 5.2 子项 + 文档 | perf.ps1 重修（路径层级 + ASCII 编码）+ 冷启动基线验证 PASS（p50=1020ms / P95=1147ms）+ 进度对账 |
 
 ---
 
@@ -208,10 +203,9 @@ P1 全清（最后一个 P1-11 渲染层 logger 已于 2026-11-06 交付）。P2
 | 当前代码状态 | git HEAD `33c443c8` | 直接读文件 |
 | 工作流规则 | `AGENTS.md` | verify + E2E + 构建启动 |
 
-### 剩余项（按优先级排序，仅 2 项）
+### 剩余项（仅 1 项，需用户决策）
 
-1. **批次 5.2 子项**：冷启动性能测试 P95 ≤ 1011ms 基线验证（perf.ps1 已修好，跑一次对比）
-2. **P2-13**：vendor/deepseek-harness 整树入库处置（需用户决策：外迁为 git 依赖 / submodule / 维持现状）
+1. **P2-13**：vendor/deepseek-harness 整树入库处置（外迁为 git 依赖 / submodule / 维持现状）
 
 ### 二期可选（非阻塞）
 

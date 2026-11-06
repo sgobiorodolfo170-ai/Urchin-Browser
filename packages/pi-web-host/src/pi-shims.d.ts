@@ -51,4 +51,31 @@ declare module '@earendil-works/pi-coding-agent' {
   export const createReadTool: (cwd: string) => any;
   export const createEditTool: (cwd: string) => any;
   export const createWriteTool: (cwd: string) => any;
+
+  // 第五批对接（模型管理域）：ModelRuntime（auth/models/store 目录 + 凭据 + 官方目录刷新）。
+  // 类型给结构化宽松签名：provider-oauth-flow 用 Parameters<ModelRuntime['login']>[2]
+  // 推导交互回调，需可索引的函数签名而非裸 any（裸 any 会把参数退化成 unknown）。
+  export const ModelRuntime: {
+    create(opts: {
+      authPath?: string;
+      modelsPath?: string;
+      modelsStorePath?: string;
+      signal?: AbortSignal;
+      allowModelNetwork?: boolean;
+      modelRefreshTimeoutMs?: number;
+      refreshOnCreate?: boolean;
+    }): Promise<any>;
+  };
+  export interface ModelRuntime {
+    login(
+      provider: any,
+      kind: any,
+      interaction: {
+        prompt: (...args: any[]) => any;
+        notify: (...args: any[]) => any;
+        [key: string]: any;
+      },
+    ): any;
+    [key: string]: any;
+  }
 }

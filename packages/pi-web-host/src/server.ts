@@ -63,6 +63,16 @@ import {
   declarationWantsDom,
 } from './plugin-permissions';
 import { PiWebHostState, type HostServerMessage } from './types';
+// ── 第五批对接：模型管理域（providers / keys / OAuth / 官方目录 / models.json）──
+// runtime-holder 只含动态 import（模块本身零 SDK 依赖），静态引入不破坏懒加载；
+// model-admin 服务本体（含 pi SDK）在首个模型管理消息时才经 ensureModelAdmin 动态加载。
+import {
+  createLazyModelRuntimeFactory,
+  type ModelRuntimeFactory,
+} from './model-admin/runtime-holder';
+import { dispatchModelAdminMessage } from './model-admin/dispatch';
+import type { ModelAdminService } from './model-admin/model-admin';
+import type { ModelAdminServerMessage } from './model-admin/protocol-types';
 
 export const SERVICE_VERSION = '0.2.0';
 
@@ -79,6 +89,8 @@ export interface PiWebHostServerOptions {
   readonly agent?: AgentBridgeOptions;
   /** M2B-3b：agent 数据目录（会话 JSONL 持久化根） */
   readonly agentDir?: string;
+  /** 第五批：ModelRuntime 工厂（测试注入内存假件；缺省 = 懒加载真实 pi SDK） */
+  readonly modelRuntimeFactory?: ModelRuntimeFactory;
 }
 
 export interface PiWebHostServerHandle {
@@ -253,6 +265,59 @@ export async function startPiWebHostServer(
     });
   });
 
+  // ── 第五批对接：模型管理域基础设施（per-server 单例，连接重建不丢状态） ──
+  const agentDirForModels = options.agentDir;
+  const modelRuntimeFactory = options.modelRuntimeFactory ?? createLazyModelRuntimeFactory();
+  let modelAdmin: ModelAdminService | null = null;
+  let modelAdminDisposing = false;
+  let defaultModelId: string | null = null;
+
+  /** 模型管理推送广播到每个标签页（与插件 hostContext.broadcast 同法）。 */
+  const broadcastModelAdmin = (msg: ModelAdminServerMessage | HostServerMessage): void => {
+    for (const client of wss.clients) {
+      if (client.readyState === 1) client.send(JSON.stringify(msg));
+    }
+  };
+
+  /** 首个模型管理消息时才加载 pi SDK + ModelRuntime + ModelAdminService。 */
+  const ensureModelAdmin = async (): Promise<ModelAdminService> => {
+    if (modelAdmin) return modelAdmin;
+    if (!agentDirForModels) throw new Error('agentDir not configured');
+    const runtime = await modelRuntimeFactory(agentDirForModels);
+    const { ModelAdminService } = await import('./model-admin/model-admin');
+    modelAdmin = new ModelAdminService({
+      agentDir: agentDirForModels,
+      emit: broadcastModelAdmin,
+      // host 无快照回水通道：推送即达每个连接，flushSnapshot 无需动作
+      // eslint-disable-next-line @typescript-eslint/no-empty-function -- 见上
+      flushSnapshot: () => {},
+      isDisposed: () => modelAdminDisposing,
+      modelRuntime: () => runtime,
+      // eslint-disable-next-line @typescript-eslint/no-empty-function -- host 无 pi 配置检测缓存
+      invalidatePiConfig: () => {},
+      // eslint-disable-next-line @typescript-eslint/no-empty-function -- host 侧暂无项目级 key 恢复语义
+      onOAuthActivated: () => {},
+      // eslint-disable-next-line @typescript-eslint/require-await -- 接口约定 async；推送为广播无返回值
+      pushModels: async () => {
+        // host 形状 {type:'models', providers}：host-bridge 翻译成前端 models 列表
+        //（与 list_models case 同形状）。数据源 = ModelRuntime 服务商清单
+        //（内置目录 + models.json 自定义）；available 级模型列表待 agent-bridge
+        // 迁移 ModelRuntime 后再升级。
+        /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call -- runtime 为 vendored pi 边界（ambient shim any） */
+        try {
+          broadcastModelAdmin({
+            type: 'models',
+            providers: [...runtime.getProviders()].map((p: { id: string }) => p.id),
+          });
+        } catch {
+          /* 运行时不可用：忽略本次推送，下次变更再推 */
+        }
+        /* eslint-enable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */
+      },
+    });
+    return modelAdmin;
+  };
+
   wss.on('connection', (ws: WebSocket) => {
     let bridge: AgentBridgeHandle | null = null;
     const agentOpts = options.agent;
@@ -273,6 +338,14 @@ export async function startPiWebHostServer(
       provider: agentOpts?.providerId,
       model: agentOpts?.modelId,
     };
+
+    // 第五批：重连后恢复全局默认模型徽标（use-chat 按 default_model 消息归约）
+    if (defaultModelId) {
+      sendJson(ws, {
+        type: 'default_model',
+        modelId: defaultModelId,
+      } as unknown as HostServerMessage);
+    }
 
     /** 创建/重建 Agent 桥（带当前 sessionId）。async：首次调用动态 import agent-bridge（ADR-014 懒加载） */
     const ensureBridge = async (): Promise<AgentBridgeHandle | null> => {
@@ -1013,6 +1086,56 @@ export async function startPiWebHostServer(
             }
             return;
           }
+          // ── 第五批对接：模型管理域（providers / keys / OAuth / 官方目录 / models.json）──
+          case 'list_models_config':
+          case 'reload_models_config':
+          case 'list_providers':
+          case 'list_provider_keys':
+          case 'list_provider_oauth_flows':
+          case 'save_model_config':
+          case 'delete_model_config':
+          case 'clone_provider':
+          case 'set_provider_api_key':
+          case 'clear_provider_api_key':
+          case 'add_provider_key':
+          case 'activate_provider_key':
+          case 'remove_provider_key':
+          case 'provider_oauth_start':
+          case 'provider_oauth_reply':
+          case 'provider_oauth_cancel':
+          case 'provider_oauth_logout':
+          case 'fetch_models':
+          case 'test_model_connection':
+          case 'refresh_provider_models':
+          case 'refresh_builtin_models':
+          case 'append_builtin_model':
+          case 'enrich_models':
+          case 'abort_enrich_models':
+          case 'set_default_model':
+          case 'clear_default_model': {
+            const ma = await ensureModelAdmin().catch((e: unknown) => {
+              sendError(ws, 'model_admin_unavailable', e instanceof Error ? e.message : String(e));
+              return null;
+            });
+            if (!ma) return;
+            dispatchModelAdminMessage(
+              {
+                ma,
+                onError: (code, message) => sendError(ws, code, message),
+                getDefaultModel: () => defaultModelId,
+                setDefaultModel: (modelId) => {
+                  defaultModelId = modelId;
+                  broadcastModelAdmin({
+                    type: 'default_model',
+                    modelId,
+                  } as unknown as HostServerMessage);
+                },
+              },
+              msg?.type ?? '',
+              parsed as Record<string, unknown>,
+            );
+            return;
+          }
           default:
             // 文件操作 / 设置：交给 file-ops 处理；未命中则走无状态 handler
             if (agentDir) {
@@ -1060,6 +1183,9 @@ export async function startPiWebHostServer(
     state: 'running',
     close(): Promise<void> {
       return new Promise((resolveClose) => {
+        // 第五批：释放模型管理域（OAuth 定时器 / enrich abort 控制器）
+        modelAdminDisposing = true;
+        modelAdmin?.dispose();
         wss.close(() => {
           server.close(() => resolveClose());
         });

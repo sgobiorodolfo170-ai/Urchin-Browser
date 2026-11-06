@@ -221,7 +221,8 @@ describe('SettingsPage', () => {
     render(<SettingsPage />);
     await waitFor(() => expect(screen.getAllByText('通用').length).toBeGreaterThan(0));
 
-    // 数据选项卡 directory 字段顺序：data.directory[0] / downloadsPath[1]，浏览按钮同序。
+    // 数据选项卡 directory 字段顺序：data.directory[0] / downloadsPath[1] /
+    // clipper.saveDir[2]（2026-11-06 新增剪藏保存路径），浏览按钮同序。
     clickTab('数据');
     // 下载位置字段（第二个）的「浏览」按钮
     const browseButtons = screen.getAllByText('浏览');
@@ -272,6 +273,18 @@ describe('SettingsPage', () => {
     expect(screen.getByText('默认保存格式')).toBeTruthy();
     expect(screen.getByText('快照默认正文清洗')).toBeTruthy();
     expect(screen.getByText('页面属性模板')).toBeTruthy();
-    expect(screen.getByText('保存位置')).toBeTruthy();
+    // 保存位置说明已移至「数据」选项卡（剪藏保存路径字段，2026-11-06 用户需求）
+    expect(screen.queryByText('保存位置')).toBeNull();
+  });
+
+  it('should render clipper save path field in data tab (2026-11-06)', async () => {
+    mockLoadSuccess();
+    render(<SettingsPage />);
+    await waitFor(() => expect(screen.getAllByText('通用').length).toBeGreaterThan(0));
+
+    clickTab('数据');
+    expect(screen.getByText('剪藏保存路径')).toBeTruthy();
+    expect(screen.getByText('下载位置')).toBeTruthy();
+    expect(screen.getByText('数据存储位置')).toBeTruthy();
   });
 });

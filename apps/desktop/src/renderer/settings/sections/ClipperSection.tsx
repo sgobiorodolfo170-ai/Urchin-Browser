@@ -1,8 +1,8 @@
 /**
  * 「剪藏」选项卡（refactor-plan-p2 §3.3 步骤 3，代码自 SettingsPage.tsx 原样迁出）
  *
- * 组成：剪藏设置字段（CLIPPER_FIELDS 经共享 SettingsSection 渲染）+
- * 固定保存位置说明（ClipperLocationHint）。
+ * 组成：剪藏设置字段（CLIPPER_FIELDS 经共享 SettingsSection 渲染）。
+ * 保存位置说明已移至「数据」选项卡（剪藏保存路径字段，2026-11-06 用户需求）。
  */
 import { SettingsSection, type SettingField } from '../settings-form';
 
@@ -71,19 +71,6 @@ const CLIPPER_FIELDS: readonly SettingField[] = [
   },
 ];
 
-/** 剪藏保存目录说明（固定路径，不开放修改） */
-function ClipperLocationHint() {
-  return (
-    <div className="mt-4 rounded-md border border-border bg-surface-secondary px-4 py-3 text-xs leading-6 text-text-secondary">
-      <div className="text-sm font-medium text-text">保存位置</div>
-      所有剪藏文件固定保存到 <code className="rounded bg-surface px-1">documents/clipper</code>
-      （用户数据目录下）。Markdown / MHTML / PDF / 截图共用该目录，重名自动追加序号。
-      <br />
-      MHTML 为只读图文快照，可在浏览器 MHTML 查看器中打开；也可从 GenOffice 文档主页打开。
-    </div>
-  );
-}
-
 export interface ClipperSectionProps {
   readonly entries: Record<string, unknown>;
   readonly onChange: (key: string, value: unknown) => void;
@@ -91,9 +78,6 @@ export interface ClipperSectionProps {
 
 export function ClipperSection({ entries, onChange }: ClipperSectionProps) {
   return (
-    <>
-      <SettingsSection title="剪藏" fields={CLIPPER_FIELDS} entries={entries} onChange={onChange} />
-      <ClipperLocationHint />
-    </>
+    <SettingsSection title="剪藏" fields={CLIPPER_FIELDS} entries={entries} onChange={onChange} />
   );
 }

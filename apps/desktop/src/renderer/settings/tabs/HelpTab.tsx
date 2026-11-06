@@ -131,7 +131,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         title: '保存位置与打开',
-        body: '所有剪藏固定保存到用户数据目录下的 documents/clipper，重名自动追加序号。MHTML 可用内置只读查看器打开，也可从 GenOffice 文档主页打开。',
+        body: '剪藏默认保存到数据目录下的 documents/clipper（重名自动追加序号），可在设置「数据 → 剪藏保存路径」修改。MHTML 可用内置只读查看器打开，也可从 GenOffice 文档主页打开。',
       },
       {
         title: '文件名与正文模板',

@@ -93,4 +93,41 @@ describe('clipper store', () => {
     expect(path).toContain(join('clipper', '_evil'));
     expect(path).not.toContain('..');
   });
+
+  it('should save into custom dir when clipper.saveDir is an absolute path', async () => {
+    const root = await makeRoot();
+    const custom = join(root, 'custom-clips');
+    const store = new ClipperStore({
+      documentsRoot: root,
+      customDir: () => custom,
+    });
+    expect(store.clipDir).toBe(custom);
+    const path = await store.saveMarkdown('note', 'body');
+    expect(path).toContain(join(custom, 'note.md'));
+    await expect(readFile(path, 'utf-8')).resolves.toBe('body');
+  });
+
+  it('should fall back to default clipDir when custom dir is empty or relative', async () => {
+    const root = await makeRoot();
+    const store = new ClipperStore({ documentsRoot: root, customDir: () => '' });
+    expect(store.clipDir).toBe(join(root, 'clipper'));
+    // 相对路径视为未设置（isAbsolute 拦截），回退默认
+    const relative = new ClipperStore({ documentsRoot: root, customDir: () => 'clips' });
+    expect(relative.clipDir).toBe(join(root, 'clipper'));
+    // 默认目录下正常落盘
+    const path = await store.saveMarkdown('note', 'body');
+    expect(path).toContain(join(root, 'clipper', 'note.md'));
+  });
+
+  it('should pick up custom dir changes dynamically (effective without restart)', async () => {
+    const root = await makeRoot();
+    let setting = '';
+    const store = new ClipperStore({ documentsRoot: root, customDir: () => setting });
+    expect(store.clipDir).toBe(join(root, 'clipper'));
+    setting = join(root, 'later');
+    expect(store.clipDir).toBe(join(root, 'later'));
+    // 子目录也拼接到自定义目录下
+    const path = await store.saveMarkdown('note', 'body', 'sub');
+    expect(path).toContain(join(root, 'later', 'sub', 'note.md'));
+  });
 });

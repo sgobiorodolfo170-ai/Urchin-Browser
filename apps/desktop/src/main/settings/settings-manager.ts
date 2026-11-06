@@ -107,8 +107,11 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   // 其他工作区的标签始终保存，切换到该工作区时懒恢复。
   ['startup.restoreTabs', true],
   // 剪藏（M26）：保存格式、快照清洗、选中优先与模板。
-  // 保存目录固定为 <数据目录>/documents/clipper，不开放配置，避免路径穿越与迁移复杂度。
   ['clipper.defaultFormat', 'markdown'],
+  // 剪藏保存路径（2026-11-06 用户需求）：空 = 默认 <数据目录>/documents/clipper。
+  // 非（绝对）路径值由 resolveClipDirSetting 回退默认；ClipperStore 每次落盘
+  // 动态读取，改后立即生效，无需重启。
+  ['clipper.saveDir', ''],
   ['clipper.cleanSnapshot', true],
   ['clipper.selectionPriority', true],
   ['clipper.loadLazyContent', false],

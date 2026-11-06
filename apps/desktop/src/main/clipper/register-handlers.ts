@@ -9,7 +9,8 @@
  * - clipper.copy / clipper.close
  *
  * 安全边界：
- * - 只接受 tabId，不接收任意文件路径；保存目录由 ClipperStore 固定。
+ * - 只接受 tabId，不接收任意文件路径；保存目录默认 documents/clipper，仅可经
+ *   设置 clipper.saveDir 自定义（ClipperStore 校验为绝对路径，渲染层无法指定）。
  * - 只允许 http/https 页面剪藏；内部页/本地页明确拒绝。
  * - 日志不记录页面 URL/标题/正文，只记录 tabId、格式与文件路径。
  */
@@ -38,6 +39,7 @@ import {
 } from './deep-extract';
 import { exportSnapshot, type SnapshotFormat } from './snapshot-export';
 import { localizeMarkdownImages, getAssetLifecycleApi } from './image-localizer';
+import { resolveClipDirSetting } from './store';
 import type { GenOfficeEmbedApi } from '../genoffice/loader';
 const log = createLogger('clipper-ipc');
 
@@ -199,6 +201,12 @@ export function registerClipperHandlers(deps: ClipperHandlerDeps): void {
 
   registerHandler(ipcMain, 'clipper.config', (): ClipperConfigRes => {
     const format = getFormat(settings);
+    // 保存目录展示：自定义（clipper.saveDir 合法绝对路径）优先，否则默认 documents/clipper。
+    // 与 ClipperStore.clipDir 共用 resolveClipDirSetting，保证展示与实际落盘一致。
+    const saveDirLabel = resolveClipDirSetting(
+      getString(settings, 'clipper.saveDir', ''),
+      'documents/clipper',
+    );
     return {
       theme: getTheme(),
       // ocr 只是占位：配置层允许返回，面板会禁用该选项。
@@ -211,7 +219,7 @@ export function registerClipperHandlers(deps: ClipperHandlerDeps): void {
       noteNameFormat: getString(settings, 'clipper.noteNameFormat', '{{title}}'),
       properties: getString(settings, 'clipper.properties', ''),
       content: getString(settings, 'clipper.content', '{{content}}'),
-      saveDirLabel: 'documents/clipper',
+      saveDirLabel,
     };
   });
 

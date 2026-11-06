@@ -19,6 +19,12 @@ const DATA_FIELDS: readonly SettingField[] = [
     desc: '下载保存目录（留空 = 每次下载询问保存位置，确认时可设为默认）',
     type: 'directory',
   },
+  {
+    key: 'clipper.saveDir',
+    label: '剪藏保存路径',
+    desc: '剪藏文件（Markdown / MHTML / PDF / 截图）的保存目录，重名自动追加序号（留空使用默认位置 documents/clipper，改后立即生效）',
+    type: 'directory',
+  },
 ];
 
 export interface DataSectionProps {

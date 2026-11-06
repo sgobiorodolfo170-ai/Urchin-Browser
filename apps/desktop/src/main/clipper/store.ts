@@ -2,7 +2,9 @@
  * M26 剪藏 · 落盘与文件名管理
  *
  * 职责：
- * 1. 把所有剪藏文件固定写入 <数据目录>/documents/clipper（用户要求）。
+ * 1. 把所有剪藏文件写入剪藏目录：默认 <数据目录>/documents/clipper，
+ *    可经设置 clipper.saveDir 自定义（2026-11-06 用户需求；空/非绝对路径
+ *    回退默认）。每次落盘动态解析，设置改后立即生效。
  * 2. 文件名净化、扩展名归一、重名追加 (2)/(3)，避免覆盖既有文件。
  * 3. 只接受主进程计算出的绝对路径，渲染层无法传入任意目录。
  *
@@ -11,13 +13,27 @@
  * - fs 操作依赖注入，便于单测在临时目录验证，不触碰真实用户数据。
  */
 import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, isAbsolute, resolve } from 'node:path';
 
 /** 剪藏支持的扩展名（md 由 Markdown 保存；其余为快照格式） */
 export type ClipperExtension = 'md' | 'mhtml' | 'pdf' | 'png';
 
 /** 剪藏目录名（相对 documents 根） */
 export const CLIPPER_DIR_NAME = 'clipper';
+
+/**
+ * 解析「剪藏保存路径」设置值（clipper.saveDir）：
+ * 空 / 非绝对路径视为未设置，回退默认目录。
+ *
+ * store 的 clipDir getter 与 clipper.config 的 saveDirLabel 共用本函数，
+ * 保证「实际落盘目录」与「面板展示」不漂移。
+ */
+export function resolveClipDirSetting(raw: string, fallback: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed || !isAbsolute(trimmed)) return fallback;
+  // resolve 归一化分隔符与 ..（设置值来自目录选择器/手输，不做信任假设）
+  return resolve(trimmed);
+}
 
 /** Windows 非法文件名字符（含控制字符） */
 // eslint-disable-next-line no-control-regex -- 文件名净化必须剔除控制字符
@@ -73,6 +89,11 @@ export async function uniqueClipPath(
 export interface ClipperStoreDeps {
   /** 用户数据目录（<数据目录>/documents/clipper 的父级 documents 根） */
   readonly documentsRoot: string;
+  /**
+   * 自定义剪藏目录读取器（设置 clipper.saveDir，主进程注入 SettingsManager 读取）。
+   * 每次落盘调用，设置改后立即生效；空/非绝对路径由 resolveClipDirSetting 回退默认。
+   */
+  readonly customDir?: () => string;
   readonly mkdir?: typeof mkdir;
   readonly readdir?: typeof readdir;
   readonly writeFile?: typeof writeFile;
@@ -96,24 +117,35 @@ export function sanitizeSubDirName(name: string): string {
 }
 
 /**
- * 剪藏存储：固定目录 + 唯一文件名 + 可选子目录。
+ * 剪藏存储：默认/自定义目录 + 唯一文件名 + 可选子目录。
  *
- * 不提供"任意路径写入"能力；MHTML/PDF/截图由导出器拿到 reservePath 返回的
- * 绝对路径后自行写盘。子目录名经 sanitizeSubDirName 净化后拼接到 clipDir 下。
+ * 不提供"任意路径写入"能力——自定义目录仅来自设置页保存的 clipper.saveDir
+ * （经 resolveClipDirSetting 校验为绝对路径），渲染层无法指定；MHTML/PDF/截图
+ * 由导出器拿到 reservePath 返回的绝对路径后自行写盘。子目录名经
+ * sanitizeSubDirName 净化后拼接到 clipDir 下。
  */
 export class ClipperStore {
-  readonly clipDir: string;
+  /** 默认剪藏目录（设置未自定义时的落盘位置） */
+  readonly defaultClipDir: string;
+  private readonly customDirFn?: () => string;
   private readonly mkdirFn: typeof mkdir;
   private readonly readdirFn: typeof readdir;
   private readonly writeFileFn: typeof writeFile;
   private readonly existsFn: ExistsFn;
 
   constructor(deps: ClipperStoreDeps) {
-    this.clipDir = join(deps.documentsRoot, CLIPPER_DIR_NAME);
+    this.defaultClipDir = join(deps.documentsRoot, CLIPPER_DIR_NAME);
+    this.customDirFn = deps.customDir;
     this.mkdirFn = deps.mkdir ?? mkdir;
     this.readdirFn = deps.readdir ?? readdir;
     this.writeFileFn = deps.writeFile ?? writeFile;
     this.existsFn = deps.exists ?? defaultExists;
+  }
+
+  /** 当前生效的剪藏目录（动态解析：设置改后立即生效，无需重启） */
+  get clipDir(): string {
+    if (!this.customDirFn) return this.defaultClipDir;
+    return resolveClipDirSetting(this.customDirFn(), this.defaultClipDir);
   }
 
   /** 确保剪藏目录存在（幂等） */

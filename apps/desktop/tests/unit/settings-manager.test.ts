@@ -93,10 +93,10 @@ describe('SettingsManager', () => {
     //   window.bounds 窗口几何记忆，主进程内部状态/
     //   translate.targetLang/translate.engine/translate.autoTranslate 网页翻译 dev.79/
     //   ui.workspaceSwitcherMode 折叠态工作区切换模式 TP7/
-    //   clipper.* 剪藏默认格式/清洗/选中优先/懒加载/尾部信息栏剪除/模板 7 项/
+    //   clipper.* 剪藏默认格式/清洗/选中优先/懒加载/尾部信息栏剪除/模板/保存路径 8 项/
     //   notebook.state 笔记与便利贴整体状态 M27/
     //   transit.items 中转区项目索引） + 自定义 1 项
-    expect(entries).toHaveLength(33);
+    expect(entries).toHaveLength(34);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');

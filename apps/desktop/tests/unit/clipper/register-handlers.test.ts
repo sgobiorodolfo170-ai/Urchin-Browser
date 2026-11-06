@@ -144,6 +144,23 @@ describe('clipper ipc handlers', () => {
     });
   });
 
+  it('should return custom saveDirLabel when clipper.saveDir is set', async () => {
+    // 合法绝对路径 → 面板展示自定义路径（与 ClipperStore 落盘目录一致）
+    const custom = createHarness({ settings: { 'clipper.saveDir': 'D:\\Clips' } });
+    const config = await call(custom.handlers, 'clipper.config');
+    expect(config.saveDirLabel).toBe('D:\\Clips');
+
+    // 空 / 相对路径 → 回退默认标签
+    const empty = createHarness({ settings: { 'clipper.saveDir': '' } });
+    await expect(call(empty.handlers, 'clipper.config')).resolves.toMatchObject({
+      saveDirLabel: 'documents/clipper',
+    });
+    const relative = createHarness({ settings: { 'clipper.saveDir': 'clips' } });
+    await expect(call(relative.handlers, 'clipper.config')).resolves.toMatchObject({
+      saveDirLabel: 'documents/clipper',
+    });
+  });
+
   it('should return page snapshot and append closed shadow html', async () => {
     const { handlers, closedShadowHtml } = createHarness();
     closedShadowHtml.mockResolvedValue('<section closed>shadow</section>');

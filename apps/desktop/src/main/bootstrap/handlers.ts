@@ -376,9 +376,14 @@ export function registerIpcHandlers(ctx: AppContext): void {
   registerScreenshotHandlers(ipcMain, { overlay: captureOverlay });
 
   // 剪藏域 handler（地址栏剪藏按钮，M26）：面板 + 页面快照 + 多格式落盘。
-  // 保存目录固定为 <数据目录>/documents/clipper；面板失焦自动关闭。
+  // 保存目录默认 <数据目录>/documents/clipper，可经设置「数据 → 剪藏保存路径」
+  // 自定义（clipper.saveDir，动态读取，改后立即生效）；面板失焦自动关闭。
   const clipperStore = new ClipperStore({
     documentsRoot: join(ctx.currentDataDir, 'documents'),
+    customDir: () => {
+      const value = ctx.settingsManager.get('clipper.saveDir');
+      return typeof value === 'string' ? value : '';
+    },
   });
   const clipperPanel = new ClipperPanel({
     getParentWindow: () => ctx.windowManager.getAllWindows()[0]?.browserWindow ?? null,

@@ -217,10 +217,10 @@ export function registerTabHandlers(
     }
 
     try {
-      // WebContentsLike 是结构化接口（不含 capturePage），运行时即 Electron WebContents
-      const wc = tab.webContents as unknown as Electron.WebContents;
-      const image = await wc.capturePage();
-      if (image.isEmpty()) {
+      // P2-7：capturePage? 已入 WebContentsLike（可选成员），不再逃逸回 Electron 类型；
+      // 真实 Electron webContents 恒有此方法，可选链只为类型层兼容测试 mock。
+      const image = await tab.webContents.capturePage?.();
+      if (!image || image.isEmpty()) {
         return { tabId: req.tabId, dataUrl: null };
       }
       // 缩略图限宽 480px，保持视口比例缩放，避免大 PNG 尺寸传输

@@ -66,6 +66,10 @@ export interface BrowserWindowLike {
     addChildView(view: unknown): void;
     removeChildView(view: unknown): void;
   };
+  /** 聚焦窗口（可选，Electron BrowserWindow 才有；focusActivePage 用，P2-7） */
+  focus?(): void;
+  /** 设置窗口背景色（可选，Electron BrowserWindow 才有；主题切换防白闪用，P2-7） */
+  setBackgroundColor?(color: string): void;
   /** 注册事件监听 */
   on(event: string, handler: (...args: unknown[]) => void): void;
   once(event: string, handler: (...args: unknown[]) => void): void;
@@ -81,6 +85,8 @@ export interface WebContentsLike {
   readonly id: number;
   /** 向渲染进程推送消息（main → renderer 单向推送） */
   send(channel: string, ...args: readonly unknown[]): void;
+  /** 截取页面为图像（可选，Electron webContents 才有；窗口截图用，P2-7） */
+  capturePage?(): Promise<{ isEmpty(): boolean; toDataURL(): string }>;
 }
 
 /**

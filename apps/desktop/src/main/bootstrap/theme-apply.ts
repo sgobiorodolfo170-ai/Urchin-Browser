@@ -22,22 +22,18 @@ export function applyTheme(ctx: AppContext, theme: 'light' | 'dark' | 'system'):
   nativeTheme.themeSource = theme;
   const bg = currentThemeBackground();
   for (const managed of ctx.windowManager.getAllWindows()) {
-    const win = managed.browserWindow as unknown as {
-      setBackgroundColor?: (color: string) => void;
-    };
+    // P2-7：setBackgroundColor? 已入 BrowserWindowLike（可选成员），无需逃逸
     try {
-      win.setBackgroundColor?.(bg);
+      managed.browserWindow.setBackgroundColor?.(bg);
     } catch {
       /* 测试 mock 无此方法/窗口销毁中：忽略 */
     }
   }
   for (const snapshot of ctx.tabManager.query({})) {
     const tab = ctx.tabManager.getTab(snapshot.id);
-    const view = tab?.view as unknown as {
-      setBackgroundColor?: (color: string) => void;
-    };
+    // P2-7：setBackgroundColor? 已入 BrowserViewLike（可选成员），无需逃逸
     try {
-      view.setBackgroundColor?.(bg);
+      tab?.view.setBackgroundColor?.(bg);
     } catch {
       /* 忽略 */
     }

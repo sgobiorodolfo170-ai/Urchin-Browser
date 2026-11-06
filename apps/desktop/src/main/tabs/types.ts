@@ -20,6 +20,21 @@ export interface WindowOpenHandlerDetails {
 export type WindowOpenHandlerResponse = { action: 'deny' } | { action: 'allow' };
 
 /**
+ * capturePage 返回的图像最小依赖接口（Electron NativeImage 的结构化子集）。
+ * P2-7：标签缩略图/窗口截图链路不再 as unknown as 回 Electron.WebContents。
+ */
+export interface NativeImageLike {
+  /** 图像是否为空（页面不可见/加载中时为 true） */
+  isEmpty(): boolean;
+  /** 图像尺寸（缩放计算用） */
+  getSize(): { width: number; height: number };
+  /** 缩放（缩略图限宽用） */
+  resize(options: { width: number; height: number }): NativeImageLike;
+  /** 输出 data: URL（跨进程传给渲染层） */
+  toDataURL(): string;
+}
+
+/**
  * WebContents 的最小依赖接口（便于测试 mock）。
  */
 export interface WebContentsLike {
@@ -48,8 +63,15 @@ export interface WebContentsLike {
     canGoBack(): boolean;
     canGoForward(): boolean;
   };
-  /** 销毁 */
-  destroy(): void;
+  /** 销毁（可选：Electron d.ts 未声明、运行时存在；真实 Electron BrowserView
+   *  销毁链路调用，测试 mock 恒提供。P2-7 改可选以解除 BrowserView 直接赋值的类型阻塞） */
+  destroy?(): void;
+  /** 是否已销毁（可选，Electron webContents 才有） */
+  isDestroyed?(): boolean;
+  /** 聚焦页面（可选，Electron webContents 才有；focusActivePage 用，P2-7） */
+  focus?(): void;
+  /** 截取页面为图像（可选，Electron webContents 才有；缩略图/窗口截图用，P2-7） */
+  capturePage?(): Promise<NativeImageLike>;
   /** 注册事件监听 */
   on(event: string, handler: (...args: unknown[]) => void): void;
   once(event: string, handler: (...args: unknown[]) => void): void;
@@ -71,17 +93,25 @@ export interface WebContentsLike {
 
 /**
  * BrowserView 的最小依赖接口（便于测试 mock）。
+ *
+ * P2-7：setBounds/getBounds/setBackgroundColor 改用 Electron.BrowserView 的
+ * 索引访问类型（等价于 Pick<Electron.BrowserView, ...> 的逐成员写法）——
+ * 真实 Electron.BrowserView / WebContentsView 结构化满足本接口，
+ * create-browser-view.ts 不再需要 as unknown as 双重逃逸；
+ * getBounds/setBackgroundColor 保持可选（测试 mock 可省略）。
  */
 export interface BrowserViewLike {
   /** 关联的 webContents */
   readonly webContents: WebContentsLike;
-  /** 设置边界 */
-  setBounds(bounds: { x: number; y: number; width: number; height: number }): void;
+  /** 设置边界（Electron.BrowserView['setBounds']，参数为 Partial<Rectangle>） */
+  setBounds: Electron.BrowserView['setBounds'];
   /**
    * 获取边界（可选，真实 Electron BrowserView 有；测试 mock 可省略）。
    * 右键菜单弹出坐标补偿用：BrowserView 在窗口内的偏移（水平起点 = 左侧栏宽度）。
    */
-  getBounds?(): { x: number; y: number; width: number; height: number };
+  getBounds?: Electron.BrowserView['getBounds'];
+  /** 设置背景色（可选，真实 Electron 有；主题切换防白闪用，P2-7） */
+  setBackgroundColor?: Electron.BrowserView['setBackgroundColor'];
 }
 
 /**

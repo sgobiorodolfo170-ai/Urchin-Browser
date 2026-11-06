@@ -42,7 +42,7 @@ function createMockWindowManager(): WindowManager & {
           isEmpty: () => false,
           toDataURL: () => 'data:image/png;base64,shell',
         }),
-      } as never,
+      },
     },
     isIncognito: false,
   };

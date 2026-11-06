@@ -9,7 +9,7 @@
  * IPC handler 只做协议适配，业务逻辑委托给 WindowManager。
  * 入参出参由 registerHandler 自动 zod 校验，handler 只关心纯逻辑。
  */
-import type { IpcMain, WebContents } from 'electron';
+import type { IpcMain } from 'electron';
 import { registerHandler } from '@urchin/ipc-contract';
 import { createLogger } from '@urchin/logger';
 import type { WindowManager } from './window-manager';
@@ -87,10 +87,10 @@ export function registerWindowHandlers(ipcMain: IpcMain, windowManager: WindowMa
       return { dataUrl: null };
     }
     try {
-      // WebContentsLike 是结构化接口（不含 capturePage），运行时即 Electron WebContents
-      const wc = managed.browserWindow.webContents as unknown as WebContents;
-      const image = await wc.capturePage();
-      if (image.isEmpty()) {
+      // P2-7：capturePage? 已入 tabs 的 WebContentsLike（可选成员），
+      // BrowserWindowLike.webContents 已声明，不再逃逸回 Electron 类型。
+      const image = await managed.browserWindow.webContents.capturePage?.();
+      if (!image || image.isEmpty()) {
         return { dataUrl: null };
       }
       return { dataUrl: image.toDataURL() };

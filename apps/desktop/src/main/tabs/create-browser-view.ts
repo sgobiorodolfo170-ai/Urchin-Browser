@@ -66,5 +66,7 @@ export function createBrowserView(
   // 缝隙透出白色分割线。切换主题时由 ui.theme.set 处理内刷新已存在 view。
   view.setBackgroundColor(currentThemeBackground());
 
-  return view as unknown as BrowserViewLike;
+  // P2-7：BrowserViewLike 成员改用 Electron 索引访问类型（等价 Pick），
+  // 真实 BrowserView 结构化满足接口，不再需要 as unknown as 双重逃逸。
+  return view;
 }

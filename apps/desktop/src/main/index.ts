@@ -316,7 +316,9 @@ export function routeLocalFile(windowId: number, path: string): boolean {
         windowId,
         url: pathToFileURL(path).toString(),
         active: true,
-        view: view as unknown as BrowserViewLike,
+        // P2-7：createMhtmlView 返回真实 BrowserView，BrowserViewLike 已按
+        // Electron 索引类型定义（等价 Pick），结构化直接赋值，无需逃逸。
+        view,
       });
       log.info('open local mhtml (reader)', { path });
       return true;
@@ -489,10 +491,10 @@ export function scrollActivePage(dx: number, dy: number): void {
     if (!entry) return;
     const active = tabManager.query({ windowId: entry.id }).find((t) => t.active);
     const tab = active ? tabManager.getTab(active.id) : undefined;
-    const wc = tab?.webContents as unknown as Electron.WebContents | undefined;
-    wc?.executeJavaScript?.(`window.scrollBy(${Math.round(dx)}, ${Math.round(dy)});`, true).catch(
-      () => undefined,
-    );
+    // P2-7：executeJavaScript 已在 WebContentsLike（必选成员），无需逃逸回 Electron 类型
+    tab?.webContents
+      .executeJavaScript(`window.scrollBy(${Math.round(dx)}, ${Math.round(dy)});`, true)
+      ?.catch(() => undefined);
   } catch (err) {
     log.warn('scroll active page failed', { error: String(err) });
   }

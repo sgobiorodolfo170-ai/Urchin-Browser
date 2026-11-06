@@ -133,17 +133,29 @@ interface RequestResult {
   readonly body: string;
 }
 
+/** 非流式请求硬超时（批次 5.1 子项）。 */
+const REQUEST_TIMEOUT_MS = 120_000;
+
 function request(options: RequestOptions): Promise<RequestResult> {
   return new Promise((resolve, reject) => {
     const url = new URL(options.url);
     const isHttps = url.protocol === 'https:';
     const lib = isHttps ? https : http;
+    // AbortController 硬超时：上游挂死时 abort 触发 req 'error'（AbortError），
+    // 否则 utility 子进程内的 HTTP 请求会永久悬挂——心跳超时（15s）只杀整个
+    // provider 进程，不给单请求失败出口；120s 给足 LLM 长生成余量但有界。
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort();
+      reject(new Error('request timeout after ' + REQUEST_TIMEOUT_MS + 'ms'));
+    }, REQUEST_TIMEOUT_MS);
     const reqOptions = {
       hostname: url.hostname,
       port: url.port || (isHttps ? 443 : 80),
       path: url.pathname + url.search,
       method: options.method ?? 'POST',
       headers: options.headers ?? getHeaders(),
+      signal: controller.signal,
     };
     const req = lib.request(reqOptions, (res) => {
       let body = '';
@@ -151,6 +163,7 @@ function request(options: RequestOptions): Promise<RequestResult> {
         body += chunk.toString();
       });
       res.on('end', () => {
+        clearTimeout(timeout);
         if (res.statusCode && res.statusCode >= 400) {
           reject(new Error('HTTP ' + res.statusCode + ': ' + body));
         } else {
@@ -158,7 +171,10 @@ function request(options: RequestOptions): Promise<RequestResult> {
         }
       });
     });
-    req.on('error', reject);
+    req.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
     if (options.body) req.write(options.body);
     req.end();
   });

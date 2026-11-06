@@ -166,12 +166,11 @@ function focusActivePage(ctx: AppContext): void {
   try {
     const entry = ctx.windowManager.getAllWindows()[0];
     if (!entry) return;
-    const win = entry.browserWindow as unknown as Electron.BrowserWindow;
-    win.focus?.();
+    // P2-7：focus? 已入 BrowserWindowLike / WebContentsLike（可选成员），无需逃逸
+    entry.browserWindow.focus?.();
     const active = ctx.tabManager.query({ windowId: entry.id }).find((t) => t.active);
     if (active) {
-      const tab = ctx.tabManager.getTab(active.id);
-      (tab?.webContents as unknown as Electron.WebContents | undefined)?.focus?.();
+      ctx.tabManager.getTab(active.id)?.webContents.focus?.();
     }
   } catch (err) {
     log.warn('focus active page failed', { error: String(err) });

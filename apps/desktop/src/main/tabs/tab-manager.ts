@@ -186,9 +186,8 @@ export class TabManager {
     if (!tab || !this.adBlockEnabled) return;
     if (tab.url.startsWith('urchin://')) return;
     try {
-      // WebContentsLike 是结构化接口（不含 insertCSS），运行时即 Electron WebContents
-      const wc = tab.webContents as unknown as Electron.WebContents;
-      void wc.insertCSS(buildAdBlockCss()).catch(() => {
+      // P2-7：insertCSS 已入 WebContentsLike（可选成员），不再逃逸回 Electron 类型
+      void tab.webContents.insertCSS?.(buildAdBlockCss())?.catch(() => {
         /* 忽略：页面可能已销毁 */
       });
     } catch {
@@ -308,7 +307,7 @@ export class TabManager {
     const snapshot = this.toSnapshot(tab);
 
     // 销毁 webContents
-    tab.webContents.destroy();
+    tab.webContents.destroy?.();
 
     // 从集合移除
     this.tabs.delete(tabId);
@@ -739,7 +738,7 @@ export class TabManager {
   disposeAll(): void {
     for (const tab of this.tabs.values()) {
       try {
-        tab.webContents.destroy();
+        tab.webContents.destroy?.();
       } catch {
         // 忽略：webContents 可能已销毁
       }

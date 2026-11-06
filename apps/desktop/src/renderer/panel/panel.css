@@ -399,3 +399,59 @@ body {
 .clear-row button:hover {
   color: var(--text);
 }
+/* ── 文件夹删除确认框（面板内 React 实现，替代原生 window.confirm：
+      原生对话框夺走窗口焦点触发 blur，面板 blur 即销毁，删除执行不到） ── */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+.confirm-dialog {
+  width: 224px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.confirm-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  word-break: break-all;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+.confirm-cancel {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.confirm-cancel:hover {
+  background: var(--bg-secondary);
+  color: var(--text);
+}
+.confirm-ok {
+  border: none;
+  background: var(--error);
+  color: #fff;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.confirm-ok:hover {
+  filter: brightness(1.08);
+}

@@ -291,7 +291,11 @@ describe('BookmarkPanelApp · 收藏夹交互', () => {
     expect(screen.queryByText('暂无书签')).toBeNull();
   });
 
-  it('should delete folder after confirm', async () => {
+  it('should delete folder via in-panel confirm dialog', async () => {
+    // 根因回归护栏（2026-11-06「文件夹无法删除」）：文件夹删除不得使用原生
+    // window.confirm——面板 blur 即销毁，原生对话框夺焦触发 blur 后渲染进程死亡，
+    // bookmark.delete 永远发不出去（E2E bookmark-folder-delete.spec.ts 复现实锤）。
+    // 必须走面板内确认框。
     const confirmSpy = vi.fn(() => true);
     window.confirm = confirmSpy;
     invoke.mockImplementation(async (channel: string) => {
@@ -304,17 +308,21 @@ describe('BookmarkPanelApp · 收藏夹交互', () => {
 
     fireEvent.click(within(bookmarkRow('工作')).getByTitle('删除'));
 
+    // 面板内确认框出现，文案与原 confirm 一致（级联删除提示）；原生 confirm 未被调用
+    const dialog = await screen.findByRole('alertdialog');
+    expect(screen.getByText('删除文件夹「工作」及其全部内容？')).toBeInTheDocument();
+    expect(confirmSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '删除' }));
+
     await waitFor(() => {
       expect(invoke.mock.calls.some(([ch]) => ch === 'bookmark.delete')).toBe(true);
     });
-    // confirm 文案与原实现一致（级联删除提示）
-    expect(confirmSpy).toHaveBeenCalledWith('删除文件夹「工作」及其全部内容？');
     const del = invoke.mock.calls.find(([ch]) => ch === 'bookmark.delete');
     expect(del![1]).toEqual({ id: 'f-1' });
   });
 
-  it('should not delete folder when confirm dismissed', async () => {
-    window.confirm = vi.fn(() => false);
+  it('should not delete folder when confirm dialog cancelled', async () => {
     invoke.mockImplementation(async (channel: string) => {
       if (channel === 'bookmark.list') return { bookmarks: [FOLDER] };
       if (channel === 'tab.list') return { tabs: [{ id: 1, active: true }] };
@@ -324,9 +332,32 @@ describe('BookmarkPanelApp · 收藏夹交互', () => {
     await screen.findByText('工作');
 
     fireEvent.click(within(bookmarkRow('工作')).getByTitle('删除'));
-    // confirm 取消 → 不删除（留出微任务窗口验证无 delete 调用）
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: '取消' }));
+
+    // 取消 → 确认框关闭，无 delete 调用
     await waitFor(() => {
-      expect(window.confirm).toHaveBeenCalled();
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+    });
+    expect(invoke.mock.calls.some(([ch]) => ch === 'bookmark.delete')).toBe(false);
+  });
+
+  it('should cancel folder deletion on Escape key', async () => {
+    invoke.mockImplementation(async (channel: string) => {
+      if (channel === 'bookmark.list') return { bookmarks: [FOLDER] };
+      if (channel === 'tab.list') return { tabs: [{ id: 1, active: true }] };
+      return {};
+    });
+    render(<BookmarkPanelApp />);
+    await screen.findByText('工作');
+
+    fireEvent.click(within(bookmarkRow('工作')).getByTitle('删除'));
+    await screen.findByRole('alertdialog');
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    // Esc 取消（对齐原生 confirm 的 Esc 语义）→ 确认框关闭，无 delete 调用
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).toBeNull();
     });
     expect(invoke.mock.calls.some(([ch]) => ch === 'bookmark.delete')).toBe(false);
   });

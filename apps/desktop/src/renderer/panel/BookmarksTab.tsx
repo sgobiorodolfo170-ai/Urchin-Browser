@@ -4,7 +4,9 @@
  * 目录导航完整语义（对应原 renderBookmarks / jumpToFolder / bindBookmarkRows /
  * startInlineRename / deleteBookmarkNode / bindNewFolder / saveBookmarkTo）：
  * - 面包屑（⌂ 收藏夹 › 文件夹A › …）每级可点击回跳；文件夹行点击下钻；
- * - 行内重命名（书签/文件夹均经 bookmark.update）、删除（文件夹级联需 confirm，
+ * - 行内重命名（书签/文件夹均经 bookmark.update）、删除（文件夹级联删除，经
+ *   面板内确认框二次确认——不可用原生 window.confirm：原生对话框会夺走窗口焦点
+ *   触发 blur，而面板 blur 即销毁，删除永远执行不到，见 requestDeleteFolder 注释；
  *   删除所在层/祖先时回根目录）、新建文件夹（当前层，Enter 确认/Esc 取消）；
  * - picker 模式（?mode=picker）：底部「保存到当前文件夹/取消」操作条 +
  *   文件夹行「保存到此处」按钮（bookmark.create 后 ui.panel.close 关闭面板）。
@@ -56,6 +58,8 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [pickerContext, setPickerContext] = useState<PickerContext | null>(null);
+  /** 待删除的文件夹（面板内确认框状态；null = 未在确认中） */
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
 
   // 目录轨迹：面板级状态（跨 tab 切换保留），以 ref 为真源（导航与异步刷新
   // 共享同一份，避免闭包过期态）；快照经 view 下发渲染。
@@ -168,30 +172,54 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
   );
 
   /**
-   * 删除节点：文件夹级联需 confirm；删除所在层/祖先时回根目录
-   * （原 deleteBookmarkNode，含删除前查节点类型）。
+   * 请求删除文件夹：弹面板内确认框二次确认。
+   *
+   * 为什么不用原生 window.confirm（2026-11-06 用户报告「文件夹无法删除」根因）：
+   * 面板是「blur 即销毁」的独立子窗口（bookmark-panel.ts blur → close），原生确认
+   * 对话框弹出时夺走窗口焦点触发 blur → 面板 destroy → 渲染进程死亡，bookmark.delete
+   * 永远发不出去——书签行走星标（无 confirm）所以能删，文件夹行只有删除走 confirm
+   * 所以不能删（E2E bookmark-folder-delete.spec.ts 复现实锤：对话框文案可见 + 紧随
+   * page closed）。改用面板内 React 确认框：无焦点切换、无 blur。
+   * 行内 ✕ 仅出现在文件夹行（书签行走星标取消收藏），故此处只处理文件夹。
    */
-  const deleteBookmarkNode = useCallback(
-    async (id: string): Promise<void> => {
-      const res = await invoke<BookmarkListRes>('bookmark.list', {});
-      const node = (res.bookmarks ?? []).find((b) => b.id === id);
-      if (!node) return;
-      if (node.type === 'folder') {
-        if (!window.confirm(`删除文件夹「${node.title || '未命名'}」及其全部内容？`)) return;
+  const requestDeleteFolder = useCallback((folder: Bookmark): void => {
+    setPendingDelete({ id: folder.id, title: folder.title || '未命名文件夹' });
+  }, []);
+
+  /** 确认删除执行：级联删除 + 所在层/祖先被删时回根目录（原 deleteBookmarkNode 后半段） */
+  const confirmDeleteNode = useCallback(async (): Promise<void> => {
+    const target = pendingDelete;
+    if (!target) return;
+    setPendingDelete(null);
+    try {
+      await invoke('bookmark.delete', { id: target.id });
+      if (
+        folderIdRef.current === target.id ||
+        trailRef.current.some((seg) => seg.id === target.id)
+      ) {
+        jumpToFolder(null);
+      } else {
+        await refresh();
       }
-      try {
-        await invoke('bookmark.delete', { id });
-        if (folderIdRef.current === id || trailRef.current.some((seg) => seg.id === id)) {
-          jumpToFolder(null);
-        } else {
-          await refresh();
-        }
-      } catch {
-        /* 忽略：删除失败保持现状 */
-      }
-    },
-    [jumpToFolder, refresh],
-  );
+    } catch {
+      /* 忽略：删除失败保持现状 */
+    }
+  }, [pendingDelete, jumpToFolder, refresh]);
+
+  // 确认框打开时 Esc 取消（对齐原生 confirm 的 Esc 语义）
+  useEffect(() => {
+    if (!pendingDelete) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setPendingDelete(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pendingDelete]);
+
+  // 切离收藏夹 tab 时取消未完成的确认（原 confirm 阻塞语义下不可能切 tab；非阻塞后须显式取消）
+  useEffect(() => {
+    if (!active) setPendingDelete(null);
+  }, [active]);
 
   /** 新建文件夹提交（原 bindNewFolder 的 finish：空值仅重渲染） */
   const commitNewFolder = useCallback(
@@ -380,7 +408,7 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
                     title="删除"
                     onClick={(e) => {
                       e.stopPropagation();
-                      void deleteBookmarkNode(b.id);
+                      requestDeleteFolder(b);
                     }}
                   >
                     ✕
@@ -471,6 +499,27 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
           >
             取消
           </button>
+        </div>
+      )}
+
+      {/* 文件夹删除确认框（面板内实现，替代原生 window.confirm——见 requestDeleteFolder 注释） */}
+      {pendingDelete && (
+        <div
+          className="confirm-overlay"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div className="confirm-dialog" role="alertdialog" aria-label="删除确认">
+            <div className="confirm-text">删除文件夹「{pendingDelete.title}」及其全部内容？</div>
+            <div className="confirm-actions">
+              <button className="confirm-cancel" onClick={() => setPendingDelete(null)}>
+                取消
+              </button>
+              <button className="confirm-ok" onClick={() => void confirmDeleteNode()}>
+                删除
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

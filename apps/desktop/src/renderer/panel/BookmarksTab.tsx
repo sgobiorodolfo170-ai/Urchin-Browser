@@ -3,10 +3,11 @@
  *
  * 目录导航完整语义（对应原 renderBookmarks / jumpToFolder / bindBookmarkRows /
  * startInlineRename / deleteBookmarkNode / bindNewFolder / saveBookmarkTo）：
- * - 面包屑（⌂ 收藏夹 › 文件夹A › …）每级可点击回跳；文件夹行点击下钻；
- * - 行内重命名（书签/文件夹均经 bookmark.update）、删除（文件夹级联删除，经
- *   面板内确认框二次确认——不可用原生 window.confirm：原生对话框会夺走窗口焦点
- *   触发 blur，而面板 blur 即销毁，删除永远执行不到，见 requestDeleteFolder 注释；
+ * - 面包屑（标题行地址导航，⌂ › 文件夹A › …）每级可点击回跳；根目录仅显示
+ *   ⌂ 图标不带「收藏夹」文字（2026-11-07 用户需求，title 提示保留名称）；
+ * - 行内重命名（书签/文件夹均经 bookmark.update）、移动（📂 经 bookmark.move
+ *   移入所选文件夹，书签/文件夹均可；面板内移动浮层选目标，同样不可用原生
+ *   对话框——blur 即销毁）、删除（文件夹级联删除，经面板内确认框二次确认，
  *   删除所在层/祖先时回根目录）、新建文件夹（当前层，Enter 确认/Esc 取消）；
  * - picker 模式（?mode=picker）：底部「保存到当前文件夹/取消」操作条 +
  *   文件夹行「保存到此处」按钮（bookmark.create 后 ui.panel.close 关闭面板）。
@@ -17,7 +18,7 @@
  * - 每次切入本 tab / 每次变更动作后重新拉取 bookmark.list 全量渲染
  *   （原 renderBookmarks 的重拉语义，保持外部变更可见）。
  */
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Bookmark, BookmarkListRes, UiPanelGetPickerContextRes } from '@urchin/ipc-contract';
 import { invoke, openUrlInActiveTab } from './panel-ipc';
 import { FaviconSlot, InlineRenameInput } from './common';
@@ -60,6 +61,8 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
   const [pickerContext, setPickerContext] = useState<PickerContext | null>(null);
   /** 待删除的文件夹（面板内确认框状态；null = 未在确认中） */
   const [pendingDelete, setPendingDelete] = useState<{ id: string; title: string } | null>(null);
+  /** 待移动的节点（书签/文件夹均可；null = 未在移动中，浮层未打开） */
+  const [moving, setMoving] = useState<Bookmark | null>(null);
 
   // 目录轨迹：面板级状态（跨 tab 切换保留），以 ref 为真源（导航与异步刷新
   // 共享同一份，避免闭包过期态）；快照经 view 下发渲染。
@@ -216,9 +219,40 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
     return () => window.removeEventListener('keydown', onKey);
   }, [pendingDelete]);
 
-  // 切离收藏夹 tab 时取消未完成的确认（原 confirm 阻塞语义下不可能切 tab；非阻塞后须显式取消）
+  /**
+   * 执行移动（MoveOverlay 确认后）：bookmark.move 到所选文件夹，随后刷新列表。
+   * 被移动节点在当前轨迹上（正浏览其内部或其祖先在被移动）时回根目录——
+   * 轨迹修剪只处理「已删除」段，不处理「被移走导致父链变化」的段，直接回根最可预期。
+   * 移动失败保持现状（目标非法由主进程校验抛错，UI 已过滤常见非法目标）。
+   */
+  const confirmMove = useCallback(
+    async (parentId: string | null): Promise<void> => {
+      const target = moving;
+      if (!target) return;
+      setMoving(null);
+      try {
+        await invoke('bookmark.move', { id: target.id, parentId });
+        if (
+          folderIdRef.current === target.id ||
+          trailRef.current.some((seg) => seg.id === target.id)
+        ) {
+          jumpToFolder(null);
+        } else {
+          await refresh();
+        }
+      } catch {
+        /* 移动失败保持现状 */
+      }
+    },
+    [moving, jumpToFolder, refresh],
+  );
+
+  // 切离收藏夹 tab 时取消未完成的确认/移动（原 confirm 阻塞语义下不可能切 tab；非阻塞后须显式取消）
   useEffect(() => {
-    if (!active) setPendingDelete(null);
+    if (!active) {
+      setPendingDelete(null);
+      setMoving(null);
+    }
   }, [active]);
 
   /** 新建文件夹提交（原 bindNewFolder 的 finish：空值仅重渲染） */
@@ -311,8 +345,9 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
     <>
       <div className="bm-toolbar">
         <div className="breadcrumb" id="bm-breadcrumb">
-          <span className="crumb" data-id="" onClick={() => jumpToFolder(null)}>
-            ⌂ 收藏夹
+          {/* 根目录仅显示 ⌂ 图标不带文字（2026-11-07 用户需求）；名称经 title 提示保留 */}
+          <span className="crumb crumb-home" title="收藏夹" onClick={() => jumpToFolder(null)}>
+            ⌂
           </span>
           {trail.map((seg) => (
             <Fragment key={seg.id}>
@@ -391,6 +426,18 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
                   )}
                   <button
                     className="row-act"
+                    data-act="move"
+                    data-id={b.id}
+                    title="移动到…"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMoving(b);
+                    }}
+                  >
+                    📂
+                  </button>
+                  <button
+                    className="row-act"
                     data-act="rename"
                     data-id={b.id}
                     title="重命名"
@@ -458,6 +505,18 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
               <div className="row-actions">
                 <button
                   className="row-act"
+                  data-act="move"
+                  data-id={b.id}
+                  title="移动到…"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMoving(b);
+                  }}
+                >
+                  📂
+                </button>
+                <button
+                  className="row-act"
                   data-act="rename"
                   data-id={b.id}
                   title="重命名"
@@ -522,6 +581,146 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
           </div>
         </div>
       )}
+
+      {/* 移动浮层（面板内实现，同删除确认框不能用原生对话框的原因） */}
+      {moving && (
+        <MoveOverlay
+          node={moving}
+          all={all}
+          onCancel={() => setMoving(null)}
+          onConfirm={(parentId) => void confirmMove(parentId)}
+        />
+      )}
     </>
+  );
+}
+
+/** 移动浮层属性（node = 被移动节点；all = 全量书签，用于推导轨迹与目标树） */
+interface MoveOverlayProps {
+  node: Bookmark;
+  all: Bookmark[];
+  onCancel: () => void;
+  onConfirm: (parentId: string | null) => void;
+}
+
+/**
+ * 移动到文件夹浮层（书签/文件夹通用，bookmark.move 的目标选择 UI）。
+ *
+ * 设计要点：
+ * - 与删除确认框同为面板内浮层：面板是「blur 即销毁」子窗口，原生对话框会夺走
+ *   焦点触发 blur → 面板销毁，动作永远执行不到（见 requestDeleteFolder 注释）；
+ * - 目标浏览从被移动节点当前父级开始（就近移动最常用），面包屑由 all 沿父链
+ *   推导（数据驱动，无可变轨迹状态）；
+ * - 被移动文件夹自身及其后代在列表中禁用（防移入自身子树成孤儿；主进程
+ *   BookmarkManager.move 有同样拦截，此处提前给出不可点的视觉反馈）；
+ * - 目标 = 当前父级时「移动到此处」禁用（无操作，避免用户误以为发生了移动）。
+ */
+function MoveOverlay({ node, all, onCancel, onConfirm }: MoveOverlayProps) {
+  /** 当前浏览的目标层级（null = 根级）；初始停在节点当前父级 */
+  const [folderId, setFolderId] = useState<string | null>(node.parentId ?? null);
+
+  // 被移动文件夹不可选的子树（自身 + 全部后代）：子节点集闭包（迭代到不再增长）
+  const excludedIds = useMemo(() => {
+    if (node.type !== 'folder') return new Set<string>();
+    const ids = new Set<string>([node.id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const b of all) {
+        if (b.parentId != null && ids.has(b.parentId) && !ids.has(b.id)) {
+          ids.add(b.id);
+          grew = true;
+        }
+      }
+    }
+    return ids;
+  }, [node, all]);
+
+  // 面包屑轨迹：从当前层沿父链上溯到根（数据驱动，无需维护可变 trail）
+  const trail: BmTrailSeg[] = [];
+  let cursor: string | null = folderId;
+  while (cursor != null) {
+    const seg = all.find((b) => b.id === cursor);
+    if (!seg) break;
+    trail.unshift({ id: seg.id, title: seg.title || '未命名文件夹' });
+    cursor = seg.parentId;
+  }
+
+  /** 当前层的子文件夹（按 position，与主列表排序语义一致） */
+  const folders = all
+    .filter((b) => b.type === 'folder' && (b.parentId ?? null) === folderId)
+    .sort((a, b) => a.position - b.position);
+
+  /** 目标与当前父级相同 = 无操作，禁用确认按钮 */
+  const unchanged = (folderId ?? null) === (node.parentId ?? null);
+
+  // Esc 取消（对齐删除确认框的 Esc 语义）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
+  return (
+    <div
+      className="confirm-overlay"
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div className="confirm-dialog move-dialog" role="dialog" aria-label="移动到文件夹">
+        <div className="confirm-text">
+          移动「{node.title || (node.type === 'folder' ? '未命名文件夹' : (node.url ?? ''))}」到：
+        </div>
+        <div className="breadcrumb move-breadcrumb">
+          <span className="crumb crumb-home" title="收藏夹" onClick={() => setFolderId(null)}>
+            ⌂
+          </span>
+          {trail.map((seg) => (
+            <Fragment key={seg.id}>
+              <span className="crumb-sep">›</span>
+              <span className="crumb" onClick={() => setFolderId(seg.id)}>
+                {seg.title}
+              </span>
+            </Fragment>
+          ))}
+        </div>
+        <div className="move-list">
+          {folders.length === 0 ? (
+            <div className="move-empty">无子文件夹</div>
+          ) : (
+            folders.map((f) => {
+              const disabled = excludedIds.has(f.id);
+              return (
+                <div
+                  key={f.id}
+                  className={'move-item' + (disabled ? ' disabled' : '')}
+                  onClick={() => {
+                    if (!disabled) setFolderId(f.id);
+                  }}
+                >
+                  <span className="move-item-icon">📁</span>
+                  <span className="move-item-title">{f.title || '未命名文件夹'}</span>
+                </div>
+              );
+            })
+          )}
+        </div>
+        <div className="confirm-actions">
+          <button className="confirm-cancel" onClick={onCancel}>
+            取消
+          </button>
+          <button
+            className="confirm-ok move-ok"
+            disabled={unchanged}
+            title={unchanged ? '已在当前文件夹' : undefined}
+            onClick={() => onConfirm(folderId)}
+          >
+            移动到此处
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

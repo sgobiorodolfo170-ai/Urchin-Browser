@@ -184,6 +184,12 @@ body {
   margin: 0 2px;
   flex-shrink: 0;
 }
+/* 根目录面包屑：仅 ⌂ 图标不带文字（2026-11-07 用户需求），略放大保证可点性 */
+.crumb-home {
+  font-size: 14px;
+  max-width: none;
+  flex-shrink: 0;
+}
 .new-folder-btn {
   flex-shrink: 0;
   border: 1px solid var(--border);
@@ -453,5 +459,69 @@ body {
   cursor: pointer;
 }
 .confirm-ok:hover {
+  filter: brightness(1.08);
+}
+/* ── 移动浮层（书签/文件夹移动目标选择；复用 .confirm-overlay/.confirm-dialog 骨架） ── */
+.move-dialog {
+  width: 240px;
+}
+.move-breadcrumb {
+  flex: none;
+  margin-top: 8px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+}
+.move-list {
+  margin-top: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.move-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.move-item:hover {
+  background: var(--bg-secondary);
+}
+/* 被移动文件夹自身/其后代：禁选（移入自身子树会被主进程拒绝） */
+.move-item.disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.move-item.disabled:hover {
+  background: none;
+}
+.move-item-icon {
+  flex-shrink: 0;
+}
+.move-item-title {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.move-empty {
+  padding: 16px 0;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+/* 确认按钮：删除确认框为红色（error），移动为品牌色（primary） */
+.move-ok {
+  background: var(--primary);
+}
+.move-ok:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.move-ok:hover:not(:disabled) {
   filter: brightness(1.08);
 }

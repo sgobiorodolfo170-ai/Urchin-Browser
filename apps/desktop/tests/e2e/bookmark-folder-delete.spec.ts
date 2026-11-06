@@ -107,7 +107,8 @@ test('收藏夹面板：新建文件夹可在面板内确认后删除', async ()
     // 4. 点击确认「删除」→ 文件夹行消失，面板仍存活
     await confirmDialog.getByRole('button', { name: '删除' }).click();
     await expect(folderRow).toHaveCount(0);
-    await expect(panelWindow.getByText('⌂ 收藏夹')).toBeVisible();
+    // 根目录面包屑仅显示 ⌂ 图标（2026-11-07 起，原「⌂ 收藏夹」文字已移除）
+    await expect(panelWindow.locator('.crumb-home')).toHaveText('⌂');
 
     // 5. 主进程状态同步：bookmark.list 不再含该文件夹（删除真实落库，非仅 UI 消失）
     await expect

@@ -157,6 +157,61 @@ export class BookmarkManager {
   }
 
   /**
+   * 移动书签 / 文件夹到目标文件夹（收藏夹面板「移动到…」入口）。
+   *
+   * 设计理由（树结构变更与 update 的重命名语义分离，同 ADR 契约层拆通道思路）：
+   * - parentId 移动后追加到目标层末尾（position = 目标层兄弟节点数），不动其他兄弟的排序
+   * - 目标 parentId=null 表示根级；非 null 时必须存在且为文件夹
+   * - 文件夹不可移入自身或其后代（沿目标向上回溯父链做环检测）——否则目标子树
+   *   将从整棵树脱离成孤儿，且 list 永远无法再触达这些节点
+   * - 目标与当前父级相同视为无操作（幂等返回原节点，不刷 position / 不触发事件）
+   * - 成功触发 'updated' 事件（主进程订阅后广播 bookmark:changed，面板/星标同步）
+   *
+   * @param id 要移动的节点 ID
+   * @param parentId 目标父节点 ID（null = 根级）
+   * @returns 移动后的 Bookmark（无操作时为原节点）
+   * @throws 若节点不存在、目标不存在、目标非文件夹、或文件夹移入自身子树
+   */
+  move(id: string, parentId: string | null): Bookmark {
+    this.ensureLoaded();
+    const existing = this.entries.get(id);
+    if (!existing) {
+      throw new Error(`Bookmark not found: ${id}`);
+    }
+    if (parentId === existing.parentId) {
+      return existing;
+    }
+    if (parentId !== null) {
+      const target = this.entries.get(parentId);
+      if (!target) {
+        throw new Error(`Bookmark target not found: ${parentId}`);
+      }
+      if (target.type !== 'folder') {
+        throw new Error(`Cannot move into a non-folder bookmark: ${parentId}`);
+      }
+      // 环检测：从目标沿父链向上回溯，命中被移动节点即为其后代（或自身）
+      let cursor: string | null = parentId;
+      while (cursor !== null) {
+        if (cursor === id) {
+          throw new Error('Cannot move a folder into itself or its descendants');
+        }
+        cursor = this.entries.get(cursor)?.parentId ?? null;
+      }
+    }
+
+    const updated: Bookmark = {
+      ...existing,
+      parentId,
+      position: this.countSiblings(parentId),
+      updatedAt: Date.now(),
+    };
+    this.entries.set(id, updated);
+    this.persistence?.upsert(updated);
+    this.emit('updated', updated);
+    return updated;
+  }
+
+  /**
    * 按 URL 回填已缓存图标（书签先创建、favicon 后到达时使用）。
    *
    * 不改变 position / createdAt，仅更新 favicon 与 updatedAt。返回更新条数，

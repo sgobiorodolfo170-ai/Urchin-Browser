@@ -7,6 +7,8 @@
  * 3. search：title / url 大小写不敏感匹配、仅书签、limit、空结果
  * 4. delete：移除、不存在抛异常、文件夹级联、事件
  * 5. events：on/off 监听器注册与移除
+ * 6. update：重命名 / 改 URL / 空 patch 幂等（dev.119）
+ * 7. move：移动书签/文件夹、追加末尾、子树完整、幂等、环检测（2026-11-07）
  */
 import { describe, it, expect, vi } from 'vitest';
 import { BookmarkManager } from '../../src/main/bookmarks';
@@ -389,5 +391,109 @@ describe('BookmarkManager', () => {
 
     expect(result).toEqual(created);
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  // ===== move 测试（2026-11-07：收藏夹面板「移动到…」入口） =====
+
+  it('move: bookmark into folder appends after existing siblings', () => {
+    const mgr = new BookmarkManager();
+    const folder = mgr.create({ title: 'F', type: 'folder' });
+    mgr.create({ title: 'InF1', url: 'https://1.example.com', parentId: folder.id });
+    mgr.create({ title: 'InF2', url: 'https://2.example.com', parentId: folder.id });
+    const bookmark = mgr.create({ title: 'M', url: 'https://m.example.com' });
+
+    const moved = mgr.move(bookmark.id, folder.id);
+
+    expect(moved.parentId).toBe(folder.id);
+    // 追加到目标层末尾：目标层原有两个兄弟（position 0/1），移入后 position = 2
+    expect(moved.position).toBe(2);
+    const siblings = mgr.list(folder.id);
+    expect(siblings.at(-1)?.id).toBe(bookmark.id);
+  });
+
+  it('move: bookmark back to root with parentId null', () => {
+    const mgr = new BookmarkManager();
+    const folder = mgr.create({ title: 'F', type: 'folder' });
+    const bookmark = mgr.create({ title: 'M', url: 'https://m.example.com', parentId: folder.id });
+
+    const moved = mgr.move(bookmark.id, null);
+
+    expect(moved.parentId).toBeNull();
+    expect(mgr.list(null).some((b) => b.id === bookmark.id)).toBe(true);
+    expect(mgr.list(folder.id)).toHaveLength(0);
+  });
+
+  it('move: folder with children keeps subtree intact', () => {
+    const mgr = new BookmarkManager();
+    const folder = mgr.create({ title: 'F', type: 'folder' });
+    const child = mgr.create({ title: 'C', url: 'https://c.example.com', parentId: folder.id });
+    const other = mgr.create({ title: 'Other', type: 'folder' });
+
+    mgr.move(folder.id, other.id);
+
+    const reloaded = mgr.list().find((b) => b.id === folder.id);
+    expect(reloaded?.parentId).toBe(other.id);
+    // 子节点仍指向被移动文件夹（整棵子树一起移动）
+    expect(mgr.list().find((b) => b.id === child.id)?.parentId).toBe(folder.id);
+  });
+
+  it('move: emits updated event', () => {
+    const mgr = new BookmarkManager();
+    const folder = mgr.create({ title: 'F', type: 'folder' });
+    const bookmark = mgr.create({ title: 'M', url: 'https://m.example.com' });
+    const listener = vi.fn();
+    mgr.on('updated', listener);
+
+    const moved = mgr.move(bookmark.id, folder.id);
+
+    expect(listener).toHaveBeenCalledWith(moved);
+  });
+
+  it('move: same parent is a no-op without emitting', () => {
+    const mgr = new BookmarkManager();
+    const folder = mgr.create({ title: 'F', type: 'folder' });
+    const bookmark = mgr.create({ title: 'M', url: 'https://m.example.com', parentId: folder.id });
+    const listener = vi.fn();
+    mgr.on('updated', listener);
+
+    const result = mgr.move(bookmark.id, folder.id);
+
+    expect(result).toBe(bookmark);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('move: throws when node not found', () => {
+    const mgr = new BookmarkManager();
+    expect(() => mgr.move('nonexistent', null)).toThrow(/not found/i);
+  });
+
+  it('move: throws when target folder not found', () => {
+    const mgr = new BookmarkManager();
+    const bookmark = mgr.create({ title: 'M', url: 'https://m.example.com' });
+    expect(() => mgr.move(bookmark.id, 'nonexistent')).toThrow(/not found/i);
+  });
+
+  it('move: throws when target is a bookmark instead of a folder', () => {
+    const mgr = new BookmarkManager();
+    const target = mgr.create({ title: 'B', url: 'https://b.example.com' });
+    const bookmark = mgr.create({ title: 'M', url: 'https://m.example.com' });
+    expect(() => mgr.move(bookmark.id, target.id)).toThrow(/non-folder/i);
+  });
+
+  it('move: throws when folder moved into itself', () => {
+    const mgr = new BookmarkManager();
+    const folder = mgr.create({ title: 'F', type: 'folder' });
+    expect(() => mgr.move(folder.id, folder.id)).toThrow(/itself|descendants/i);
+  });
+
+  it('move: throws when folder moved into its own descendant', () => {
+    const mgr = new BookmarkManager();
+    const folder = mgr.create({ title: 'F', type: 'folder' });
+    const child = mgr.create({ title: 'Child', type: 'folder', parentId: folder.id });
+    const grandchild = mgr.create({ title: 'Grandchild', type: 'folder', parentId: child.id });
+
+    expect(() => mgr.move(folder.id, grandchild.id)).toThrow(/itself|descendants/i);
+    // 反向移动仍然合法（后代 → 祖先）
+    expect(mgr.move(grandchild.id, folder.id).parentId).toBe(folder.id);
   });
 });

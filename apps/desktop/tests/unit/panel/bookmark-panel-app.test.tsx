@@ -283,8 +283,8 @@ describe('BookmarkPanelApp · 收藏夹交互', () => {
     });
     expect(screen.getByText('工作', { selector: '.crumb' })).toBeInTheDocument();
 
-    // 点「⌂ 收藏夹」回根级 → 子项恢复
-    fireEvent.click(screen.getByText('⌂ 收藏夹'));
+    // 点根目录 ⌂ 图标（2026-11-07 起根面包屑仅图标不带「收藏夹」文字）回根级 → 子项恢复
+    fireEvent.click(screen.getByText('⌂', { selector: '.crumb-home' }));
     await waitFor(() => {
       expect(screen.getByText('Example')).toBeInTheDocument();
     });

@@ -1,7 +1,7 @@
 /**
  * Bookmarks IPC Handler 注册单元测试
  *
- * 验证 bookmark.create / list / search / delete 四个通道：
+ * 验证 bookmark.create / list / search / update / move / delete 通道：
  * - 转发到 BookmarkManager 对应方法
  * - 返回结果结构正确
  */
@@ -48,6 +48,7 @@ function createMockBookmarkManager() {
     list: vi.fn(),
     search: vi.fn(),
     update: vi.fn(),
+    move: vi.fn(),
     delete: vi.fn(),
   };
 }
@@ -197,5 +198,33 @@ describe('registerBookmarkHandlers', () => {
     await ipcMain.invoke('bookmark.update', { id: 'b1', url: 'https://new.example.com' });
 
     expect(manager.update).toHaveBeenCalledWith('b1', { url: 'https://new.example.com' });
+  });
+
+  it('bookmark.move should forward id and target parentId', async () => {
+    const ipcMain = createMockIpcMain();
+    const manager = createMockBookmarkManager();
+    const moved = { id: 'b1', parentId: 'f1', type: 'bookmark' };
+    manager.move.mockReturnValue(moved);
+
+    registerBookmarkHandlers(ipcMain as never, manager as never);
+
+    const result = (await ipcMain.invoke('bookmark.move', { id: 'b1', parentId: 'f1' })) as {
+      bookmark: typeof moved;
+    };
+
+    expect(manager.move).toHaveBeenCalledWith('b1', 'f1');
+    expect(result.bookmark).toBe(moved);
+  });
+
+  it('bookmark.move should forward null parentId for root-level moves', async () => {
+    const ipcMain = createMockIpcMain();
+    const manager = createMockBookmarkManager();
+    manager.move.mockReturnValue({ id: 'b1', parentId: null });
+
+    registerBookmarkHandlers(ipcMain as never, manager as never);
+
+    await ipcMain.invoke('bookmark.move', { id: 'b1', parentId: null });
+
+    expect(manager.move).toHaveBeenCalledWith('b1', null);
   });
 });

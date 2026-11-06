@@ -4,7 +4,7 @@
  * 依据：契约 B §3.1 bookmark.* 通道 / 04-模块全景 M5/M17
  * 职责：
  * 注册 bookmark.create / bookmark.list / bookmark.search /
- *      bookmark.delete IPC handler。
+ *      bookmark.update / bookmark.move / bookmark.delete IPC handler。
  *
  * 设计理由（AGENTS.md §七.2）：
  * - IPC handler 只做协议适配，业务逻辑委托给 BookmarkManager
@@ -86,6 +86,15 @@ export function registerBookmarkHandlers(
       ...(req.title !== undefined ? { title: req.title } : {}),
       ...(req.url !== undefined ? { url: req.url } : {}),
     });
+
+    return { bookmark };
+  });
+
+  // bookmark.move：移动书签 / 文件夹到目标文件夹（环检测 / 目标校验由 manager 抛错）
+  registerHandler(ipcMain, 'bookmark.move', (req) => {
+    log.info('bookmark.move', { id: req.id, parentId: req.parentId });
+
+    const bookmark = bookmarkManager.move(req.id, req.parentId);
 
     return { bookmark };
   });

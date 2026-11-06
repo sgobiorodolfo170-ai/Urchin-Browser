@@ -506,6 +506,20 @@ export const bookmarkUpdateResSchema = z.object({
 });
 export type BookmarkUpdateRes = z.infer<typeof bookmarkUpdateResSchema>;
 
+// bookmark.move：移动书签 / 文件夹到目标文件夹（parentId=null 移到根级，追加到末尾）。
+// 不并入 bookmark.update：移动是树结构变更，需独立校验——目标必须是已存在的文件夹，
+// 文件夹不可移入自身或其后代（环检测，主进程 BookmarkManager.move 抛错）。
+export const bookmarkMoveReqSchema = z.object({
+  id: z.string().min(1),
+  parentId: z.string().nullable(),
+});
+export type BookmarkMoveReq = z.infer<typeof bookmarkMoveReqSchema>;
+
+export const bookmarkMoveResSchema = z.object({
+  bookmark: bookmarkSchema,
+});
+export type BookmarkMoveRes = z.infer<typeof bookmarkMoveResSchema>;
+
 // ============================================================================
 // M7 Settings
 // ============================================================================
@@ -2601,6 +2615,7 @@ export const ipcSchema = {
   'bookmark.list': { req: bookmarkListReqSchema, res: bookmarkListResSchema },
   'bookmark.search': { req: bookmarkSearchReqSchema, res: bookmarkSearchResSchema },
   'bookmark.update': { req: bookmarkUpdateReqSchema, res: bookmarkUpdateResSchema },
+  'bookmark.move': { req: bookmarkMoveReqSchema, res: bookmarkMoveResSchema },
   'bookmark.delete': { req: bookmarkDeleteReqSchema, res: bookmarkDeleteResSchema },
   'settings.get': { req: settingsGetReqSchema, res: settingsGetResSchema },
   'settings.set': { req: settingsSetReqSchema, res: settingsSetResSchema },

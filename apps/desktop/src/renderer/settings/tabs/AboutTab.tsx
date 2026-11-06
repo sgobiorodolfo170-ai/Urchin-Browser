@@ -3,9 +3,10 @@
  * 提升为独立文件，逻辑不变）
  *
  * 组成：品牌名（locale 探测）、版本号 / Electron / Chromium / Node 版本、
- * 开源仓库入口。
+ * 便携 Node 运行时状态（runtime.portableNode 探测）、开源仓库入口。
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { RuntimePortableNodeRes } from '@urchin/ipc-contract';
 import { getCurrentWindowId } from '../../lib/current-window';
 import { displayNameForLocale } from '../../../shared/brand';
 import { UpdateSection, type UpdateStateView } from './OpsTab';
@@ -28,6 +29,23 @@ export function AboutTab() {
     };
   }, []);
 
+  // 便携 Node（X4）：dsh 打包态的独立纯 Node 运行时（Electron 内置 Node 会被
+  // dsh 指纹校验拒绝）。经主进程探测「是否随包装上 + 能否运行」，用户可在此
+  // 自助确认；探测含一次 --version spawn（5s 超时），失败静默显示为待定态。
+  const [portableNode, setPortableNode] = useState<RuntimePortableNodeRes | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void window.urchin
+      .invoke('runtime.portableNode', {})
+      .then((r) => {
+        if (alive) setPortableNode(r as RuntimePortableNodeRes);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const versions = useMemo(() => {
     if (typeof window !== 'undefined' && window.urchin?.versions) {
       return {
@@ -39,6 +57,15 @@ export function AboutTab() {
     }
     return { electron: '-', chrome: '-', node: '-', platform: '-' };
   }, []);
+
+  // title 提示放完整路径与失败原因，便于支持诊断（可运行时仅路径）
+  const portableNodeTitle = useMemo(() => {
+    if (!portableNode) return undefined;
+    if (!portableNode.installed) {
+      return `${portableNode.path}\n未随安装包装上；开发态可运行 node scripts/fetch-node.mjs 生成`;
+    }
+    return portableNode.error ? `${portableNode.path}\n${portableNode.error}` : portableNode.path;
+  }, [portableNode]);
 
   const handleOpenRepo = useCallback(async () => {
     try {
@@ -73,6 +100,16 @@ export function AboutTab() {
             <dd>{versions.chrome}</dd>
             <dt className="text-text-secondary">Node.js</dt>
             <dd>{versions.node}</dd>
+            <dt className="text-text-secondary">便携 Node</dt>
+            <dd title={portableNodeTitle}>
+              {portableNode === null
+                ? '…'
+                : portableNode.runnable
+                  ? `${portableNode.version}（可运行）`
+                  : portableNode.installed
+                    ? '已安装，但无法运行'
+                    : '未安装'}
+            </dd>
             <dt className="text-text-secondary">平台</dt>
             <dd>{versions.platform}</dd>
           </dl>

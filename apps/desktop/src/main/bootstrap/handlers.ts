@@ -68,6 +68,7 @@ import { createGoogleEngine } from '../translate/engines/google';
 import { createMyMemoryEngine } from '../translate/engines/mymemory';
 import type { HttpTransport } from '../translate/engines/types';
 import { createUpdateService, registerUpdateHandlers, UPDATE_EVENT_CHANNEL } from '../update';
+import { registerRuntimeHandlers, resolvePortableNodeExePath } from '../runtime';
 import { DevtoolsManager, registerDevtoolsHandlers } from '../devtools';
 import type { AppContext } from './app-context';
 // 运行时惰性使用的 index.ts 共享符号（循环引用安全性见文件头注释）
@@ -309,6 +310,18 @@ export function registerIpcHandlers(ctx: AppContext): void {
   });
   registerUpdateHandlers(ipcMain, updateService);
 
+  // 便携 node.exe 期望路径（单一真源：main/runtime/portable-node.ts）——同时供
+  // runtime.portableNode IPC（设置-关于）与下方 dsh 启动器接线使用，避免多处
+  // 内联 join 漂移。
+  const portableNodeExePath = resolvePortableNodeExePath({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+  });
+  // Runtime 域 handler（设置-关于 · 运行时信息）：展示便携 Node 是否随包装上
+  // 且可运行（存在性 + `--version` spawn 探测，见 main/runtime/portable-node.ts）。
+  registerRuntimeHandlers(ipcMain, { portableNodeExePath });
+
   // M24 网页翻译域 handler（dev.79）：微软/谷歌免费双引擎互为兜底（TD2）。
   // HTTP 经 net.fetch（Chromium 网络栈）——系统代理下谷歌可达，auto 引擎的
   // resolveProxy 判定（直连微软优先/走代理谷歌优先）才与真实路由一致。
@@ -504,7 +517,8 @@ export function registerIpcHandlers(ctx: AppContext): void {
       'lib',
       'bin.js',
     ).replace('app.asar', 'app.asar.unpacked');
-    const dshNodeExePath = join(process.resourcesPath, 'node', 'node.exe');
+    // 便携 node.exe：上方 resolvePortableNodeExePath 产物（打包态 = resources/node）
+    const dshNodeExePath = portableNodeExePath;
     if (!existsSync(dshNodeExePath)) {
       log.error('portable node.exe not found (package:win 应经 fetch-node.mjs 生成)', {
         dshNodeExePath,
@@ -532,7 +546,8 @@ export function registerIpcHandlers(ctx: AppContext): void {
     // 开发态同样用便携 node.exe 作运行时（Electron-as-Node 会被 dsh 的
     // node-addon-require-builtin 指纹校验拒绝，见上方注释）。缺失时按提示
     // 生成；仍传入路径，使启动器在 UI 上给出可诊断的 spawn 错误。
-    const dshDevNodeExePath = join(app.getAppPath(), 'build', 'node', 'node.exe');
+    // 便携 node.exe：上方 resolvePortableNodeExePath 产物（开发态 = build/node）
+    const dshDevNodeExePath = portableNodeExePath;
     if (!existsSync(dshDevNodeExePath)) {
       log.error(
         'portable node.exe not found（开发态 dsh 运行时）—— 请先运行 node scripts/fetch-node.mjs',

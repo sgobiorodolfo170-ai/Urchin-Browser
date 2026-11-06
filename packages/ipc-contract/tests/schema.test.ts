@@ -164,6 +164,11 @@ describe('ipcSchema', () => {
     expect(channels).toContain('devtools.console.clear');
     expect(channels).toContain('devtools.evaluate');
   });
+
+  it('should contain runtime.portableNode channel', () => {
+    const channels = Object.keys(ipcSchema);
+    expect(channels).toContain('runtime.portableNode');
+  });
 });
 
 describe('devtoolsAttachReqSchema', () => {

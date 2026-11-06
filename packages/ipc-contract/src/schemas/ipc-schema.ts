@@ -2393,6 +2393,32 @@ export const updateInstallResSchema = z.object({ ok: z.literal(true) });
 export type UpdateInstallRes = z.infer<typeof updateInstallResSchema>;
 
 // ============================================================================
+// Runtime 域（设置-关于 · 运行时信息）：便携 Node 运行时探测。
+// 便携 Node（scripts/fetch-node.mjs 产物，X4）是 dsh 在打包态的独立运行时——
+// Electron 内置 Node 会被 dsh 的 node-addon-require-builtin 指纹校验拒绝。
+// 用户需在「设置 → 关于 → 运行时信息」自助确认其是否随安装包装上且可运行。
+// ============================================================================
+
+// --- runtime.portableNode（探测便携 Node：路径/是否存在/可运行/版本） ---
+
+export const runtimePortableNodeReqSchema = z.object({}).default({});
+export type RuntimePortableNodeReq = z.infer<typeof runtimePortableNodeReqSchema>;
+
+export const runtimePortableNodeResSchema = z.object({
+  /** 便携 node.exe 期望路径（无论是否实际存在，用于支持诊断） */
+  path: z.string().min(1),
+  /** 文件存在 */
+  installed: z.boolean(),
+  /** `node.exe --version` 探测成功（installed=false 时恒为 false） */
+  runnable: z.boolean(),
+  /** 探测到的版本（如 v24.22.0；runnable=false 时缺失） */
+  version: z.string().min(1).optional(),
+  /** 探测失败原因（runnable=false 时存在，人类可读） */
+  error: z.string().optional(),
+});
+export type RuntimePortableNodeRes = z.infer<typeof runtimePortableNodeResSchema>;
+
+// ============================================================================
 // DevTools 域（M15 一期 · CDP 采集检视面板）
 // ============================================================================
 // 依据：docs/开发者工具增强一期实施规划.md §5、契约 G。
@@ -2796,6 +2822,12 @@ export const ipcSchema = {
   'update.check': { req: updateCheckReqSchema, res: updateCheckResSchema },
   'update.download': { req: updateDownloadReqSchema, res: updateDownloadResSchema },
   'update.install': { req: updateInstallReqSchema, res: updateInstallResSchema },
+  // Runtime 域（设置-关于 · 运行时信息）：便携 Node 探测——打包态
+  // resources/node/node.exe，开发态 apps/desktop/build/node/node.exe。
+  'runtime.portableNode': {
+    req: runtimePortableNodeReqSchema,
+    res: runtimePortableNodeResSchema,
+  },
   // DevTools 域（M15 一期 · CDP 采集检视面板）：见 events.ts 的事件通道
   // devtools:event / devtools:toggle。本期不开放原始 cdp.send（DT10）。
   'devtools.attach': { req: devtoolsAttachReqSchema, res: devtoolsAttachResSchema },

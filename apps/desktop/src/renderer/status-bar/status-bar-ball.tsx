@@ -11,6 +11,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../styles/globals.css';
+import { createLogger } from '../lib/logger';
+
+const log = createLogger('status-bar-ball');
 
 /** 球直径（与主进程 BALL_SIZE 一致） */
 const BALL_SIZE = 40;
@@ -98,7 +101,7 @@ function StatusBarBallRoot() {
     if (st.mode === 'move') {
       // 右键拖动：移动球位置
       void window.urchin.invoke('ui.statusbar.ball.move', { dx, dy }).catch((err) => {
-        console.error('ball move failed:', err);
+        log.error('ball move failed:', err);
       });
       return;
     }
@@ -124,7 +127,7 @@ function StatusBarBallRoot() {
       const sx = j.x * config.sensitivityHorizontal * MAX_DRAG_FOLLOW;
       const sy = j.y * config.sensitivityVertical * MAX_DRAG_FOLLOW;
       void window.urchin.invoke('ui.statusbar.ball.scroll', { dx: sx, dy: sy }).catch((err) => {
-        console.error('ball scroll failed:', err);
+        log.error('ball scroll failed:', err);
       });
     }, SCROLL_INTERVAL);
   };
@@ -140,7 +143,7 @@ function StatusBarBallRoot() {
     ) {
       // 左键单击：切换地址栏显示/隐藏
       void window.urchin.invoke('ui.statusbar.ball.click', {}).catch((err) => {
-        console.error('ball click failed:', err);
+        log.error('ball click failed:', err);
       });
     }
     stopScroll();

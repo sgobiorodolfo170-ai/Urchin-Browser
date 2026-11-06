@@ -59,6 +59,7 @@ import {
   RIGHT_MIN,
   RIGHT_SIDEBAR_WIDTH_KEY,
 } from './lib/layout-constants';
+import { createLogger } from './lib/logger';
 
 declare global {
   interface Window {
@@ -83,6 +84,8 @@ declare global {
     };
   }
 }
+
+const log = createLogger('app');
 
 /** URL → 安全状态（地址栏锁图标）：https 视为安全，其余不安全 */
 function getSecurityState(url: string): 'secure' | 'insecure' | 'mixed' {
@@ -201,7 +204,7 @@ export function App() {
           active: true,
         });
       } catch (e) {
-        console.error('Failed to open local file:', e);
+        log.error('Failed to open local file:', e);
       }
     })();
   }, []);
@@ -214,7 +217,7 @@ export function App() {
       const res = (await window.urchin.invoke('file.open', {})) as { path: string | null };
       if (res.path) handleOpenFilePath(res.path);
     } catch (e) {
-      console.error('Failed to open file picker:', e);
+      log.error('Failed to open file picker:', e);
     }
   }, [handleOpenFilePath]);
 
@@ -416,7 +419,7 @@ export function App() {
         const active = result.tabs.find((t) => t.active);
         setActiveTabId(active ? active.id : (result.tabs[0]?.id ?? null));
       } catch (e) {
-        console.error('Failed to load tabs:', e);
+        log.error('Failed to load tabs:', e);
       }
     }
     void loadTabs();
@@ -444,7 +447,7 @@ export function App() {
         }
         savedTabsByWorkspaceRef.current = byWs;
       } catch (e) {
-        console.error('Failed to load saved tabs for lazy restore:', e);
+        log.error('Failed to load saved tabs for lazy restore:', e);
       }
     })();
   }, []);
@@ -457,7 +460,7 @@ export function App() {
     try {
       await window.urchin.invoke('tab.close', { tabId });
     } catch (e) {
-      console.error('Failed to close tab:', e);
+      log.error('Failed to close tab:', e);
     }
   }, []);
 
@@ -465,7 +468,7 @@ export function App() {
     try {
       await window.urchin.invoke('tab.setActive', { tabId });
     } catch (e) {
-      console.error('Failed to set active tab:', e);
+      log.error('Failed to set active tab:', e);
     }
   }, []);
 
@@ -730,7 +733,7 @@ export function App() {
         try {
           await window.urchin.invoke('tab.loadUrl', { tabId: activeTabId, url });
         } catch (e) {
-          console.error('Failed to navigate:', e);
+          log.error('Failed to navigate:', e);
         }
         return;
       }
@@ -742,7 +745,7 @@ export function App() {
           active: true,
         });
       } catch (e) {
-        console.error('Failed to navigate (create tab):', e);
+        log.error('Failed to navigate (create tab):', e);
       }
     },
     [activeTabId],
@@ -753,7 +756,7 @@ export function App() {
     try {
       await window.urchin.invoke('tab.goBack', { tabId: activeTabId });
     } catch (e) {
-      console.error('Failed to go back:', e);
+      log.error('Failed to go back:', e);
     }
   }, [activeTabId]);
 
@@ -762,7 +765,7 @@ export function App() {
     try {
       await window.urchin.invoke('tab.goForward', { tabId: activeTabId });
     } catch (e) {
-      console.error('Failed to go forward:', e);
+      log.error('Failed to go forward:', e);
     }
   }, [activeTabId]);
 
@@ -771,7 +774,7 @@ export function App() {
     try {
       await window.urchin.invoke('tab.reload', { tabId: activeTabId, ignoreCache: false });
     } catch (e) {
-      console.error('Failed to reload:', e);
+      log.error('Failed to reload:', e);
     }
   }, [activeTabId]);
 
@@ -803,7 +806,7 @@ export function App() {
       );
     } catch (e) {
       if (seq !== suggestionQuerySeq.current) return;
-      console.error('Failed to load suggestions:', e);
+      log.error('Failed to load suggestions:', e);
       setSuggestions([]);
     }
   }, []);
@@ -819,7 +822,7 @@ export function App() {
           devtoolsWidth: dtw ?? devtoolsWidth,
         });
       } catch (e) {
-        console.error('Failed to update layout:', e);
+        log.error('Failed to update layout:', e);
       }
     },
     [devtoolsWidth],
@@ -1056,7 +1059,7 @@ export function App() {
     void window.urchin
       .invoke('settings.set', { key: RIGHT_SIDEBAR_WIDTH_KEY, value: rightExpandedWidth })
       .catch((e) => {
-        console.error('Failed to persist right sidebar width:', e);
+        log.error('Failed to persist right sidebar width:', e);
       });
     // 通知其他组件（如收藏夹面板）宽度已变化
     window.dispatchEvent(
@@ -1155,7 +1158,7 @@ export function App() {
         workspaceId: currentWorkspaceId,
       });
     } catch (e) {
-      console.error('Failed to create tab:', e);
+      log.error('Failed to create tab:', e);
     }
   }, [currentWorkspaceId]);
 
@@ -1196,7 +1199,7 @@ export function App() {
           active: true,
         });
       } catch (e) {
-        console.error('Failed to open homepage:', e);
+        log.error('Failed to open homepage:', e);
       }
     })();
   }, [activeTab?.url]);
@@ -1320,7 +1323,7 @@ export function App() {
 
   useEffect(() => {
     void window.urchin.invoke('ui.statusbar.sync', statusBarState).catch((e) => {
-      console.error('Failed to sync status bar state:', e);
+      log.error('Failed to sync status bar state:', e);
     });
   }, [statusBarState]);
 

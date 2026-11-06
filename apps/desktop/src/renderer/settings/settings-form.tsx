@@ -19,6 +19,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { cn } from '../lib/utils';
+import { createLogger } from '../lib/logger';
+
+const log = createLogger('settings-form');
 
 // ───────────────── 类型定义 ─────────────────
 
@@ -262,7 +265,7 @@ export function FieldControl({ field, value, onChange, profileApi }: FieldContro
                   onChange(result.path);
                 }
               } catch (e) {
-                console.error('Failed to select directory:', e);
+                log.error('Failed to select directory:', e);
               }
             })();
           }}

@@ -29,6 +29,9 @@ import { PlainTextEditor } from './editor/PlainTextEditor';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { Button } from '../components/ui/button';
 import { getCurrentWindowId } from '../lib/current-window';
+import { createLogger } from '../lib/logger';
+
+const log = createLogger('file-viewer');
 
 // ───────────────── 常量 ─────────────────
 
@@ -494,7 +497,7 @@ function FileViewerInner({
           active: true,
         });
       } catch (err) {
-        console.error('Failed to open link:', err);
+        log.error('Failed to open link:', err);
       }
     })();
   }, []);

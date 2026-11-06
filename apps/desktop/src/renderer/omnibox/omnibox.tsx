@@ -32,6 +32,9 @@ import { cn } from '../lib/utils';
 import { parseInput } from './parse-input';
 import { validateUrlBeforeNavigation } from './validate-url';
 import type { Suggestion } from './types';
+import { createLogger } from '../lib/logger';
+
+const log = createLogger('omnibox');
 
 export interface OmniboxProps {
   /** 当前 URL */
@@ -192,7 +195,7 @@ export function Omnibox({
   // 无需渲染层中转。
   const handlePanelToggle = useCallback(() => {
     void window.urchin.invoke('ui.panel.toggle', {}).catch((e) => {
-      console.error('Failed to toggle bookmark panel:', e);
+      log.error('Failed to toggle bookmark panel:', e);
     });
   }, []);
 

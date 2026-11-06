@@ -7,6 +7,9 @@
 import { useEffect, useState } from 'react';
 import { StatusBar } from './status-bar';
 import type { StatusBarState, StatusBarAction } from '@urchin/ipc-contract';
+import { createLogger } from '../lib/logger';
+
+const log = createLogger('status-bar');
 
 /** 建议面板额外高度（与主进程 computeStatusBarBounds 常量对齐） */
 const SUGGESTIONS_PANEL_HEIGHT = 332;
@@ -49,7 +52,7 @@ export function StatusBarRoot() {
         }
       })
       .catch((e) => {
-        console.error('statusbar getState failed:', e);
+        log.error('statusbar getState failed:', e);
       });
     const off = window.urchin.on('ui.statusbar.state', (payload) => {
       if (cancelled) return;
@@ -85,13 +88,13 @@ export function StatusBarRoot() {
   // 上报额外面板高度，主进程据此调整窗口高度（向上展开）
   useEffect(() => {
     void window.urchin.invoke('ui.statusbar.setExpanded', { panelHeight }).catch((e) => {
-      console.error('statusbar setExpanded failed:', e);
+      log.error('statusbar setExpanded failed:', e);
     });
   }, [panelHeight]);
 
   const handleAction = (action: StatusBarAction): void => {
     void window.urchin.invoke('ui.statusbar.action', action).catch((e) => {
-      console.error('statusbar action failed:', e);
+      log.error('statusbar action failed:', e);
     });
   };
 

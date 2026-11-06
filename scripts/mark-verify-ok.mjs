@@ -16,7 +16,10 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const repoRoot = resolve(process.cwd());
-const git = (cmd) => execSync(cmd, { cwd: repoRoot, encoding: 'utf8' }).trim();
+// maxBuffer 必须远大于默认 1MB：vendor 整树移出仓库这类批次会产生 1.6 万行
+// git status --porcelain 输出（>1MB），不加大缓冲会在生成内容指纹时 ENOBUFS（P2-13 实测触发）
+const git = (cmd) =>
+  execSync(cmd, { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).trim();
 
 function worktreeTree() {
   const dirty = git('git status --porcelain');

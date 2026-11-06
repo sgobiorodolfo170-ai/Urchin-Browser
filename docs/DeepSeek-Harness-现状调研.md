@@ -3,7 +3,7 @@
 > 状态：调研完成，备查 · 调研日期：2026-10-30
 > 范围：`vendor/deepseek-harness`、`apps/desktop/src/main/deepseek-harness`、`apps/pi-web` 中的 DSH 残留、构建与打包链路
 > 方法：静态源码阅读 + 构建/打包产物核查 + npm registry / GitHub tag 查询。除特别标注外，未做真实 Electron 运行时验证；涉及运行行为的结论均标注「静态分析」。
-> 关联：[03-技术栈](./03-技术栈.md) §3、[pi-web-评估](./pi-web-评估.md)、[pi-web-host-对接实施清单](./pi-web-host-对接实施清单.md) §3-5、`CHANGELOG.md` 的 dev.118 / dev.123
+> 关联：[03-技术栈](./03-技术栈.md) §3、[pi-web-评估](./pi-web-评估.md)、[pi-web-host-对接实施清单](./pi-web-host-对接实施清单.md) §3-5、`CHANGELOG.md` 的 dev.118 / dev.123、[ADR-016](./decisions/ADR-016-vendor-dsh移出版本控制.md)（2026-11-06 起 vendor 已移出版本控制）
 > 维护提示：本文是 2026-10-30 的快照，版本以 `package.json` / `pnpm-lock.yaml` 为准，体积为本次实测值；代码行号会随迭代漂移，引用前先复核。
 
 ---
@@ -206,6 +206,8 @@ Renderer handleOpenDeepSeekHarness
 - 每次升级涉及整树替换、独立 pnpm 安装、完整构建、根依赖/lockfile 更新、打包验证，缺少 runbook 和版本漂移门禁。
 - 建议：先评估 rc.4/rc.5 的 breaking change，再把同步步骤脚本化，并在 `check:docs` 或 CI 增加「vendor 版本 == 桌面依赖版本 == lockfile 版本」校验。
 
+> ✅ 2026-11-06 状态更新：「同步步骤脚本化 + 三源版本校验」已交付（[ADR-016](./decisions/ADR-016-vendor-dsh移出版本控制.md)：`pnpm sync:dsh` + `pnpm check:dsh` 接入 verify，硬门禁 G17）；**rc.4/rc.5 的 breaking change 评估与升级本身仍待做**。
+
 ### 7.3 中高：bearer token 写入日志
 
 - `apps/desktop/src/main/deepseek-harness/launcher.ts:368`
@@ -234,6 +236,8 @@ Renderer handleOpenDeepSeekHarness
 - vendor tracked 126.9MB / 16,324 文件；本地 2.27GB。
 - 打包 unpacked 1.79GB，`@deepseek-ai` 1.11GB；安装包 618.7MB。
 - 建议：量化 DSH 对 unpacked 的贡献，评估收窄 `asarUnpack`、裁剪包内 docs/tests/source map，或改为按需下载运行时。
+
+> ✅ 2026-11-06 状态更新（仓库重量维度）：vendor 整树已移出版本控制（[ADR-016](./decisions/ADR-016-vendor-dsh移出版本控制.md)，`pnpm sync:dsh` 按需拉取），主仓库 tracked 内容 -127MB / -16,324 文件；**打包态体积治理**（asarUnpack 收窄 / 包内裁剪）仍待评估。
 
 ### 7.7 低：无模块级更新路径
 
@@ -298,3 +302,20 @@ git ls-files vendor/deepseek-harness | Measure-Object -Line
 - 升级 DSH 时，同步更新本文的版本、体积、上游 latest/tag 三项；若问题状态变化，更新 §七。
 - 本文不复制 AGENTS / 技术栈中的规范事实；覆盖率、命令、卡点等以对应真源为准（见 [事实登记表](./事实登记表.md)）。
 - 7.1 修复后，应把「按 origin 匹配」写入 `tab-lifecycle` 测试名，避免回归。
+
+---
+
+## 十一、P2-13 处置：vendor 移出版本控制（2026-11-06，[ADR-016](./decisions/ADR-016-vendor-dsh移出版本控制.md)）
+
+本节记录用户决策（四选一：A 维持现状 / B submodule / **C 脚本拉取+移出（采纳）** / D 裁剪保留）。**本文前十个章节为 2026-10-30 快照，其中涉及「vendor git tracked 16,324 文件 / 约 126.9MB」的事实自本日起失效**：
+
+| 项 | 处置前（§四 等） | 处置后 |
+| --- | --- | --- |
+| vendor 版本控制 | 整树 tracked（16,324 文件 / 127MB） | **不在版本控制内**（`.gitignore`）；本地工作树保留，新环境经 `pnpm sync:dsh` 拉取 |
+| 版本真源 | 三处手抄（vendor 包 / 桌面依赖 / lockfile） | **单一真源** = `apps/desktop/package.json` 的 `@deepseek-ai/dsh`（精确 pin）；lockfile 与 vendor 随动 |
+| 同步/升级 | 5 步人工 runbook（§三） | `改桌面依赖版本 → pnpm install → pnpm sync:dsh → pnpm verify`（含三源门禁） |
+| 三源漂移校验（§7.2） | 无 | `pnpm check:dsh`（`scripts/check-dsh-version.mjs`），接入 `pnpm verify`（硬门禁 G17；vendor 缺失时该子项自动跳过，CI/全新 clone 属正常态） |
+| 打包态 | 不消费 vendor 树（§2.2 打包行） | **不变**——这正是可以安全移出的根因 |
+| typecheck / lint / 单测 / E2E / CI | 不触碰 vendor | 不变（payload：ESLint ignores `vendor/**`，prettier ignores `vendor/`，workspace 不含它） |
+
+补充实测（2026-11-06）：本地磁盘 vendor 树 2.27GB（node_modules 约 1.96GB，一直未入库）；`sync:dsh` 幂等路径对「已有源码」只补装依赖（实测 22.5s）；vendor postinstall 会跑上游 `install-lefthook.mjs`，但其写入 `.git/hooks/*` 而本仓库 `core.hooksPath=.husky/_`（husky），互不干扰。

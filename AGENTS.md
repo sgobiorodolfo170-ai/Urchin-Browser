@@ -72,6 +72,7 @@ adapted_for: Urchin-Browser
 | 2026-11-01 | **工作流约定新增第 7 条**：PowerShell `Start-Process` 调用 pnpm / `node_modules/.bin` 工具时显式写 `.CMD` 扩展名，避免命中 `pnpm.ps1`（Get-Command 优先）被文本编辑器打开。属执行约定填充细化，无架构性条款修改                                                                                                                                                                                                                                                                                                    | 无                                                                                                                      | 用户指令（Start-Process 白屏排查）                                 |
 | 2026-11-01 | **中文名对齐**：确立浏览器中文名「顽童浏览器」，文档/代码/前端全量对齐。文档 P0+P1 用户可见标题改为「顽童浏览器（Urchin Browser）」并列格式；新增 `apps/desktop/src/shared/brand.ts` 最小 locale 探测工具（`displayNameForLocale`，zh* → 中文名，其余 → 英文名）；主页/标题栏/设置关于页/窗口 title/newtab 保底页按 locale 动态显示；`electron-builder.yml` productName/shortcutName 改中文，ProgID 描述改中文；技术标识（appId/artifactName/ProgID 前缀/日志路径/版权署名）保持英文。属填充细化，无架构性条款修改 | 无                                                                                                                      | 用户指令（中文名确定）                                             |
 | 2026-11-02 | **§十一 模块口径 26 → 27（M27 笔记 / 便利贴）**；项目适配说明区模块编号同步。新模块为 `urchin://notebook` 三区页面 + settings 键 `notebook.state` 持久化，未新增 IPC 通道。无架构性条款修改                                                                                                                                                                                                                                                                                                                        | 无                                                                                                                      | 用户指令（M27 交付）                                               |
+| 2026-11-06 | **§九.4 新增 G17（DSH 版本三源一致门禁）+ 工作流约定 verify 组成加入 `check:dsh`**：vendor/deepseek-harness 移出版本控制（P2-13 / ADR-016，用户四选一授权），`pnpm sync:dsh` 脚本化同步。MUST 登记 + verify 组成填充细化，未修改审查顺序与三层结构、独立验证语义不变                                                                                                                                                                                                                                               | 无（无架构性条款修改）                                                                                                  | 用户决策（P2-13 处置四选一，选 C「脚本拉取 + 移出版本控制」）      |
 
 ---
 
@@ -81,7 +82,7 @@ adapted_for: Urchin-Browser
 
 **AI Agent 强制流程**：
 
-1. **每次代码修改完成后，必须自动执行** `pnpm verify`（= `typecheck` + `lint` + `format:check` + `test:coverage` + `check:docs`，结尾写入 verify 内容指纹供 pre-push 校验；**含格式、覆盖率、文档漂移三重门禁**），并在回复中附上结果摘要（通过/失败与关键数字）；失败必须先修复再继续。
+1. **每次代码修改完成后，必须自动执行** `pnpm verify`（= `typecheck` + `lint` + `format:check` + `test:coverage` + `check:docs` + `check:dsh`，结尾写入 verify 内容指纹供 pre-push 校验；**含格式、覆盖率、文档漂移、DSH 三源版本四重门禁**），并在回复中附上结果摘要（通过/失败与关键数字）；失败必须先修复再继续。
 2. **涉及 UI / 交互 / 主进程行为变更**时，在 `pnpm verify` 通过后**追加** `pnpm e2e`（或对应 spec 单跑）验证真实 Electron 行为。
 3. **需要人工验收的改动**（界面、交互、视觉），在验证通过后**构建并启动应用**：`pnpm run build` 后执行 **`pnpm start`**（生产模式启动已构建产物，脱离本会话后台运行；直接 `electron .` 未带 `NODE_ENV=production` 会走 dev 分支连 vite dev server 导致白屏）。启动后在回复中说明如何操作。
 4. 涉及打包/资源/依赖变更时，额外跑 `pnpm package:win`（本机需 `ELECTRON_MIRROR` 与 `ELECTRON_BUILDER_BINARIES_MIRROR` 指向 npmmirror）。
@@ -551,26 +552,27 @@ adapted_for: Urchin-Browser
 
 按 §〇.6，MUST 条款必须有可执行卡点，否则不具备阻断力。本表是全文 MUST 的**唯一登记处**——表中没有的「必须」一律按 SHOULD 对待。
 
-| #   | 门禁                                                 | 判定方式                                                 | 执行位置                   | 现状                   |
-| --- | ---------------------------------------------------- | -------------------------------------------------------- | -------------------------- | ---------------------- |
-| G1  | 类型安全（strict + noUncheckedIndexedAccess）        | `pnpm typecheck`                                         | pre-push / CI              | ✅ 已接入              |
-| G2  | 代码规范（ESLint 0 error）                           | `pnpm lint`                                              | pre-commit（暂存文件）/ CI | ✅ 已接入              |
-| G3  | 格式一致（Prettier）                                 | 暂存文件 `prettier --write`；全仓 `pnpm format:check`    | pre-commit + CI            | ✅ 2026-10-27 全仓接入 |
-| G4  | 单元 + 集成测试全绿                                  | `pnpm test:coverage` 用例通过                            | CI                         | ✅ 已接入              |
-| G5  | **覆盖率门禁**（v0.2 ≥65%）                          | `coverage.thresholds` 四维 65                            | CI + `pnpm verify`         | ✅ 2026-10-27 接入     |
-| G6  | E2E 关键路径                                         | `pnpm e2e`                                               | CI                         | ✅ 已接入              |
-| G7  | 提交信息结构化                                       | `commitlint`                                             | commit-msg hook            | ✅ 已接入              |
-| G8  | 跨进程契约 zod 双向校验                              | 代码评审 + 契约测试                                      | §六 第三步自审             | ⚠ 人判为主             |
-| G9  | 依赖引入审查（包名/版本/许可证/维护度）              | 人工核查 + `npm audit`                                   | 引入依赖时                 | ⚠ 人判为主             |
-| G10 | 不可逆操作人类确认                                   | 交互式确认                                               | 执行前                     | ⚠ 流程约束             |
-| G11 | 版本号基线前进（stable 递增）                        | `scripts/build-version.mjs` 门禁                         | `pnpm package:win`         | ✅ 已接入              |
-| G12 | 发布前人工确认                                       | 人工跑 e2e + 验签                                        | 发布                       | ⚠ 流程约束             |
-| G13 | **文档事实不漂移**（覆盖率阶梯 / 命令 / 卡点描述）   | `pnpm check:docs`（`scripts/check-doc-drift.mjs` R1-R3） | CI + `pnpm verify`         | ✅ 2026-10-27 接入     |
-| G14 | **提交追溯信息**（Model / Trigger / Loop）           | `scripts/check-commit-trace.mjs`                         | commit-msg hook            | ✅ 2026-10-27 接入     |
-| G15 | **CHANGELOG 版本行格式**（可被 build-version 解析）  | `scripts/check-doc-drift.mjs` R4                         | CI + `pnpm verify`         | ✅ 2026-10-27 接入     |
-| G16 | **推送前置条件**（内容已验证 / 无分叉 / 工作区干净） | `scripts/check-before-push.mjs`                          | pre-push hook              | ✅ 2026-10-27 接入     |
+| #   | 门禁                                                                                                                              | 判定方式                                                                 | 执行位置                                     | 现状                          |
+| --- | --------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------- | ----------------------------- |
+| G1  | 类型安全（strict + noUncheckedIndexedAccess）                                                                                     | `pnpm typecheck`                                                         | pre-push / CI                                | ✅ 已接入                     |
+| G2  | 代码规范（ESLint 0 error）                                                                                                        | `pnpm lint`                                                              | pre-commit（暂存文件）/ CI                   | ✅ 已接入                     |
+| G3  | 格式一致（Prettier）                                                                                                              | 暂存文件 `prettier --write`；全仓 `pnpm format:check`                    | pre-commit + CI                              | ✅ 2026-10-27 全仓接入        |
+| G4  | 单元 + 集成测试全绿                                                                                                               | `pnpm test:coverage` 用例通过                                            | CI                                           | ✅ 已接入                     |
+| G5  | **覆盖率门禁**（v0.2 ≥65%）                                                                                                       | `coverage.thresholds` 四维 65                                            | CI + `pnpm verify`                           | ✅ 2026-10-27 接入            |
+| G6  | E2E 关键路径                                                                                                                      | `pnpm e2e`                                                               | CI                                           | ✅ 已接入                     |
+| G7  | 提交信息结构化                                                                                                                    | `commitlint`                                                             | commit-msg hook                              | ✅ 已接入                     |
+| G8  | 跨进程契约 zod 双向校验                                                                                                           | 代码评审 + 契约测试                                                      | §六 第三步自审                               | ⚠ 人判为主                    |
+| G9  | 依赖引入审查（包名/版本/许可证/维护度）                                                                                           | 人工核查 + `npm audit`                                                   | 引入依赖时                                   | ⚠ 人判为主                    |
+| G10 | 不可逆操作人类确认                                                                                                                | 交互式确认                                                               | 执行前                                       | ⚠ 流程约束                    |
+| G11 | 版本号基线前进（stable 递增）                                                                                                     | `scripts/build-version.mjs` 门禁                                         | `pnpm package:win`                           | ✅ 已接入                     |
+| G12 | 发布前人工确认                                                                                                                    | 人工跑 e2e + 验签                                                        | 发布                                         | ⚠ 流程约束                    |
+| G13 | **文档事实不漂移**（覆盖率阶梯 / 命令 / 卡点描述）                                                                                | `pnpm check:docs`（`scripts/check-doc-drift.mjs` R1-R3）                 | CI + `pnpm verify`                           | ✅ 2026-10-27 接入            |
+| G14 | **提交追溯信息**（Model / Trigger / Loop）                                                                                        | `scripts/check-commit-trace.mjs`                                         | commit-msg hook                              | ✅ 2026-10-27 接入            |
+| G15 | **CHANGELOG 版本行格式**（可被 build-version 解析）                                                                               | `scripts/check-doc-drift.mjs` R4                                         | CI + `pnpm verify`                           | ✅ 2026-10-27 接入            |
+| G16 | **推送前置条件**（内容已验证 / 无分叉 / 工作区干净）                                                                              | `scripts/check-before-push.mjs`                                          | pre-push hook                                | ✅ 2026-10-27 接入            |
+| G17 | **DSH 版本三源一致**（桌面依赖 = lockfile = vendor 源码树；vendor 不在版本控制内，缺失时该子项自动跳过——CI 与未同步环境属正常态） | `pnpm check:dsh`（`scripts/check-dsh-version.mjs`；真源见事实登记表 F8） | verify 链（CI 未单列步骤，本地 verify 必过） | ✅ 2026-11-06 接入（ADR-016） |
 
-> **登记规则**：新增 MUST 时先在此表补一行并写明判定命令；无法给出判定命令的，不得标 MUST。当前 16 条中 11 条完全自动化、3 条人判、2 条流程约束——人判项是后续自动化的候选池。
+> **登记规则**：新增 MUST 时先在此表补一行并写明判定命令；无法给出判定命令的，不得标 MUST。当前 17 条中 12 条完全自动化、3 条人判、2 条流程约束——人判项是后续自动化的候选池。
 
 ---
 

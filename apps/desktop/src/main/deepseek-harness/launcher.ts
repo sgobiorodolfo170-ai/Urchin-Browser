@@ -358,7 +358,7 @@ export class DshLauncher {
       if (exited) {
         return this.failLaunch(
           this.opts.usesTsxLoader
-            ? `dsh 启动即退出（code=${String(exitCode)}）。请检查 vendor/deepseek-harness 依赖安装（pnpm install）与构建（pnpm run build）`
+            ? `dsh 启动即退出（code=${String(exitCode)}）。vendor 树经 pnpm sync:dsh 拉取（含依赖安装）；缺失时先执行它，再核对 vendor/deepseek-harness 是否完整`
             : `dsh 启动即退出（code=${String(exitCode)}）。请检查安装包完整性（resources/node/node.exe 与 app.asar.unpacked 内 @deepseek-ai/dsh）`,
         );
       }

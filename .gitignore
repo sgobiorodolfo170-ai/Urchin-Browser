@@ -123,5 +123,9 @@ aoci.code.txt
 # lockfile 备份（历史误提交，不再跟踪）
 pnpm-lock.yaml.bak
 
+# vendor/deepseek-harness：上游整树移出版本控制（P2-13 / ADR-016，dev.146），
+# 由 `pnpm sync:dsh` 按桌面依赖版本从上游 tag 拉取；版本一致性由 check:dsh 把守
+vendor/deepseek-harness/
+
 # Agent 工作区：评估报告、记忆、临时产物——不纳入版本管理
 .workbuddy-ai/

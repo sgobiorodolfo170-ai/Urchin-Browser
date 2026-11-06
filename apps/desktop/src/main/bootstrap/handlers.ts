@@ -517,8 +517,12 @@ export function registerIpcHandlers(ctx: AppContext): void {
     });
   } else {
     const dshVendorDir = resolve(app.getAppPath(), '..', '..', 'vendor', 'deepseek-harness');
+    // vendor 树不在版本控制内（P2-13 / ADR-016）：新环境经 `pnpm sync:dsh` 拉取，
+    // 版本真源为 apps/desktop 的 @deepseek-ai/dsh 依赖（check:dsh 三源把守）。
     if (!existsSync(dshVendorDir)) {
-      log.error('dsh vendor directory not found', { dshVendorDir });
+      log.error('dsh vendor directory not found — run `pnpm sync:dsh` at repo root first', {
+        dshVendorDir,
+      });
     }
     // 开发态同样用便携 node.exe 作运行时（Electron-as-Node 会被 dsh 的
     // node-addon-require-builtin 指纹校验拒绝，见上方注释）。缺失时按提示

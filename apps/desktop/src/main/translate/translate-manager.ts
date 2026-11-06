@@ -740,6 +740,8 @@ export class TranslateManager {
     if (!state || state.pollTimer) return;
     const interval = this.deps.pollIntervalMs ?? TRANSLATE_POLL_INTERVAL_MS;
     state.pollTimer = setInterval(() => void this.pollPending(tabId), interval);
+    // unref：轮询定时器不应阻止进程退出（与 mail-manager pollTimer 同模式，7.2 修复）
+    state.pollTimer.unref?.();
   }
 
   private async pollPending(tabId: number): Promise<void> {

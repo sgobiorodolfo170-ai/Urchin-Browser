@@ -59,7 +59,7 @@ export function buildDragInjectionScript(): string {
     "  fetch('urchin://transit-drag', { method: 'POST', body: JSON.stringify({" +
     "    kind: 'text', title: selText.slice(0, 80), text: selText.slice(0, 500000)," +
     '    pageUrl: pageUrl, pageTitle: pageTitle' +
-    '  }) }).catch(function(){});' +
+    '  }) }).catch(function(e){ console.warn("[urchin drag]", e); });' +
     '  return;' +
     '}' +
     // 其次：链接
@@ -69,7 +69,7 @@ export function buildDragInjectionScript(): string {
     "  fetch('urchin://transit-drag', { method: 'POST', body: JSON.stringify({" +
     "    kind: 'link', title: linkText || a.href, url: a.href, linkText: linkText," +
     '    pageUrl: pageUrl, pageTitle: pageTitle' +
-    '  }) }).catch(function(){});' +
+    '  }) }).catch(function(e){ console.warn("[urchin drag]", e); });' +
     '  return;' +
     '}' +
     // 其次：图片
@@ -78,7 +78,7 @@ export function buildDragInjectionScript(): string {
     "  fetch('urchin://transit-drag', { method: 'POST', body: JSON.stringify({" +
     "    kind: 'image', title: e.target.alt || '图片', url: e.target.src," +
     '    pageUrl: pageUrl, pageTitle: pageTitle' +
-    '  }) }).catch(function(){});' +
+    '  }) }).catch(function(e){ console.warn("[urchin drag]", e); });' +
     '  return;' +
     '}' +
     // 最后：视频
@@ -88,7 +88,7 @@ export function buildDragInjectionScript(): string {
     "    fetch('urchin://transit-drag', { method: 'POST', body: JSON.stringify({" +
     "      kind: 'video', title: '视频', url: vUrl," +
     '      pageUrl: pageUrl, pageTitle: pageTitle' +
-    '    }) }).catch(function(){});' +
+    '    }) }).catch(function(e){ console.warn("[urchin drag]", e); });' +
     '  }' +
     '  return;' +
     '}' +

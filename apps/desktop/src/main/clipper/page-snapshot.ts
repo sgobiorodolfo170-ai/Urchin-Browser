@@ -86,7 +86,7 @@ export function buildPageSnapshotScript(loadLazy: boolean): string {
         if (atBottom) break;
       }
       window.scrollTo(0, startScrollY);
-    } catch (e) {}
+    } catch (e) { console.warn('[urchin snapshot]', e); }
 `
     : '';
 
@@ -118,7 +118,7 @@ export function buildPageSnapshotScript(loadLazy: boolean): string {
         chunks.push(wrap.outerHTML);
         if (chunks.length >= 30) break;
       }
-    } catch (e) {}
+    } catch (e) { console.warn('[urchin snapshot]', e); }
     return chunks.join('');
   }
 
@@ -135,7 +135,7 @@ export function buildPageSnapshotScript(loadLazy: boolean): string {
         }
         html = holder.innerHTML || '';
       }
-    } catch (e) {}
+    } catch (e) { console.warn('[urchin snapshot]', e); }
     return { html: html, text: text };
   }
 
@@ -152,7 +152,7 @@ export function buildPageSnapshotScript(loadLazy: boolean): string {
       )) {
         return true;
       }
-    } catch (e) {}
+    } catch (e) { console.warn('[urchin snapshot]', e); }
     return false;
   }
 
@@ -167,7 +167,7 @@ export function buildPageSnapshotScript(loadLazy: boolean): string {
         var style = window.getComputedStyle(el);
         if (style.userSelect === 'none' || style.webkitUserSelect === 'none') return true;
       }
-    } catch (e) {}
+    } catch (e) { console.warn('[urchin snapshot]', e); }
     return false;
   }
 
@@ -190,7 +190,7 @@ export function buildPageSnapshotScript(loadLazy: boolean): string {
     for (var s = 0; s < all.length; s += 1) {
       if (all[s].shadowRoot) { hasOpenShadow = true; break; }
     }
-  } catch (e) {}
+  } catch (e) { console.warn('[urchin snapshot]', e); }
 
   var clone = document.documentElement.cloneNode(true);
   // 移除脚本/样式/模板等非正文资源：Defuddle 只需要结构，快照导出会重新构建页面。
@@ -209,7 +209,7 @@ export function buildPageSnapshotScript(loadLazy: boolean): string {
   if (html.length > MAX_HTML) html = html.slice(0, MAX_HTML);
 
   var textLength = 0;
-  try { textLength = (document.body && document.body.innerText ? document.body.innerText.length : 0); } catch (e) {}
+  try { textLength = (document.body && document.body.innerText ? document.body.innerText.length : 0); } catch (e) { console.warn('[urchin snapshot]', e); }
 
   return {
     ok: true,

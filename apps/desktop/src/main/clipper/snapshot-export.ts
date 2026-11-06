@@ -123,7 +123,7 @@ async function waitForAssets(contents: SnapshotWebContents): Promise<void> {
   try {
     await Promise.all(Array.from(document.images).map(waitImage));
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
-  } catch (e) {}
+  } catch (e) { console.warn('[urchin snapshot-export]', e); }
   return true;
 })();
 `;

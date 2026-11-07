@@ -98,12 +98,12 @@ docs/                                # 本台账 + 评估 + 对接清单
 | --- | --- | --- |
 | `components/EnginePicker.tsx` | ✅ 已收窄 | `SUPPORTED_ENGINES` 只留 `pi`，删除 dsh/claude/codex/durable 条目 |
 | `components/DshPresetBar.tsx` / `DshPermissionBar.tsx` | ✅ 保留（非 DSH 专属） | 名为 dsh，实为 pi 也在用的「Agent 预设 / 权限」通用组件；**不删** |
-| `components/SettingsModal.tsx` | 待办 | 删 `dsh-presets` tab、DSH 插件市场、DSH 专属 questionnaire/extensions 分区 |
+| `components/SettingsModal.tsx` | ✅ 已收窄 | `isDsh` 固定 false，DSH 插件市场/预设/问卷分区不再启用（JSX 物理删除留待 P3 清理） |
 | `components/NativeCliPanel.tsx` / `NativeCliCreateModal.tsx` | ✅ 已收窄 | 经共享 `ENGINE_CATALOG` 收窄，CLI 面板自动仅 pi（面板保留） |
 | `components/canvas/*` | ✅ 已收窄 | `CanvasEngineId = "pi"`；`CanvasTypes`/`CanvasNodeCard`/`canvas-state` 移除其他引擎 |
 | `use-chat.ts` / `app-globals.ts` | 待办 | 引擎状态与切换逻辑收窄（`EnginePicker` 已单 pi，残留冗余可后续清理） |
 | 后端 `pi-server` 引擎模块 | ✅ 已删除 | `dsh/`、`durable/`、`universal/`（外部 CLI 驱动）移除；`engine-probe`/`index.ts`/`client-state`/`model-resolver` 收窄为仅 pi |
-| 构建依赖 | 待办 | 移除 `@deepseek-ai/dsh-sdk-*` 与 `build:dsh-runtime` |
+| 构建依赖 | ✅ 已清理 | 全树已无 `@deepseek-ai/*` 引用（原 dsh/ 目录整体删除） |
 
 > 验证（2026-11-08）：`pi-server/index.ts` ESM bundle 成功（无悬空 import）；`@urchin/pi-web-host` typecheck 0 错误；`@urchin/pi-web` build 成功（7.76s）。
 

@@ -724,7 +724,8 @@ function LoadedSettingsModal({
 	const approvalPolicy = settings?.approvalPolicy;
 	const { engine, managed } = useAppGlobals();
 	const engines = useEngineStatuses();
-	const isDsh = engine === "dsh";
+	// 重建决策（2026-11-08）：仅保留 pi 引擎，DSH 专属设置分区不再启用。
+	const isDsh = false;
 	const isClaude = engine === "claude";
 	const isCodex = engine === "codex";
 	const isPi = !isDsh && !isClaude && !isCodex;

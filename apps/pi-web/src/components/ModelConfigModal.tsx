@@ -235,6 +235,10 @@ const QUICK_PRESETS: QuickProviderPreset[] = [
   },
 ];
 
+/** 内置快捷模板中被用户删除的 id（localStorage 持久化，仅本浏览器生效）。
+ *  自定义服务商芯片由服务商列表自动派生——删除该服务商即移除芯片，不进这份名单。 */
+const QUICK_PRESETS_HIDDEN_KEY = 'pi_web_model_config_hidden_quick_presets';
+
 const CTX_PRESETS = [
   { label: '8K', value: '8192' },
   { label: '16K', value: '16384' },
@@ -266,6 +270,8 @@ function getPresetTagLabel(tag: string, t: (k: any) => string): string {
       return t('presetTagLocal');
     case '反代':
       return t('presetTagProxy');
+    case '自定义':
+      return t('presetTagCustom');
     default:
       return tag;
   }
@@ -659,6 +665,44 @@ export function ModelConfigPanel({
   const [cloning, setCloning] = useState<string | null>(null);
   const cloneReqId = useRef(0);
   const handledCloneReq = useRef(0);
+
+  // 快捷预设：内置模板（本浏览器可删，隐藏名单 localStorage 持久化）+
+  // 自定义服务商自动加入——服务商列表是唯一事实源，删服务商即删芯片。
+  const [hiddenPresetIds, setHiddenPresetIds] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(QUICK_PRESETS_HIDDEN_KEY);
+      const arr: unknown = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
+  const [presetDeleteMode, setPresetDeleteMode] = useState(false);
+  useEffect(() => {
+    try {
+      localStorage.setItem(QUICK_PRESETS_HIDDEN_KEY, JSON.stringify(hiddenPresetIds));
+    } catch {
+      // 隐私模式等 localStorage 不可用场景：忽略，仅本次会话生效
+    }
+  }, [hiddenPresetIds]);
+
+  // 快捷芯片列表 = 内置模板（去掉已删除项与同 id 自定义服务商）+ 自定义服务商（自动加入）
+  const quickPresets = useMemo<QuickProviderPreset[]>(() => {
+    // 同 id 时以自定义服务商为准，避免两个同名芯片并存导致保存互相覆盖
+    const customIds = new Set(providers.map((p) => p.providerId));
+    const base = QUICK_PRESETS.filter(
+      (p) => !hiddenPresetIds.includes(p.id) && !customIds.has(p.id),
+    );
+    const customs: QuickProviderPreset[] = providers.map((p) => ({
+      id: p.providerId,
+      name: p.name || p.providerId,
+      api: p.api ?? 'openai-completions',
+      baseUrl: p.baseUrl ?? '',
+      authHeader: p.authHeader ?? true,
+      tag: '自定义',
+    }));
+    return [...base, ...customs];
+  }, [providers, hiddenPresetIds]);
 
   /** Re-fetch the SAVED provider's model list server-side (credentials stay
    *  on the server) and merge into its models.json entry. */
@@ -1365,23 +1409,89 @@ export function ModelConfigPanel({
                 </div>
               </div>
 
-              {/* 快捷芯片区 */}
+              {/* 快捷芯片区：内置模板 + 自定义服务商（自动加入）。「删除」进入
+                  删除模式：内置模板点 × 从本浏览器隐藏（localStorage，可恢复），
+                  自定义服务商点 × 即删除该服务商（带确认弹窗）。 */}
               <div className="quick-chips-wrapper">
-                <span className="quick-chips-label">{t('quickPresetsLabel')}</span>
-                <div className="quick-chips-grid">
-                  {QUICK_PRESETS.map((preset) => (
+                <div className="quick-chips-head">
+                  <span className="quick-chips-label">{t('quickPresetsLabel')}</span>
+                  <button
+                    type="button"
+                    className={`quick-chips-del${presetDeleteMode ? ' on' : ''}`}
+                    onClick={() => setPresetDeleteMode((v) => !v)}
+                  >
+                    <FiTrash2 />
+                    {presetDeleteMode ? t('quickPresetsDone') : t('quickPresetsDelete')}
+                  </button>
+                  {hiddenPresetIds.length > 0 && (
                     <button
                       type="button"
-                      key={preset.id}
-                      className="quick-chip"
-                      onClick={() => applyQuickPreset(preset)}
+                      className="quick-chips-restore"
+                      title={t('quickPresetsRestore')}
+                      onClick={() => setHiddenPresetIds([])}
                     >
-                      <span className="quick-chip-name">{preset.name}</span>
-                      {preset.tag && (
-                        <span className="quick-chip-tag">{getPresetTagLabel(preset.tag, t)}</span>
-                      )}
+                      {t('quickPresetsRestore')}
                     </button>
-                  ))}
+                  )}
+                </div>
+                <div className="quick-chips-grid">
+                  {quickPresets.map((preset) => {
+                    const custom = providers.find((p) => p.providerId === preset.id);
+                    return (
+                      <span key={preset.id} className="quick-chip-box">
+                        <button
+                          type="button"
+                          className={`quick-chip${
+                            custom && activeNav.id === preset.id ? ' active' : ''
+                          }${presetDeleteMode ? ' locked' : ''}`}
+                          title={
+                            presetDeleteMode
+                              ? custom
+                                ? t('quickPresetCustomTip')
+                                : t('quickPresetRemoveTip')
+                              : undefined
+                          }
+                          onClick={() => {
+                            if (presetDeleteMode) return; // 删除模式下芯片本体不可点，删除走 ×
+                            if (custom) {
+                              // 自定义服务商芯片：与侧边栏点击一致，直接进入编辑
+                              setActiveNav({ type: 'custom', id: custom.providerId });
+                              setEditing(toDraft(custom));
+                              setConnFeedback(null);
+                              setFetchMsg(null);
+                              return;
+                            }
+                            applyQuickPreset(preset);
+                          }}
+                        >
+                          <span className="quick-chip-name">{preset.name}</span>
+                          {preset.tag && (
+                            <span className="quick-chip-tag">
+                              {getPresetTagLabel(preset.tag, t)}
+                            </span>
+                          )}
+                        </button>
+                        {presetDeleteMode && (
+                          <button
+                            type="button"
+                            className="quick-chip-remove"
+                            title={custom ? t('quickPresetCustomTip') : t('quickPresetRemoveTip')}
+                            onClick={() => {
+                              if (custom) {
+                                removeProvider(custom);
+                              } else {
+                                setHiddenPresetIds((ids) =>
+                                  ids.includes(preset.id) ? ids : [...ids, preset.id],
+                                );
+                              }
+                            }}
+                          >
+                            <FiX />
+                          </button>
+                        )}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
 

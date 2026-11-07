@@ -90,6 +90,88 @@
   margin-left: 2px;
 }
 
+/* 快捷模板删除模式：标题行「删除/恢复」按钮 + 芯片右上角 × 徽标 */
+
+.quick-chips-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-chips-del,
+.quick-chips-restore {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.quick-chips-del:hover {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.quick-chips-del.on {
+  color: var(--red);
+  background: var(--red-soft);
+  border-color: var(--red);
+}
+
+.quick-chips-restore:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.quick-chip-box {
+  position: relative;
+  display: inline-flex;
+}
+
+.quick-chip.locked {
+  cursor: default;
+  opacity: 0.8;
+}
+
+.quick-chip.locked:hover {
+  background: var(--bg-elev2);
+  border-color: var(--border);
+  color: var(--text);
+  transform: none;
+}
+
+.quick-chip-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  font-size: 10px;
+  color: var(--text);
+  background: var(--bg-elev2);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.quick-chip-remove:hover {
+  color: #fff;
+  background: var(--red);
+  border-color: var(--red);
+}
+
 /* ------------------------------------------------------------ 2. Candidate Model Picker */
 
 .candidate-picker-backdrop {

@@ -1,12 +1,7 @@
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { VERSION } from "@earendil-works/pi-coding-agent";
-import { runtimeBaseCandidates } from "./dsh/preset-clones.js";
 import { killPidTree } from "./process-utils.js";
 import type { EngineStatus } from "./protocol.js";
-import { probeClaudeCode } from "./universal/drivers/claude-code.js";
-import { probeCodex } from "./universal/drivers/codex.js";
 import {
 	compareVersions,
 	defaultFetcher,
@@ -14,9 +9,9 @@ import {
 	NPM_DEFAULT_REGISTRY,
 	type LocalPackage,
 } from "./update-check.js";
-import { probeGlobalPackage } from "./global-loader.js";
 import { ENGINE_CATALOG, type BuiltinEngineId } from "./engine-catalog.js";
-import { probeEngineCliVersion } from "./engine-cli.js";
+
+// 重建决策（2026-11-08）：仅保留 pi 引擎；dsh / claude / codex / agy / durable 已剔除。
 
 export interface EnginePackageMeta {
 	id: string;
@@ -104,114 +99,9 @@ export function probePi(): EngineStatus {
 	return {
 		id: "pi",
 		installed: true,
-		packageName: ENGINE_PACKAGES.pi.packageName,
+		packageName: ENGINE_PACKAGES.pi?.packageName,
 		version: VERSION,
 	};
-}
-
-export async function probeDsh(force = false): Promise<EngineStatus> {
-	const pkgName = ENGINE_PACKAGES.dsh.packageName;
-
-	try {
-		const globalProbe = probeGlobalPackage(pkgName, { refresh: force });
-		if (globalProbe.installed) {
-			return { id: "dsh", installed: true, packageName: pkgName, version: globalProbe.version };
-		}
-	} catch {}
-
-	try {
-		for (const root of runtimeBaseCandidates()) {
-			if (!root) continue;
-			const dshPkgJson = join(root, "@deepseek-ai", "dsh", "package.json");
-			if (existsSync(dshPkgJson)) {
-				try {
-					const pkg = JSON.parse(readFileSync(dshPkgJson, "utf8")) as { version?: string };
-					return { id: "dsh", installed: true, packageName: pkgName, version: pkg.version };
-				} catch {
-					return { id: "dsh", installed: true, packageName: pkgName };
-				}
-			}
-
-			const flatBase = join(root, "@deepseek-ai", "dsh-base", "cordis.patch.yml");
-			const flatBoot = join(root, "@deepseek-ai", "dsh-app-boot", "lib", "index.js");
-			if (existsSync(flatBase) && existsSync(flatBoot)) {
-				return { id: "dsh", installed: true, packageName: pkgName };
-			}
-
-			const nestedBase = join(
-				root,
-				"@deepseek-ai",
-				"dsh",
-				"node_modules",
-				"@deepseek-ai",
-				"dsh-base",
-				"cordis.patch.yml",
-			);
-			const nestedBoot = join(
-				root,
-				"@deepseek-ai",
-				"dsh",
-				"node_modules",
-				"@deepseek-ai",
-				"dsh-app-boot",
-				"lib",
-				"index.js",
-			);
-			if (existsSync(nestedBase) && existsSync(nestedBoot)) {
-				return { id: "dsh", installed: true, packageName: pkgName };
-			}
-		}
-	} catch {}
-
-	const cliProbe = await probeEngineCliVersion("dsh");
-	if (cliProbe.available) return { id: "dsh", installed: true, packageName: pkgName, version: cliProbe.version };
-
-	return { id: "dsh", installed: false, packageName: pkgName };
-}
-
-export async function probeClaude(force = false): Promise<EngineStatus> {
-	const pkgName = ENGINE_PACKAGES.claude.packageName;
-	try {
-		const res = await probeClaudeCode();
-		if (res.installed) {
-			return {
-				id: "claude",
-				installed: true,
-				packageName: pkgName,
-				version: res.version,
-			};
-		}
-	} catch {}
-
-	try {
-		const globalProbe = probeGlobalPackage(pkgName, { refresh: force });
-		if (globalProbe.installed) {
-			return {
-				id: "claude",
-				installed: true,
-				packageName: pkgName,
-				version: globalProbe.version,
-			};
-		}
-	} catch {}
-
-	return { id: "claude", installed: false, packageName: pkgName };
-}
-
-export async function probeDurable(force = false): Promise<EngineStatus> {
-	const pkgName = ENGINE_PACKAGES.durable.packageName;
-	try {
-		const probe = probeGlobalPackage(pkgName, { refresh: force });
-		if (probe.installed) {
-			return {
-				id: "durable",
-				installed: true,
-				packageName: pkgName,
-				version: probe.version,
-			};
-		}
-	} catch {}
-	return { id: "durable", installed: false, packageName: pkgName };
 }
 
 export async function probeEngine(id: string, force = false): Promise<EngineStatus> {
@@ -222,22 +112,8 @@ export async function probeEngine(id: string, force = false): Promise<EngineStat
 	let result: EngineStatus;
 	if (id === "pi") {
 		result = probePi();
-	} else if (id === "dsh") {
-		result = await probeDsh(force);
-	} else if (id === "claude") {
-		result = await probeClaude(force);
-	} else if (id === "codex") {
-		const probe = await probeCodex();
-		result = {
-			id: "codex",
-			installed: probe.available,
-			version: probe.version,
-			packageName: ENGINE_PACKAGES.codex.packageName,
-		};
-	} else if (id === "durable") {
-		result = await probeDurable(force);
 	} else {
-		result = { id: id as any, installed: false };
+		result = { id: id as never, installed: false };
 	}
 	await enrichWithUpdateInfo(result, force);
 	const updatedEntry: EngineEntry = {
@@ -275,97 +151,12 @@ export function isEngineUninstalling(engineId: string): boolean {
 
 export async function uninstallEngineBackground(
 	engineId: string,
-	options?: { timeoutMs?: number },
+	_options?: { timeoutMs?: number },
 ): Promise<{ ok: boolean; error?: string; output?: string }> {
 	if (engineId === "pi") {
 		return { ok: false, error: "Pi 为内置核心引擎，不支持卸载" };
 	}
-	const meta = ENGINE_PACKAGES[engineId];
-	if (!meta || !meta.packageName) {
-		return { ok: false, error: `不支持或未知的引擎「${engineId}」` };
-	}
-	const currentEntry = engineRegistry.get(engineId);
-	if (currentEntry?.uninstalling) {
-		return { ok: false, error: `引擎「${engineId}」正在后台卸载中，请勿重复操作` };
-	}
-	if (currentEntry?.updating) {
-		return { ok: false, error: `引擎「${engineId}」正在后台更新中，请稍候再试` };
-	}
-
-	if (currentEntry) currentEntry.uninstalling = true;
-	const pkg = meta.packageName;
-	const timeoutMs = Math.max(10_000, Number(options?.timeoutMs ?? 180_000));
-	const isWin = process.platform === "win32";
-	const spawnCmd = isWin ? process.env.ComSpec || "cmd.exe" : "npm";
-	const spawnArgs = isWin ? ["/d", "/s", "/c", "npm", "uninstall", "-g", pkg] : ["uninstall", "-g", pkg];
-
-	try {
-		const child = spawn(spawnCmd, spawnArgs, {
-			windowsHide: true,
-			detached: !isWin,
-			stdio: ["ignore", "pipe", "pipe"],
-			env: {
-				...process.env,
-				NO_COLOR: "1",
-			},
-		});
-
-		let out = "";
-		const appendOut = (chunk: Buffer | string) => {
-			out = (out + chunk.toString()).slice(-8000);
-		};
-		child.stdout?.on("data", appendOut);
-		child.stderr?.on("data", appendOut);
-
-		const res = await new Promise<{ ok: boolean; code: number | null; error?: string }>((resolve) => {
-			let done = false;
-			const timer = setTimeout(() => {
-				if (done) return;
-				done = true;
-				if (child.pid) void killPidTree(child.pid);
-				resolve({ ok: false, code: null, error: `卸载超时（超过 ${Math.round(timeoutMs / 1000)} 秒）` });
-			}, timeoutMs);
-
-			child.on("error", (err) => {
-				if (done) return;
-				done = true;
-				clearTimeout(timer);
-				resolve({ ok: false, code: null, error: err.message });
-			});
-
-			child.on("close", (code) => {
-				if (done) return;
-				done = true;
-				clearTimeout(timer);
-				resolve({
-					ok: code === 0,
-					code,
-					error: code === 0 ? undefined : `npm 退出码 ${code}`,
-				});
-			});
-		});
-
-		if (res.ok) {
-			registryCache.delete(pkg);
-			try {
-				await probeAllEngines(true);
-			} catch {}
-		}
-
-		return {
-			ok: res.ok,
-			error: res.error,
-			output: out.trim(),
-		};
-	} catch (err) {
-		return {
-			ok: false,
-			error: (err as Error).message,
-		};
-	} finally {
-		const finalEntry = engineRegistry.get(engineId);
-		if (finalEntry) finalEntry.uninstalling = false;
-	}
+	return { ok: false, error: `不支持或未知的引擎「${engineId}」` };
 }
 
 export async function updateEngineBackground(
@@ -458,18 +249,8 @@ export async function updateEngineBackground(
 }
 
 export function collectInstalledEngineTargets(): LocalPackage[] {
-	const out: LocalPackage[] = [];
-	for (const entry of engineRegistry.values()) {
-		const status = entry.status;
-		if (status.id !== "pi" && status.installed && status.packageName && status.version) {
-			out.push({
-				name: status.packageName,
-				version: status.version,
-				kind: "engine",
-			});
-		}
-	}
-	return out;
+	// 仅 pi 引擎时没有需要随包检查的外部引擎依赖。
+	return [];
 }
 
 void probeAllEngines(true).catch(() => {});

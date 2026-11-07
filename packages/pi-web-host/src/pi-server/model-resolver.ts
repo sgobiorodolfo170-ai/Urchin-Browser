@@ -261,24 +261,6 @@ export function isProtocolSupportedByEngine(
 		return true;
 	}
 
-	if (normEngine === "dsh") {
-		return protocol === "openai-completions" || protocol === "openai-responses";
-	}
-
-	if (normEngine === "claude") {
-		return protocol === "anthropic-messages";
-	}
-
-	if (normEngine === "durable") {
-		return (
-			protocol === "openai-completions" ||
-			protocol === "openai-responses" ||
-			protocol === "anthropic-messages" ||
-			protocol === "google-generative-ai" ||
-			protocol === "google-vertex"
-		);
-	}
-
 	return true;
 }
 

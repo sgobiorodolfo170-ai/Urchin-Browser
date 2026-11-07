@@ -1553,7 +1553,7 @@ export class ClientStateStore {
 
 	getClientEngine(clientId: string): EngineId | undefined {
 		const eng = this.load()[clientId]?.engine;
-		return eng === "dsh" || eng === "pi" || eng === "codex" || eng === "claude" || eng === "durable" ? eng : undefined;
+		return eng === "pi" ? eng : undefined;
 	}
 
 	saveClientEngine(clientId: string, engine: EngineId): void {
@@ -1566,7 +1566,7 @@ export class ClientStateStore {
 
 	getDefaultEngine(): EngineId | undefined {
 		const eng = this.load()[ClientStateStore.GLOBAL_SETTINGS_KEY]?.defaultEngine;
-		return eng === "dsh" || eng === "pi" || eng === "codex" || eng === "claude" || eng === "durable" ? eng : undefined;
+		return eng === "pi" ? eng : undefined;
 	}
 
 	saveDefaultEngine(engine: EngineId): void {

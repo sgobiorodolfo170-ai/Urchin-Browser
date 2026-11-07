@@ -561,17 +561,7 @@ registerQuickAskRoutes(app, {
 
 const EXPLICIT_ENGINE_ARG = cliFlag("--engine") ?? process.env.PI_WEB_ENGINE;
 let currentDefaultEngine: EngineId =
-	EXPLICIT_ENGINE_ARG === "codex"
-		? "codex"
-		: EXPLICIT_ENGINE_ARG === "durable"
-			? "durable"
-			: EXPLICIT_ENGINE_ARG === "claude"
-				? "claude"
-				: EXPLICIT_ENGINE_ARG === "dsh"
-					? "dsh"
-					: EXPLICIT_ENGINE_ARG === "pi"
-						? "pi"
-						: (sharedStateStore.getDefaultEngine() ?? "pi");
+	EXPLICIT_ENGINE_ARG === "pi" ? "pi" : (sharedStateStore.getDefaultEngine() ?? "pi");
 const clientEngines = new Map<string, EngineId>();
 
 function resolveClientEngine(clientId: string): EngineId {
@@ -1278,9 +1268,7 @@ const heartbeatTimer = setInterval(() => {
 }, HEARTBEAT_INTERVAL_MS);
 heartbeatTimer.unref?.();
 
-import { DshAgentService } from "./dsh/dsh-agent-service.js";
-import { UniversalAgentService, ClaudeCodeDriver, probeClaudeCode, CodexDriver } from "./universal/index.js";
-import { DurableAgentService } from "./durable/index.js";
+// 重建决策（2026-11-08）：仅保留 pi 引擎；dsh / durable / universal(claude,codex) 已剔除。
 import {
 	probeAllEngines,
 	probeEngine,
@@ -1738,10 +1726,6 @@ export interface EngineService {
 }
 
 let piServiceInstance: AgentService | null = null;
-let dshServiceInstance: DshAgentService | null = null;
-let claudeServiceInstance: UniversalAgentService | null = null;
-let codexServiceInstance: UniversalAgentService | null = null;
-let durableServiceInstance: DurableAgentService | null = null;
 let wireEngineHooks: ((svc: EngineService) => void) | null = null;
 let sharedSocketCount = 0;
 let sharedQuiesced = false;
@@ -1749,68 +1733,11 @@ let sharedQuiesced = false;
 function activeEngines(): EngineService[] {
 	const list: EngineService[] = [];
 	if (piServiceInstance) list.push(piServiceInstance);
-	if (dshServiceInstance) list.push(dshServiceInstance);
-	if (claudeServiceInstance) list.push(claudeServiceInstance);
-	if (codexServiceInstance) list.push(codexServiceInstance);
-	if (durableServiceInstance) list.push(durableServiceInstance);
 	return list;
 }
 
-function ensureEngine(engine: EngineId): EngineService {
-	if (engine === "codex") {
-		if (!codexServiceInstance) {
-			codexServiceInstance = new UniversalAgentService({
-				cwd: CWD,
-				dataDir: DATA_DIR,
-				agentDir: getAgentDir(),
-				stateStore: sharedStateStore,
-				engine: "codex",
-				driverFactory: (cwd) => new CodexDriver(cwd),
-			});
-			for (let i = 0; i < sharedSocketCount; i++) codexServiceInstance.noteSocketOpen();
-			if (sharedQuiesced) codexServiceInstance.quiesce();
-			wireEngineHooks?.(codexServiceInstance);
-		}
-		return codexServiceInstance;
-	}
-	if (engine === "durable") {
-		if (!durableServiceInstance) {
-			durableServiceInstance = new DurableAgentService({
-				cwd: CWD,
-				dataDir: DATA_DIR,
-				agentDir: getAgentDir(),
-				stateStore: sharedStateStore,
-			});
-			for (let i = 0; i < sharedSocketCount; i++) durableServiceInstance.noteSocketOpen();
-			if (sharedQuiesced) durableServiceInstance.quiesce();
-			wireEngineHooks?.(durableServiceInstance);
-		}
-		return durableServiceInstance;
-	}
-	if (engine === "claude") {
-		if (!claudeServiceInstance) {
-			claudeServiceInstance = new UniversalAgentService({
-				cwd: CWD,
-				dataDir: DATA_DIR,
-				agentDir: getAgentDir(),
-				stateStore: sharedStateStore,
-				driverFactory: (cwd) => new ClaudeCodeDriver(cwd, { agentDir: getAgentDir() }),
-			});
-			for (let i = 0; i < sharedSocketCount; i++) claudeServiceInstance.noteSocketOpen();
-			if (sharedQuiesced) claudeServiceInstance.quiesce();
-			wireEngineHooks?.(claudeServiceInstance);
-		}
-		return claudeServiceInstance;
-	}
-	if (engine === "dsh") {
-		if (!dshServiceInstance) {
-			dshServiceInstance = new DshAgentService(CWD, sharedStateStore, DATA_DIR, getAgentDir());
-			for (let i = 0; i < sharedSocketCount; i++) dshServiceInstance.noteSocketOpen();
-			if (sharedQuiesced) dshServiceInstance.quiesce();
-			wireEngineHooks?.(dshServiceInstance);
-		}
-		return dshServiceInstance;
-	}
+// 重建决策（2026-11-08）：仅保留 pi 引擎，engine 参数保留以兼容既有调用点。
+function ensureEngine(_engine: EngineId): EngineService {
 	if (!piServiceInstance) {
 		piServiceInstance = new AgentService(CWD, sharedStateStore);
 		for (let i = 0; i < sharedSocketCount; i++) piServiceInstance.noteSocketOpen();
@@ -2634,18 +2561,7 @@ wss.on("connection", (ws) => {
 	};
 
 	const handleSwitchEngine = async (msg: Extract<ClientMessage, { type: "switch_engine" }>): Promise<void> => {
-		const targetEngine: EngineId | null =
-			msg.engine === "codex"
-				? "codex"
-				: msg.engine === "durable"
-					? "durable"
-					: msg.engine === "claude"
-						? "claude"
-						: msg.engine === "dsh"
-							? "dsh"
-							: msg.engine === "pi"
-								? "pi"
-								: null;
+		const targetEngine: EngineId | null = msg.engine === "pi" ? "pi" : null;
 		if (!targetEngine) {
 			send({
 				type: "notice",
@@ -2714,35 +2630,11 @@ wss.on("connection", (ws) => {
 					.catch(() => {});
 				attachDone = true;
 				for (const m of pending.drain()) dispatch(m);
-				if (targetEngine === "claude") {
-					void probeClaudeCode().then((probe) => {
-						if (!probe.installed) {
-							newCs.emitNotice(
-								"warning",
-								"已热切换至 Claude Code 引擎。检测到未安装 Claude Code CLI，请在终端执行 npm i -g @anthropic-ai/claude-code 安装并运行 claude 完成登录。",
-								"Switched to Claude Code engine. Claude Code CLI not found; run: npm i -g @anthropic-ai/claude-code and log in with claude.",
-							);
-						} else {
-							newCs.emitNotice(
-								"info",
-								"已热切换至 Claude Code 引擎（已连接本地 CLI 登录态，无需在页面配置 API Key）",
-								"Switched to Claude Code engine (connected to local CLI login session, no API Key needed)",
-							);
-						}
-					});
-				} else if (targetEngine === "dsh") {
-					newCs.emitNotice(
-						"info",
-						"已热切换至 DSH 引擎（其他引擎后台会话保持运行，可随时切回）",
-						"Switched to DSH engine in-place (other background conversations keep running)",
-					);
-				} else {
-					newCs.emitNotice(
-						"info",
-						"已热切换至 pi 引擎（其他引擎后台会话保持运行，可随时切回）",
-						"Switched to pi engine in-place (other background conversations keep running)",
-					);
-				}
+				newCs.emitNotice(
+					"info",
+					"已热切换至 pi 引擎（其他引擎后台会话保持运行，可随时切回）",
+					"Switched to pi engine in-place (other background conversations keep running)",
+				);
 			})
 			.catch((err: unknown) => {
 				setClientEngine(cid, prevEngine);

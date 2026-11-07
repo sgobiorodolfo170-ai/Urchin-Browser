@@ -7,5 +7,5 @@
     "noUncheckedIndexedAccess": false
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "src/pi-server", "src/browser"]
 }

@@ -8,11 +8,17 @@
 const isConfigFile = (f) => /\.config\.(ts|js)$/.test(f) || f.endsWith('.lintstagedrc.js');
 // vendor 内置第三方代码：不参与本项目的 eslint/prettier 质量门禁
 const isVendorFile = (f) => f.startsWith('vendor') || f.includes('/vendor/');
+// pi-web-host 并入的上游 pi-web-ui 源码（与 apps/pi-web 同源）：同样豁免
+const isUpstreamPiFile = (f) =>
+  f.includes('apps/pi-web/') ||
+  f.includes('packages/pi-web-host/src/pi-server/') ||
+  f.includes('packages/pi-web-host/src/browser/');
+const isExcludedFromLint = (f) => isVendorFile(f) || isUpstreamPiFile(f);
 
 export default {
   '*.{ts,tsx}': (files) => {
-    const eslintTargets = files.filter((f) => !isConfigFile(f) && !isVendorFile(f));
-    const prettierTargets = files.filter((f) => !isVendorFile(f));
+    const eslintTargets = files.filter((f) => !isConfigFile(f) && !isExcludedFromLint(f));
+    const prettierTargets = files.filter((f) => !isExcludedFromLint(f));
     const tasks = [];
     if (eslintTargets.length > 0) {
       tasks.push(`eslint --fix ${eslintTargets.join(' ')}`);

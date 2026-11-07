@@ -1,125 +1,225 @@
-import type { CanvasEdge, CanvasGraph, CanvasNode, CanvasNodeRole } from '../../types';
-import { ROLE_METAS } from './CanvasTypes';
+import type { CanvasEdge, CanvasGraph, CanvasNode, CanvasNodeRole } from "../../types";
+import type { Translate } from "../../i18n";
+import { getRoleMetas, getInPortDefs, outPortsForRole, isRoleImplemented } from "./CanvasTypes";
+const ROLE_METAS = getRoleMetas((key) => key);
+const IN_PORT_DEFS = getInPortDefs((key) => key);
 
-const VALID_ROLES = new Set(Object.keys(ROLE_METAS));
-
-/** 从助手文本中提取 ```canvas-dag JSON 块 */
 export function extractDagJson(text: string): string | null {
-  const m = text.match(/```canvas-dag\s*([\s\S]*?)```/);
-  return m ? m[1].trim() : null;
+	return text.match(/```canvas-dag\s*([\s\S]*?)```/)?.[1].trim() ?? null;
 }
-
-interface ParsedDag {
-  nodes: { title: string; role: CanvasNodeRole; instruction?: string }[];
-  edges: { from: number; to: number }[];
+export interface ParsedDag {
+	nodes: {
+		title: string;
+		role: CanvasNodeRole;
+		instruction?: string;
+		cwd?: string;
+		config?: Record<string, string | number | boolean>;
+	}[];
+	edges: {
+		from: number;
+		to: number;
+		type?: CanvasEdge["type"];
+		sourcePort?: string;
+		targetPort?: string;
+		label?: string;
+	}[];
 }
-
-/** 校验 LLM 返回的 DAG（白名单角色 + 下标边 + 环检测），非法直接抛错 */
-export function parseDagJson(raw: string): ParsedDag {
-  const data = JSON.parse(raw) as Partial<ParsedDag>;
-  if (!data || !Array.isArray(data.nodes) || data.nodes.length === 0 || data.nodes.length > 20) {
-    throw new Error('nodes 非法（需 1-20 个）');
-  }
-  for (const n of data.nodes) {
-    if (!n || typeof n.title !== 'string' || !VALID_ROLES.has(n.role)) {
-      throw new Error(`非法节点 role: ${(n as { role?: string })?.role}`);
-    }
-  }
-  const edges = Array.isArray(data.edges) ? data.edges : [];
-  for (const e of edges) {
-    if (
-      !Number.isInteger(e.from) ||
-      !Number.isInteger(e.to) ||
-      e.from < 0 ||
-      e.to < 0 ||
-      e.from >= data.nodes.length ||
-      e.to >= data.nodes.length ||
-      e.from === e.to
-    ) {
-      throw new Error('非法边下标');
-    }
-  }
-  // 环检测（DFS）
-  const adj: number[][] = data.nodes.map(() => []);
-  edges.forEach((e) => adj[e.from].push(e.to));
-  const color = new Array(data.nodes.length).fill(0);
-  const dfs = (u: number): boolean => {
-    color[u] = 1;
-    for (const v of adj[u]) {
-      if (color[v] === 1) return true;
-      if (color[v] === 0 && dfs(v)) return true;
-    }
-    color[u] = 2;
-    return false;
-  };
-  for (let i = 0; i < data.nodes.length; i++) {
-    if (color[i] === 0 && dfs(i)) throw new Error('DAG 含环，拒绝落图');
-  }
-  return { nodes: data.nodes, edges };
+const types = new Set([
+	"handoff",
+	"review",
+	"parallel",
+	"loop_back",
+	"condition_true",
+	"condition_false",
+	"approve",
+	"reject",
+]);
+function object(value: unknown): value is Record<string, unknown> {
+	return !!value && typeof value === "object" && !Array.isArray(value);
 }
-
-/** 把校验过的 DAG 展开为 CanvasGraph（缺边时链式补边 + 自动布局坐标后续由调用方处理） */
+function keys(value: Record<string, unknown>, allowed: string[], t: Translate) {
+	if (Object.keys(value).some((k) => !allowed.includes(k))) throw new Error(t("canvas.dag.unknownField"));
+}
+function optionalText(value: unknown, max: number, t: Translate) {
+	if (value !== undefined && (typeof value !== "string" || value.length > max))
+		throw new Error(t("canvas.dag.invalidText"));
+}
+/** Validate the complete wire-independent DAG before constructing any graph. */
+export function parseDagJson(raw: string, maxNodes = 20, maxEdges = 200, t: Translate = (key) => key): ParsedDag {
+	if (
+		!Number.isInteger(maxNodes) ||
+		maxNodes < 1 ||
+		maxNodes > 200 ||
+		!Number.isInteger(maxEdges) ||
+		maxEdges < 0 ||
+		maxEdges > 1000
+	)
+		throw new Error(t("canvas.dag.invalidLimits"));
+	if (raw.length > (maxNodes > 20 ? 2_000_000 : 200_000)) throw new Error(t("canvas.dag.tooLarge"));
+	let data: unknown;
+	try {
+		data = JSON.parse(raw);
+	} catch {
+		throw new Error(t("canvas.dag.invalidJson"));
+	}
+	if (!object(data)) throw new Error(t("canvas.dag.invalidDag"));
+	keys(data, ["nodes", "edges"], t);
+	if (
+		!Array.isArray(data.nodes) ||
+		!data.nodes.length ||
+		data.nodes.length > maxNodes ||
+		!Array.isArray(data.edges) ||
+		data.edges.length > maxEdges
+	)
+		throw new Error(t("canvas.dag.invalidNodesOrEdges"));
+	for (const n of data.nodes) {
+		if (!object(n)) throw new Error(t("canvas.dag.invalidNode"));
+		keys(n, ["title", "role", "instruction", "cwd", "config"], t);
+		if (
+			typeof n.title !== "string" ||
+			!n.title.trim() ||
+			n.title.length > 200 ||
+			typeof n.role !== "string" ||
+			!Object.hasOwn(ROLE_METAS, n.role) ||
+			!isRoleImplemented(n.role as CanvasNodeRole)
+		)
+			throw new Error(t("canvas.dag.invalidRoleOrTitle"));
+		optionalText(n.instruction, 32000, t);
+		optionalText(n.cwd, 4096, t);
+		if (n.config !== undefined) {
+			if (!object(n.config) || Object.keys(n.config).length > 20) throw new Error(t("canvas.dag.invalidConfig"));
+			for (const [k, v] of Object.entries(n.config))
+				if (
+					!k ||
+					k.length > 100 ||
+					["__proto__", "constructor", "prototype"].includes(k) ||
+					!(
+						typeof v === "boolean" ||
+						(typeof v === "number" && Number.isFinite(v)) ||
+						(typeof v === "string" && v.length <= 32000)
+					)
+				)
+					throw new Error(t("canvas.dag.invalidConfigValue"));
+		}
+	}
+	const seen = new Set<string>();
+	const adj: number[][] = data.nodes.map(() => []);
+	for (const e of data.edges) {
+		if (!object(e)) throw new Error(t("canvas.dag.invalidEdge"));
+		keys(e, ["from", "to", "type", "sourcePort", "targetPort", "label"], t);
+		if (
+			!Number.isInteger(e.from) ||
+			!Number.isInteger(e.to) ||
+			(e.from as number) < 0 ||
+			(e.to as number) < 0 ||
+			(e.from as number) >= data.nodes.length ||
+			(e.to as number) >= data.nodes.length ||
+			e.from === e.to
+		)
+			throw new Error(t("canvas.dag.invalidEdgeIndex"));
+		if (e.type !== undefined && !types.has(e.type as string)) throw new Error(t("canvas.dag.invalidEdgeType"));
+		if (
+			(e.type === "condition_true" || e.type === "condition_false") &&
+			!["condition", "ai_judge"].includes(data.nodes[e.from as number].role)
+		)
+			throw new Error(t("canvas.dag.branchRoleRequired"));
+		if (
+			(e.type === "approve" || e.type === "reject") &&
+			!["human", "reviewer", "evaluator"].includes(data.nodes[e.from as number].role)
+		)
+			throw new Error(t("canvas.dag.reviewRoleRequired"));
+		const role = data.nodes[e.from as number].role as CanvasNodeRole;
+		if (e.sourcePort !== undefined && !outPortsForRole(role).some((p) => p.key === e.sourcePort))
+			throw new Error(t("canvas.dag.invalidSourcePort"));
+		if (e.targetPort !== undefined && !IN_PORT_DEFS.some((p) => p.key === e.targetPort))
+			throw new Error(t("canvas.dag.invalidTargetPort"));
+		const implied: Record<string, string> = {
+			true: "condition_true",
+			false: "condition_false",
+			approve: "approve",
+			reject: "reject",
+		};
+		if (
+			e.sourcePort &&
+			implied[e.sourcePort as string] &&
+			e.type !== undefined &&
+			e.type !== implied[e.sourcePort as string]
+		)
+			throw new Error(t("canvas.dag.portTypeMismatch"));
+		optionalText(e.label, 200, t);
+		const key = JSON.stringify([e.from, e.to, e.sourcePort ?? "result", e.targetPort ?? "contract"]);
+		if (seen.has(key)) throw new Error(t("canvas.dag.duplicateEdge"));
+		seen.add(key);
+		adj[e.from as number].push(e.to as number);
+	}
+	const color = Array(data.nodes.length).fill(0);
+	function visit(i: number) {
+		if (color[i] === 1) throw new Error(t("canvas.dag.cycle"));
+		if (color[i] === 2) return;
+		color[i] = 1;
+		adj[i].forEach(visit);
+		color[i] = 2;
+	}
+	adj.forEach((_, i) => visit(i));
+	return data as unknown as ParsedDag;
+}
 export function dagToGraph(
-  parsed: ParsedDag,
-  name: string,
-  defaultModel: string,
-  layout: (nodes: CanvasNode[], edges: CanvasEdge[]) => CanvasNode[],
-  defaultCwd = '.',
+	parsed: ParsedDag,
+	name: string,
+	defaultModel: string,
+	layout: (nodes: CanvasNode[], edges: CanvasEdge[]) => CanvasNode[],
+	defaultCwd = ".",
+	t: Translate = (key) => key,
 ): CanvasGraph {
-  const now = Date.now();
-  const nodes: CanvasNode[] = parsed.nodes.map((n, i) => ({
-    id: `n_${now}_${i}_${Math.random().toString(36).slice(2, 6)}`,
-    title: n.title.slice(0, 24),
-    role: n.role,
-    x: 80,
-    y: 80 + i * 100,
-    width: 300,
-    engine: 'pi',
-    model: defaultModel,
-    cwd:
-      typeof (n as { cwd?: unknown }).cwd === 'string' && ((n as { cwd?: string }).cwd as string)
-        ? ((n as { cwd?: string }).cwd as string)
-        : defaultCwd,
-    useWorktree: false,
-    status: 'idle',
-    ...(n.instruction ? { instruction: n.instruction } : {}),
-  }));
-  let edges: CanvasEdge[] = parsed.edges.map((e, i) => ({
-    id: `e_${now}_${i}`,
-    sourceNodeId: nodes[e.from].id,
-    targetNodeId: nodes[e.to].id,
-    type: 'handoff' as const,
-  }));
-  if (edges.length === 0 && nodes.length > 1) {
-    edges = nodes.slice(1).map((n, i) => ({
-      id: `e_${now}_chain_${i}`,
-      sourceNodeId: nodes[i].id,
-      targetNodeId: n.id,
-      type: 'handoff' as const,
-    }));
-  }
-  const laid = layout(nodes, edges);
-  return {
-    id: `graph_${now}_${Math.random().toString(36).slice(2, 6)}`,
-    name: name.slice(0, 24) || 'AI 智能流水线',
-    viewport: { x: 60, y: 60, zoom: 1 },
-    nodes: laid,
-    edges,
-    status: 'idle',
-    executionMode: 'real',
-    createdAt: now,
-    updatedAt: now,
-  };
+	parsed = parseDagJson(JSON.stringify(parsed), 20, 200, t);
+	const now = Date.now();
+	const id = `graph_${now}_${Math.random().toString(36).slice(2, 8)}`;
+	const nodes: CanvasNode[] = parsed.nodes.map((n, i) => ({
+		...n,
+		id: `${id}_n${i}`,
+		x: 80,
+		y: 80 + i * 100,
+		width: 300,
+		engine: "pi",
+		model: defaultModel,
+		cwd: n.cwd || defaultCwd,
+		useWorktree: false,
+		status: "idle",
+	}));
+	const implied: Record<string, CanvasEdge["type"]> = {
+		true: "condition_true",
+		false: "condition_false",
+		approve: "approve",
+		reject: "reject",
+	};
+	const edges: CanvasEdge[] = parsed.edges.map((e, i) => ({
+		id: `${id}_e${i}`,
+		sourceNodeId: nodes[e.from].id,
+		targetNodeId: nodes[e.to].id,
+		type: e.type ?? implied[e.sourcePort ?? ""] ?? "handoff",
+		...(e.sourcePort ? { sourcePort: e.sourcePort } : {}),
+		...(e.targetPort ? { targetPort: e.targetPort } : {}),
+		...(e.label ? { label: e.label } : {}),
+	}));
+	return {
+		id,
+		name: name.trim() || t("canvas.defaults.aiWorkflow"),
+		viewport: { x: 60, y: 60, zoom: 1 },
+		nodes: layout(nodes, edges),
+		edges,
+		status: "idle",
+		executionMode: "real",
+		createdAt: now,
+		updatedAt: now,
+	};
 }
-
-/** 发给对话 LLM 的生成指令（含可用角色表 + 输出 schema 约束） */
 export function buildSmartPrompt(userAsk: string): string {
-  const roles = Object.keys(ROLE_METAS).join(', ');
-  return [
-    '【画布工作流生成】请把下面的需求拆成工作流节点，只输出一个 ```canvas-dag JSON 块，不要其他解释。',
-    `可用 role（必须严格使用）：${roles}。`,
-    '常用：researcher 调研 / planner 规划 / architect 架构 / coder 编码 / tester 测试 / reviewer 审查 / writer 文档 / human 人工审批 / condition 条件分支 / loop 循环 / merge 汇总 / trigger 开始 / end 结束。',
-    'JSON 格式：{"nodes":[{"title":"步骤名","role":"coder","instruction":"给该节点的执行指令"}],"edges":[{"from":0,"to":1}]}，nodes 1-12 个，edges 下标引用 nodes，禁止成环。',
-    `需求：${userAsk}`,
-  ].join('\n');
+	return [
+		"Generate a workflow as one ```canvas-dag JSON block. No cycles. Use reliable sequential handoffs and explicit human acceptance; shared cwd, no automatic isolation/integration guarantees.",
+		`Allowed roles: ${Object.keys(ROLE_METAS)
+			.filter((r) => isRoleImplemented(r as CanvasNodeRole))
+			.join(", ")}.`,
+		'Schema: {"nodes":[{"title":"Step","role":"coder","instruction":"Task","config":{}}],"edges":[{"from":0,"to":1,"type":"handoff","sourcePort":"result","targetPort":"contract"}]}. 1-20 nodes. Config values must be strings, finite numbers or booleans. Omit optional fields when unused. Branch ports true/false require condition_true/condition_false; approve/reject use matching types. Empty edges means disconnected nodes.',
+		`Request: ${userAsk}`,
+	].join("\n");
 }

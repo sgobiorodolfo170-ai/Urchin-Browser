@@ -13,6 +13,11 @@ LICENSE
 release-*/
 vendor/
 
+# pi-web 上游并入代码（MIT）：保持与 pi-web-ui 0.118.0 同源格式，便于逐版本对照升级
+apps/pi-web/
+packages/pi-web-host/src/pi-server/
+packages/pi-web-host/src/browser/
+
 
 # AOCI 工具托管状态（JSON 结构由 aoci 生成，不参与格式化）
 .aoci/

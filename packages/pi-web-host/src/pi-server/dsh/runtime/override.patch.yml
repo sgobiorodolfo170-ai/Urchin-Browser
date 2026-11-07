@@ -1,0 +1,60 @@
+# !!js 表达式由 Cordis Loader 在挂载时求值（boot 暴露 dshHomePath，process.env
+
+- id: session-persistence-jsonl
+  name: "@deepseek-ai/dsh-session-persistence-jsonl"
+  config:
+    root: !!js process.env.DSH_SESSION_ROOT ?? dshHomePath('sessions')
+
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: !!js process.env.DSH_DEFAULT_PROVIDER ?? 'deepseek-official'
+    model: !!js process.env.DSH_DEFAULT_MODEL ?? 'deepseek-v4-flash'
+
+- id: system-prompt
+  name: "@deepseek-ai/dsh-system-prompt"
+  config:
+    personaPrefix: !!js process.env.DSH_PERSONA ?? ''
+
+- id: sandbox-policy
+  name: "@deepseek-ai/dsh-sandbox-policy"
+  config:
+    mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
+    workspaceRoot: !!js process.env.DSH_CWD ?? process.cwd()
+
+- id: approval
+  name: "@deepseek-ai/dsh-user-approval"
+  config:
+    policy: "never"
+
+- id: permission
+  name: "@deepseek-ai/dsh-permission-presets"
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      workspace-write-never:
+        sandbox: workspace-write
+        approval: never
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+    defaultPreset: workspace-write-never
+
+- insert:
+    - id: pi-webui-custom-prompt
+      name: ./custom-prompt.mjs
+    - id: code-runtime
+      name: "@deepseek-ai/dsh-code-runtime-worker-thread"
+    - id: subagent-model-selection-settings
+      name: "@deepseek-ai/dsh-tool-subagent/model-selection-settings"
+    - id: cordis-host-runner
+      name: "@deepseek-ai/dsh-cordis-host-runner"
+    - id: tool-ask-user
+      name: "@deepseek-ai/dsh-tool-ask-user"
+    - id: sdk-jsonrpc
+      name: !!js process.env.PI_WEB_DSH_JSONRPC_ENTRY

@@ -1,5 +1,7 @@
 # pi 阶段 2 后端对接实施清单（跨会话交接文档）
 
+> **2026-11-08 重建决定（覆盖本文下方旧现状）**：pi-web 前端与后端进入重建周期。上游对照库为 `G:\pj\github\pi-web-ui`（0.118.0）；`apps/pi-web/{src,server}` 全量清空后从上游重新复制并裁剪，仓库内不再保留 `apps/pi-web/server/` 快照。后端仍以 `packages/pi-web-host` 为壳（utilityProcess + token），业务层按上游 `server/` 的 pi 引擎子集并入。本文下方「本会话已完成的工作 / 架构现状」为重建前历史记录，仅作参考；最新进度以 [pi-web-重建台账](./pi-web-重建台账.md) 为准。
+
 > 创建：2026-10-29 · 本会话（glm-5.2 Loop 1-11）的完整上下文压缩 + 后续批次实施清单
 > 关联：ADR-013、docs/pi-web-评估.md 阶段 2、host-bridge.ts、packages/pi-web-host/
 >

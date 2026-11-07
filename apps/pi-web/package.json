@@ -1,8 +1,8 @@
 {
   "name": "@urchin/pi-web",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "pi 阶段 2 自研前端（Vite + React 19）：全量继承 pi-web-ui 组件 + Urchin pi-web-host WS 协议适配",
+  "description": "pi 阶段 2 前端（Vite + React 19）：从上游 pi-web-ui 0.118.0 复制后按 pi 引擎裁剪",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,8 +15,11 @@
     "@xterm/xterm": "^6.0.0",
     "highlight.js": "^11.12.0",
     "html-to-image": "^1.11.13",
-    "katex": "^0.18.7",
+    "katex": "^0.16.47",
+    "mdast-util-from-markdown": "^2.0.2",
+    "mdast-util-math": "^3.0.0",
     "mermaid": "^12.2.0",
+    "micromark-util-types": "^2.0.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-icons": "^5.7.0",
@@ -28,6 +31,8 @@
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5",
     "vis-timeline": "^8.5.6"
   },
   "devDependencies": {

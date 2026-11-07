@@ -1,0 +1,200 @@
+import type { Bot, Room, RoomMessage } from "./store.js";
+
+export const GROUP_RETENTION_LIMIT = 500;
+export const GROUP_CONTEXT_BYTES = 24 * 1024;
+const PAGE_BYTES = 24 * 1024;
+
+export interface GroupHistoryMessage {
+	id: string;
+	text: string;
+	sender: { type: "human" | "bot" | "webhook" | "router"; id: string; name: string };
+	createdAt: number;
+	targetBotIds?: string[];
+	replyToMessageId?: string;
+	textStart: number;
+	textEnd: number;
+	fullTextLength: number;
+}
+export interface GroupHistoryPage {
+	roomId: string;
+	messages: GroupHistoryMessage[];
+	nextBefore: string | null;
+	truncated: boolean;
+	retentionLimit: number;
+}
+export interface GroupTaskContext extends GroupHistoryPage {
+	roomName: string;
+	primaryBotId?: string;
+	members: { id: string; name: string }[];
+	throughMessageId: string | null;
+	blackboard?: import("./store.js").GroupBlackboard;
+}
+
+function project(message: RoomMessage, start = 0, end = message.text.length): GroupHistoryMessage {
+	return {
+		id: message.id,
+		text: message.text.slice(start, end),
+		sender: { type: message.sender.type, id: message.sender.id, name: message.sender.name },
+		createdAt: message.createdAt,
+		...(message.targetBotIds ? { targetBotIds: message.targetBotIds } : {}),
+		...(message.replyToMessageId ? { replyToMessageId: message.replyToMessageId } : {}),
+		textStart: start,
+		textEnd: end,
+		fullTextLength: message.text.length,
+	};
+}
+function cursor(roomId: string, id: string, end: number): string {
+	return Buffer.from(JSON.stringify([roomId, id, end])).toString("base64url");
+}
+function invalidCursor(): never {
+	throw Object.assign(new Error("History cursor expired or invalid; read the latest page again"), { status: 409 });
+}
+
+export function groupHistoryPage(
+	roomId: string,
+	messages: readonly RoomMessage[],
+	before?: string,
+	budget = PAGE_BYTES,
+): GroupHistoryPage {
+	const rows = messages.filter((message) => message.roomId === roomId);
+	let index = rows.length - 1;
+	let end = rows[index]?.text.length ?? 0;
+	if (before !== undefined) {
+		let value: unknown;
+		try {
+			if (before.length > 256 || !/^[A-Za-z0-9_-]+$/.test(before)) invalidCursor();
+			value = JSON.parse(Buffer.from(before, "base64url").toString("utf8"));
+		} catch {
+			invalidCursor();
+		}
+		if (
+			!Array.isArray(value) ||
+			value.length !== 3 ||
+			value[0] !== roomId ||
+			typeof value[1] !== "string" ||
+			!Number.isSafeInteger(value[2])
+		)
+			invalidCursor();
+		index = rows.findIndex((message) => message.id === value[1]);
+		if (index < 0 || value[2] < 0 || value[2] > rows[index].text.length) invalidCursor();
+		end = value[2];
+		if (end === 0) {
+			index--;
+			end = rows[index]?.text.length ?? 0;
+		}
+	}
+	const page: GroupHistoryPage = {
+		roomId,
+		messages: [],
+		nextBefore: null,
+		truncated: false,
+		retentionLimit: GROUP_RETENTION_LIMIT,
+	};
+	const fits = (items: GroupHistoryMessage[]) =>
+		Buffer.byteLength(JSON.stringify({ ...page, messages: items, nextBefore: "x".repeat(256), truncated: true })) <=
+		budget;
+	while (index >= 0) {
+		const row = rows[index];
+		const item = project(row, 0, end);
+		if (fits([item, ...page.messages])) {
+			page.messages.unshift(item);
+			index--;
+			end = rows[index]?.text.length ?? 0;
+			continue;
+		}
+		if (page.messages.length) break;
+		let low = 0,
+			high = end;
+		while (low < high) {
+			const mid = Math.floor((low + high) / 2);
+			if (fits([project(row, mid, end)])) high = mid;
+			else low = mid + 1;
+		}
+		let start = low;
+		if (start > 0 && /[\uDC00-\uDFFF]/.test(row.text[start] ?? "")) start++;
+		if (start >= end || !fits([project(row, start, end)])) throw new Error("History metadata exceeds page budget");
+		page.messages.unshift(project(row, start, end));
+		end = start;
+		break;
+	}
+	if (index >= 0) {
+		page.nextBefore = cursor(roomId, rows[index].id, end);
+		page.truncated = true;
+	}
+	return page;
+}
+
+const MENTION = /@([^\s()@]+)(?:\(([A-Za-z0-9-]{8,})\))?/g;
+
+export function groupMentionTargets(text: string, room: Room, bots: readonly Bot[], limit?: number): string[] {
+	const members = room.botIds
+		.map((id) => ({ id, name: bots.find((bot) => bot.id === id)?.name?.trim() ?? "" }))
+		.filter((member) => member.name.length > 0);
+	if (!members.length) return [];
+	const hits: { index: number; id: string }[] = [];
+	for (const match of text.matchAll(MENTION)) {
+		const id = match[2];
+		const name = match[1];
+		const resolved = id
+			? members.find((member) => member.id === id)
+			: (() => {
+					const named = members.filter((member) => member.name === name);
+					return named.length === 1 ? named[0] : undefined;
+				})();
+		if (resolved && !hits.some((hit) => hit.id === resolved.id))
+			hits.push({ index: match.index ?? 0, id: resolved.id });
+	}
+	const sorted = hits.sort((a, b) => a.index - b.index).map((hit) => hit.id);
+	return limit && limit > 0 ? sorted.slice(0, limit) : sorted;
+}
+
+export function compactHistoryNoise(text: string): string {
+	if (!text.includes("Device task failed") && !text.includes("Error:") && !text.includes("    at ")) {
+		return text;
+	}
+	const failMatch = text.match(/Device task failed\s*\[phase=([^;]+);\s*category=([^\]]+)\]\.\s*(.*)/s);
+	if (failMatch) {
+		const [, phase, category, detail] = failMatch;
+		const cleanDetail = detail
+			.split("\n")
+			.filter((line) => !line.trim().startsWith("at ") && !line.includes("node:internal"))
+			.join(" ")
+			.trim()
+			.slice(0, 300);
+		return `[Device task failed: phase=${phase}, category=${category}] ${cleanDetail || "Remote execution failed."}`;
+	}
+	if (text.includes("    at ")) {
+		const lines = text.split("\n");
+		const filtered = lines.filter((l) => !l.trim().startsWith("at ") && !l.includes("node:internal"));
+		if (filtered.length < lines.length) {
+			return filtered.join("\n").trim();
+		}
+	}
+	return text;
+}
+
+export function groupTaskContext(
+	room: Room,
+	bots: readonly Bot[],
+	messages: readonly RoomMessage[],
+	budget = GROUP_CONTEXT_BYTES,
+): GroupTaskContext {
+	const members = room.botIds.map((id) => ({ id, name: bots.find((bot) => bot.id === id)?.name ?? id }));
+	const metadata = {
+		roomName: room.name,
+		...(room.primaryBotId && room.botIds.includes(room.primaryBotId) ? { primaryBotId: room.primaryBotId } : {}),
+		members,
+		throughMessageId: messages.filter((message) => message.roomId === room.id).at(-1)?.id ?? null,
+	};
+	const blackboardPayload = room.blackboard ? { blackboard: room.blackboard } : {};
+	const nonHistoryBytes = Buffer.byteLength(JSON.stringify({ ...metadata, ...blackboardPayload })) + 64;
+	const historyBudget = Math.max(512, budget - nonHistoryBytes);
+	let page = groupHistoryPage(room.id, messages, undefined, historyBudget);
+
+	let result: GroupTaskContext = { ...page, ...metadata, ...blackboardPayload };
+	while (Buffer.byteLength(JSON.stringify(result)) > budget && page.messages.length > 0) {
+		page = { ...page, messages: page.messages.slice(1), truncated: true };
+		result = { ...page, ...metadata, ...blackboardPayload };
+	}
+	return result;
+}

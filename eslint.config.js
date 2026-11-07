@@ -49,6 +49,10 @@ export default tseslint.config(
       // apps/pi-web：全量继承 pi-web-ui 源码（MIT），自带 oxlint 工具链，
       // 不纳入本项目 eslint（类型感知规则与 pi-web-ui 的 strict 设置不兼容）
       'apps/pi-web/**',
+      // pi-web-host 并入的上游 pi-web-ui server/browser 源码（MIT），
+      // 与 apps/pi-web 同源，不纳入本项目 eslint（逐版本同步上游，不手工改格式）
+      'packages/pi-web-host/src/pi-server/**',
+      'packages/pi-web-host/src/browser/**',
     ],
   },
 

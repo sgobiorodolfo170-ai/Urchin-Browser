@@ -2013,6 +2013,20 @@ export const translateSelectionResSchema = z.object({
 });
 export type TranslateSelectionRes = z.infer<typeof translateSelectionResSchema>;
 
+/**
+ * translate:selection-result 事件 payload：划词翻译结果卡（独立透明子窗口消费）。
+ * 选区锚点坐标（x/y）由主进程用于定位子窗口，不下发给渲染层；
+ * theme 需显式下发——悬浮子窗口不经过主窗口渲染层的 ThemeProvider。
+ */
+export const translateSelectionResultEventSchema = z.object({
+  tabId: tabIdSchema,
+  source: z.string().max(5000),
+  result: z.string().optional(),
+  error: z.string().optional(),
+  theme: z.enum(['light', 'dark']),
+});
+export type TranslateSelectionResultEvent = z.infer<typeof translateSelectionResultEventSchema>;
+
 // ============================================================================
 // Mail 域（M25 邮箱模块 · imapflow + nodemailer + postal-mime）
 // ============================================================================

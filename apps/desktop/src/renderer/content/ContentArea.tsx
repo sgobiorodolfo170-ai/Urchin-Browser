@@ -3,7 +3,7 @@
  *
  * 结构：内容区（Ctrl+滚轮缩放容器 + 内部页分支：设置/邮箱/笔记/GenOffice 主页/
  * 主页/工作区总览页/文件查看器；普通网页由主进程 BrowserView 渲染、React 留空）
- * + 编辑守卫三键确认弹窗 + 划词翻译结果卡。
+ * + 编辑守卫三键确认弹窗。（划词翻译结果卡已迁独立透明子窗口，2026-11-07）
  *
  * 与侧栏同一展示组件模式：标签/工作区/编辑守卫的真源都在 App（标签生命周期被
  * 侧栏列表、右键菜单、tab:event 弹回守卫多处消费，收拢在 App 避免真源分裂），
@@ -68,12 +68,6 @@ export function ContentArea({
   guardAsk,
   onGuardDismiss,
 }: ContentAreaProps) {
-  // 活跃 tab id 镜像 ref：划词结果卡订阅保持稳定引用，回调内读取最新值（与 App 同模式）
-  const activeTabIdRef = useRef<number | null>(null);
-  useEffect(() => {
-    activeTabIdRef.current = activeTabId;
-  }, [activeTabId]);
-
   /** 笔记页不参与内容区 Ctrl+滚轮缩放（画布有自己的滚轮缩放），用 ref 在 wheel 闭包里读取。 */
   const isNotebookTabRef = useRef(false);
 
@@ -99,41 +93,6 @@ export function ContentArea({
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
   }, [contentAreaRef]);
-
-  /** 划词翻译结果卡（右键菜单 → 主进程翻译 → translate:selection-result 事件回传；坐标为窗口相对坐标） */
-  const [selectionCard, setSelectionCard] = useState<{
-    x: number;
-    y: number;
-    source: string;
-    result?: string;
-    error?: string;
-  } | null>(null);
-
-  // 划词翻译结果卡事件订阅（只响应活跃 tab，避免后台 tab 噪音；
-  // 翻译进度事件订阅在 App——进度 toast / 翻译激活态由 App 单一真源持有）
-  useEffect(() => {
-    const offSelection = window.urchin.on('translate:selection-result', (payload) => {
-      const data = payload as {
-        tabId: number;
-        source: string;
-        result?: string;
-        error?: string;
-        x: number;
-        y: number;
-      };
-      if (data.tabId !== activeTabIdRef.current) return;
-      setSelectionCard({
-        x: data.x,
-        y: data.y,
-        source: data.source,
-        result: data.result,
-        error: data.error,
-      });
-    });
-    return () => {
-      offSelection();
-    };
-  }, []);
 
   // 中区内容判断
   // 注意：urchin://settings 会被 Electron URL 规范化为带末尾斜杠，
@@ -281,39 +240,9 @@ export function ContentArea({
         ]}
       />
 
-      {/* 划词翻译结果卡（M24 dev.81）：右键菜单触发，主进程翻译后经事件回传。
-       * 定位用右键菜单同款窗口相对坐标（已含 BrowserView 偏移补偿），防溢出夹边。
-       * 注意：BrowserView 在网页标签时覆盖主窗口 React，此卡仅在落入底部状态栏区域或
-       * 内部 React 页面时可见；网页中部命中时层级受限是既有行为，本次不改变。 */}
-      {!isGenOfficeTab && !isGenOfficeHomeTab && selectionCard && (
-        <div
-          className="fixed z-50 max-w-md rounded-lg border border-border bg-surface p-3 shadow-dropdown"
-          style={{
-            left: Math.max(8, Math.min(selectionCard.x, window.innerWidth - 420)),
-            top: Math.min(selectionCard.y + 12, window.innerHeight - 180),
-          }}
-        >
-          <div className="mb-1.5 flex items-start justify-between gap-3">
-            <div
-              className="min-w-0 flex-1 truncate text-xs text-text-secondary"
-              title={selectionCard.source}
-            >
-              {selectionCard.source}
-            </div>
-            <button
-              type="button"
-              className="shrink-0 text-text-secondary hover:text-text"
-              onClick={() => setSelectionCard(null)}
-              aria-label="关闭划词翻译"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="whitespace-pre-wrap text-sm leading-relaxed text-text">
-            {selectionCard.error ?? selectionCard.result}
-          </div>
-        </div>
-      )}
+      {/* 划词翻译结果卡已迁至独立透明子窗口（main/translate/selection-card-overlay.ts，
+       *  2026-11-07 §12.3 悬浮窗化）：普通网页标签下 React 浮层被 BrowserView 覆盖，
+       *  只有独立 BrowserWindow 能悬浮于网页之上。 */}
     </main>
   );
 }

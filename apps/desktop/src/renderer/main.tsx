@@ -24,11 +24,12 @@ const view = new URLSearchParams(location.search).get('view');
 const isStatusBarView = view === 'statusbar';
 const isBallView = view === 'statusbar-ball';
 const isClipperView = view === 'clipper';
+const isTranslateCardView = view === 'translate-card';
 
-// 主窗口入口：按 locale 设置浏览器名标题（子窗口 statusbar/ball/clipper 各自
-// 在组件内设独立标题，不在此处覆盖）。index.html 静态 <title> 为英文保底，
-// React 加载后由此行按系统语言切换为中文。
-if (!isStatusBarView && !isBallView && !isClipperView) {
+// 主窗口入口：按 locale 设置浏览器名标题（子窗口 statusbar/ball/clipper/
+// translate-card 各自在组件内设独立标题，不在此处覆盖）。index.html 静态
+// <title> 为英文保底，React 加载后由此行按系统语言切换为中文。
+if (!isStatusBarView && !isBallView && !isClipperView && !isTranslateCardView) {
   document.title = displayNameForLocale(navigator.language);
 }
 
@@ -53,14 +54,19 @@ void (isStatusBarView
             </StrictMode>,
           ),
         )
-      : import('./App').then(({ App }) =>
-          import('./theme/theme-provider').then(({ ThemeProvider }) =>
-            createRoot(rootEl).render(
-              <StrictMode>
-                <ThemeProvider>
-                  <App />
-                </ThemeProvider>
-              </StrictMode>,
+      : isTranslateCardView
+        ? import('./translate/selection-card-app').then((mod) => {
+            // selection-card-app.tsx 自挂载（动态导入副作用）
+            void mod;
+          })
+        : import('./App').then(({ App }) =>
+            import('./theme/theme-provider').then(({ ThemeProvider }) =>
+              createRoot(rootEl).render(
+                <StrictMode>
+                  <ThemeProvider>
+                    <App />
+                  </ThemeProvider>
+                </StrictMode>,
+              ),
             ),
-          ),
-        ));
+          ));

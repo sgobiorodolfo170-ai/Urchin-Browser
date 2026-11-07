@@ -14,7 +14,7 @@
 // Polyfill 必须在所有其他模块之前加载：undici 顶层 require node:worker_threads
 // 并解构 markAsUncloneable（Node 22.3+ 才有），Electron 32/Node 20 缺失会导致启动崩溃。
 import './polyfills/worker-threads-polyfill';
-import { app, screen, session } from 'electron';
+import { app, nativeTheme, screen, session } from 'electron';
 import { join, basename } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -59,6 +59,7 @@ import { currentThemeBackground } from './theme';
 import { BookmarkPanel } from './panel/bookmark-panel';
 import { StatusBarOverlay, type StatusBarHostWindow } from './status-bar/status-bar-overlay';
 import { StatusBarBall, type StatusBarBallHostWindow } from './status-bar/status-bar-ball';
+import { SelectionCardOverlay } from './translate/selection-card-overlay';
 import {
   resolveDataLocation,
   setDataLocation,
@@ -278,6 +279,7 @@ const ctx: AppContext = {
   bookmarkPickerContext: null,
   statusBarOverlay: null,
   statusBarBall: null,
+  selectionCardOverlay: null,
   aiHandlersDispose: null,
   dshLauncher: null,
   unbindDshTabClose: null,
@@ -955,8 +957,9 @@ void app.whenReady().then(() => {
   // 不依赖下载相关设计（不读 downloadsPath、不接入 DownloadManager），仅需数据目录。
   const contextMenuDeps = {
     getDataDir: () => ctx.currentDataDir,
-    // 网页翻译动作（M24 dev.81）：划词结果经事件回传渲染层结果卡（坐标为窗口相对坐标，
-    // 与右键菜单 popup 同一补偿口径）。窗口动态解析（此处早于主窗口创建）。
+    // 网页翻译动作（M24 dev.81；结果卡悬浮窗化 2026-11-07）：划词结果由主进程
+    // 直接送独立透明子窗口展示（selection-card-overlay），坐标为窗口相对坐标，
+    // 与右键菜单 popup 同一补偿口径。窗口动态解析（此处早于主窗口创建）。
     translate: {
       isActive: (tabId: number) => ctx.translateManagerRef?.getStatus(tabId).active ?? false,
       translatePage: (tabId: number) => {
@@ -967,19 +970,15 @@ void app.whenReady().then(() => {
       translateSelection: (tabId: number, text: string, x: number, y: number) => {
         const mgr = ctx.translateManagerRef;
         if (!mgr) return;
+        // 仅活跃 tab 展示：右键必然发生在活跃 tab，但结果异步返回前用户可能已切换
+        if (!tabManager.getTab(tabId)?.active) return;
         void mgr
           .translateSelection(tabId, text)
           .then((res) => {
-            sendToMainWindow('translate:selection-result', {
-              tabId,
-              source: text,
-              result: res.result,
-              x,
-              y,
-            });
+            ctx.selectionCardOverlay?.show({ tabId, source: text, result: res.result, x, y });
           })
           .catch(() => {
-            sendToMainWindow('translate:selection-result', {
+            ctx.selectionCardOverlay?.show({
               tabId,
               source: text,
               error: '翻译失败，请检查网络后重试',
@@ -1282,6 +1281,29 @@ void app.whenReady().then(() => {
       }
     });
 
+    // 划词翻译结果卡（独立透明子窗口，悬浮于网页之上；§12.3 悬浮窗化落地）。
+    // 懒创建：首次划词翻译时由 show() 创建，✕ 关闭只隐藏复用。
+    ctx.selectionCardOverlay = new SelectionCardOverlay({
+      getParentWindow: () => windowManager.getWindow(mainWindow.id)?.browserWindow ?? null,
+      preloadPath: join(__dirname, '..', 'preload', 'index.js'),
+      getTheme: () => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'),
+      onLoad: async (win) => {
+        const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
+        if (isDev) {
+          const base = process.env.URCHIN_RENDERER_URL ?? 'http://localhost:5173';
+          const u = new URL(base);
+          u.searchParams.set('view', 'translate-card');
+          await win.loadURL(u.toString());
+        } else {
+          await win.loadFile(join(__dirname, '..', 'renderer', 'index.html'), {
+            query: { view: 'translate-card' },
+          });
+        }
+      },
+    });
+    // 切换标签时收起结果卡（选区上下文已失效，避免残留误导）
+    tabManager.on('activated', () => ctx.selectionCardOverlay?.hide());
+
     // HTML5 全屏抑制悬浮状态栏：内嵌视频全屏时隐藏地址栏（同 view-integration 撑满）
     tabManager.on('updated', (snapshot) => {
       if (!snapshot.active) return;
@@ -1289,6 +1311,8 @@ void app.whenReady().then(() => {
       const fs = tab?.htmlFullscreen ?? false;
       ctx.statusBarOverlay?.setHtmlFullscreen(fs);
       ctx.statusBarBall?.setSuppressed(fs);
+      // 结果卡随全屏一并隐藏（进入时；退出不自动恢复，避免残留旧选区结果）
+      if (fs) ctx.selectionCardOverlay?.hide();
     });
     tabManager.on('activated', (snapshot) => {
       const tab = tabManager.getTab(snapshot.id);

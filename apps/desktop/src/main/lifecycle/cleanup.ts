@@ -202,6 +202,16 @@ export async function performCleanup(ctx: AppContext): Promise<void> {
       ctx.statusBarBall = null;
     }
 
+    // 4.6.2 销毁划词翻译结果卡子窗口（同属状态栏悬浮窗家族，不受 WindowManager 管理）
+    if (ctx.selectionCardOverlay) {
+      try {
+        ctx.selectionCardOverlay.destroy();
+      } catch (e) {
+        log.error('Failed to dispose selection card overlay on quit', { error: String(e) });
+      }
+      ctx.selectionCardOverlay = null;
+    }
+
     // 4.9 网页翻译管理器清理（dev.79）：停 pending 轮询、移除 did-finish-load 钩子、清每 tab 状态
     if (ctx.disposeTranslateManager) {
       try {

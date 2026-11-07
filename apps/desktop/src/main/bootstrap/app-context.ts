@@ -30,6 +30,7 @@ import type { GenOfficeIntegration } from '../genoffice/integration';
 import type { BookmarkPanel } from '../panel/bookmark-panel';
 import type { StatusBarOverlay } from '../status-bar/status-bar-overlay';
 import type { StatusBarBall } from '../status-bar/status-bar-ball';
+import type { SelectionCardOverlay } from '../translate/selection-card-overlay';
 import type { DshLauncher } from '../deepseek-harness';
 import type { PiWebHostLauncher } from '../pi-web-host';
 import type { StorageLayer } from '../storage';
@@ -137,6 +138,9 @@ export interface AppContext {
 
   /** 悬浮球（独立透明子窗口，网页区右侧）。在 whenReady 内初始化。 */
   statusBarBall: StatusBarBall | null;
+
+  /** 划词翻译结果卡（独立透明子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
+  selectionCardOverlay: SelectionCardOverlay | null;
 
   /**
    * AI IPC handlers 的 dispose 句柄（由 registerAiHandlers 返回）。

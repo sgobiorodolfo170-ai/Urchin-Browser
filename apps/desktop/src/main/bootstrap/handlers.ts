@@ -111,9 +111,19 @@ function createGenOfficeShellHomeView(): unknown {
   });
   view.setBackgroundColor(currentThemeBackground());
   // 上游 Home 自带窗口内标签条（.tab-bar）：Urchin 中标签由浏览器侧栏承担，
-  // 注入 CSS 隐藏，避免「标签里的标签」；Home 内容自动占满。
+  // 注入 CSS 隐藏，避免「标签里的标签」。仅隐藏标签条会留下其 40px 占位
+  // （.app-frame-content 的 padding-top 与 .home 的 calc(100vh - 40px)），
+  // 表现为主页顶部一条白条（body 背景 #fff vs 内容区 --bg-content #fafafa），
+  // 故一并撤掉占位、让 Home 占满整个视图高度。只作用于 shell Home 视图；
+  // docx/xlsx 等编辑器是独立 WebContentsView（自带菜单栏），不受影响。
   view.webContents.on('dom-ready', () => {
-    void view.webContents.insertCSS('.tab-bar{display:none !important}').catch(() => undefined);
+    void view.webContents
+      .insertCSS(
+        '.tab-bar{display:none !important}' +
+          '.app-frame-content{padding-top:0 !important}' +
+          '.home{height:100vh !important}',
+      )
+      .catch(() => undefined);
   });
   void view.webContents.loadURL('genoffice-app://shell/index.html');
   return view;

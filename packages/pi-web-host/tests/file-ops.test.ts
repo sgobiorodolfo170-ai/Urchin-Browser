@@ -131,6 +131,92 @@ describe('file-ops', () => {
       expect(completions).toHaveLength(1);
       expect(completions[0].name).toBe('index.ts');
     });
+
+    // ── 以下是 cwd 选择器真目录浏览（机器根/跨 agentDir 绝对路径）──
+    // 回归背景：旧实现经 safePath 锁死 agentDir，绝对路径一律 throw → 空列表，
+    // 「打开项目」弹窗因此无法浏览磁盘（盘符/目录列表恒空）。
+
+    const getCompletions = (result: unknown): { name: string; path: string; type: string }[] =>
+      (result as { completions: { name: string; path: string; type: string }[] }).completions;
+
+    it('should list disk drives for machine root @root', async () => {
+      const result = await handleFileOps({ type: 'complete_path', path: '@root' }, agentDir);
+      const completions = getCompletions(result);
+      if (process.platform === 'win32') {
+        // Windows：至少有系统盘，条目形如 "C:"。
+        expect(completions.length).toBeGreaterThan(0);
+        for (const c of completions) {
+          expect(c.type).toBe('dir');
+          expect(c.path).toMatch(/^[A-Za-z]:$/);
+        }
+      } else {
+        // posix：机器根即 "/"（不可列出则允许空，Terminal 只在桌面机跑）。
+        if (completions.length > 0) expect(completions[0].path).toBe('/');
+      }
+    });
+
+    it('should browse an absolute directory outside agentDir', async () => {
+      // 旧实现此处 throw('path outside root') → 空列表（打开项目主根因）。
+      const outside = mkdtempSync(join(tmpdir(), 'pi-fileops-outside-'));
+      try {
+        mkdirSync(join(outside, 'myproject'), { recursive: true });
+        writeFileSync(join(outside, 'myproject', 'README.md'), 'x');
+        writeFileSync(join(outside, 'loose.txt'), '');
+        const result = await handleFileOps(
+          { type: 'complete_path', path: `${outside.replace(/\\/g, '/')}/` },
+          agentDir,
+        );
+        const completions = getCompletions(result);
+        const names = completions.map((c) => c.name);
+        expect(names).toContain('myproject');
+        expect(names).toContain('loose.txt');
+        const project = completions.find((c) => c.name === 'myproject')!;
+        expect(project.type).toBe('dir');
+        // wire path 为 "/" 分隔绝对路径（前端直接 setBrowsePath 往下走）。
+        expect(project.path.replace(/\\/g, '/')).toBe(
+          join(outside, 'myproject').replace(/\\/g, '/'),
+        );
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    });
+
+    it('should apply prefix filtering on absolute paths', async () => {
+      const outside = mkdtempSync(join(tmpdir(), 'pi-fileops-prefix-'));
+      try {
+        mkdirSync(join(outside, 'alpha'), { recursive: true });
+        mkdirSync(join(outside, 'beta'), { recursive: true });
+        const result = await handleFileOps(
+          { type: 'complete_path', path: `${outside.replace(/\\/g, '/')}/a` },
+          agentDir,
+        );
+        const completions = getCompletions(result);
+        expect(completions).toHaveLength(1);
+        expect(completions[0].name).toBe('alpha');
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    });
+
+    it('should expand ~ to home directory listings', async () => {
+      const result = await handleFileOps({ type: 'complete_path', path: '~/' }, agentDir);
+      const completions = getCompletions(result);
+      // 内容不可断言（机器差异），但应成功解析为主目录而不是回空前的 throw 路径：
+      // 至少保证回数组（多数系统 . Thumbs 之类文件存在；空数组不算失败，
+      // 这里只验证不抛错且条目若存在必为绝对 "/" 风格路径）。
+      expect(Array.isArray(completions)).toBe(true);
+      for (const c of completions) {
+        expect(c.path.startsWith('/') || /^[A-Za-z]:\//.test(c.path)).toBe(true);
+      }
+    });
+
+    it('should return empty for a nonexistent absolute directory', async () => {
+      const result = await handleFileOps(
+        { type: 'complete_path', path: 'G:/pi-fileops-definitely-missing-99999/' },
+        agentDir,
+      );
+      expect(getCompletions(result)).toEqual([]);
+    });
   });
 
   describe('search_files', () => {

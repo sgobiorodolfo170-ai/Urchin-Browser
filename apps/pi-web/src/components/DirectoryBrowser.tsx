@@ -178,8 +178,12 @@ export function DirectoryBrowser({
       }
     } else {
       const norm = (currentCwd || '').replace(/\\/g, '/');
-      setBrowsePath(norm);
-      setDraft(norm);
+      // 无当前项目（cwd 空）时首屏直接落在「此电脑」（机器根/盘符列表）
+      //（旧 host 后端对 ''/ '/' 的补全曾回空列表，弹窗初始就是死列表；
+      // 落在机器根让「打开项目」开箱即为盘式浏览，与 🖥️ 跳转同一路）。
+      const initial = norm || MACHINE_ROOT;
+      setBrowsePath(initial);
+      setDraft(initial);
     }
     setShowNew(false);
     setNewName('');

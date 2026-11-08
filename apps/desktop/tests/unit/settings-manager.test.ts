@@ -93,10 +93,12 @@ describe('SettingsManager', () => {
     //   window.bounds 窗口几何记忆，主进程内部状态/
     //   translate.targetLang/translate.engine/translate.autoTranslate 网页翻译 dev.79/
     //   ui.workspaceSwitcherMode 折叠态工作区切换模式 TP7/
+    //   startup.restoreTabs 标签恢复开关 TP4/session.lastTabs 标签快照 TP4/
+    //   workspaces.registry 工作区注册表 TP7/
     //   clipper.* 剪藏默认格式/清洗/选中优先/懒加载/尾部信息栏剪除/模板/保存路径 8 项/
     //   notebook.state 笔记与便利贴整体状态 M27/
     //   transit.items 中转区项目索引） + 自定义 1 项
-    expect(entries).toHaveLength(34);
+    expect(entries).toHaveLength(36);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');
@@ -153,6 +155,45 @@ describe('SettingsManager', () => {
       height: 768,
       isMaximized: true,
     });
+  });
+
+  // 回归（2026-11-09）：session.lastTabs / workspaces.registry 曾漏登记 DEFAULT_SETTINGS。
+  // SettingsManager 构造时只加载 DEFAULT_SETTINGS 中列出的键，漏登记的键「set 能落盘、
+  // 重启读不回」——表现为工作区列表与已打开标签在重启后全部丢失。
+  it('session/workspace keys: are registered with safe defaults', () => {
+    const mgr = new SettingsManager();
+
+    expect(mgr.get('session.lastTabs')).toEqual([]);
+    expect(mgr.get('workspaces.registry')).toBeNull();
+  });
+
+  it('session/workspace keys: survive restart through persistence', () => {
+    const store = new Map<string, unknown>();
+    const persistence = {
+      get: <T>(key: string): T | null => (store.has(key) ? (store.get(key) as T) : null),
+      set: <T>(key: string, value: T): void => {
+        store.set(key, value);
+      },
+    };
+    const lastTabs = [
+      { url: 'https://example.com/', title: 'Example', workspaceId: 'default', active: true },
+    ];
+    const registry = {
+      version: 1,
+      workspaces: [
+        { id: 'default', name: '默认工作区', color: 'amber', isDefault: true, createdAt: 0 },
+        { id: 'ws-1', name: '工作', color: 'violet', isDefault: false, createdAt: 1 },
+      ],
+    };
+
+    const first = new SettingsManager(persistence);
+    first.set('session.lastTabs', lastTabs);
+    first.set('workspaces.registry', registry);
+
+    // 重启场景：同一持久化存储新建实例，构造时必须读回已保存值
+    const restarted = new SettingsManager(persistence);
+    expect(restarted.get('session.lastTabs')).toEqual(lastTabs);
+    expect(restarted.get('workspaces.registry')).toEqual(registry);
   });
 
   it('getAll: entries contain key and value fields', () => {

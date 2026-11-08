@@ -106,6 +106,17 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   // 标签持久化（TP4）：启动时恢复默认工作区上次打开的标签（默认 ON）。
   // 其他工作区的标签始终保存，切换到该工作区时懒恢复。
   ['startup.restoreTabs', true],
+  // 上次退出时的标签快照（TP4）：[{ url, title, workspaceId, active }]，
+  // 由 lifecycle/cleanup.ts 在退出前写入。默认 [] = 首次运行无快照。
+  // 该键必须登记在此处，SettingsManager 构造时才会从 SQLite 加载已保存状态；
+  // 未登记会导致启动时 session.lastTabs 恒为 undefined——默认工作区标签不恢复、
+  // 其他工作区懒恢复也拿不到数据（2026-11-09 修复）。
+  ['session.lastTabs', []],
+  // 工作区注册表（TP7）：{ version, workspaces }，仅名字/颜色/创建时间等非敏感元数据。
+  // 默认 null = 无记录，由 WorkspaceRegistry 种子默认工作区后落盘。
+  // 该键必须登记：未登记时启动读回 null → 按空状态重建并立即覆盖原记录，
+  // 自定义工作区在每次重启后被永久清空（2026-11-09 修复）。
+  ['workspaces.registry', null],
   // 剪藏（M26）：保存格式、快照清洗、选中优先与模板。
   ['clipper.defaultFormat', 'markdown'],
   // 剪藏保存路径（2026-11-06 用户需求）：空 = 默认 <数据目录>/documents/clipper。

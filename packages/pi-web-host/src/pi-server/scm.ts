@@ -32,6 +32,8 @@ export interface ScmCommitEntry {
 
 export interface ScmStatusData {
 	notRepo: boolean;
+	/** 仓库存在但当前分支尚无任何提交（空仓库）；用于区分「空仓」与「有历史但当前为空」 */
+	empty: boolean;
 	branch: string;
 	detached: boolean;
 	upstream: string | null;
@@ -278,13 +280,55 @@ export async function scmHistory(cwd: string, lang?: () => ServerLang): Promise<
 	return parseCommitHistory(await git(cwd, HISTORY_ARGS, lang));
 }
 
+/**
+ * 非仓库（或无法判定为空仓）时的统一空状态。
+ *
+ * 单一真源：`scmStatus` 判定 not-repo 后返回它，`files-service.scmQuery` 的
+ * catch 分支也返回它——避免两处各写一份形状而漂移（D6）。
+ */
+export function emptyScmStatus(): Omit<ScmStatusData, "history"> {
+	return {
+		notRepo: true,
+		empty: true,
+		branch: "",
+		detached: false,
+		upstream: null,
+		ahead: 0,
+		behind: 0,
+		upstreamGone: false,
+		files: [],
+		branches: [],
+		stats: {},
+	};
+}
+
 export async function scmStatus(cwd: string, lang?: () => ServerLang): Promise<Omit<ScmStatusData, "history">> {
-	const [statusText, branchText, statText, cachedStatText] = await Promise.all([
+	const settled = await Promise.allSettled([
 		git(cwd, ["status", "--porcelain=v1", "-b", "--find-renames"], lang),
 		git(cwd, ["for-each-ref", "refs/heads", "refs/remotes", "--format=%(refname)%09%(HEAD)"], lang),
 		git(cwd, ["diff", "--numstat"], lang),
 		git(cwd, ["diff", "--cached", "--numstat"], lang),
 	]);
+	// D13/D6：非仓库目录下这 4 条命令的报错并不一致——`git status`/`for-each-ref` 是
+	// 「fatal: not a git repository」，`git diff --numstat` 是「warning: Not a git
+	// repository」（仍可匹配），而 `git diff --cached --numstat` 是
+	// 「error: unknown option `cached'」（不匹配）。旧实现用 Promise.all，由「谁先 reject」
+	// 决定走向，高并发下 notRepo 会随机退化成普通错误（实测 6/120）。
+	// 改为收集全部结果：任一命中 not-repo 即统一降级，否则抛首个真实错误。
+	const rejected = settled.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+	if (rejected.length > 0) {
+		if (rejected.some((r) => isNotRepoError(r.reason))) return emptyScmStatus();
+		throw rejected[0]?.reason ?? new Error("git status failed");
+	}
+	const output = settled.map((r) => (r as PromiseFulfilledResult<string>).value) as [
+		string,
+		string,
+		string,
+		string,
+	];
+	const [statusText, branchText, statText, cachedStatText] = output;
+	// 空仓库的唯一可判定信号：status 头部为「## No commits yet on <branch>」
+	const empty = statusText.split("\n").some((line) => line.startsWith("## No commits yet on "));
 	const header = parseStatusHeader(
 		statusText
 			.split("\n")
@@ -301,6 +345,7 @@ export async function scmStatus(cwd: string, lang?: () => ServerLang): Promise<O
 	}
 	return {
 		notRepo: false,
+		empty,
 		branch: header.branch,
 		detached: header.detached,
 		upstream: header.upstream,

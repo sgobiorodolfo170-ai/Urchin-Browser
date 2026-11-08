@@ -40,6 +40,8 @@ interface ScmStatus {
 	behind: number;
 	upstreamGone: boolean;
 	files: ScmFile[];
+	/** 空仓库（当前分支尚无提交）——与「有历史但列表为空」区分，服务端 D6 起提供 */
+	empty?: boolean;
 }
 
 interface ScmBranch {
@@ -818,7 +820,7 @@ export function ScmPanel({ chat, terminal, active, onSwitchToTerminal, uiScmTool
 							) : !status || historyLoading ? (
 								<div className="scm-empty">{chat.status === "open" ? t("scmLoading") : t("scmConnecting")}</div>
 							) : history.length === 0 ? (
-								<div className="scm-empty">{t("scmNoHistory")}</div>
+								<div className="scm-empty">{status.empty ? t("scmEmptyRepo") : t("scmNoHistory")}</div>
 							) : filteredHistory.length === 0 ? (
 								<div className="scm-empty">{t("scmHistoryFilterEmpty")}</div>
 							) : (

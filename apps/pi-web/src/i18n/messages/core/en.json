@@ -1181,6 +1181,7 @@
 	"scmCommitDetail": "Commit details",
 	"scmSelectCommitHint": "Click a commit on the left to view its details",
 	"scmNoHistory": "No commits yet",
+	"scmEmptyRepo": "Empty repository (no commits on this branch yet)",
 	"scmHistoryFilterPlaceholder": "Filter commits (subject / author / hash)…",
 	"scmHistoryFilterTip": "Space separates keywords (AND); matches subject / author / hash / decorations",
 	"scmHistoryFilterEmpty": "No commits match the filter",

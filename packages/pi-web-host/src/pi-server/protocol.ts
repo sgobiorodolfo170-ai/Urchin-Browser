@@ -3462,6 +3462,8 @@ export type ServerMessage =
 			ok: boolean;
 			error?: string;
 			notRepo?: boolean;
+			/** 仓库存在但当前分支尚无提交（空仓）；notRepo=true 时同样为 true */
+			empty?: boolean;
 			branch?: string;
 			detached?: boolean;
 			upstream?: string | null;

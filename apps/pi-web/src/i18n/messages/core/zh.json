@@ -1181,6 +1181,7 @@
 	"scmCommitDetail": "提交详情",
 	"scmSelectCommitHint": "点击左侧提交查看详情",
 	"scmNoHistory": "暂无提交记录",
+	"scmEmptyRepo": "空仓库（当前分支尚无提交）",
 	"scmHistoryFilterPlaceholder": "过滤提交（主题 / 作者 / hash）…",
 	"scmHistoryFilterTip": "空格分隔多关键字（AND 语义）；匹配主题 / 作者 / hash / 分支·标签",
 	"scmHistoryFilterEmpty": "没有匹配的提交",

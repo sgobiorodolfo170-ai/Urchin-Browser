@@ -8,7 +8,15 @@ import type { ServerMessage, FileEntry, FileSearchResult } from "./protocol.js";
 import { pick, type ServerLang } from "./i18n.js";
 import { previewKind, looksLikeText, decodeText, hexDump, countLines } from "./text-sniff.js";
 import { extractOfficeText, isOfficeFile, OFFICE_MAX_FILE_BYTES } from "./office-parse.js";
-import { gitDirOf, isNotRepoError, scmStatus, scmHistory, scmFileDiff, scmCommitDetail } from "./scm.js";
+import {
+	emptyScmStatus,
+	gitDirOf,
+	isNotRepoError,
+	scmStatus,
+	scmHistory,
+	scmFileDiff,
+	scmCommitDetail,
+} from "./scm.js";
 import {
 	getGlobalRemoteSshService,
 	isRemoteWorkspaceUri,
@@ -518,16 +526,7 @@ export class FilesService {
 					reqId,
 					kind,
 					ok: true,
-					notRepo: true,
-					branch: "",
-					detached: false,
-					upstream: null,
-					ahead: 0,
-					behind: 0,
-					upstreamGone: false,
-					files: [],
-					branches: [],
-					stats: {},
+					...emptyScmStatus(),
 					history: [],
 				});
 				this.unwatchGit();

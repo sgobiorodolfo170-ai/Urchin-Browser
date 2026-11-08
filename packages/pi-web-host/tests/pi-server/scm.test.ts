@@ -217,9 +217,31 @@ describe('scmStatus', () => {
     expect(status.detached).toBe(true);
   });
 
-  it('should reject outside a repository so callers can map it to notRepo', async () => {
+  it('should resolve with notRepo instead of throwing outside a repository', async () => {
     const plain = tempDir('urchin-scm-nonrepo-');
-    await expect(scmStatus(plain)).rejects.toThrow(/not a git repository/i);
+    // D13 回归：scmStatus 并发跑 4 条 git，非仓库下 `git diff --cached --numstat` 报的是
+    // 「error: unknown option `cached'」而非 not-a-git-repository；旧实现用 Promise.all，
+    // 谁先 reject 决定结果 → 高并发下偶发把 notRepo 误判成普通错误。这里连跑多次锁死语义。
+    for (let i = 0; i < 5; i += 1) {
+      const status = await scmStatus(plain);
+      expect(status.notRepo).toBe(true);
+      expect(status.empty).toBe(true);
+      expect(status.files).toEqual([]);
+      expect(status.branches).toEqual([]);
+    }
+  });
+
+  it('should mark a repository without commits as empty', async () => {
+    const status = await scmStatus(repo);
+    expect(status.notRepo).toBe(false);
+    expect(status.empty).toBe(true);
+  });
+
+  it('should not mark a repository with commits as empty', async () => {
+    writeFileSync(join(repo, 'a.txt'), 'x\n');
+    commitAll(repo, 'init');
+    const status = await scmStatus(repo);
+    expect(status.empty).toBe(false);
   });
 });
 

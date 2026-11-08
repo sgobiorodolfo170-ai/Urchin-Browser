@@ -20,7 +20,7 @@
  * 后续阶段：pdf / html / docs 逐个加入 APPS 常量即可。
  */
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync } from 'node:fs';
+import { copyFileSync, existsSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractSchemePrivileges } from './genoffice-extract-scheme-privileges.mjs';
@@ -75,6 +75,17 @@ npm(['run', 'build', '-w', '@genoffice/urchin-embed']);
 // 3.5 抽取宿主启动所需的轻量 scheme 常量 JSON（启动优化；失败即抛错门禁）
 extractSchemePrivileges();
 
+// 3.55 模块类型标记（2026-11-07 dev.158 修复）：
+// 打包后 embed/index.js 复制到 resources/genoffice/embed/，该目录及安装目录向上
+// 都没有 package.json 时，Node 按「最近祖先前 package.json」判定 .js 的模块类型。
+// 从仓库内 apps/desktop/release-*/win-unpacked 启动会命中 apps/desktop/package.json
+// 的 "type": "module"，使 CJS 的嵌入包被当 ESM 执行 →
+// `ReferenceError: exports is not defined in ES module scope` → GenOffice 整体降级
+// （安装版表现为「GenOffice 无法启动」）。就近写入 commonjs 标记后，模块类型与
+// 宿主/安装位置解耦；electron-builder 把它复制为 resources/genoffice/embed/package.json。
+const embedMarkerPath = join(vendorRoot, 'apps', 'urchin-embed', 'out', 'main', 'package.json');
+writeFileSync(embedMarkerPath, '{"type":"commonjs"}\n');
+
 // 3.6 生成第三方许可声明 THIRD-PARTY-NOTICES.txt（Apache-2.0 NOTICE 传播合规）。
 //      gen-third-party-notices.mjs 产出到 apps/shell/build/，但 electron-builder.yml
 //      的 extraResources 从 vendor 根读取（见 electron-builder.yml 许可合规段注释）。
@@ -92,6 +103,9 @@ const artifacts = [
   join(vendorRoot, 'apps', 'urchin-embed', 'out', 'main', 'index.js'),
   // 宿主 ready 前注册特权 scheme 用的轻量常量（避免加载整个嵌入包）
   join(vendorRoot, 'apps', 'urchin-embed', 'out', 'main', 'scheme-privileges.json'),
+  // 模块类型标记（见 3.55）：打包为 resources/genoffice/embed/package.json，
+  // 防止嵌入包在含 "type": "module" 祖先目录下被按 ESM 执行
+  join(vendorRoot, 'apps', 'urchin-embed', 'out', 'main', 'package.json'),
   // 第三方许可声明（3.6 步骤生成并复制到 vendor 根；electron-builder
   // extraResources 从此路径打包到 resources/genoffice/THIRD-PARTY-NOTICES.txt）
   join(vendorRoot, 'THIRD-PARTY-NOTICES.txt'),

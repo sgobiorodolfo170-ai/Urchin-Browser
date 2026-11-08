@@ -89,6 +89,74 @@ function validateArtifacts(info) {
   if (!existsSync(appUpdatePath)) {
     throw new Error(`[package-win] 缺少 app-update.yml: ${appUpdatePath}`);
   }
+
+  // DSH 运行时完整性（2026-11-07 dev.158 事故门禁）：
+  // 安装版 DeepSeek Harness 由外部纯 Node（resources/node/node.exe）直启
+  // app.asar.unpacked 内的 @deepseek-ai/dsh；peerDependency 漏打会让 dsh 启动即
+  // 退出且报错含糊（code=1）。此处对「运行时 + 首个被漏打的 peer 包」做存在性
+  // 断言——afterPack 钩子（scripts/after-pack-dsh-peers.cjs）负责补齐。
+  const expectedDshPaths = [
+    ['便携 Node', join(releaseDir, 'win-unpacked', 'resources', 'node', 'node.exe')],
+    [
+      '@deepseek-ai/dsh 入口',
+      join(
+        releaseDir,
+        'win-unpacked',
+        'resources',
+        'app.asar.unpacked',
+        'node_modules',
+        '@deepseek-ai',
+        'dsh',
+        'lib',
+        'bin.js',
+      ),
+    ],
+    [
+      'peer 依赖 @deepseek-ai/cordis-plugin-group',
+      join(
+        releaseDir,
+        'win-unpacked',
+        'resources',
+        'app.asar.unpacked',
+        'node_modules',
+        '@deepseek-ai',
+        'cordis-plugin-group',
+        'package.json',
+      ),
+    ],
+  ];
+  for (const [label, path] of expectedDshPaths) {
+    if (!existsSync(path)) {
+      throw new Error(
+        `[package-win] DSH 运行时缺失：${label}（${path}）——检查 afterPack 钩子是否生效`,
+      );
+    }
+  }
+
+  // GenOffice 嵌入包模块类型标记（2026-11-07 dev.158 修复门禁）：
+  // embed/index.js 是 CJS；产物目录向上若命中 "type": "module" 的 package.json
+  // （仓库内 release-*/win-unpacked 会命中 apps/desktop/package.json），Node 会按
+  // ESM 执行 → `exports is not defined in ES module scope` → GenOffice 整体降级。
+  // 标记由 scripts/genoffice-build.mjs 3.55 生成，缺失即视为打包配置回退。
+  const embedMarker = join(
+    releaseDir,
+    'win-unpacked',
+    'resources',
+    'genoffice',
+    'embed',
+    'package.json',
+  );
+  if (!existsSync(embedMarker)) {
+    throw new Error(
+      `[package-win] GenOffice 模块类型标记缺失：${embedMarker}——重跑 scripts/genoffice-build.mjs 并确认 extraResources 已映射`,
+    );
+  }
+  const embedMarkerText = readFileSync(embedMarker, 'utf8');
+  if (!/"type"\s*:\s*"commonjs"/.test(embedMarkerText)) {
+    throw new Error(
+      `[package-win] GenOffice 模块类型标记内容非法（应为 {"type":"commonjs"}）：${embedMarkerText.trim()}`,
+    );
+  }
   const appUpdate = readFileSync(appUpdatePath, 'utf8');
   const actual = {
     provider: readYamlScalar(appUpdate, 'provider'),

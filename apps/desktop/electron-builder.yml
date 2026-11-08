@@ -10,6 +10,15 @@ directories:
   output: release-v24
   buildResources: build
 
+# afterPack 钩子（2026-11-07 dev.158 打包实测修复）：
+# traversal 收集器只沿 dependencies / optionalDependencies 建图，pnpm 解析出的
+# peerDependency（如 @deepseek-ai/cordis-plugin-group）会被系统性漏打，导致安装版
+# DeepSeek Harness 启动即退出（ERR_MODULE_NOT_FOUND）。钩子在 app 目录组装完成、
+# NSIS 生成之前，把生产依赖闭包里缺失的 peer-only 包平铺补进
+# app.asar.unpacked/node_modules（dsh 由外部纯 Node 进程直读该目录，不经 asar 层）。
+# 因 electron-builder 禁止 hook 路径越出应用目录，钩子放在 apps/desktop/scripts/。
+afterPack: scripts/after-pack-dsh-peers.cjs
+
 # 入口：electron-builder 会用 main 字段定位主进程
 files:
   - dist/main/**/*
@@ -49,6 +58,13 @@ extraResources:
   # scheme-privileges.ts；避免启动早期加载整个 embed bundle）
   - from: ../../vendor/genoffice/apps/urchin-embed/out/main/scheme-privileges.json
     to: genoffice/embed/scheme-privileges.json
+  # 模块类型标记（2026-11-07 dev.158 修复）：嵌入包是 CJS，但打包后所在目录向上
+  # 若存在 "type": "module" 的 package.json（例如从仓库内 release-*/win-unpacked
+  # 启动会命中 apps/desktop/package.json），Node 会把 embed/index.js 当 ESM 执行 →
+  # ReferenceError: exports is not defined in ES module scope → GenOffice 整体降级。
+  # 该文件由 scripts/genoffice-build.mjs 3.55 步骤生成（内容 {"type":"commonjs"}）。
+  - from: ../../vendor/genoffice/apps/urchin-embed/out/main/package.json
+    to: genoffice/embed/package.json
   - from: ../../vendor/genoffice/apps/markdown/out/renderer
     to: genoffice/apps/markdown/renderer
   - from: ../../vendor/genoffice/apps/markdown/out/preload/index.js

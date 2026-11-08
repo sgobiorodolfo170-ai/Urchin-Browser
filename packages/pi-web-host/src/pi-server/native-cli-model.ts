@@ -1,6 +1,5 @@
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { NativeCliConfig } from "./protocol.js";
-import { isProtocolSupportedByEngine } from "./model-resolver.js";
 
 export interface NativeCliModelConnection {
 	baseUrl: string;
@@ -8,75 +7,33 @@ export interface NativeCliModelConnection {
 	headers?: Record<string, string>;
 }
 
+/**
+ * 解析原生 CLI 可继承的模型连接（凭据 env 注入）。
+ *
+ * 当前引擎目录已裁剪为 `pi` 与 `custom`（见 engine-catalog.ts）：
+ * - `pi` 通过 `--provider/--model` 参数继承模型（nativeCliLaunchArgs），不需要 env 注入；
+ * - `custom` 不继承模型。
+ *
+ * 上游 `claude` / `codex` 的注入分支已随引擎裁剪失效：`NativeCliPreset` 不再包含它们，
+ * 原先的 `preset !== "claude" && preset !== "codex"` 恒真早退且触发 TS2367（D5）。
+ * 这里保留函数签名供 terminals / native-cli 调用链复用，行为明确为「不注入」。
+ */
 export async function resolveNativeCliModelConnection(
-	config: NativeCliConfig,
-	runtime: ModelRuntime | undefined,
+	_config: NativeCliConfig,
+	_runtime: ModelRuntime | undefined,
 ): Promise<NativeCliModelConnection | undefined> {
-	if (!runtime || !config.model || (config.preset !== "claude" && config.preset !== "codex")) return undefined;
-	const model = runtime.getModel(config.model.provider, config.model.id);
-	if (!model) throw new Error(`Inherited CLI model is unavailable: ${config.model.provider}/${config.model.id}`);
-	if (!isProtocolSupportedByEngine(config.preset, model.api))
-		throw new Error(`Inherited model protocol is not supported by ${config.preset}: ${model.api}`);
-	if (runtime.isUsingOAuth(model.provider)) return undefined;
-	const result = await runtime.getAuth(model);
-	const fallback = runtime.getCompatibilityRequestConfig(model);
-	const apiKey = result?.auth.apiKey;
-	if (!apiKey) return undefined;
-	return {
-		baseUrl: result.auth.baseUrl ?? model.baseUrl,
-		apiKey,
-		headers: Object.fromEntries(
-			Object.entries({ ...fallback.headers, ...result.auth.headers }).filter(
-				(entry): entry is [string, string] => typeof entry[1] === "string",
-			),
-		),
-	};
+	return undefined;
 }
 
+/**
+ * 同上：当前引擎不需要在启动时注入模型相关环境变量或额外参数。
+ *
+ * 保留返回结构，让调用方（native-cli / remote-native-cli）无需关心引擎裁剪细节。
+ */
 export function nativeCliModelLaunch(
-	config: NativeCliConfig,
-	connection: NativeCliModelConnection | undefined,
-	parentEnv: NodeJS.ProcessEnv,
+	_config: NativeCliConfig,
+	_connection: NativeCliModelConnection | undefined,
+	_parentEnv: NodeJS.ProcessEnv,
 ): { args: string[]; env?: NodeJS.ProcessEnv; unsetEnv?: string[] } {
-	if (!config.model || !connection || (config.preset !== "claude" && config.preset !== "codex")) return { args: [] };
-	const env = { ...parentEnv };
-	if (config.preset === "claude") {
-		const authVariables = [
-			"ANTHROPIC_API_KEY",
-			"ANTHROPIC_AUTH_TOKEN",
-			"CLAUDE_CODE_OAUTH_TOKEN",
-			"CLAUDE_CODE_USE_BEDROCK",
-			"CLAUDE_CODE_USE_VERTEX",
-			"CLAUDE_CODE_USE_FOUNDRY",
-			"ANTHROPIC_CUSTOM_HEADERS",
-		];
-		for (const key of authVariables) delete env[key];
-		env.ANTHROPIC_BASE_URL = connection.baseUrl;
-		const official = new URL(connection.baseUrl).hostname === "api.anthropic.com";
-		env[official ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN"] = connection.apiKey;
-		env.ANTHROPIC_MODEL = config.model.id;
-		for (const tier of ["HAIKU", "SONNET", "OPUS"]) env[`ANTHROPIC_DEFAULT_${tier}_MODEL`] = config.model.id;
-		const headers = Object.entries(connection.headers ?? {});
-		if (headers.length) env.ANTHROPIC_CUSTOM_HEADERS = headers.map(([name, value]) => `${name}: ${value}`).join("\n");
-		else delete env.ANTHROPIC_CUSTOM_HEADERS;
-		return { args: [], env, unsetEnv: authVariables.filter((key) => !Object.hasOwn(env, key)) };
-	}
-	const provider = "pi_web_ui";
-	env.PI_WEB_CLI_API_KEY = connection.apiKey;
-	const settings: Record<string, string | boolean> = {
-		model_provider: provider,
-		[`model_providers.${provider}.name`]: "pi-web-ui",
-		[`model_providers.${provider}.base_url`]: connection.baseUrl,
-		[`model_providers.${provider}.env_key`]: "PI_WEB_CLI_API_KEY",
-		[`model_providers.${provider}.wire_api`]: "responses",
-		[`model_providers.${provider}.requires_openai_auth`]: false,
-	};
-	const envHeaders = Object.entries(connection.headers ?? {}).map(([name, value], index) => {
-		const key = `PI_WEB_CLI_HEADER_${index}`;
-		env[key] = value;
-		return `${JSON.stringify(name)}=${JSON.stringify(key)}`;
-	});
-	const args = Object.entries(settings).flatMap(([key, value]) => ["-c", `${key}=${JSON.stringify(value)}`]);
-	if (envHeaders.length) args.push("-c", `model_providers.${provider}.env_http_headers={${envHeaders.join(",")}}`);
-	return { args, env };
+	return { args: [] };
 }

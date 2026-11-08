@@ -147,6 +147,8 @@ export function useAppField<K extends keyof AppGlobals>(key: K): AppGlobals[K] {
 }
 
 export function useIsDsh(): boolean {
+	// 重建决策（2026-11-08）：仅保留 pi 引擎，服务端固定上报 engine="pi"，此值恒为 false。
+	// 保留该 hook 供与 pi 共用的 DshPresetBar / DshPermissionBar 等组件分支使用。
 	return useAppField("engine") === "dsh";
 }
 

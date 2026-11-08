@@ -60,8 +60,6 @@ import type {
 	UiMcpServer,
 	RemoteMcpServer,
 	RemoteSkillSummary,
-	DshPatchFileInfo,
-	DshMarketPlugin,
 	EngineStatus,
 	UpdateItemKind,
 } from "./types";
@@ -219,18 +217,6 @@ export interface PluginInstallInspectState {
 		"invalid-spec" | "already-installed" | "not-found" | "not-a-package" | "not-a-bundle" | "network" | "unknown";
 	detail?: string;
 	manifest?: { id?: string; name?: string; version?: string; description?: string; permissions?: string[] };
-}
-
-export interface DshEngineState {
-	patches: { patchDir: string; files: DshPatchFileInfo[] } | null;
-	market: {
-		count: number;
-		updated?: string;
-		categories: Record<string, { en: string; zh: string }>;
-		plugins: DshMarketPlugin[];
-	} | null;
-	presets: { presets: UiAgentPreset[]; defaultPreset: string } | null;
-	permission: { options: DshPermissionOption[]; defaultPreset: string } | null;
 }
 
 export interface ChatState {
@@ -418,14 +404,6 @@ export interface ChatState {
 		models?: string[];
 		reason?: string;
 	}[];
-	dsh: DshEngineState | null;
-	dshPatches: { patchDir: string; files: DshPatchFileInfo[] } | null;
-	dshMarket: {
-		count: number;
-		updated?: string;
-		categories: Record<string, { en: string; zh: string }>;
-		plugins: DshMarketPlugin[];
-	} | null;
 	dshPresets: { presets: UiAgentPreset[]; defaultPreset: string } | null;
 	dshPermission: { options: DshPermissionOption[]; defaultPreset: string } | null;
 	scmDirty: number;
@@ -735,18 +713,6 @@ type Action =
 	| { type: "plugin_permission_resolved"; id: string }
 	| { type: "plugin_path_request"; req: { id: string; pluginId: string; path: string; reason?: string } }
 	| { type: "plugin_path_resolved"; id: string }
-	| {
-			type: "dsh_patches";
-			patchDir: string;
-			files: DshPatchFileInfo[];
-	  }
-	| {
-			type: "dsh_market_data";
-			count: number;
-			updated?: string;
-			categories: Record<string, { en: string; zh: string }>;
-			plugins: DshMarketPlugin[];
-	  }
 	| { type: "dsh_presets"; presets: UiAgentPreset[]; defaultPreset: string }
 	| { type: "dsh_permission"; options: DshPermissionOption[]; defaultPreset: string }
 	| { type: "sync_cached_sessions"; sessions: SessionSummary[] }
@@ -864,9 +830,6 @@ export function reducer(state: ChatState, action: Action): ChatState {
 							projectSessionsHasMore: {},
 							conversations: [],
 							terminals: [],
-							dsh: null,
-							dshPatches: null,
-							dshMarket: null,
 							dshPresets: null,
 							dshPermission: null,
 						} satisfies Partial<ChatState>)
@@ -1342,42 +1305,13 @@ export function reducer(state: ChatState, action: Action): ChatState {
 			return { ...state, presetShare: { ...action.result, receivedAt: Date.now() } };
 		case "plugin_install_inspect_result":
 			return { ...state, installInspect: action.result };
-		case "dsh_patches": {
-			const patches = { patchDir: action.patchDir, files: action.files };
-			return {
-				...state,
-				dsh: { ...(state.dsh ?? { patches: null, market: null, presets: null, permission: null }), patches },
-				dshPatches: patches,
-			};
-		}
-		case "dsh_market_data": {
-			const market = {
-				count: action.count,
-				updated: action.updated,
-				categories: action.categories,
-				plugins: action.plugins,
-			};
-			return {
-				...state,
-				dsh: { ...(state.dsh ?? { patches: null, market: null, presets: null, permission: null }), market },
-				dshMarket: market,
-			};
-		}
 		case "dsh_presets": {
 			const presets = { presets: action.presets, defaultPreset: action.defaultPreset };
-			return {
-				...state,
-				dsh: { ...(state.dsh ?? { patches: null, market: null, presets: null, permission: null }), presets },
-				dshPresets: presets,
-			};
+			return { ...state, dshPresets: presets };
 		}
 		case "dsh_permission": {
 			const permission = { options: action.options, defaultPreset: action.defaultPreset };
-			return {
-				...state,
-				dsh: { ...(state.dsh ?? { patches: null, market: null, presets: null, permission: null }), permission },
-				dshPermission: permission,
-			};
+			return { ...state, dshPermission: permission };
 		}
 		case "terminal_cli_paste_result":
 			return { ...state, nativeCliPasteResult: action.result };
@@ -1861,15 +1795,12 @@ export function useChat() {
 		pluginPermissions: [],
 		pathRequests: [],
 		permRequests: [],
-		dsh: null,
-		dshPatches: null,
-		dshMarket: null,
+		dshPresets: null,
+		dshPermission: null,
 		mcpOAuthResult: null,
 		mcpMarketResult: null,
 		skillMarketResult: null,
 		skillContentResult: null,
-		dshPresets: null,
-		dshPermission: null,
 		protocolMismatch: false,
 		transition: null,
 		sandboxDiff: null,
@@ -2963,12 +2894,6 @@ export function useChat() {
 							...(msg.error ? { error: msg.error } : {}),
 						},
 					});
-					break;
-				case "dsh_patches":
-					dispatch({ type: "dsh_patches", patchDir: msg.patchDir, files: msg.files });
-					break;
-				case "dsh_market_data":
-					dispatch(msg);
 					break;
 				case "dsh_presets":
 					dispatch({ type: "dsh_presets", presets: msg.presets, defaultPreset: msg.defaultPreset });

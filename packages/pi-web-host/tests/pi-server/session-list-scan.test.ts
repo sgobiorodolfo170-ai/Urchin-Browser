@@ -8,7 +8,7 @@
 import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { sessionLines } from '../../src/pi-server/session-scan.js';
 import { scanSessionListInfo } from '../../src/pi-server/session-list-scan.js';
 
@@ -222,6 +222,28 @@ describe('native CLI metadata', () => {
       firstMessage: '',
     });
     expect(result?.state.nativeCli).toEqual(config);
+  });
+
+  it('should skip oversized non-marker lines in a native-CLI session without JSON.parse', async () => {
+    // D11：0 消息的 CLI 会话不会填 firstMessage，旧实现让快路径整体失效，
+    // 每条 >512B 的行都要完整 JSON.parse；这里用行数 + JSON.parse 次数锁死优化。
+    const noise = Array.from({ length: 20 }, (_, i) => ({
+      type: 'tool_result',
+      seq: i,
+      payload: 'x'.repeat(2048),
+    }));
+    const file = tmpFile(
+      [header, marker(), ...noise].map((row) => JSON.stringify(row)).join('\n') + '\n',
+    );
+    const parse = vi.spyOn(JSON, 'parse');
+    let calls = 0;
+    try {
+      await scanSessionListInfo(file, 0);
+      calls = parse.mock.calls.length;
+    } finally {
+      parse.mockRestore();
+    }
+    expect(calls).toBeLessThanOrEqual(5);
   });
 
   it('should keep CLI metadata across incremental renames and long markers after a user message', async () => {

@@ -80,7 +80,10 @@ function applyLine(line: Buffer, st: Fields): void {
 	if (line.length === 0 || isBlank(line)) return;
 	if (
 		st.id &&
-		st.firstMessage &&
+		// D11：0 消息的 native-CLI 会话永远不会填 firstMessage，旧条件会让快路径对这类会话整体失效，
+		// 每条 >512B 行都跑一次 JSON.parse。nativeCli 会话本来就不展示消息文本（toInfo 对它返回 ""），
+		// 因此「无需再抓消息文本」的判据应为 firstMessage 已就绪 **或** 已确认是 native-CLI 会话。
+		(st.firstMessage || st.nativeCli) &&
 		line.length > FAST_PATH_MIN_BYTES &&
 		line.indexOf(SESSION_INFO_KEY) < 0 &&
 		line.indexOf(NATIVE_CLI_KEY) < 0

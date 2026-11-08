@@ -215,6 +215,33 @@ async function handlePluginStatic(
   }
 }
 
+/**
+ * 解析 set_model 消息为 {provider, model}。
+ *
+ * 兼容两种形状（dev.156 审计修复）：上游完整协议 `{modelId: "..."}`
+ * （前端 ModelThinking / plugin-host 发送）与内部形状 `{provider, model}`。
+ * - 带斜杠的 modelId（canonical "provider/model"）按首个 '/' 拆分——provider
+ *   段不含 '/'，model 段可含 '/'；
+ * - 不带斜杠的 modelId（顶栏 provider 占位行，host-bridge 由 providers 列表
+ *   合成）视为「仅切 provider，保留当前模型」，model 返回空串；
+ * - 两种形状都无法得出 provider 时返回 null（调用方静默忽略）。
+ */
+export function parseSetModelMessage(parsed: unknown): { provider: string; model: string } | null {
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const msg = parsed as { modelId?: unknown; provider?: unknown; model?: unknown };
+  if (typeof msg.modelId === 'string') {
+    const sep = msg.modelId.indexOf('/');
+    if (sep > 0) return { provider: msg.modelId.slice(0, sep), model: msg.modelId.slice(sep + 1) };
+    if (sep === 0) return null; // '/leading' 等非法形状
+    if (msg.modelId.length > 0) return { provider: msg.modelId, model: '' };
+    return null;
+  }
+  if (typeof msg.provider === 'string' && typeof msg.model === 'string') {
+    return { provider: msg.provider, model: msg.model };
+  }
+  return null;
+}
+
 export async function startPiWebHostServer(
   options: PiWebHostServerOptions,
 ): Promise<PiWebHostServerHandle> {
@@ -333,10 +360,17 @@ export async function startPiWebHostServer(
     // Phase 4：运行时可变的 model/provider（set_model 更新，ensureBridge 使用）
     let currentProviderId = agentOpts?.providerId;
     let currentModelId = agentOpts?.modelId;
+    // 临时对话（ephemeral）标志：new_session {ephemeral:true} 置位，切会话复位
+    let currentEphemeral = false;
     const ctx = {
       version: SERVICE_VERSION,
       provider: agentOpts?.providerId,
       model: agentOpts?.modelId,
+      // hello_ok 携带当前工作目录：前端 SCM 面板以 state.cwd 为查询前提，
+      // 缺失则 Git 面板永不发 scm_status（dev.156 审计修复）
+      get cwd() {
+        return currentCwd ?? agentDir ?? '';
+      },
     };
 
     // 第五批：重连后恢复全局默认模型徽标（use-chat 按 default_model 消息归约）
@@ -438,8 +472,8 @@ export async function startPiWebHostServer(
               .prompt(promptText)
               .then(() => {
                 // prompt 完成（agent.prompt resolved = agent_end 已触发）；
-                // 持久化本轮对话
-                if (agentDir && lastUserText && assistantAccumulator) {
+                // 持久化本轮对话（临时对话不落盘）
+                if (agentDir && !currentEphemeral && lastUserText && assistantAccumulator) {
                   void persistExchange(
                     agentDir,
                     currentSessionId,
@@ -478,6 +512,10 @@ export async function startPiWebHostServer(
             messageCount = 0;
             lastUserText = '';
             assistantAccumulator = '';
+            // ephemeral（临时对话）：仅内存会话，不建 JSONL、不进历史（topbar
+            // 临时对话按钮经 host-bridge 透传此标志；dev.156 审计修复——此前
+            // ephemeral 标志被丢弃，临时对话照样落盘进历史）
+            currentEphemeral = (parsed as { ephemeral?: boolean }).ephemeral === true;
             sendJson(ws, { type: 'session_created', sessionId: currentSessionId });
             return;
           }
@@ -486,12 +524,15 @@ export async function startPiWebHostServer(
               sendJson(ws, { type: 'session_list', sessions: [] });
               return;
             }
+            // path 字段 = 会话 id：左面板历史行以 path 为键发 switch_session/
+            // delete_session（server 端均按 sessionId 语义消费）
             void listSessions(agentDir)
               .then((sessions) =>
                 sendJson(ws, {
                   type: 'session_list',
                   sessions: sessions.map((s) => ({
                     id: s.id,
+                    path: s.id,
                     firstMessage: s.firstMessage,
                     messageCount: s.messageCount,
                   })),
@@ -511,6 +552,7 @@ export async function startPiWebHostServer(
             messageCount = 0;
             lastUserText = '';
             assistantAccumulator = '';
+            currentEphemeral = false; // 切回的是落盘会话
             dispatchPluginEvent('conversationChanged', { id: targetId });
             const sendSwitched = (
               messages: readonly { role: 'user' | 'assistant'; content: string }[],
@@ -554,18 +596,15 @@ export async function startPiWebHostServer(
             return;
           }
           case 'set_model': {
-            const provider =
-              typeof (parsed as { provider?: string }).provider === 'string'
-                ? (parsed as { provider?: string }).provider
-                : '';
-            const model =
-              typeof (parsed as { model?: string }).model === 'string'
-                ? (parsed as { model?: string }).model
-                : '';
-            if (provider && model) {
+            // 兼容 `{modelId: "..."}`（canonical 或裸 provider）与 `{provider, model}` 两种形状。
+            // model 为空串 = 仅切 provider（顶栏占位行），保留当前模型。
+            const parsedModel = parseSetModelMessage(parsed);
+            const provider = parsedModel?.provider ?? '';
+            const model = parsedModel?.model ?? '';
+            if (provider && parsedModel !== null) {
               // 更新当前 model/provider，销毁旧 bridge（下次 prompt 时 ensureBridge 用新值重建）
               currentProviderId = provider;
-              currentModelId = model;
+              if (model) currentModelId = model;
               disposeBridge();
               dispatchPluginEvent('clientModelChanged', { providerId: provider, modelId: model });
               // Phase 4：写回主进程 pi.* 键（MessagePort）
@@ -631,7 +670,20 @@ export async function startPiWebHostServer(
               return;
             }
             void deleteSession(agentDir, targetId).then(() => {
-              sendJson(ws, { type: 'session_list', sessions: [] } as unknown as HostServerMessage);
+              // 回发真实列表（此前回空列表会把前端历史区清空）
+              void listSessions(agentDir)
+                .then((sessions) =>
+                  sendJson(ws, {
+                    type: 'session_list',
+                    sessions: sessions.map((s) => ({
+                      id: s.id,
+                      path: s.id,
+                      firstMessage: s.firstMessage,
+                      messageCount: s.messageCount,
+                    })),
+                  }),
+                )
+                .catch(() => sendJson(ws, { type: 'session_list', sessions: [] }));
             });
             return;
           }

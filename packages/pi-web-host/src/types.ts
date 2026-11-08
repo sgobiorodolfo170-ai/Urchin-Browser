@@ -54,6 +54,8 @@ export type HostServerMessage =
       readonly status: 'ok';
       readonly provider?: string;
       readonly model?: string;
+      /** 当前工作目录（SCM/文件面板的查询前提，dev.156 审计补充） */
+      readonly cwd?: string;
     }
   | { readonly type: 'pong'; readonly ts: number }
   | { readonly type: 'stream.chunk'; readonly content: string }

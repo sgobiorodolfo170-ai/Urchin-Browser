@@ -31,7 +31,11 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { WebSocket } from 'ws';
-import { startPiWebHostServer, type PiWebHostServerHandle } from '../src/server';
+import {
+  parseSetModelMessage,
+  startPiWebHostServer,
+  type PiWebHostServerHandle,
+} from '../src/server';
 import { HOST_TOKEN_COOKIE, buildHostUrl, generateToken } from '../src/auth';
 import { persistExchange } from '../src/session-store';
 
@@ -394,5 +398,48 @@ describe('plugin static HTTP', () => {
     const h = await startServer({ agentDir });
     const res = await authFetch(h, '/plugins/..%2Fetc/client/x.js');
     expect([403, 404]).toContain(res.status);
+  });
+});
+
+describe('parseSetModelMessage', () => {
+  it('should parse upstream modelId shape (provider/model)', () => {
+    expect(
+      parseSetModelMessage({ type: 'set_model', modelId: 'anthropic/claude-sonnet-4' }),
+    ).toEqual({
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+    });
+  });
+
+  it('should keep slashes inside the model segment (split at first / only)', () => {
+    expect(parseSetModelMessage({ modelId: 'openrouter/a/b' })).toEqual({
+      provider: 'openrouter',
+      model: 'a/b',
+    });
+  });
+
+  it('should parse internal provider/model shape', () => {
+    expect(parseSetModelMessage({ provider: 'anthropic', model: 'claude-sonnet-4' })).toEqual({
+      provider: 'anthropic',
+      model: 'claude-sonnet-4',
+    });
+  });
+
+  it('should treat bare modelId as provider-only switch (empty model)', () => {
+    // 顶栏占位行：host-bridge 由 providers 列表合成 {id: provider}，无斜杠
+    expect(parseSetModelMessage({ modelId: 'amazon-bedrock' })).toEqual({
+      provider: 'amazon-bedrock',
+      model: '',
+    });
+  });
+
+  it('should return null for missing/invalid shapes', () => {
+    expect(parseSetModelMessage({ modelId: '/leading' })).toBeNull();
+    expect(parseSetModelMessage({ modelId: '' })).toBeNull();
+    expect(parseSetModelMessage({ provider: 'only-provider' })).toBeNull();
+    expect(parseSetModelMessage({ model: 'only-model' })).toBeNull();
+    expect(parseSetModelMessage({})).toBeNull();
+    expect(parseSetModelMessage('set_model')).toBeNull();
+    expect(parseSetModelMessage(null)).toBeNull();
   });
 });

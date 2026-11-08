@@ -93,7 +93,9 @@ export async function probe(
 ): Promise<ProbeResult> {
   return new Promise((resolve) => {
     const conn = new Client();
-    const connectConfig: Record<string, unknown> = { host, port, username };
+    // readyTimeout：不可达主机不接受 TCP 时 IPv4 SYN 重试可拖到分钟级，前端 probe
+    // 期间没有任何反馈（dev.156 审计实测）。15s 让失败路径可预期地返回错误。
+    const connectConfig: Record<string, unknown> = { host, port, username, readyTimeout: 15000 };
     if (auth.type === 'password') {
       connectConfig.password = auth.password;
     } else if (auth.type === 'key') {

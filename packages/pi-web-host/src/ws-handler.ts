@@ -13,6 +13,8 @@ export interface WsMessageContext {
   readonly version: string;
   readonly provider?: string;
   readonly model?: string;
+  /** 当前工作目录（hello_ok 携带；前端 SCM 面板以 state.cwd 为查询前提） */
+  readonly cwd?: string;
 }
 
 /** 归一化输出 JSON 消息到 WS（异常不上抛，记录后发送 error） */
@@ -47,6 +49,7 @@ export function handleClientMessage(ws: WebSocket, raw: string, ctx: WsMessageCo
         status: 'ok',
         provider: ctx.provider,
         model: ctx.model,
+        cwd: ctx.cwd,
       });
       break;
     case 'ping':

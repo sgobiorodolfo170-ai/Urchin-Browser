@@ -8,9 +8,12 @@
  * - stop/dispose 幂等 + pendingLaunch 并发复用
  */
 import { describe, it, expect, vi } from 'vitest';
+import { pihostStatusResSchema } from '@urchin/ipc-contract';
 import {
   PiWebHostLauncher,
   HOST_URL_LINE_RE,
+  PI_SERVER_URL_LINE_RE,
+  type AgentCreds,
   type HostForkFn,
   type UtilityProcessLike,
 } from '../../src/main/pi-web-host/launcher';
@@ -75,6 +78,7 @@ class MockChild implements UtilityProcessLike {
 interface Harness {
   launcher: PiWebHostLauncher;
   children: MockChild[];
+  forkFn: HostForkFn;
 }
 
 /** launch() 中 ensureDirFn 是 async——fork 发生在微任务之后，需等待子进程产生 */
@@ -203,7 +207,11 @@ function mkLauncher(overrides: { timeoutMs?: number; pollMs?: number } = {}): Ha
     startupTimeoutMs: overrides.timeoutMs ?? 60_000,
     pollIntervalMs: overrides.pollMs ?? 10,
   });
-  return { launcher, children };
+  return {
+    launcher,
+    children,
+    forkFn: forkSpy,
+  };
 }
 
 describe('HOST_URL_LINE_RE', () => {
@@ -220,3 +228,168 @@ describe('HOST_URL_LINE_RE', () => {
     expect(m).toBeNull();
   });
 });
+
+const PI_SERVER_URL = 'http://127.0.0.1:51234/?token=server_token-1';
+
+describe('PiWebHostLauncher in pi-server mode', () => {
+  it('forks pi-server with port/data-dir/token and the pi-server env switch', async () => {
+    const h = mkPiServerLauncher();
+    const p = h.launcher.launch();
+    const child = await waitChild(h);
+
+    expect(child.forkArgs[0]).toBe('--port=0');
+    expect(child.forkArgs[1]).toBe('--www-dir=/virtual/dist/pi-web');
+    expect(child.forkArgs[2]).toBe('--data-dir=/virtual/data');
+    expect(child.forkArgs[3]).toBe('--cwd=/virtual/data');
+    expect(child.forkArgs[4]).toMatch(/^--token=[A-Za-z0-9_-]{20,}$/);
+    expect(child.forkArgs).toHaveLength(5);
+    expect(child.forkEnv.PI_HOST_PI_SERVER).toBe('1');
+    expect(child.forkEnv.PI_CODING_AGENT_DIR).toBe('/virtual/agent');
+    expect(h.ensureDir).toHaveBeenCalledWith('/virtual/data');
+    expect(h.ensureDir).toHaveBeenCalledWith('/virtual/agent');
+
+    child.emitStdout(`\npi-server ready: ${PI_SERVER_URL}\n`);
+    await expect(p).resolves.toBe(PI_SERVER_URL);
+
+    const st = h.launcher.status();
+    expect(st.state).toBe('running');
+    expect(st.port).toBe(51234);
+    expect(st.pid).toBe(200);
+    expect(() => pihostStatusResSchema.parse(st)).not.toThrow();
+  });
+
+  it('never injects model credentials in pi-server mode', async () => {
+    const h = mkPiServerLauncher({
+      creds: {
+        apiKey: 'secret-key',
+        providerId: 'anthropic',
+        modelId: 'claude-sonnet-4',
+        baseUrl: 'https://api.example.test',
+      },
+    });
+    const p = h.launcher.launch();
+    const child = await waitChild(h);
+
+    expect(child.forkEnv.PI_HOST_API_KEY).toBeUndefined();
+    expect(child.forkEnv.PI_HOST_PROVIDER).toBeUndefined();
+    expect(child.forkEnv.PI_HOST_MODEL).toBeUndefined();
+    expect(child.forkEnv.PI_HOST_BASE_URL).toBeUndefined();
+    expect(child.forkEnv.PI_HOST_SYSTEM_PROMPT).toBeUndefined();
+
+    child.emitStdout(`pi-server ready: ${PI_SERVER_URL}\n`);
+    await p;
+  });
+
+  it('omits PI_CODING_AGENT_DIR when no agent dir is configured', async () => {
+    const h = mkPiServerLauncher({ agentDir: null });
+    const p = h.launcher.launch();
+    const child = await waitChild(h);
+
+    expect(child.forkEnv.PI_CODING_AGENT_DIR).toBeUndefined();
+    expect(h.ensureDir).toHaveBeenCalledTimes(1);
+
+    child.emitStdout(`pi-server ready: ${PI_SERVER_URL}\n`);
+    await p;
+  });
+
+  it('validates the stopped snapshot against the ipc contract', () => {
+    const h = mkPiServerLauncher();
+    const st = h.launcher.status();
+
+    expect(st.state).toBe('stopped');
+    expect(() => pihostStatusResSchema.parse(st)).not.toThrow();
+  });
+});
+
+describe('legacy mode credential env', () => {
+  it('injects PI_HOST_* credentials instead of the pi-server switch', async () => {
+    const h = mkLauncher();
+    const creds: AgentCreds = {
+      apiKey: 'legacy-key',
+      providerId: 'deepseek',
+      modelId: 'deepseek-chat',
+      baseUrl: 'https://api.example.test',
+      systemPrompt: 'be nice',
+      enableTools: true,
+      toolsCwd: '/virtual/work',
+    };
+    const launcher = new PiWebHostLauncher({
+      forkTarget: '/virtual/dist/main/pi-web-host.js',
+      wwwDir: '/virtual/dist/pi-web',
+      dataDir: '/virtual/data',
+      agentCredsProvider: () => Promise.resolve(creds),
+      forkFn: h.forkFn,
+      ensureDirFn: vi.fn(() => Promise.resolve()),
+      startupTimeoutMs: 60_000,
+      pollIntervalMs: 10,
+    });
+    const p = launcher.launch();
+    const child = await waitChild(h);
+
+    expect(child.forkEnv.PI_HOST_PI_SERVER).toBeUndefined();
+    expect(child.forkEnv.PI_HOST_API_KEY).toBe('legacy-key');
+    expect(child.forkEnv.PI_HOST_PROVIDER).toBe('deepseek');
+    expect(child.forkEnv.PI_HOST_MODEL).toBe('deepseek-chat');
+    expect(child.forkEnv.PI_HOST_BASE_URL).toBe('https://api.example.test');
+    expect(child.forkEnv.PI_HOST_SYSTEM_PROMPT).toBe('be nice');
+    expect(child.forkEnv.PI_HOST_ENABLE_TOOLS).toBe('true');
+    expect(child.forkEnv.PI_HOST_TOOLS_CWD).toBe('/virtual/work');
+    expect(child.forkArgs).toEqual(['--www-dir=/virtual/dist/pi-web', '--cwd=/virtual/data']);
+
+    child.emitStdout(`pi-web-host ready: ${READY_URL}\n`);
+    await p;
+  });
+});
+
+describe('PI_SERVER_URL_LINE_RE', () => {
+  it('parses a full pi-server ready line', () => {
+    const m = PI_SERVER_URL_LINE_RE.exec(`pi-server ready: ${PI_SERVER_URL}\n`);
+    expect(m?.[1]).toBe(PI_SERVER_URL);
+  });
+
+  it('accepts an ANSI terminator and keeps query/path intact', () => {
+    const url = 'http://127.0.0.1:5000/relay/abc/?token=xyz';
+    const m = PI_SERVER_URL_LINE_RE.exec(`pi-server ready: ${url}\x1b[0m`);
+    expect(m?.[1]).toBe(url);
+  });
+
+  it('rejects un-terminated lines and the legacy ready prefix', () => {
+    expect(PI_SERVER_URL_LINE_RE.exec('pi-server ready: http://127.0.0.1:1/x')).toBeNull();
+    expect(PI_SERVER_URL_LINE_RE.exec(`pi-web-host ready: ${PI_SERVER_URL}\n`)).toBeNull();
+  });
+});
+
+interface PiServerHarness extends Harness {
+  forkFn: HostForkFn;
+  ensureDir: ReturnType<typeof vi.fn>;
+}
+
+function mkPiServerLauncher(
+  options: { creds?: AgentCreds; agentDir?: string | null } = {},
+): PiServerHarness {
+  const children: MockChild[] = [];
+  let nextId = 200;
+  const forkFn: HostForkFn = (
+    _modulePath: string,
+    args: readonly string[],
+    opts: { env: Record<string, string>; cwd: string; stdio: 'pipe' },
+  ): UtilityProcessLike => {
+    const child = new MockChild(nextId++, args, opts.env, opts.cwd);
+    children.push(child);
+    return child;
+  };
+  const ensureDir = vi.fn(() => Promise.resolve());
+  const launcher = new PiWebHostLauncher({
+    forkTarget: '/virtual/dist/main/pi-server.mjs',
+    serverKind: 'pi-server',
+    wwwDir: '/virtual/dist/pi-web',
+    dataDir: '/virtual/data',
+    ...(options.agentDir === null ? {} : { agentDir: options.agentDir ?? '/virtual/agent' }),
+    ...(options.creds ? { agentCredsProvider: () => Promise.resolve(options.creds!) } : {}),
+    forkFn,
+    ensureDirFn: ensureDir,
+    startupTimeoutMs: 60_000,
+    pollIntervalMs: 10,
+  });
+  return { launcher, children, forkFn, ensureDir };
+}

@@ -589,8 +589,13 @@ export function registerIpcHandlers(ctx: AppContext): void {
   // forkTarget = dist/main/pi-web-host.js（scripts/build-pi-web.mjs 产物，dev/打包同构）；
   // wwwDir = dist/pi-web（apps/pi-web 构建产物）。数据落 userData/pi/self-host（DD1）。
   const piWebHostDataDir = join(startupUserDataPath, PI_DIR_NAME, 'self-host');
+  // P6（2026-11-08）：默认切到上游 pi-server（与重建前端同源协议）；
+  // 设 URCHIN_PI_SERVER=legacy 可回退 pi-web-host.js 轻量壳。
+  const usePiServer = process.env.URCHIN_PI_SERVER !== 'legacy';
   ctx.piWebHostLauncher = createPiWebHostLauncher({
-    forkTarget: join(__dirname, 'pi-web-host.js'),
+    forkTarget: join(__dirname, usePiServer ? 'pi-server.mjs' : 'pi-web-host.js'),
+    serverKind: usePiServer ? 'pi-server' : 'legacy',
+    agentDir: join(startupUserDataPath, PI_DIR_NAME, 'agent'),
     wwwDir: join(app.getAppPath(), 'dist', 'pi-web'),
     dataDir: piWebHostDataDir,
     // M2B：fork 时从 settings + agentConfigProvider 解析当前凭据/模型（支持运行时变更）

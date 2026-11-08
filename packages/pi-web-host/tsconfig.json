@@ -7,5 +7,13 @@
     "noUncheckedIndexedAccess": false
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"],
-  "exclude": ["node_modules", "dist", "src/pi-server", "src/browser"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/pi-server",
+    "src/browser",
+    "tests/pi-server",
+    "tests/pi-server-tool-shims.d.ts",
+    "tests/pi-server-vendored-shims.d.ts"
+  ]
 }

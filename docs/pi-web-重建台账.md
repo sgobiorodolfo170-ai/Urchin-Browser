@@ -81,7 +81,7 @@ docs/                                # 本台账 + 评估 + 对接清单
 | P2 | 引擎剥离（前后端） | ✅ 主体完成（详见 §5.2） | 其他引擎实现已移除，仅 pi |
 | P3 | 前端质量重建（strict / 死代码 / 冗余） | ✅ 完成（详见 §5.3） | `typecheck` + `build` 通过 |
 | P4 | 后端接入 utility 入口 | ✅ 完成（接线骨架，详见 §5.4） | `typecheck` + 单测 + 构建 + 冒烟通过 |
-| P5 | 单测 + 关键 E2E | 待办 | `pnpm verify` + `pnpm e2e` |
+| P5 | 单测 + 关键 E2E | ✅ 完成（详见 §5.5） | 前端 143 用例 + 后端 339 用例 + E2E 通过 |
 | P6 | 目录收口 + 主项目回归 | 待办 | 全量 `pnpm verify` + 启动验收 |
 
 ### 5.1 P1 完成记录（2026-11-08）
@@ -121,6 +121,13 @@ docs/                                # 本台账 + 评估 + 对接清单
 - `scripts/build-pi-web.mjs`：新增 ESM 产物 `dist/main/pi-server.mjs`；CJS 壳产物不变。
 - 验证：typecheck 0、单测 14 文件通过（307）、构建成功（host 13.96MB + pi-server 20.05MB）、`/api/health` 200、旧 CJS 壳回归正常。
 - 后续联调（P6）：desktop launcher 以 `utilityProcess.fork('dist/main/pi-server.mjs')` 启动，用 `PI_SERVER_READY_LINE_RE` 解析端口/token；`PI_WEB_SKIP_PI_SERVER=1` 可跳过该构建步骤。
+
+### 5.5 P5 测试补齐记录（2026-11-08）
+
+- 前端 `apps/pi-web`：新增 `vitest.config.ts`（node 环境 + `@urchin/pi-web-host/shared` 别名）；从上游复制并适配 9 个纯模块测试，**143 用例通过**。
+- 后端 `packages/pi-web-host`：新增 `engine-probe.test.ts`（仅 pi 的引擎目录/探测/拒绝卸载）与 `pi-server-ready.test.ts`（就绪行跨 chunk 正则 + URL 拼装），**累计 16 文件 / 339 用例通过**。
+- E2E：`apps/desktop/tests/e2e/pi-web-host.spec.ts` 通过（启动 → 鉴权 URL → 前端加载 → WS 握手 → 退出杀进程，27.8s）。
+- 已知待收口：`src/pi-shims.d.ts` 缺 `export const VERSION: string;`，测试侧用 `tests/pi-shims-augment.d.ts` 临时声明合并；建议后续补到 src 后删除该文件。
 
 ## 七、SDK 版本核查结论（2026-11-08，已澄清）
 

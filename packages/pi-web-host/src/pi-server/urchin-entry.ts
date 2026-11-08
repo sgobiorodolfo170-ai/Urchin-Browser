@@ -60,7 +60,8 @@ async function main(): Promise<void> {
     webDistDir: parseArg('www-dir'),
   });
 
-  stdout.write(`\n${PI_SERVER_READY_PREFIX}${buildPiServerUrl(handle.port, handle.host, handle.token)}\n`);
+  const readyUrl = buildPiServerUrl(handle.port, handle.host, handle.token);
+  console.log(`${PI_SERVER_READY_PREFIX}${readyUrl}`);
 
   let closing = false;
   const shutdown = (): void => {

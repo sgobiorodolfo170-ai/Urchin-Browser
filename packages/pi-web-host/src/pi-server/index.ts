@@ -3541,10 +3541,15 @@ if (!bootCatalogDisabled) {
 	});
 }
 
+// 端口 0（内嵌）时 PORT 是占位符：control pipe 必须用实际绑定端口命名，
+// 否则固定落到 `\\.\pipe\pi-web-ui-0`，多实例/残留会撞名并阻塞。
+const controlAddress = httpServer.address();
+const controlPort =
+	typeof controlAddress === "object" && controlAddress !== null ? controlAddress.port : PORT;
 const stopControl = startControlServer({
 	service,
 	dataDir: DATA_DIR,
-	port: PORT,
+	port: controlPort,
 	authToken: () => AUTH_TOKEN,
 });
 

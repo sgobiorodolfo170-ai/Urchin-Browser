@@ -16,6 +16,7 @@
  * 数据目录：数据落 userData/pi/self-host（DD1 对齐）。
  */
 import { utilityProcess } from 'electron';
+import { randomBytes } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { createLogger } from '@urchin/logger';
 import { redactUrlToken } from '../../shared/redact-url';
@@ -23,6 +24,11 @@ import { redactUrlToken } from '../../shared/redact-url';
 export const HOST_URL_LINE_RE =
   // eslint-disable-next-line no-control-regex -- token 终止符（与 dsh 同法，防 chunk 截断）
   /pi-web-host ready: (http:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]+)(?=[\s\x1b])/;
+
+/** pi-server（上游 Express 入口，ESM）就绪行；与 pi-web-host 轻量壳并行支持 */
+export const PI_SERVER_URL_LINE_RE =
+  // eslint-disable-next-line no-control-regex -- 同上
+  /pi-server ready: (http:\/\/[^\s\x1b]+)(?=[\s\x1b])/;
 
 const log = createLogger('pi-web-host-launcher');
 
@@ -70,6 +76,14 @@ export interface PiWebHostStatusSnapshot {
 export interface PiWebHostLauncherOptions {
   /** utility 入口模块绝对路径（dist/main/pi-web-host.js；dev 与打包态同为 asar 内相对 __dirname） */
   readonly forkTarget: string;
+  /**
+   * 入口类型：
+   * - legacy（默认）：pi-web-host.js 轻量壳（自研 WS 协议）
+   * - pi-server：上游 pi-server.mjs（Express + 上游协议，P4 产物）
+   */
+  readonly serverKind?: 'legacy' | 'pi-server';
+  /** pi-server 模式的 pi 配置目录（auth/models/skills），默认 dataDir/agent */
+  readonly agentDir?: string;
   /** 前端静态根目录（apps/pi-web 构建产物：dist/pi-web） */
   readonly wwwDir: string;
   /** 数据目录（userData/pi/self-host；host 侧 mkdir 占位，M2B 会话落盘用） */
@@ -191,10 +205,14 @@ export class PiWebHostLauncher {
     this.authenticatedUrl = undefined;
     this.state = 'starting';
 
+    const isPiServer = this.opts.serverKind === 'pi-server';
     // dev 教训：utilityProcess.fork 的 cwd 目录不存在时子进程会「静默挂起」——
     // 既不触发 error 也不触发 exit，只会拖到超时。必须先创建 dataDir。
     try {
       await this.opts.ensureDirFn(this.opts.dataDir);
+      if (isPiServer && this.opts.agentDir) {
+        await this.opts.ensureDirFn(this.opts.agentDir);
+      }
     } catch (e) {
       return this.failLaunch(`数据目录创建失败: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -213,14 +231,27 @@ export class PiWebHostLauncher {
     // M2B：fork 时解析当前凭据（支持运行时变更；apiKey 经 env 注入避免 argv 泄漏）
     const creds = this.opts.agentCredsProvider ? await this.opts.agentCredsProvider() : undefined;
 
-    const child = this.opts.forkFn(
-      this.opts.forkTarget,
-      [`--www-dir=${this.opts.wwwDir}`, `--cwd=${this.opts.dataDir}`],
-      {
-        // utilityProcess env 只接受 Record<string,string>：剔除 process.env 中的 undefined 键
-        env: {
-          ...filterEnv(process.env),
-          ...(creds
+    const accessToken = isPiServer ? randomBytes(32).toString('base64url') : undefined;
+    const args = isPiServer
+      ? [
+          '--port=0',
+          `--www-dir=${this.opts.wwwDir}`,
+          `--data-dir=${this.opts.dataDir}`,
+          `--cwd=${this.opts.dataDir}`,
+          `--token=${accessToken ?? ''}`,
+        ]
+      : [`--www-dir=${this.opts.wwwDir}`, `--cwd=${this.opts.dataDir}`];
+
+    const child = this.opts.forkFn(this.opts.forkTarget, args, {
+      // utilityProcess env 只接受 Record<string,string>：剔除 process.env 中的 undefined 键
+      env: {
+        ...filterEnv(process.env),
+        ...(isPiServer
+          ? {
+              PI_HOST_PI_SERVER: '1',
+              ...(this.opts.agentDir ? { PI_CODING_AGENT_DIR: this.opts.agentDir } : {}),
+            }
+          : creds
             ? {
                 PI_HOST_API_KEY: creds.apiKey,
                 PI_HOST_PROVIDER: creds.providerId,
@@ -231,18 +262,17 @@ export class PiWebHostLauncher {
                 ...(creds.toolsCwd ? { PI_HOST_TOOLS_CWD: creds.toolsCwd } : {}),
               }
             : {}),
-        },
-        cwd: this.opts.dataDir,
-        stdio: 'pipe',
       },
-    );
+      cwd: this.opts.dataDir,
+      stdio: 'pipe',
+    });
     this.child = child;
 
     child.stdout.on('data', (chunk: Buffer) => {
       const text = chunk.toString('utf8');
       stdoutBuffer += text;
       if (resolvedUrl === undefined) {
-        const match = HOST_URL_LINE_RE.exec(stdoutBuffer);
+        const match = (isPiServer ? PI_SERVER_URL_LINE_RE : HOST_URL_LINE_RE).exec(stdoutBuffer);
         if (match) {
           const captured = match[1];
           if (captured !== undefined) {

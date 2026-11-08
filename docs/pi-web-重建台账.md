@@ -82,7 +82,7 @@ docs/                                # 本台账 + 评估 + 对接清单
 | P3 | 前端质量重建（strict / 死代码 / 冗余） | ✅ 完成（详见 §5.3） | `typecheck` + `build` 通过 |
 | P4 | 后端接入 utility 入口 | ✅ 完成（接线骨架，详见 §5.4） | `typecheck` + 单测 + 构建 + 冒烟通过 |
 | P5 | 单测 + 关键 E2E | ✅ 完成（详见 §5.5） | 前端 143 用例 + 后端 339 用例 + E2E 通过 |
-| P6 | 目录收口 + 主项目回归 | 待办 | 全量 `pnpm verify` + 启动验收 |
+| P6 | 目录收口 + 主项目回归 | 进行中：launcher 已支持 pi-server 且 E2E 通过；`handlers.ts` 接线待与用户改动合并提交 | 构建 + E2E 通过 |
 
 ### 5.1 P1 完成记录（2026-11-08）
 
@@ -128,6 +128,15 @@ docs/                                # 本台账 + 评估 + 对接清单
 - 后端 `packages/pi-web-host`：新增 `engine-probe.test.ts`（仅 pi 的引擎目录/探测/拒绝卸载）与 `pi-server-ready.test.ts`（就绪行跨 chunk 正则 + URL 拼装），**累计 16 文件 / 339 用例通过**。
 - E2E：`apps/desktop/tests/e2e/pi-web-host.spec.ts` 通过（启动 → 鉴权 URL → 前端加载 → WS 握手 → 退出杀进程，27.8s）。
 - 已知待收口：`src/pi-shims.d.ts` 缺 `export const VERSION: string;`，测试侧用 `tests/pi-shims-augment.d.ts` 临时声明合并；建议后续补到 src 后删除该文件。
+
+### 5.6 P6 desktop 接线记录（2026-11-08）
+
+- `apps/desktop/src/main/pi-web-host/launcher.ts`：新增 `serverKind: 'legacy' | 'pi-server'`；pi-server 模式生成 32 字节 base64url token（43 字符）、传 `--port=0/--www-dir/--data-dir/--cwd/--token`、注入 `PI_HOST_PI_SERVER=1` 与 `PI_CODING_AGENT_DIR`，并解析 `pi-server ready:` 就绪行。
+- `apps/desktop/src/main/bootstrap/handlers.ts`：默认切到 pi-server（`URCHIN_PI_SERVER=legacy` 可回退轻量壳）。⚠ 该文件同时含用户未提交的 Logs 改动，本次未提交。
+- `packages/pi-web-host/src/pi-server/index.ts`：control socket 改用**实际绑定端口**，修复端口 0 时固定 `\\.\pipe\pi-web-ui-0` 撞名。
+- `urchin-entry.ts`：就绪行改用 `console.log`（utilityProcess 下 `process.stdout.write` 实测不落盘）。
+- 验证：desktop typecheck 0、launcher/register-handlers 单测通过、`pi-web-host.spec.ts` E2E 4.6s 通过（launch → 43 token URL → 200/401 → 页面 → WS → 退出）。
+- 遗留：pi-server 的模型/凭据由前端设置页写入 `PI_CODING_AGENT_DIR`（auth/models），旧 `pi.*` 设置不自动迁移；打包清单需登记 `dist/main/pi-server.mjs`。
 
 ## 七、SDK 版本核查结论（2026-11-08，已澄清）
 

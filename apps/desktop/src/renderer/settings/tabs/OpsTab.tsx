@@ -23,7 +23,7 @@ const OPS_FIELDS: readonly SettingField[] = [
   {
     key: 'ui.leftSidebarAutoExpand',
     label: '左侧边栏悬停自动展开',
-    desc: '开启后，左侧栏折叠时鼠标停留即可自动展开（默认开启）；双击左侧栏空白处始终可展开/折叠。',
+    desc: '开启后，左侧栏折叠时鼠标停留即可自动展开（默认关闭）；双击左侧栏空白处始终可展开/折叠。',
     type: 'toggle',
   },
   {
@@ -39,11 +39,11 @@ const OPS_FIELDS: readonly SettingField[] = [
   {
     key: 'ui.workspaceSwitcherMode',
     label: '折叠态工作区切换',
-    desc: '右侧栏折叠时切换工作区的方式：滚轮循环切换（默认）或点击图标打开工作区总览页（卡片 + 网页快照，参考 ego-lite Space 设计）；展开态选项条不受影响',
+    desc: '右侧栏折叠时切换工作区的方式：点击图标打开工作区总览页（卡片，默认）或滚轮循环切换；展开态选项条不受影响',
     type: 'select',
     options: [
-      { value: 'wheel', label: '滚轮循环切换' },
       { value: 'cards', label: '点击卡片' },
+      { value: 'wheel', label: '滚轮循环切换' },
     ],
   },
 ];

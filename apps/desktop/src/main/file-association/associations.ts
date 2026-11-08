@@ -24,6 +24,17 @@ const PROGID_PREFIX = 'UrchinBrowser';
 export const DEFAULT_BROWSER_PROG_ID = 'UrchinHTML';
 export const DEFAULT_BROWSER_CLIENT_KEY = 'UrchinBrowser';
 
+/**
+ * Windows「默认应用」中本应用专属页的 URI。
+ *
+ * Win11 21H2（2023-04 累积更新）起支持 `registeredAppUser` 参数，取值必须是
+ * RegisteredApplications 的值名（即 DEFAULT_BROWSER_CLIENT_KEY），而不是显示名；
+ * 旧系统会忽略参数仍落到「默认应用」总览页，因此可作为首选入口。
+ */
+export function buildDefaultAppsSettingsUri(): string {
+  return `ms-settings:defaultapps?registeredAppUser=${encodeURIComponent(DEFAULT_BROWSER_CLIENT_KEY)}`;
+}
+
 /** 关联分组标识。 */
 export type AssociationGroupId = 'media' | 'documents' | 'images';
 

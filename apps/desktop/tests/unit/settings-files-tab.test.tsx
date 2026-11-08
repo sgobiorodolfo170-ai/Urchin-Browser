@@ -85,7 +85,7 @@ describe('FilesTab (默认应用)', () => {
       expect(mockInvoke).toHaveBeenCalledWith('file-association.setDefaultBrowser', {});
     });
     await waitFor(() => {
-      expect(screen.getByText(/已登记默认浏览器能力/)).toBeDefined();
+      expect(screen.getByText(/已登记默认浏览器/)).toBeDefined();
     });
   });
 

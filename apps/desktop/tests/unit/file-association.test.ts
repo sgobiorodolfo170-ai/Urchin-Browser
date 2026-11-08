@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ASSOCIATION_GROUPS,
   buildAllRegistryEntries,
+  buildDefaultAppsSettingsUri,
   buildDefaultBrowserRegistryEntries,
   buildOpenCommand,
   buildProgId,
@@ -20,6 +21,7 @@ import {
   parseFileArg,
   parseUrlArg,
 } from '../../src/main/file-association/associations';
+import { buildRegAddArgs } from '../../src/main/file-association/register';
 
 describe('getExtensionsForGroup', () => {
   it('should return audio and video extensions for media group', () => {
@@ -118,6 +120,40 @@ describe('buildDefaultBrowserRegistryEntries', () => {
     expect(byKey.some((line) => line.includes('URLAssociations|https|UrchinHTML'))).toBe(true);
     expect(byKey.some((line) => line.includes('RegisteredApplications|UrchinBrowser|'))).toBe(true);
     expect(byKey.some((line) => line.includes('FileAssociations|.html|UrchinHTML'))).toBe(true);
+  });
+
+  it('should point the default-apps settings URI at the per-user app name', () => {
+    expect(buildDefaultAppsSettingsUri()).toBe(
+      'ms-settings:defaultapps?registeredAppUser=UrchinBrowser',
+    );
+  });
+});
+
+describe('buildRegAddArgs', () => {
+  it('should put a single /f at the end for named values', () => {
+    // 回归：旧实现生成 add KEY /f /v ... /f，reg.exe 报「无效语法」，
+    // 导致默认应用页所有按钮 100% 失败。
+    expect(
+      buildRegAddArgs({ key: 'HKCU\\Software\\Classes\\.mp3', valueName: 'x', value: 'y' }),
+    ).toEqual(['add', 'HKCU\\Software\\Classes\\.mp3', '/v', 'x', '/t', 'REG_SZ', '/d', 'y', '/f']);
+  });
+
+  it('should use /ve for default values and keep /f last', () => {
+    const args = buildRegAddArgs({
+      key: 'HKCU\\Software\\Classes\\.mp3',
+      valueName: '/d',
+      value: 'UrchinBrowser.mp3',
+    });
+    expect(args).toEqual([
+      'add',
+      'HKCU\\Software\\Classes\\.mp3',
+      '/ve',
+      '/d',
+      'UrchinBrowser.mp3',
+      '/f',
+    ]);
+    expect(args.filter((arg) => arg === '/f')).toHaveLength(1);
+    expect(args.at(-1)).toBe('/f');
   });
 });
 

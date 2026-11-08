@@ -16,6 +16,7 @@ import { createLogger } from '@urchin/logger';
 import { classifyFileKind, getExtensionsForKind } from '../files/file-kind';
 import {
   ASSOCIATION_GROUPS,
+  buildDefaultAppsSettingsUri,
   buildDefaultBrowserRegistryEntries,
   getExtensionsForGroup,
   getExtensionsByGroup,
@@ -115,11 +116,16 @@ export function registerFileAssociationHandlers(deps: FileAssociationHandlersDep
         regDeps,
       );
       let openedSettings = false;
-      try {
-        await shell.openExternal('ms-settings:defaultapps');
-        openedSettings = true;
-      } catch (err) {
-        log.warn('open default apps settings failed', { error: String(err) });
+      // 优先打开本应用专属的「默认应用」页（可直接点「设为默认」），
+      // 老版本 Windows 忽略 registeredAppUser 参数时回退到总览页。
+      for (const uri of [buildDefaultAppsSettingsUri(), 'ms-settings:defaultapps']) {
+        try {
+          await shell.openExternal(uri);
+          openedSettings = true;
+          break;
+        } catch (err) {
+          log.warn('open default apps settings failed', { uri, error: String(err) });
+        }
       }
       return { ok: true as const, openedSettings };
     } catch (err) {

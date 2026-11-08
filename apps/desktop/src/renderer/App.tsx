@@ -157,7 +157,7 @@ export function App() {
   const [workspaceManagerTarget, setWorkspaceManagerTarget] = useState<Workspace | null>(null);
   /** 折叠态工作区切换模式（设置 ui.workspaceSwitcherMode；'wheel'=滚轮循环；'cards'=点击打开工作区总览页）。 */
   const [workspaceSwitcherMode, setWorkspaceSwitcherMode] =
-    useState<WorkspaceSwitcherMode>('wheel');
+    useState<WorkspaceSwitcherMode>('cards');
 
   /**
    * 打开本地路径（文件夹/文件统一入口）：
@@ -268,10 +268,10 @@ export function App() {
 
   // 右侧边栏悬停展开延迟（ms，从设置读取，默认 300）
   const [sidebarHoverDelay, setSidebarHoverDelay] = useState<number>(300);
-  /** 右侧边栏悬停自动展开开关（设置 ui.rightSidebarAutoExpand，默认 true） */
-  const [rightSidebarAutoExpand, setRightSidebarAutoExpand] = useState<boolean>(true);
-  /** 左侧边栏悬停自动展开开关（设置 ui.leftSidebarAutoExpand，默认 true） */
-  const [leftSidebarAutoExpand, setLeftSidebarAutoExpand] = useState<boolean>(true);
+  /** 右侧边栏悬停自动展开开关（设置 ui.rightSidebarAutoExpand，默认 false=双击展开） */
+  const [rightSidebarAutoExpand, setRightSidebarAutoExpand] = useState<boolean>(false);
+  /** 左侧边栏悬停自动展开开关（设置 ui.leftSidebarAutoExpand，默认关闭） */
+  const [leftSidebarAutoExpand, setLeftSidebarAutoExpand] = useState<boolean>(false);
 
   /** 当前搜索引擎（设置 searchEngine，供地址栏搜索词生成搜索 URL；默认 google） */
   const [searchEngine, setSearchEngine] = useState<string>('google');
@@ -322,11 +322,11 @@ export function App() {
           setSearchEngine(engine);
         }
         const switcherMode = (switcherModeRes as { value: unknown }).value;
-        // 非法值回退 wheel（默认模式），保持向后兼容
-        if (switcherMode === 'cards') {
-          setWorkspaceSwitcherMode('cards');
-        } else {
+        // 非法值 / 未设置回退 cards（默认模式），保持向后兼容
+        if (switcherMode === 'wheel') {
           setWorkspaceSwitcherMode('wheel');
+        } else {
+          setWorkspaceSwitcherMode('cards');
         }
       } catch {
         // 使用默认值

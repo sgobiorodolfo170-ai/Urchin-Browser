@@ -25,15 +25,27 @@ export interface AssociationDeps {
   readonly regExec?: RegExec;
 }
 
-/** reg.exe add 单个条目（带重试以抵抗偶发并发写冲突）。 */
-function regAdd(exec: RegExec, entry: RegistryEntry, retries = 1): Promise<void> {
-  const args = ['add', entry.key, '/f'];
+/**
+ * 构造 reg.exe add 的参数（纯函数，便于单测锁定语法）。
+ *
+ * 2026-11-09 修复：旧实现把 `/f` 前置又在末尾重复一次（`add KEY /f /v ... /f`），
+ * reg.exe 会报「错误: 无效语法」，导致「设为默认浏览器」与全部「设为默认
+ * 打开方式」100% 失败。reg.exe 不接受重复的 `/f`，这里统一只保留一个并置于末尾。
+ */
+export function buildRegAddArgs(entry: RegistryEntry): readonly string[] {
+  const args = ['add', entry.key];
   if (entry.valueName === '/d') {
     // 默认值：/ve 表示键的 (默认) 值
     args.push('/ve', '/d', entry.value, '/f');
   } else {
     args.push('/v', entry.valueName, '/t', 'REG_SZ', '/d', entry.value, '/f');
   }
+  return args;
+}
+
+/** reg.exe add 单个条目（带重试以抵抗偶发并发写冲突）。 */
+function regAdd(exec: RegExec, entry: RegistryEntry, retries = 1): Promise<void> {
+  const args = buildRegAddArgs(entry);
   return new Promise((resolve, reject) => {
     exec('reg.exe', args, { windowsHide: true }, (error, _stdout, stderr) => {
       if (!error) {

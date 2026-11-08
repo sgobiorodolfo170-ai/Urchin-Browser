@@ -89,8 +89,8 @@ export function FilesTab({ onToast }: { readonly onToast: (msg: string) => void 
       };
       onToast(
         res.openedSettings
-          ? `已登记默认浏览器能力，请在系统「默认应用」中选择 ${displayNameForLocale(navigator.language)}`
-          : '已登记默认浏览器能力，请到系统「默认应用」中手动选择本浏览器',
+          ? `已登记默认浏览器。请在打开的系统设置中把「Web 浏览器」设为 ${displayNameForLocale(navigator.language)}（Windows 不允许程序直接改默认，需要你确认）`
+          : `已登记默认浏览器。请到系统「默认应用」中把「Web 浏览器」设为 ${displayNameForLocale(navigator.language)}`,
       );
     } catch (e) {
       onToast('设置默认浏览器失败：' + String(e));
@@ -110,7 +110,7 @@ export function FilesTab({ onToast }: { readonly onToast: (msg: string) => void 
       try {
         await window.urchin.invoke('file-association.register', { group: groupId, extensions });
         onToast(
-          `已注册。可在系统「打开方式」选择 ${displayNameForLocale(navigator.language)} 并勾选"始终使用"`,
+          `已注册为打开方式。请在系统「打开方式」中选择 ${displayNameForLocale(navigator.language)} 并勾选"始终使用"（Windows 需你确认一次）`,
         );
         await loadStatus();
       } catch (e) {
@@ -127,8 +127,8 @@ export function FilesTab({ onToast }: { readonly onToast: (msg: string) => void 
       <h1 className="mb-2 text-2xl font-semibold">默认应用</h1>
       <p className="mb-6 text-sm text-text-secondary">
         把 {displayNameForLocale(navigator.language)}{' '}
-        设为默认浏览器和音视频、文档、图片的打开方式。Windows 10/11 不允许程序直接改写默认浏览器，
-        点击下方按钮后会打开系统「默认应用」页，由你确认选择本浏览器。
+        设为默认浏览器和音视频、文档、图片的打开方式。Windows 10/11 不允许程序直接改写默认，
+        点击下方按钮后会登记本浏览器能力并打开系统「默认应用」页，由你确认选择本浏览器。
       </p>
 
       <div className="mb-4 rounded-md border border-border bg-surface-secondary px-4 py-4">

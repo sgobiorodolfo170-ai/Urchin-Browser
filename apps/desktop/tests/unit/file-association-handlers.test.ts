@@ -147,11 +147,29 @@ describe('file-association.setDefaultBrowser', () => {
     const res = await call(handlers, 'file-association.setDefaultBrowser', {});
 
     expect(res).toMatchObject({ ok: true, openedSettings: true });
-    expect(openExternal).toHaveBeenCalledWith('ms-settings:defaultapps');
+    expect(openExternal).toHaveBeenCalledWith(
+      'ms-settings:defaultapps?registeredAppUser=UrchinBrowser',
+    );
     const argStrings = mock.calls.map((c) => c.args.join(' '));
     expect(argStrings.some((s) => s.includes('RegisteredApplications'))).toBe(true);
     expect(argStrings.some((s) => s.includes('URLAssociations'))).toBe(true);
     expect(argStrings.some((s) => s.includes('UrchinHTML'))).toBe(true);
+  });
+
+  it('should fall back to the overview page when the app-specific URI fails', async () => {
+    openExternal.mockClear();
+    openExternal.mockRejectedValueOnce(new Error('unsupported uri')).mockResolvedValue(undefined);
+    const mock = createMockReg((cb) => cb(null, 'ok'));
+    const handlers = captureHandlers(mock.exec);
+
+    const res = await call(handlers, 'file-association.setDefaultBrowser', {});
+
+    expect(res).toMatchObject({ ok: true, openedSettings: true });
+    expect(openExternal).toHaveBeenNthCalledWith(
+      1,
+      'ms-settings:defaultapps?registeredAppUser=UrchinBrowser',
+    );
+    expect(openExternal).toHaveBeenNthCalledWith(2, 'ms-settings:defaultapps');
   });
 });
 

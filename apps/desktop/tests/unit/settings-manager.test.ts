@@ -129,6 +129,14 @@ describe('SettingsManager', () => {
     expect(keys).toContain('customKey');
   });
 
+  it('ui defaults: 左侧悬停展开默认关闭、折叠态工作区切换默认点击卡片', () => {
+    const mgr = new SettingsManager();
+
+    expect(mgr.get('ui.leftSidebarAutoExpand')).toBe(false);
+    expect(mgr.get('ui.rightSidebarAutoExpand')).toBe(false);
+    expect(mgr.get('ui.workspaceSwitcherMode')).toBe('cards');
+  });
+
   it('window.bounds: defaults to null and round-trips through persistence (窗口状态记忆)', () => {
     const saved = { get: vi.fn().mockReturnValue(null), set: vi.fn() };
     const mgr = new SettingsManager(saved);

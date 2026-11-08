@@ -7,6 +7,7 @@
 export { registerFileAssociationHandlers } from './register-handlers';
 export {
   ASSOCIATION_GROUPS,
+  buildDefaultAppsSettingsUri,
   buildDefaultBrowserRegistryEntries,
   buildOpenCommand,
   buildProgId,
@@ -17,4 +18,9 @@ export {
   getExtensionsByGroup,
 } from './associations';
 export type { AssociationGroupId, AssociationGroup, RegistryEntry } from './associations';
-export { registerAssociations, registerRegistryEntries, getRegisteredExtensions } from './register';
+export {
+  buildRegAddArgs,
+  registerAssociations,
+  registerRegistryEntries,
+  getRegisteredExtensions,
+} from './register';

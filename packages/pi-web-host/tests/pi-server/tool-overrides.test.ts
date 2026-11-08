@@ -94,6 +94,54 @@ describe('installToolOverrides', () => {
     expect((session._customTools ?? []).map((t) => t.name)).toEqual(['bash']);
   });
 
+  it('should omit a same-named extension tool that was left untouched', () => {
+    const ext = tool('read', ':ext');
+    const { session } = makeSession([{ definition: ext }], [tool('bash')]);
+    const names = installToolOverrides(session, [
+      { name: 'read', fallback: () => tool('read', ':builtin') },
+    ]);
+    // D7：该 spec 被跳过、没有注入任何工具，因此不能出现在「已注入」名单里。
+    expect(names).toEqual([]);
+    expect((session._customTools ?? []).map((t) => t.name)).toEqual(['bash']);
+  });
+
+  it('should return only the injected names when specs are mixed', () => {
+    const extRead = tool('read', ':ext');
+    const extBash = tool('bash', ':ext');
+    const { session } = makeSession([{ definition: extRead }, { definition: extBash }]);
+    const names = installToolOverrides(session, [
+      { name: 'read', fallback: () => tool('read', ':builtin') },
+      { name: 'write', fallback: () => tool('write', ':builtin') },
+      {
+        name: 'bash',
+        fallback: () => tool('bash', ':builtin'),
+        composeWith: () => tool('bash', ':composed'),
+      },
+    ]);
+    expect(names).toEqual(['write', 'bash']);
+    expect((session._customTools ?? []).map((t) => t.name)).toEqual(['write', 'bash']);
+  });
+
+  it('should return every name when nothing was skipped', () => {
+    const { session } = makeSession();
+    const names = installToolOverrides(session, [
+      { name: 'read', fallback: () => tool('read') },
+      { name: 'write', fallback: () => tool('write') },
+    ]);
+    expect(names).toEqual(['read', 'write']);
+  });
+
+  it('should dedupe repeated spec names while keeping injection order', () => {
+    const { session } = makeSession();
+    // 重复 spec 是调用方配置错误；返回值仍须保持「唯一名数组」契约。
+    const names = installToolOverrides(session, [
+      { name: 'read', fallback: () => tool('read') },
+      { name: 'read', fallback: () => tool('read') },
+      { name: 'write', fallback: () => tool('write') },
+    ]);
+    expect(names).toEqual(['read', 'write']);
+  });
+
   it('should inject overrides before existing custom tools', () => {
     const { session } = makeSession([], [tool('bash'), tool('plugin_x')]);
     installToolOverrides(session, [

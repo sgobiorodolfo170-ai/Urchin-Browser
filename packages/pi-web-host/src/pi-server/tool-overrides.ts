@@ -37,11 +37,19 @@ export function installToolOverrides(
 	if (!Array.isArray(session._customTools) || typeof session._refreshToolRegistry !== "function") return null;
 	const names = new Set(specs.map((s) => s.name));
 	const injected: AnyToolDefinition[] = [];
+	// D7：返回值只描述「本次真的注入了什么」——扩展已提供同名工具且未给
+	// composeWith 的 spec 会被跳过，不能出现在名单里，否则调用方无法区分
+	// 「已注入覆盖实现」与「沿用扩展实现」。去重保序以维持既有唯一名契约。
+	const injectedNames: string[] = [];
+	const recordInjected = (name: string): void => {
+		if (!injectedNames.includes(name)) injectedNames.push(name);
+	};
 	for (const spec of specs) {
 		const extensionTool = extensionToolDefinition(session, spec.name);
 		if (extensionTool) {
 			if (spec.composeWith) {
 				injected.push(spec.composeWith(extensionTool));
+				recordInjected(spec.name);
 				try {
 					options?.onComposed?.(spec.name, extensionTool);
 				} catch {}
@@ -49,10 +57,11 @@ export function installToolOverrides(
 			continue;
 		}
 		injected.push(spec.fallback());
+		recordInjected(spec.name);
 	}
 	session._customTools = [...injected, ...session._customTools.filter((t) => !names.has(t.name))];
 	session._refreshToolRegistry();
-	return [...names];
+	return injectedNames;
 }
 
 export function syncSubagentOverride(

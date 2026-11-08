@@ -307,6 +307,44 @@ describe('archive route (local)', () => {
     expect(res.sent).toBe('Invalid archive action');
   });
 
+  it('should require an explicit extract destination instead of a generic invalid-path error', async () => {
+    const f = await fixture();
+    const handler = f.routes.get('/api/file-transfer/archive')!;
+    await handler(
+      makeReq({ query: { clientId: 'test-client' }, body: { action: 'compress', path: 'a.txt' } }),
+      new FakeRes(),
+    );
+    const res = new FakeRes();
+    await handler(
+      makeReq({
+        query: { clientId: 'test-client' },
+        body: { action: 'extract', path: 'a.txt.tar.gz', policy: 'overwrite' },
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.sent).toMatch(/destination is required/i);
+  });
+
+  it('should treat an empty extract destination as the workspace root', async () => {
+    const f = await fixture();
+    const handler = f.routes.get('/api/file-transfer/archive')!;
+    await handler(
+      makeReq({ query: { clientId: 'test-client' }, body: { action: 'compress', path: 'a.txt' } }),
+      new FakeRes(),
+    );
+    const res = new FakeRes();
+    await handler(
+      makeReq({
+        query: { clientId: 'test-client' },
+        body: { action: 'extract', path: 'a.txt.tar.gz', destination: '', policy: 'overwrite' },
+      }),
+      res,
+    );
+    expect(res.jsonBody).toEqual({ written: 1, skipped: 0 });
+    expect(await readFile(join(f.root, 'a.txt'), 'utf8')).toBe('archive me');
+  });
+
   it('should refuse a second concurrent operation on the same client', async () => {
     const f = await fixture();
     const handler = f.routes.get('/api/file-transfer/archive')!;
@@ -355,6 +393,23 @@ describe('archive route (remote)', () => {
       tarRes,
     );
     expect(ssh.execInWorkspace.mock.calls[0][1]).toContain('tar -xf');
+  });
+
+  it('should require an explicit destination before touching the remote', async () => {
+    const ssh = fakeSsh();
+    vi.spyOn(remoteSsh, 'getGlobalRemoteSshService').mockReturnValue(ssh as never);
+    const f = await fixture(undefined, true);
+    const res = new FakeRes();
+    await f.routes.get('/api/file-transfer/archive')!(
+      makeReq({
+        query: { clientId: 'test-client' },
+        body: { action: 'extract', path: 'x.zip' },
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.sent).toMatch(/destination is required/i);
+    expect(ssh.execInWorkspace).not.toHaveBeenCalled();
   });
 
   it('should compress and download remote sources while cleaning the temp archive', async () => {

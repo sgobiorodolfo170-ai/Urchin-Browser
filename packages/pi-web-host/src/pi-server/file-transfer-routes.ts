@@ -72,6 +72,10 @@ export function registerFileTransferRoutes(
 		let temp: string | undefined;
 		try {
 			cwd = root(req);
+			// D12：extract 的 destination 必填（"" 表示工作区根，本地/远程同一口径）。
+			// 缺字段时给出可诊断的错误，而不是远程/本地各自抛「Invalid path」。
+			if (req.body?.action === "extract" && typeof req.body?.destination !== "string")
+				throw new Error('Extract destination is required (use "" to extract into the workspace root)');
 			if (busy.has(cwd)) {
 				res.status(409).send("Another file operation is running");
 				return;

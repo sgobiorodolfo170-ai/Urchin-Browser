@@ -321,7 +321,9 @@ export function pruneContextHierarchically(
 	}
 
 	reachedTier2 = reachedTier2 || currentTokens >= tier2Threshold;
-	if (reachedTier2 || (options.force && currentTokens >= effectiveCap)) {
+	// force = 「无视水位全量压缩」，310 行已把 force 计入 reachedTier2；此处不再重复判断
+	// `options.force && currentTokens >= effectiveCap`——那是恒不可达的死分支（D10）。
+	if (reachedTier2) {
 		const r2 = foldCompletedStepLogs(currentMessages);
 		if (r2.foldedCount > 0) {
 			currentMessages = r2.messages;

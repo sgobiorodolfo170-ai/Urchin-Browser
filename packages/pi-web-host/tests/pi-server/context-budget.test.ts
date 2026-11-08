@@ -503,4 +503,22 @@ describe('pruneContextHierarchically', () => {
     expect(res.tier2.foldedCount).toBe(1);
     expect(res.tokensAfter).toBeLessThan(res.tokensBefore);
   });
+
+  it('should not fold at tier 2 without force when the watermark is not reached', () => {
+    const thinking = 'debug\n'.repeat(200);
+    const messages = [
+      { role: 'user', content: 'step 1' },
+      { role: 'assistant', content: [{ type: 'thinking', thinking }] },
+      { role: 'user', content: 'recent 1' },
+    ] as unknown as AgentMessage[];
+
+    const res = pruneContextHierarchically(messages, {
+      contextWindow: 100_000,
+      reserveTokens: 100,
+      tier1Watermark: 0.99,
+      tier2Watermark: 0.99,
+    });
+    expect(res.reachedTier2).toBe(false);
+    expect(res.tier2.foldedCount).toBe(0);
+  });
 });

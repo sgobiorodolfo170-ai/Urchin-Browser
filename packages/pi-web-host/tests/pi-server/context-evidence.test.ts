@@ -25,6 +25,7 @@ import { join, relative } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildContextEvidenceIndex,
+  buildContextEvidenceIndexReport,
   contextEvidenceReference,
   copyContextEvidence,
   persistContextEvidence,
@@ -629,8 +630,14 @@ describe('persistent context evidence', () => {
     expect(await persistContextEvidence(file, 'x'.repeat(1024 * 1024 + 1))).toBeUndefined();
     await writeFile(`${file}.evidence`, 'not a directory');
     expect(await persistContextEvidence(file, text)).toBeUndefined();
-    // 证据路径被非目录占用属于硬错误：索引构建不做静默降级
-    await expect(buildContextEvidenceIndex(file)).rejects.toThrow('Invalid evidence directory');
+    // D9：索引构建是 best-effort（compaction 会 await 它），非目录占用时必须降级而不是抛错，
+    // 否则一个外部杂物文件就能让整轮会话压缩失败。
+    expect(await buildContextEvidenceIndex(file)).toBe('');
+    expect(await buildContextEvidenceIndexReport(file)).toEqual({
+      index: '',
+      skipped: 'not-directory',
+    });
+    // 读取路径相反：用户显式请求了具体证据，必须显式失败而不是静默返回空。
     const reader = withContextEvidenceRead(
       { execute: vi.fn(() => Promise.resolve({ content: [] })) } as never,
       () => file,
@@ -638,6 +645,16 @@ describe('persistent context evidence', () => {
     await expect(
       reader.execute('id', { path: `${file}.evidence` }, undefined, undefined, {}),
     ).rejects.toThrow('directory');
+  });
+
+  it('should report why the evidence index was skipped', async () => {
+    const file = await session();
+    expect(await buildContextEvidenceIndexReport(file)).toEqual({ index: '', skipped: 'missing' });
+    expect(await persistContextEvidence(file, text)).toBeTruthy();
+    const report = await buildContextEvidenceIndexReport(file);
+    expect(report.skipped).toBeNull();
+    expect(report.index).toContain('context-evidence:');
+    expect(report.index).toBe(await buildContextEvidenceIndex(file));
   });
 
   it('should reference evidence by the sha256 of its UTF-8 text', () => {

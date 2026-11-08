@@ -13,25 +13,65 @@ export function contextEvidenceReference(text: string): string {
 	return `context-evidence:${createHash("sha256").update(text).digest("hex")}`;
 }
 
+/**
+ * 证据索引构建被跳过的原因（D9：降级必须可解释，不能静默丢弃）。
+ * - `missing`：证据目录尚不存在（常见，属正常空态）
+ * - `not-directory`：`<session>.evidence` 被普通文件/符号链接占用（数据异常）
+ * - `io`：目录可定位但读取失败（EACCES 等）
+ */
+export type EvidenceIndexSkip = "missing" | "not-directory" | "io";
+
+export interface ContextEvidenceIndexReport {
+	index: string;
+	/** null = 索引构建成功（index 为空只说明目录里还没有证据文件） */
+	skipped: EvidenceIndexSkip | null;
+}
+
 export async function buildContextEvidenceIndex(sessionFile: string): Promise<string> {
+	return (await buildContextEvidenceIndexReport(sessionFile)).index;
+}
+
+/**
+ * 构建证据索引并暴露「为什么被跳过」。
+ *
+ * 失败模式政策（D9）：索引与持久化**降级**（compaction 会 await 索引，一个外部杂物文件
+ * 不该让整轮会话压缩失败）；读取与拷贝**显式失败**（用户显式请求了具体证据 / 数据搬运，
+ * 静默返回空比报错更糟）。
+ */
+export async function buildContextEvidenceIndexReport(
+	sessionFile: string,
+): Promise<ContextEvidenceIndexReport> {
 	return withEvidenceQueue([sessionFile], undefined, async () => {
 		let directory: string;
 		try {
 			directory = await evidenceDirectory(sessionFile, false);
 		} catch (error) {
-			if (missing(error)) return "";
-			throw error;
+			return { index: "", skipped: skipReason(error) };
 		}
-		const names = (await readdir(directory, { withFileTypes: true }))
-			.filter((entry) => entry.isFile() && ARTIFACT.test(entry.name))
-			.map((entry) => entry.name)
-			.sort();
-		if (!names.length) return "";
-		return [
-			`[Context evidence: ${names.length} files. Read context-evidence:index for the complete directory listing.]`,
-			...names.slice(0, 32).map((name) => `context-evidence:${name.slice(0, -4)}`),
-		].join("\n");
+		let names: string[];
+		try {
+			names = (await readdir(directory, { withFileTypes: true }))
+				.filter((entry) => entry.isFile() && ARTIFACT.test(entry.name))
+				.map((entry) => entry.name)
+				.sort();
+		} catch {
+			return { index: "", skipped: "io" };
+		}
+		if (!names.length) return { index: "", skipped: null };
+		return {
+			index: [
+				`[Context evidence: ${names.length} files. Read context-evidence:index for the complete directory listing.]`,
+				...names.slice(0, 32).map((name) => `context-evidence:${name.slice(0, -4)}`),
+			].join("\n"),
+			skipped: null,
+		};
 	});
+}
+
+function skipReason(error: unknown): EvidenceIndexSkip {
+	if (missing(error)) return "missing";
+	if (error instanceof EvidenceDirectoryError) return "not-directory";
+	return "io";
 }
 
 export function withContextEvidenceRead(
@@ -134,13 +174,27 @@ async function openRegular(path: string, signal?: AbortSignal): Promise<FileHand
 	}
 }
 
+/**
+ * 证据路径被非目录 / 符号链接占用时的类型化错误。
+ *
+ * 索引与持久化把它当降级信号（见 buildContextEvidenceIndexReport），
+ * 读取与拷贝则原样上抛——调用方按各自语义处理，避免「一处降级、一处抛错」的模糊态（D9）。
+ */
+export class EvidenceDirectoryError extends Error {
+	constructor(readonly kind: "not-directory" | "symlink") {
+		super(`Invalid evidence directory: ${kind === "symlink" ? "symbolic link" : "not a directory"}`);
+		this.name = "EvidenceDirectoryError";
+	}
+}
+
 async function evidenceDirectory(session: string, create: boolean, signal?: AbortSignal): Promise<string> {
 	signal?.throwIfAborted();
 	const directory = `${session}.evidence`;
 	if (create) await mkdir(directory, { recursive: true, mode: 0o700 });
 	signal?.throwIfAborted();
 	const info = await lstat(directory);
-	if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("Invalid evidence directory");
+	if (info.isSymbolicLink()) throw new EvidenceDirectoryError("symlink");
+	if (!info.isDirectory()) throw new EvidenceDirectoryError("not-directory");
 	return directory;
 }
 

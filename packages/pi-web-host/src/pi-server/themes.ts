@@ -53,6 +53,21 @@ function readGroup(path: string): "classic" | "builtin" {
 	return "builtin";
 }
 
+/**
+ * 解析内置主题目录。
+ *
+ * 为什么需要这个解析（2026-11-09）：上游默认取 `pkgRoot/themes`，前提是主题随
+ * npm 包发布（pi-web-ui 安装目录下就有 themes/）。本项目的 pi-server 由 esbuild
+ * 打成 `dist/main/pi-server.mjs`，`getPkgRoot()` 会落到 `apps/desktop`（打包态
+ * `app.asar`），那里没有 themes/ —— 于是 `/api/themes` 恒为空，前端主题菜单只剩
+ * 「深色（默认）」。`scripts/build-pi-web.mjs` 已把主题复制到静态根
+ * `dist/pi-web/themes`，因此优先用静态根下的 themes/，缺失时再回退包根。
+ */
+export function resolveBuiltinThemesDir(pkgRoot: string, webDist: string): string {
+	const webThemes = join(webDist, "themes");
+	return existsSync(webThemes) ? webThemes : join(pkgRoot, "themes");
+}
+
 export function listThemes(builtinDir: string, userDir: string): ThemeInfo[] {
 	const scan = (dir: string, builtin: boolean): ThemeInfo[] => {
 		if (!existsSync(dir)) return [];

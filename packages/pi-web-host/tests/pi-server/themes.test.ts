@@ -8,7 +8,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { listThemes, readThemeCss, resolveThemeFile } from '../../src/pi-server/themes.js';
+import {
+  listThemes,
+  readThemeCss,
+  resolveBuiltinThemesDir,
+  resolveThemeFile,
+} from '../../src/pi-server/themes.js';
 
 let root: string;
 let builtinDir: string;
@@ -24,6 +29,20 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
+});
+
+describe('resolveBuiltinThemesDir', () => {
+  it('should prefer the static root themes dir when it exists', () => {
+    const webDist = join(root, 'pi-web');
+    mkdirSync(join(webDist, 'themes'), { recursive: true });
+    expect(resolveBuiltinThemesDir(join(root, 'pkg'), webDist)).toBe(join(webDist, 'themes'));
+  });
+
+  it('should fall back to <pkgRoot>/themes when the static root has no themes dir', () => {
+    const webDist = join(root, 'pi-web');
+    mkdirSync(webDist, { recursive: true });
+    expect(resolveBuiltinThemesDir(join(root, 'pkg'), webDist)).toBe(join(root, 'pkg', 'themes'));
+  });
 });
 
 describe('listThemes', () => {

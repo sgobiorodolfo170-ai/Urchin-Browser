@@ -60,7 +60,7 @@ import { isOfficeFile, OFFICE_MAX_FILE_BYTES, unzipFiles } from "./office-parse.
 import { startControlServer } from "./control-socket.js";
 import { scheduleUploadCleanup } from "./uploads.js";
 import { ensureWindowsBash, windowsBashDir } from "./ensure-bash.js";
-import { listThemes, readThemeCss, resolveThemeFile } from "./themes.js";
+import { listThemes, readThemeCss, resolveBuiltinThemesDir, resolveThemeFile } from "./themes.js";
 import { isManaged, managedRefusal } from "./managed.js";
 import { launchOrigin, toServiceInfo } from "./launch-origin.js";
 import { isTabAllowed, parseTabs, tabsRefusal } from "./tabs.js";
@@ -1330,7 +1330,10 @@ function resolvePkgRoot(): string {
 	return getPkgRoot();
 }
 const pkgRoot = resolvePkgRoot();
-const BUILTIN_THEMES_DIR = join(pkgRoot, "themes");
+// Urchin patch（2026-11-09）：静态根优先解析内置主题目录，修复本打包布局下
+// /api/themes 恒为空（详见 themes.ts 的 resolveBuiltinThemesDir 注释）。
+const webDist = options.webDistDir ? resolve(options.webDistDir) : join(pkgRoot, "web", "dist");
+const BUILTIN_THEMES_DIR = resolveBuiltinThemesDir(pkgRoot, webDist);
 const USER_THEMES_DIR = join(DATA_DIR, "themes");
 
 app.get("/api/themes", (_req, res) => {
@@ -1569,7 +1572,6 @@ const deviceCenter = await installLocalDeviceCenter({
 		};
 	},
 });
-const webDist = options.webDistDir ? resolve(options.webDistDir) : join(pkgRoot, "web", "dist");
 function webDistPath(): string {
 	return webDist;
 }

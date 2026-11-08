@@ -83,6 +83,7 @@ import { installEventLoopWatchdog } from './bootstrap/watchdog';
 import { performCleanup } from './lifecycle/cleanup';
 import { registerIpcHandlers } from './bootstrap/handlers';
 import { installSignalHandlers } from './lifecycle/signals';
+import { initLogFile } from './logs';
 
 const log = createLogger('main');
 
@@ -181,6 +182,11 @@ const currentDataDir = resolveDataLocation(startupUserDataPath, defaultDataRoot)
 // 注意：切换后旧 cookies 不会迁移（旧登录态失效，需重新登录一次）。
 app.setPath('sessionData', join(currentDataDir, 'cookies'));
 markStartup('main:data-dir');
+
+// 运行日志落盘（2026-11-07 用户指令：设置 → 运行日志；位置跟随数据目录）。
+// 放在数据目录解析之后、各管理器构造之前，使启动早期错误（协议注册、GenOffice
+// 嵌入包加载等）也能进入日志文件。后续所有 createLogger 输出自动双写。
+initLogFile(join(currentDataDir, 'logs'));
 
 // 注册 urchin: scheme 为特权协议（必须在 app ready 之前）。
 // 阶段 2：GenOffice 编辑器渲染页（genoffice-app:）等特权 scheme 由嵌入包导出，
@@ -1446,3 +1452,31 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   log.error('unhandledRejection', { reason: String(reason) });
 });
+
+// 渲染/子进程异常也写入运行日志（设置 → 运行日志）：用户报「某功能打不开」时，
+// 崩溃事件与退出码是排障关键，且不会被渲染进程 console 吞掉。
+app.on('render-process-gone', (_event, contents, details) => {
+  log.error('render-process-gone', {
+    url: safeUrl(contents),
+    reason: details.reason,
+    exitCode: details.exitCode,
+  });
+});
+
+app.on('child-process-gone', (_event, details) => {
+  log.error('child-process-gone', {
+    type: details.type,
+    serviceName: details.serviceName,
+    reason: details.reason,
+    exitCode: details.exitCode,
+  });
+});
+
+/** 读取 webContents URL（已销毁时返回空串）。 */
+function safeUrl(contents: { getURL?: () => string }): string {
+  try {
+    return contents.getURL?.() ?? '';
+  } catch {
+    return '';
+  }
+}

@@ -4,7 +4,7 @@
  * 设计：
  * - 左侧选项卡导航，右侧内容区
  * - 自动保存：字段变更后立即写入（debounce 800ms，与主流浏览器设置页对齐）
- * - 选项卡：通用 / 操作 / AI 助手 / 数据 / 默认应用 / 帮助手册 / 隐私与安全 / 建议与反馈 / 关于
+ * - 选项卡：通用 / 剪藏 / 操作 / AI 助手 / 数据 / 默认应用 / 帮助手册 / 隐私与安全 / 建议与反馈 / 关于 / 运行日志
  *
  * 通过主窗口已有的 window.urchin.invoke('settings.*') 读写设置。
  */
@@ -15,6 +15,7 @@ import { useSettings } from './use-settings';
 import { OpsTab } from './tabs/OpsTab';
 import { HelpTab } from './tabs/HelpTab';
 import { AboutTab } from './tabs/AboutTab';
+import { LogsTab } from './tabs/LogsTab';
 import { FeedbackTab } from './tabs/FeedbackTab';
 import { FilesTab } from './tabs/FilesTab';
 import { AiSection } from './sections/AiSection';
@@ -37,7 +38,8 @@ type TabKey =
   | 'files'
   | 'help'
   | 'feedback'
-  | 'about';
+  | 'about'
+  | 'logs';
 
 interface TabDef {
   readonly key: TabKey;
@@ -55,6 +57,8 @@ const TABS: readonly TabDef[] = [
   { key: 'privacy', label: '隐私与安全' },
   { key: 'feedback', label: '建议与反馈' },
   { key: 'about', label: '关于' },
+  // 2026-11-07 用户指令：关于分类下新增「运行日志」选项卡（日志位置跟随数据目录）
+  { key: 'logs', label: '运行日志' },
 ];
 
 // ───────────────── 主组件 ─────────────────
@@ -143,6 +147,7 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
           {activeTab === 'help' && <HelpTab />}
           {activeTab === 'feedback' && <FeedbackTab />}
           {activeTab === 'about' && <AboutTab />}
+          {activeTab === 'logs' && <LogsTab />}
         </div>
       </div>
 

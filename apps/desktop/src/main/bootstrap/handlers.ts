@@ -69,6 +69,7 @@ import { createMyMemoryEngine } from '../translate/engines/mymemory';
 import type { HttpTransport } from '../translate/engines/types';
 import { createUpdateService, registerUpdateHandlers, UPDATE_EVENT_CHANNEL } from '../update';
 import { registerRuntimeHandlers, resolvePortableNodeExePath } from '../runtime';
+import { registerLogHandlers } from '../logs';
 import { DevtoolsManager, registerDevtoolsHandlers } from '../devtools';
 import type { AppContext } from './app-context';
 // 运行时惰性使用的 index.ts 共享符号（循环引用安全性见文件头注释）
@@ -331,6 +332,11 @@ export function registerIpcHandlers(ctx: AppContext): void {
   // Runtime 域 handler（设置-关于 · 运行时信息）：展示便携 Node 是否随包装上
   // 且可运行（存在性 + `--version` spawn 探测，见 main/runtime/portable-node.ts）。
   registerRuntimeHandlers(ipcMain, { portableNodeExePath });
+
+  // Logs 域 handler（设置 → 运行日志）：读取 <数据目录>/logs 下的 JSONL 日志。
+  // 落盘由 @urchin/logger 的进程级 sink 完成（main/index.ts 启动早期初始化），
+  // 此处注册读取通道；目录跟随数据目录，不提供单独设置项（2026-11-07 用户指令）。
+  registerLogHandlers(ipcMain, { dir: join(ctx.currentDataDir, 'logs') });
 
   // M24 网页翻译域 handler（dev.79）：微软/谷歌免费双引擎互为兜底（TD2）。
   // HTTP 经 net.fetch（Chromium 网络栈）——系统代理下谷歌可达，auto 引擎的

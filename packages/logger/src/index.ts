@@ -25,6 +25,12 @@ export interface Logger {
   debug(msg: string, meta?: Record<string, unknown>): void;
 }
 
+/** 日志落点签名（console / 文件 / 远程等）。 */
+export type LogSink = (entry: LogEntry) => void;
+
+/** 进程级额外落点注册表（默认 sink 转发；见 addLogSink）。 */
+const extraSinks = new Set<LogSink>();
+
 /** 进程级 sessionId：每次启动生成唯一 ID，便于关联多进程日志。 */
 const SESSION_ID = generateSessionId();
 const PROCESS_ID = typeof process !== 'undefined' ? process.pid : 0;
@@ -92,6 +98,31 @@ function defaultConsoleSink(entry: LogEntry): void {
   } catch {
     /* 输出流不可用（管道关闭/EPIPE）时静默丢弃，防止错误风暴 */
   }
+  // 额外落点（文件等）：任一落点异常不得影响其余落点与业务日志
+  for (const sink of extraSinks) {
+    try {
+      sink(entry);
+    } catch {
+      /* 落点故障静默：日志系统自身不能成为错误来源 */
+    }
+  }
+}
+
+/**
+ * 额外日志落点（如文件 sink）。
+ *
+ * 设计理由（2026-11-07 设置页「运行日志」需求）：
+ * createLogger 的 sink 是**模块私有**参数，业务侧全部使用默认 console sink；
+ * 若要落盘只能逐个改动调用点。这里提供进程级注册表，默认 sink 在 console 输出
+ * 之后顺带转发，保持「一个入口、多落点」且不改变既有调用方式。
+ *
+ * @returns 注销函数（测试与热重配置用）
+ */
+export function addLogSink(sink: LogSink): () => void {
+  extraSinks.add(sink);
+  return () => {
+    extraSinks.delete(sink);
+  };
 }
 
 /**

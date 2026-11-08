@@ -2433,6 +2433,87 @@ export const runtimePortableNodeResSchema = z.object({
 export type RuntimePortableNodeRes = z.infer<typeof runtimePortableNodeResSchema>;
 
 // ============================================================================
+// Logs 域（设置 · 运行日志）：展示项目全部运行/报错日志
+// ============================================================================
+// 2026-11-07 用户指令：设置页「关于」分类下新增「运行日志」选项卡；日志保存位置
+// 跟随数据目录，不提供单独设置项。日志由 @urchin/logger 的文件落点写入
+// `<数据目录>/logs/app-YYYY-MM-DD.log`（JSONL，一行一条 LogEntry），此处仅读取。
+
+/** 日志级别（与 @urchin/logger 的 LogLevel 对齐） */
+export const logLevelNameSchema = z.enum(['ERROR', 'WARN', 'INFO', 'DEBUG']);
+export type LogLevelName = z.infer<typeof logLevelNameSchema>;
+
+/** 单条日志（跨进程传输形状；meta 为脱敏后的结构化字段） */
+export const logEntryDtoSchema = z.object({
+  timestamp: z.string().min(1),
+  level: logLevelNameSchema,
+  module: z.string(),
+  message: z.string(),
+  meta: z.record(z.unknown()).optional(),
+  processId: z.number().int(),
+  sessionId: z.string(),
+});
+export type LogEntryDto = z.infer<typeof logEntryDtoSchema>;
+
+// --- logs.read（按级别/关键词读取最近日志，新 → 旧） ---
+
+export const logsReadReqSchema = z
+  .object({
+    /** 返回条数上限（默认 500，最大 2000） */
+    limit: z.number().int().min(1).max(2000).optional().default(500),
+    /** 仅返回指定级别 */
+    level: logLevelNameSchema.optional(),
+    /** 关键词（匹配 module / message / meta，不区分大小写） */
+    query: z.string().max(200).optional(),
+  })
+  .default({});
+export type LogsReadReq = z.infer<typeof logsReadReqSchema>;
+
+export const logsReadResSchema = z.object({
+  entries: z.array(logEntryDtoSchema),
+  /** 扫描范围内命中的总条数（可能大于 entries.length，受 limit 截断） */
+  total: z.number().int().nonnegative(),
+  /** 日志目录绝对路径（展示用） */
+  dir: z.string(),
+  /** 当前写入的文件名 */
+  currentFile: z.string(),
+});
+export type LogsReadRes = z.infer<typeof logsReadResSchema>;
+
+// --- logs.info（日志保存位置 + 文件列表） ---
+
+export const logsInfoReqSchema = z.object({}).default({});
+export type LogsInfoReq = z.infer<typeof logsInfoReqSchema>;
+
+export const logsInfoResSchema = z.object({
+  dir: z.string(),
+  currentFile: z.string(),
+  files: z.array(
+    z.object({
+      name: z.string(),
+      size: z.number().int().nonnegative(),
+      modifiedAt: z.string(),
+    }),
+  ),
+});
+export type LogsInfoRes = z.infer<typeof logsInfoResSchema>;
+
+// --- logs.clientError（渲染进程报错上报：JS 异常 / 未处理 rejection） ---
+
+export const logsClientErrorReqSchema = z.object({
+  /** 错误消息（截断到 2000 字符） */
+  message: z.string().min(1).max(2000),
+  /** 堆栈（可缺省，截断到 8000 字符） */
+  stack: z.string().max(8000).optional(),
+  /** 来源（文件:行:列，截断到 500 字符） */
+  source: z.string().max(500).optional(),
+});
+export type LogsClientErrorReq = z.infer<typeof logsClientErrorReqSchema>;
+
+export const logsClientErrorResSchema = z.object({ ok: z.boolean() });
+export type LogsClientErrorRes = z.infer<typeof logsClientErrorResSchema>;
+
+// ============================================================================
 // DevTools 域（M15 一期 · CDP 采集检视面板）
 // ============================================================================
 // 依据：docs/开发者工具增强一期实施规划.md §5、契约 G。
@@ -2842,6 +2923,10 @@ export const ipcSchema = {
     req: runtimePortableNodeReqSchema,
     res: runtimePortableNodeResSchema,
   },
+  // Logs 域（设置 · 运行日志）：日志目录跟随数据目录（DD1），展示全部运行/报错日志。
+  'logs.read': { req: logsReadReqSchema, res: logsReadResSchema },
+  'logs.info': { req: logsInfoReqSchema, res: logsInfoResSchema },
+  'logs.clientError': { req: logsClientErrorReqSchema, res: logsClientErrorResSchema },
   // DevTools 域（M15 一期 · CDP 采集检视面板）：见 events.ts 的事件通道
   // devtools:event / devtools:toggle。本期不开放原始 cdp.send（DT10）。
   'devtools.attach': { req: devtoolsAttachReqSchema, res: devtoolsAttachResSchema },

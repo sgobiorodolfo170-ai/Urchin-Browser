@@ -14,11 +14,16 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/globals.css';
 import { displayNameForLocale } from '../shared/brand';
+import { installGlobalErrorLogging } from './lib/client-error-logging';
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
   throw new Error('Root element #root not found');
 }
+
+// 运行日志（设置 → 运行日志）：把渲染层 JS 异常与未处理 rejection 转交主进程落盘。
+// 所有视图（主窗口 / 状态栏 / 悬浮球 / 剪藏 / 翻译卡）共用同一入口，故在此统一安装。
+installGlobalErrorLogging();
 
 const view = new URLSearchParams(location.search).get('view');
 const isStatusBarView = view === 'statusbar';

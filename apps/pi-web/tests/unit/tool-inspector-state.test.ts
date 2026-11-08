@@ -1,0 +1,303 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import {
+	closeToolInspector,
+	getToolInspectorState,
+	isFlowMode,
+	openToolInspector,
+	subscribeToolInspector,
+	updateToolInspectorLive,
+	useToolInspectorState,
+} from "../../src/tool-inspector-state";
+import { resolveInspectorStatus } from "../../src/components/ToolInspectorModal";
+
+afterEach(() => {
+	closeToolInspector();
+});
+
+describe("tool-inspector-state store", () => {
+	it("初始状态为 null", () => {
+		expect(getToolInspectorState()).toBeNull();
+	});
+
+	it("openToolInspector 设置状态并触发订阅回调", () => {
+		let notified = 0;
+		const unsub = subscribeToolInspector(() => {
+			notified++;
+		});
+
+		openToolInspector({
+			isThinking: false,
+			name: "bash",
+			title: "bash()",
+			status: "已完成",
+			statusClass: "ok",
+			args: '{"command":"ls"}',
+			output: "file.txt",
+		});
+
+		expect(notified).toBe(1);
+		const s = getToolInspectorState();
+		expect(s).not.toBeNull();
+		expect(s?.name).toBe("bash");
+		expect(s?.status).toBe("已完成");
+		expect(s?.isThinking).toBe(false);
+
+		unsub();
+	});
+
+	it("closeToolInspector 重置状态为 null 并通知订阅者", () => {
+		openToolInspector({
+			isThinking: true,
+			title: "思考过程",
+			output: "深度思考内容...",
+		});
+		expect(getToolInspectorState()).not.toBeNull();
+
+		let notified = 0;
+		const unsub = subscribeToolInspector(() => {
+			notified++;
+		});
+
+		closeToolInspector();
+		expect(getToolInspectorState()).toBeNull();
+		expect(notified).toBe(1);
+
+		closeToolInspector();
+		expect(notified).toBe(1);
+
+		unsub();
+	});
+
+	it("updateToolInspectorLive 仅在 toolCallId 匹配且非思考流时平滑更新并通知", () => {
+		openToolInspector({
+			isThinking: false,
+			name: "bash",
+			title: "bash()",
+			status: "执行中...",
+			statusClass: "run",
+			toolCallId: "call_bash_123",
+			output: "line 1\n",
+		});
+
+		let notified = 0;
+		const unsub = subscribeToolInspector(() => {
+			notified++;
+		});
+
+		updateToolInspectorLive("call_bash_123", {
+			output: "line 1\nline 2\n",
+		});
+		expect(notified).toBe(1);
+		expect(getToolInspectorState()?.output).toBe("line 1\nline 2\n");
+
+		updateToolInspectorLive("call_different_456", {
+			output: "should not update",
+		});
+		expect(notified).toBe(1);
+		expect(getToolInspectorState()?.output).toBe("line 1\nline 2\n");
+
+		updateToolInspectorLive("call_bash_123", {
+			output: "line 1\nline 2\n",
+		});
+		expect(notified).toBe(1);
+
+		unsub();
+	});
+});
+
+describe("resolveInspectorStatus 检查器状态机单源化", () => {
+	const mockT = ((key: string) => {
+		const map: Record<string, string> = {
+			done: "已完成",
+			error: "执行出错",
+			running: "执行中...",
+		};
+		return map[key] || key;
+	}) as any;
+
+	it("在 running（正在执行）态下：顶底栏统一显示执行中，严禁出现勾号与已完成", () => {
+		const meta = resolveInspectorStatus(
+			{
+				isThinking: false,
+				name: "bash",
+				status: "执行中...",
+				statusClass: "run",
+				output: "19 行输出",
+			},
+			mockT,
+			true,
+		);
+
+		expect(meta.isRunning).toBe(true);
+		expect(meta.badgeClass).toBe("run");
+		expect(meta.statusIcon).toBe("⟳");
+		expect(meta.badgeText).toBe("执行中...");
+		expect(meta.footerText).toBe("执行中...");
+		expect(meta.badgeText).not.toContain("已完成");
+		expect(meta.footerText).not.toContain("执行完成");
+		expect(meta.statusIcon).not.toBe("✓");
+	});
+
+	it("在完成态下：顶底栏显示完成态与耗时", () => {
+		const meta = resolveInspectorStatus(
+			{
+				isThinking: false,
+				name: "bash",
+				status: "已完成",
+				statusClass: "ok",
+				duration: "1.2s",
+			},
+			mockT,
+			true,
+		);
+
+		expect(meta.isRunning).toBe(false);
+		expect(meta.badgeClass).toBe("ok");
+		expect(meta.statusIcon).toBe("✓");
+		expect(meta.badgeText).toBe("已完成 (1.2s)");
+		expect(meta.footerText).toBe("执行完成");
+	});
+
+	it("在错误态下：显示失败图标与错误文本", () => {
+		const meta = resolveInspectorStatus(
+			{
+				isThinking: false,
+				name: "bash",
+				status: "命令执行失败",
+				statusClass: "err",
+				isError: true,
+				exitHint: "exit 127",
+			},
+			mockT,
+			true,
+		);
+
+		expect(meta.isRunning).toBe(false);
+		expect(meta.badgeClass).toBe("err");
+		expect(meta.statusIcon).toBe("✕");
+		expect(meta.footerText).toBe("exit 127");
+	});
+});
+
+describe("isFlowMode 极简行文模式检测", () => {
+	afterEach(() => {
+		if (typeof document !== "undefined") {
+			delete document.documentElement.dataset.theme;
+			const link = document.getElementById("theme-stylesheet");
+			link?.remove();
+		}
+	});
+
+	it("在 dataset.theme 匹配 flow 相关主题时返回 true", () => {
+		if (typeof document === "undefined") return;
+
+		document.documentElement.dataset.theme = "flow";
+		expect(isFlowMode()).toBe(true);
+
+		document.documentElement.dataset.theme = "flow-light";
+		expect(isFlowMode()).toBe(true);
+
+		document.documentElement.dataset.theme = "wallpaper-flow";
+		expect(isFlowMode()).toBe(true);
+
+		document.documentElement.dataset.theme = "dark";
+		expect(isFlowMode()).toBe(false);
+	});
+
+	it("在 theme-stylesheet 包含 flow 时返回 true", () => {
+		if (typeof document === "undefined") return;
+
+		delete document.documentElement.dataset.theme;
+		const link = document.createElement("link");
+		link.id = "theme-stylesheet";
+		link.href = "/themes/flow.css";
+		document.head.appendChild(link);
+
+		expect(isFlowMode()).toBe(true);
+	});
+});
+
+describe("isFlowMode element measurements and hook", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("returns false when document is unavailable", () => {
+		expect(typeof document).toBe("undefined");
+		expect(isFlowMode()).toBe(false);
+	});
+
+	it("detects flow layout from the tools trail computed style", () => {
+		const trail = { name: "trail" };
+		const el = { closest: (selector: string) => (selector === ".turn-tools-trail" ? trail : null) };
+		vi.stubGlobal("document", { documentElement: { dataset: {} }, getElementById: () => null });
+		vi.stubGlobal("window", {
+			getComputedStyle: () => ({
+				flexDirection: "row",
+				flexWrap: "nowrap",
+				display: "block",
+				height: "40px",
+			}),
+		});
+
+		expect(isFlowMode(el)).toBe(true);
+	});
+
+	it("falls back to the inline-flex self measurement and rejects tall elements", () => {
+		const el = { closest: () => null };
+		vi.stubGlobal("document", { documentElement: { dataset: {} }, getElementById: () => null });
+
+		vi.stubGlobal("window", {
+			getComputedStyle: () => ({
+				flexDirection: "column",
+				flexWrap: "nowrap",
+				display: "inline-flex",
+				height: "24px",
+			}),
+		});
+		expect(isFlowMode(el)).toBe(true);
+
+		vi.stubGlobal("window", {
+			getComputedStyle: () => ({
+				flexDirection: "column",
+				flexWrap: "nowrap",
+				display: "inline-flex",
+				height: "40px",
+			}),
+		});
+		expect(isFlowMode(el)).toBe(false);
+
+		vi.stubGlobal("window", {
+			getComputedStyle: () => ({
+				flexDirection: "column",
+				flexWrap: "nowrap",
+				display: "block",
+				height: "24px",
+			}),
+		});
+		expect(isFlowMode(el)).toBe(false);
+	});
+
+	it("renders the current state through the external store hook", () => {
+		openToolInspector({ isThinking: false, name: "bash", title: "bash()" });
+
+		function Probe() {
+			const state = useToolInspectorState();
+			return createElement("span", null, state?.name ?? "none");
+		}
+
+		expect(renderToStaticMarkup(createElement(Probe))).toBe("<span>bash</span>");
+	});
+
+	it("marks the global inspector flag when imported in a window context", async () => {
+		vi.resetModules();
+		const fakeWindow: Record<string, unknown> = {};
+		vi.stubGlobal("window", fakeWindow);
+
+		await import("../../src/tool-inspector-state");
+
+		expect(fakeWindow.__piToolInspectorActive).toBe(true);
+	});
+});

@@ -9,7 +9,8 @@
  * 1. 点击收藏夹按钮 → 出现第二个 BrowserWindow（悬浮面板），尺寸 280×430
  * 2. 主窗口 BrowserView 尺寸不变（网页未被隐藏/让出）
  * 3. 面板定位在主窗口内容区右下角
- * 4. 面板内容可见（收藏夹/历史/下载选项卡，加载真实数据）
+ * 4. 面板内容可见（收藏夹/历史/下载选项卡，走真实加载链路；断言容忍空态，
+ *    不依赖开发共享书签库——2026-11-09 起双变量隔离，空 fixture 库同样断言）
  * 5. 再次点击 → 面板关闭
  */
 import {
@@ -40,6 +41,10 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
       NODE_ENV: 'production',
       PLAYWRIGHT: '1',
       URCHIN_TEST_USER_DATA: userDataDir,
+      // 双变量配对（范式 bookmark-folder-delete.spec.ts:44-48 / 文档 §三.8）：URCHIN_TEST_USER_DATA
+      // 隔离 userData，URCHIN_TEST_DATA_DIR 隔离 DD1 数据目录——只设前者时启动日志/cookies/书签读取
+      // 仍指向开发共享数据目录 apps/desktop/data。
+      URCHIN_TEST_DATA_DIR: join(userDataDir, 'data'),
       NODE_OPTIONS: '',
     },
     timeout: 30_000,
@@ -168,7 +173,9 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
     expect(viewDuring!.width).toBe(viewBefore!.width);
     expect(viewDuring!.width).toBeGreaterThan(500);
 
-    // 4. 面板内容可见：三选项卡（收藏夹/历史/下载）加载真实数据。
+    // 4. 面板内容可见：三选项卡（收藏夹/历史/下载）走真实加载链路。
+    //    「真实数据」指真实渲染/IPC 链路而非开发共享书签库——断言容忍空态，
+    //    双变量隔离后空库渲染「暂无书签」即可满足（不 fixture 注入，决策见文件头）。
     // 注意 windows() 包含主窗口 renderer + BrowserView 网页 + 面板窗口（3 个 page），
     // 必须按 URL 定位面板窗口。
     // P2 Session 4（2026-11-05）：面板页面由 urchin://panel 内联 HTML 迁移为 React
@@ -203,7 +210,7 @@ test('收藏夹按钮弹出悬浮面板（子窗口置顶于网页之上）', as
     await expect(panelWindow!.getByText('收藏夹').first()).toBeVisible();
     await expect(panelWindow!.getByText('历史记录').first()).toBeVisible();
     await expect(panelWindow!.getByText('下载列表').first()).toBeVisible();
-    // 书签选项卡加载真实数据（空态或列表）
+    // 书签选项卡走真实加载链路（隔离空 fixture 库 → 暂无书签；不依赖开发共享书签库）
     await expect(panelWindow!.getByText(/暂无书签|加载失败/).first()).toBeVisible({
       timeout: 5000,
     });

@@ -37,6 +37,7 @@ function Measure-ColdStart {
     New-Item -ItemType Directory -Path $testDir -Force | Out-Null
     $logFile = Join-Path $testDir 'out.log'
     $env:URCHIN_TEST_USER_DATA = $testDir
+    $env:URCHIN_TEST_DATA_DIR = Join-Path $testDir 'data'
     $env:PLAYWRIGHT = '1'
     $env:NODE_ENV = 'production'
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -97,6 +98,7 @@ Write-Host "--- Memory (1 tab idle, <= 500MB threshold for 10 tabs) ---"
 $testDir = Join-Path $env:TEMP "urchin-perf-mem-$(Get-Random)"
 New-Item -ItemType Directory -Path $testDir -Force | Out-Null
 $env:URCHIN_TEST_USER_DATA = $testDir
+$env:URCHIN_TEST_DATA_DIR = Join-Path $testDir 'data'
 $env:PLAYWRIGHT = '1'
 $env:NODE_ENV = 'production'
 $proc = Start-Process -FilePath $electron -ArgumentList "." -NoNewWindow -PassThru -WorkingDirectory $appPath

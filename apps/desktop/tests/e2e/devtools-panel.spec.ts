@@ -26,7 +26,14 @@ test.describe('M15 DevTools 检视列', () => {
     const electronApp = await electron.launch({
       cwd: appPath,
       args: ['.'],
-      env: { ...process.env, NODE_ENV: 'production', URCHIN_TEST_USER_DATA: userDataDir },
+      env: {
+        ...process.env,
+        NODE_ENV: 'production',
+        PLAYWRIGHT: '1',
+        URCHIN_TEST_USER_DATA: userDataDir,
+        URCHIN_TEST_DATA_DIR: join(userDataDir, 'data'),
+        NODE_OPTIONS: '',
+      },
       timeout: 60_000,
     });
     try {
@@ -52,7 +59,14 @@ test.describe('M15 DevTools 检视列', () => {
     const electronApp = await electron.launch({
       cwd: appPath,
       args: ['.'],
-      env: { ...process.env, NODE_ENV: 'production', URCHIN_TEST_USER_DATA: userDataDir },
+      env: {
+        ...process.env,
+        NODE_ENV: 'production',
+        PLAYWRIGHT: '1',
+        URCHIN_TEST_USER_DATA: userDataDir,
+        URCHIN_TEST_DATA_DIR: join(userDataDir, 'data'),
+        NODE_OPTIONS: '',
+      },
       timeout: 60_000,
     });
     try {
@@ -81,7 +95,14 @@ test.describe('M15 DevTools 检视列', () => {
     const electronApp = await electron.launch({
       cwd: appPath,
       args: ['.'],
-      env: { ...process.env, NODE_ENV: 'production', URCHIN_TEST_USER_DATA: userDataDir },
+      env: {
+        ...process.env,
+        NODE_ENV: 'production',
+        PLAYWRIGHT: '1',
+        URCHIN_TEST_USER_DATA: userDataDir,
+        URCHIN_TEST_DATA_DIR: join(userDataDir, 'data'),
+        NODE_OPTIONS: '',
+      },
       timeout: 60_000,
     });
     try {

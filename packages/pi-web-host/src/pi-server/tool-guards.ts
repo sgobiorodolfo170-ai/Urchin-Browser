@@ -855,6 +855,8 @@ export function wrapPatchToolWithPermission(
 			} catch {
 				targets = [];
 			}
+			// D2：非空补丁却解析不出任何目标时，越界检查与审批都无法执行，属于「不可验证」。
+			const unverifiablePatch = patchText.trim() !== "" && targets.length === 0;
 
 			const perm = getPermission();
 			if (perm === "read-only") {
@@ -873,6 +875,22 @@ export function wrapPatchToolWithPermission(
 				} as never;
 			}
 			if (perm === "workspace-write-never") {
+				if (unverifiablePatch) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: pick(
+									getLang(),
+									"【权限被拒绝】当前会话处于「工作区内修改」（workspace-write-never）模式，补丁无法解析出目标文件，无法校验是否越界，已拒绝执行。若需修改请修正补丁或切换至「完全权限」。",
+									"[Permission Denied] The current session is in 'workspace-write-never' mode; the patch could not be parsed into target files, so workspace containment cannot be verified. Fix the patch or switch to 'danger-full-access'.",
+								),
+							},
+						],
+						details: { guardDenied: true, reason: "unverifiable_patch" },
+						isError: true,
+					} as never;
+				}
 				const outside = targets.filter((p) => !isInsideWorkspaceRoots(p, cwd, getRoots()));
 				if (outside.length > 0) {
 					return {

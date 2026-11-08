@@ -692,12 +692,30 @@ describe('wrapPatchToolWithPermission', () => {
     expect(res.details?.userEdited).toBe(true);
   });
 
-  it('should pass an empty or unparsable patch through to the engine', async () => {
+  it('should still pass an empty patch through to the engine', async () => {
     const { tool, execute } = makeBaseTool();
-    const res = await runPatch(wrapPatch(tool, { permission: 'read-only' }), '');
+    const res = await runPatch(wrapPatch(tool, {}), '');
+    expect(res.isError).toBeUndefined();
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('should fail closed when a non-empty patch cannot be parsed in workspace-write-never mode', async () => {
+    // D2 回归：parseHashlinePatch 对畸形文本不抛错而是返回 []，targets 为空会让越界检查
+    // 整体跳过；此时无法证明目标位于工作区内，必须拒绝而不是透传给引擎。
+    const { tool, execute } = makeBaseTool();
+    const res = await runPatch(wrapPatch(tool, {}), 'not a valid patch');
     expect(res.isError).toBe(true);
-    const res2 = await runPatch(wrapPatch(tool, {}), 'not a valid patch');
-    expect(res2.isError).toBeUndefined();
+    expect(res.content?.[0]?.text).toContain('无法解析');
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('should let an unparsable patch reach the engine outside workspace-write-never mode', async () => {
+    const { tool, execute } = makeBaseTool();
+    const res = await runPatch(
+      wrapPatch(tool, { permission: 'danger-full-access' }),
+      'not a valid patch',
+    );
+    expect(res.isError).toBeUndefined();
     expect(execute).toHaveBeenCalledTimes(1);
   });
 });

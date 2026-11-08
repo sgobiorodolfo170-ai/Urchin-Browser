@@ -652,6 +652,33 @@ describe('upload route (remote)', () => {
     );
     expect(res.statusCode).toBe(409);
   });
+
+  it('should keep the EEXIST status even when remote upload cleanup also fails', async () => {
+    // D4 回归：cleanup 在 finally 里抛错会覆盖原始 EEXIST，路由因此从 409 退化为 400。
+    let call = 0;
+    const ssh = fakeSsh({
+      execInWorkspace: vi.fn(() =>
+        Promise.resolve(
+          call++ === 0
+            ? { exitCode: 17, stdout: '', stderr: 'exists' }
+            : { exitCode: 1, stdout: '', stderr: 'cleanup failed' },
+        ),
+      ),
+    });
+    vi.spyOn(remoteSsh, 'getGlobalRemoteSshService').mockReturnValue(ssh as never);
+    const f = await fixture(undefined, true);
+    const res = new FakeRes();
+    await f.routes.get('/api/file-transfer/upload')!(
+      makeReq({
+        query: { clientId: 'test-client', dir: '', name: 'a.txt' },
+        headers: { 'content-type': 'application/octet-stream' },
+        chunks: ['x'],
+      }),
+      res,
+    );
+    expect(res.statusCode).toBe(409);
+    expect(res.sent).toContain('exists');
+  });
 });
 
 // Removed unused helper imports above; keep a minimal fixture sanity check.

@@ -68,6 +68,7 @@ export async function writeRemoteUploadExclusive(
 		});
 		if (result.exitCode !== 0) throw new Error(result.stderr || "Remote upload cleanup failed");
 	};
+	let failure: unknown;
 	try {
 		operationSignal.throwIfAborted();
 		await ssh.sftpWriteFile(cwd, temp, data, {
@@ -93,9 +94,20 @@ export async function writeRemoteUploadExclusive(
 			if (result.exitCode === 17) error.code = "EEXIST";
 			throw error;
 		}
-	} finally {
-		await cleanup();
+	} catch (error) {
+		failure = error;
 	}
+
+	// D4：清理失败不得覆盖主错误（否则 EEXIST 会在路由层退化成 400）。
+	try {
+		await cleanup();
+	} catch (cleanupError) {
+		if (failure === undefined) throw cleanupError;
+		if (failure && typeof failure === "object") {
+			(failure as { cleanupError?: unknown }).cleanupError = cleanupError;
+		}
+	}
+	if (failure !== undefined) throw failure;
 }
 
 export async function cleanupUploads(

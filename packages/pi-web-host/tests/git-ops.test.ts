@@ -28,6 +28,7 @@ describe('git-ops', () => {
       try {
         const result = await getGitStatus(nonGit);
         expect(result.ok).toBe(true);
+        expect(result.notRepo).toBe(true);
         expect(result.files).toEqual([]);
         expect(result.branches).toEqual([]);
       } finally {

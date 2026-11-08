@@ -9,6 +9,15 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
+/** 识别 git CLI 的「不是仓库」错误（execFile 把 stderr 挂在 error.stderr 上）。 */
+function isNotRepoError(err: unknown): boolean {
+  const e = err as { stderr?: string; message?: string };
+  return (
+    e.stderr?.includes('not a git repository') === true ||
+    e.message?.includes('not a git repository') === true
+  );
+}
+
 interface ScmFileEntry {
   path: string;
   x: string;
@@ -62,8 +71,10 @@ export async function getGitStatus(cwd: string): Promise<GitStatusResult> {
           /* ignore */
         }
       }
-    } catch {
-      /* detached HEAD 等情况 */
+    } catch (e) {
+      // 「不是仓库」必须上抛给外层统一转 notRepo；其它错误（detached 等）忽略。
+      // 否则内层吞掉后外层判定永远不可达，非仓库目录会被错报成空仓库。
+      if (isNotRepoError(e)) throw e;
     }
 
     // 1b. 上游分支 + ahead/behind
@@ -142,13 +153,10 @@ export async function getGitStatus(cwd: string): Promise<GitStatusResult> {
 
     return { ok: true, branch, detached, upstream, ahead, behind, files, branches };
   } catch (e) {
-    const err = e as { stderr?: string; message?: string };
-    if (
-      err.stderr?.includes('not a git repository') ||
-      err.message?.includes('not a git repository')
-    ) {
+    if (isNotRepoError(e)) {
       return { ok: true, notRepo: true, files: [], branches: [] };
     }
+    const err = e as { message?: string };
     return { ok: false, error: err.message ?? String(e) };
   }
 }

@@ -110,10 +110,17 @@ interface GrantsData {
   grants: Record<string, string[]>;
 }
 
+/** 合法 JSON 但非对象（null / 数组 / 标量）时按坏表处理，保证 fail-closed。 */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 async function readGrants(agentDir: string): Promise<GrantsData> {
   try {
     const raw = await readFile(join(agentDir, GRANTS_FILE), 'utf8');
-    return JSON.parse(raw) as GrantsData;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed) || !isRecord(parsed.grants)) return { grants: {} };
+    return { grants: parsed.grants as Record<string, string[]> };
   } catch {
     return { grants: {} };
   }
@@ -195,7 +202,8 @@ interface PermissionsData {
 async function readPermissions(agentDir: string): Promise<Record<string, PermissionsData>> {
   try {
     const raw = await readFile(join(agentDir, PERMISSIONS_FILE), 'utf8');
-    return JSON.parse(raw) as Record<string, PermissionsData>;
+    const parsed: unknown = JSON.parse(raw);
+    return isRecord(parsed) ? (parsed as Record<string, PermissionsData>) : {};
   } catch {
     return {};
   }
@@ -274,7 +282,8 @@ const DOM_FILE = 'plugin-dom.json';
 async function readDomConsent(agentDir: string): Promise<Record<string, boolean>> {
   try {
     const raw = await readFile(join(agentDir, DOM_FILE), 'utf8');
-    return JSON.parse(raw) as Record<string, boolean>;
+    const parsed: unknown = JSON.parse(raw);
+    return isRecord(parsed) ? (parsed as Record<string, boolean>) : {};
   } catch {
     return {};
   }

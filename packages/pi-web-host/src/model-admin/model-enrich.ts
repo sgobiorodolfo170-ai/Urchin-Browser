@@ -324,7 +324,10 @@ function familySuggestions(norm: string, indexes: CatalogIndex[], cap = 6): stri
   const out: string[] = [];
   for (const index of indexes) {
     for (const m of index.all) {
-      if (!m.family || out.length >= cap) break;
+      if (out.length >= cap) break;
+      // 无 family 的目录行只是「不可作为建议」，不能中断整轮扫描
+      // （否则目录里第一条无 family 的模型就会让建议永远为空）。
+      if (!m.family) continue;
       if (norm.includes(m.family) || m.family.includes(norm)) {
         if (!seen.has(m.rawId)) {
           seen.add(m.rawId);

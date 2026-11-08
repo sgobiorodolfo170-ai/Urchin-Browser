@@ -89,7 +89,9 @@ describe('SettingsManager', () => {
 
     // 默认项（language/searchEngine/downloadsPath/data.directory/blockTrackers/doNotTrack/blockAds/links.openInNewTab/
     //   pi.model/pi.apiKey/pi.providerId/pi.baseUrl/
-    //   debug.sidebarHoverDelay/ui.rightSidebarAutoExpand/home.frequentSites/
+    //   debug.sidebarHoverDelay/ui.rightSidebarAutoExpand/ui.rightSidebarWidth 侧栏宽度/
+    //   ui.statusBall.sensitivityVertical/ui.statusBall.sensitivityHorizontal 悬浮球灵敏度/
+    //   theme 悬浮球主题/home.frequentSites/
     //   window.bounds 窗口几何记忆，主进程内部状态/
     //   translate.targetLang/translate.engine/translate.autoTranslate 网页翻译 dev.79/
     //   ui.workspaceSwitcherMode 折叠态工作区切换模式 TP7/
@@ -98,7 +100,7 @@ describe('SettingsManager', () => {
     //   clipper.* 剪藏默认格式/清洗/选中优先/懒加载/尾部信息栏剪除/模板/保存路径 8 项/
     //   notebook.state 笔记与便利贴整体状态 M27/
     //   transit.items 中转区项目索引） + 自定义 1 项
-    expect(entries).toHaveLength(36);
+    expect(entries).toHaveLength(40);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');
@@ -157,17 +159,21 @@ describe('SettingsManager', () => {
     });
   });
 
-  // 回归（2026-11-09）：session.lastTabs / workspaces.registry 曾漏登记 DEFAULT_SETTINGS。
-  // SettingsManager 构造时只加载 DEFAULT_SETTINGS 中列出的键，漏登记的键「set 能落盘、
-  // 重启读不回」——表现为工作区列表与已打开标签在重启后全部丢失。
-  it('session/workspace keys: are registered with safe defaults', () => {
+  // 回归（2026-11-09）：下列键曾漏登记 DEFAULT_SETTINGS。SettingsManager 构造时
+  // 只加载 DEFAULT_SETTINGS 中列出的键，漏登记的键「set 能落盘、重启读不回」——
+  // 表现为工作区/已打开标签丢失，以及右侧栏宽度、悬浮球灵敏度每次重启被重置。
+  it('session/workspace/UI keys: are registered with safe defaults', () => {
     const mgr = new SettingsManager();
 
     expect(mgr.get('session.lastTabs')).toEqual([]);
     expect(mgr.get('workspaces.registry')).toBeNull();
+    expect(mgr.get('ui.rightSidebarWidth')).toBe(360);
+    expect(mgr.get('ui.statusBall.sensitivityVertical')).toBe(1);
+    expect(mgr.get('ui.statusBall.sensitivityHorizontal')).toBe(1);
+    expect(mgr.get('theme')).toBe('light');
   });
 
-  it('session/workspace keys: survive restart through persistence', () => {
+  it('session/workspace/UI keys: survive restart through persistence', () => {
     const store = new Map<string, unknown>();
     const persistence = {
       get: <T>(key: string): T | null => (store.has(key) ? (store.get(key) as T) : null),
@@ -189,11 +195,17 @@ describe('SettingsManager', () => {
     const first = new SettingsManager(persistence);
     first.set('session.lastTabs', lastTabs);
     first.set('workspaces.registry', registry);
+    first.set('ui.rightSidebarWidth', 240);
+    first.set('ui.statusBall.sensitivityVertical', 5);
+    first.set('ui.statusBall.sensitivityHorizontal', 2.5);
 
     // 重启场景：同一持久化存储新建实例，构造时必须读回已保存值
     const restarted = new SettingsManager(persistence);
     expect(restarted.get('session.lastTabs')).toEqual(lastTabs);
     expect(restarted.get('workspaces.registry')).toEqual(registry);
+    expect(restarted.get('ui.rightSidebarWidth')).toBe(240);
+    expect(restarted.get('ui.statusBall.sensitivityVertical')).toBe(5);
+    expect(restarted.get('ui.statusBall.sensitivityHorizontal')).toBe(2.5);
   });
 
   it('getAll: entries contain key and value fields', () => {

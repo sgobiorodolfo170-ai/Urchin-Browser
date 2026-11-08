@@ -76,9 +76,12 @@ function defaultWorkspace(): Workspace {
  * 丢弃非法条目、保证默认工作区恒在（且恒为唯一 default）。
  */
 function normalizeStored(raw: unknown): WorkspaceStoredRecord {
-  const parsed = storedRecordSchema.safeParse(raw);
-  const input = parsed.success ? parsed.data.workspaces : [];
-  if (!parsed.success) {
+  // null / undefined = 尚无记录（首次运行，或键在 DEFAULT_SETTINGS 中默认为 null），
+  // 按空状态种子默认工作区，不告警——否则每次首启都会刷一条假的「记录非法」。
+  // 只有「确有记录但形状非法」才算真实脏数据，需要告警。
+  const parsed = raw == null ? null : storedRecordSchema.safeParse(raw);
+  const input = parsed?.success ? parsed.data.workspaces : [];
+  if (parsed && !parsed.success) {
     log.warn('workspaces.registry 记录非法，按空状态重建', {
       error: parsed.error.message,
     });

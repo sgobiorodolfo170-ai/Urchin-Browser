@@ -57,6 +57,19 @@ describe('WorkspaceRegistry', () => {
     expect(list.filter((w) => w.id === 'bad-id!invalid')).toHaveLength(0);
   });
 
+  it('should load an existing valid record on restart (custom workspaces kept)', () => {
+    const persistence = createPersistence({
+      version: 1,
+      workspaces: [
+        { id: 'default', name: '默认工作区', color: 'amber', isDefault: true, createdAt: 0 },
+        { id: 'ws-1', name: '工作', color: 'violet', isDefault: false, createdAt: 1 },
+      ],
+    });
+    const registry = new WorkspaceRegistry(persistence);
+
+    expect(registry.list().map((w) => w.id)).toEqual(['default', 'ws-1']);
+  });
+
   it('should enforce single default workspace (default wins)', () => {
     const persistence = createPersistence({
       version: 1,

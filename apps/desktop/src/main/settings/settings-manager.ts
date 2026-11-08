@@ -69,6 +69,16 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   ['ui.rightSidebarAutoExpand', false],
   // 左侧边栏悬停自动展开（默认开启；双击切换始终可用，悬停展开仅在折叠态生效）
   ['ui.leftSidebarAutoExpand', true],
+  // 右侧边栏展开宽度（拖拽调节后落盘，重启恢复）。默认 360 =
+  // renderer/lib/layout-constants.ts 的 RIGHT_EXPANDED，两处必须同步修改。
+  // 该键必须登记（原因见下方 session.lastTabs），否则宽度每次重启被重置。
+  ['ui.rightSidebarWidth', 360],
+  // 底部悬浮球灵敏度（上下/左右，范围 0.1-5，设置页调试页可调）。
+  // 该键必须登记，否则每次重启被重置为 1（main/index.ts sendBallConfig 回退值）。
+  ['ui.statusBall.sensitivityVertical', 1],
+  ['ui.statusBall.sensitivityHorizontal', 1],
+  // 悬浮球主题（sendBallConfig 读取，未设置时按 light 兜底；当前无写入方，保留兼容）。
+  ['theme', 'light'],
   // 折叠态工作区切换模式（'wheel'=滚轮循环切换【默认】；'cards'=点击弹出卡片面板切换，
   // 参考 ego-lite Space 卡片切换设计；仅影响折叠态交互，展开态 WorkspaceBar 不变）
   ['ui.workspaceSwitcherMode', 'wheel'],

@@ -22,6 +22,14 @@ export interface ApprovalPolicy {
 	categories: Map<string, UiApprovalCategory>;
 }
 
+/**
+ * 宽范围删除目标：根、家目录、通配符、盘符根，以及任何 `..` / `../` / `..\` 逃逸路径。
+ *
+ * 为什么允许 `..` 后接分隔符：D1 缺陷里原正则只认 `..` 后紧跟空白/行尾，
+ * `rm -rf ../dir` 这种「父目录递归删除」会漏判，用户一旦「记住同类审批」即被放行。
+ */
+const WIDE_DELETE_TARGET = /(?:^|\s)(?:[/~*]|\.\.(?:[\\/]|$)|[a-zA-Z]:[\\/])/i;
+
 export function isApprovalPolicyEmpty(policy: ApprovalPolicy | undefined): boolean {
 	return !policy || (!policy.allowAll && policy.categories.size === 0);
 }
@@ -33,12 +41,12 @@ export function isWideScopeOrRootOperation(toolName: string, params: unknown): b
 	if (toolName === "bash") {
 		const cmd = String(obj.command ?? "").trim();
 		if (/\brm\s+.*(-[a-zA-Z0-9]*[rf]|--recursive)/i.test(cmd)) {
-			if (/(?:^|\s)(?:[/~*]|\.\.|[a-zA-Z]:[\\/])(?:\s|$)/.test(cmd)) {
+			if (WIDE_DELETE_TARGET.test(cmd)) {
 				return true;
 			}
 		}
 		if (/\b(del|rmdir|rd)\s+[/\\-][fsq]/i.test(cmd)) {
-			if (/(?:^|\s)(?:[/~*]|\.\.|[a-zA-Z]:[\\/])(?:\s|$)/.test(cmd)) {
+			if (WIDE_DELETE_TARGET.test(cmd)) {
 				return true;
 			}
 		}

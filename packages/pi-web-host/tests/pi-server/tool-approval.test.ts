@@ -216,6 +216,19 @@ describe('dangerous tool call detection', () => {
       expect(isWideScopeOrRootOperation('bash', { command: 'rm -rf C:\\' })).toBe(true);
     });
 
+    it('should flag recursive deletes that escape the working directory with ../', () => {
+      // D1 回归：正则原先只认 `..` 后紧跟空白/行尾，`../` 与 `..\` 会漏判，
+      // 一旦「记住同类审批」就直接放行父目录递归删除。
+      expect(isWideScopeOrRootOperation('bash', { command: 'rm -rf ../' })).toBe(true);
+      expect(isWideScopeOrRootOperation('bash', { command: 'rm -rf ../dir' })).toBe(true);
+      expect(isWideScopeOrRootOperation('bash', { command: 'rm -rf ../../sibling' })).toBe(true);
+      expect(isWideScopeOrRootOperation('bash', { command: 'rm -rf ..\\sibling' })).toBe(true);
+      expect(isWideScopeOrRootOperation('bash', { command: 'del /s /q ..\\other' })).toBe(true);
+      // 工作区内相对路径不应被误判为宽范围。
+      expect(isWideScopeOrRootOperation('bash', { command: 'rm -rf ./build' })).toBe(false);
+      expect(isWideScopeOrRootOperation('bash', { command: 'rm -rf node_modules' })).toBe(false);
+    });
+
     it('should flag windows force deletes, disk tools, system redirects and chmod', () => {
       expect(isWideScopeOrRootOperation('bash', { command: 'del /s /q C:\\' })).toBe(true);
       expect(isWideScopeOrRootOperation('bash', { command: 'mkfs.ext4 /dev/sda' })).toBe(true);

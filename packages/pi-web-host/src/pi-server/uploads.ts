@@ -1,4 +1,4 @@
-import { readdir, rm, stat } from "node:fs/promises";
+import { readdir, rm, rmdir, stat } from "node:fs/promises";
 import { existsSync, mkdirSync, writeFileSync, linkSync, rmSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { shellQuotePosix, type RemoteSshService } from "./remote-ssh-service.js";
@@ -134,18 +134,26 @@ export async function cleanupUploads(
 		}
 		try {
 			if ((await readdir(dir)).length === 0) {
-				await rmdirSafe(dir);
-				out.dirs++;
+				if (await rmdirSafe(dir)) out.dirs++;
 			}
 		} catch {}
 	}
 	return out;
 }
 
-async function rmdirSafe(dir: string): Promise<void> {
+/**
+ * 删除空目录；只有真的删掉才返回 true。
+ *
+ * 为什么不用 `rm(dir, { recursive: false })`：Node 对目录会抛 EISDIR，
+ * 早先被空 catch 吞掉后仍然计数，造成 dirs 虚高且目录残留（D3）。
+ */
+async function rmdirSafe(dir: string): Promise<boolean> {
 	try {
-		await rm(dir, { recursive: false });
-	} catch {}
+		await rmdir(dir);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 export function scheduleUploadCleanup(intervalMs = 6 * 60 * 60 * 1000): void {

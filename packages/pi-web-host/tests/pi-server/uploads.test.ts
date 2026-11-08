@@ -255,9 +255,9 @@ describe('cleanupUploads', () => {
     expect(result.dirs).toBe(1);
     expect(() => statSync(old)).toThrow();
     expect(statSync(fresh).isFile()).toBe(true);
-    // Known defect (reported): rmdirSafe calls fs.rm without recursive, so emptied
-    // client directories are counted but never actually removed. Flip to false once fixed.
-    expect(existsSync(join(uploadsRoot(dataDir), 'c-old'))).toBe(true);
+    // D3 回归：空目录必须真的被删除；此前的 rm(dir, { recursive: false }) 会抛 EISDIR
+    // 并被空 catch 吞掉，导致 dirs 虚高且目录残留。
+    expect(existsSync(join(uploadsRoot(dataDir), 'c-old'))).toBe(false);
     expect(existsSync(join(uploadsRoot(dataDir), 'c-new'))).toBe(true);
 
     result = await cleanupUploads(dataDir, 0);

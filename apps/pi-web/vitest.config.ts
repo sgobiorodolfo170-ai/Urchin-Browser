@@ -8,10 +8,12 @@ import { dirname, resolve } from 'node:path';
 const root = dirname(fileURLToPath(import.meta.url));
 
 /**
- * 覆盖率口径（P9，2026-11-08）：
- * 只统计 P3/P4 已移植的纯函数模块（66 个），门槛 90/85/90（docs/03 §4 纯函数 ≥90）。
- * 实测（P9 收口时）：95.86 lines / 88.77 branches / 97.84 functions。
- * 组件（jsdom，P6）与 React hooks（use-chat 等）不在本口径内。
+ * 覆盖率口径（P9/P6，2026-11-08）：
+ * - 纯函数：P3/P4 已移植的 66 个顶层模块（`src/*.ts`），门槛 90/85/90（docs/03 §4 纯函数 ≥90）。
+ *   实测：95.86 lines / 88.77 branches / 97.84 functions。
+ * - 核心组件：7 个 jsdom 渲染组件（`src/components/**`），门槛 60/70/40。
+ *   实测：60.57 / 71.91 / 42.89。
+ * React hooks（use-chat 等）与未移植组件不在本口径内。
  */
 export default defineConfig({
   resolve: {

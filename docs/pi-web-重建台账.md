@@ -77,10 +77,10 @@ docs/                                # 本台账 + 评估 + 对接清单
 | --- | --- | --- | --- |
 | P0 | 文档留痕（对照库路径 / 决策 / 台账） | ✅ 完成 | 文档已更新 |
 | P1 | 清空 `apps/pi-web` 旧前端并全量复制上游 `web/` | ✅ 完成 | 315 文件；前端 `typecheck` + `build` 通过 |
-| P1.5 | 衔接 spike：utility 内跑通裁剪 server + token | ⚠ 结论已出（见 §七） | 发现 pi SDK 版本不一致 |
-| P2 | 引擎剥离（前后端） | 进行中：EnginePicker 已收窄为仅 pi；剩余见 §5.2 | 引用面已扫描，待逐文件收窄 |
-| P3 | 前端质量重建（strict / 去 stub / 协议对齐） | 待办 | `typecheck` + `lint` |
-| P4 | 后端并入上游 server 裁剪面 | 阻塞（见 §七） | 协议覆盖 + 联调 |
+| P1.5 | 衔接 spike：utility 内跑通裁剪 server + token | ✅ 已完成（结论见 §七） | 确认 vendored 1.4.0 足够，无需升级 |
+| P2 | 引擎剥离（前后端） | ✅ 主体完成（详见 §5.2） | 其他引擎实现已移除，仅 pi |
+| P3 | 前端质量重建（strict / 死代码 / 冗余） | ✅ 完成（详见 §5.3） | `typecheck` + `build` 通过 |
+| P4 | 后端接入 utility 入口 | ✅ 完成（接线骨架，详见 §5.4） | `typecheck` + 单测 + 构建 + 冒烟通过 |
 | P5 | 单测 + 关键 E2E | 待办 | `pnpm verify` + `pnpm e2e` |
 | P6 | 目录收口 + 主项目回归 | 待办 | 全量 `pnpm verify` + 启动验收 |
 
@@ -101,11 +101,26 @@ docs/                                # 本台账 + 评估 + 对接清单
 | `components/SettingsModal.tsx` | ✅ 已收窄 | `isDsh` 固定 false，DSH 插件市场/预设/问卷分区不再启用（JSX 物理删除留待 P3 清理） |
 | `components/NativeCliPanel.tsx` / `NativeCliCreateModal.tsx` | ✅ 已收窄 | 经共享 `ENGINE_CATALOG` 收窄，CLI 面板自动仅 pi（面板保留） |
 | `components/canvas/*` | ✅ 已收窄 | `CanvasEngineId = "pi"`；`CanvasTypes`/`CanvasNodeCard`/`canvas-state` 移除其他引擎 |
-| `use-chat.ts` / `app-globals.ts` | 待办 | 引擎状态与切换逻辑收窄（`EnginePicker` 已单 pi，残留冗余可后续清理） |
+| `use-chat.ts` / `app-globals.ts` | ✅ 已收窄（P3） | 删除 `ChatState.dsh/dshPatches/dshMarket`、DSH reducer/socket 分支；`engine` 恒为 pi |
 | 后端 `pi-server` 引擎模块 | ✅ 已删除 | `dsh/`、`durable/`、`universal/`（外部 CLI 驱动）移除；`engine-probe`/`index.ts`/`client-state`/`model-resolver` 收窄为仅 pi |
 | 构建依赖 | ✅ 已清理 | 全树已无 `@deepseek-ai/*` 引用（原 dsh/ 目录整体删除） |
 
 > 验证（2026-11-08）：`pi-server/index.ts` ESM bundle 成功（无悬空 import）；`@urchin/pi-web-host` typecheck 0 错误；`@urchin/pi-web` build 成功（7.76s）。
+
+### 5.3 P3 前端质量重建记录（2026-11-08）
+
+- `SettingsModal.tsx`：删除 DSH 插件市场整块（约 424 行）、`dsh-presets` 分区（65 行）、DSH 自定义提示词分支（225 行）、`question` 问卷分区；清理 `isDsh` 守卫与相关状态/关键词映射。
+- `use-chat.ts` / `app-globals.ts`：删除 `ChatState.dsh/dshPatches/dshMarket`、DSH reducer/socket 分支；`engine` 恒为 pi。
+- 保留 `DshPresetBar` / `DshPermissionBar`（pi 共用的 Agent 预设/权限组件）。
+- 验证：`@urchin/pi-web` typecheck 0 错误、build 7.48s。
+
+### 5.4 P4 后端接线记录（2026-11-08）
+
+- `pi-server/index.ts`：顶层脚本收敛为 `startPiServer(options)`（幂等、import 无副作用、`close()` 不退出进程）；上游业务逻辑逐行保留。
+- 新增 `pi-server/urchin-entry.ts`（默认关闭，`PI_HOST_PI_SERVER=1` / `--pi-server=1` 启用）与 `src/pi-server-ready.ts`（就绪行契约，与轻量壳同构）。
+- `scripts/build-pi-web.mjs`：新增 ESM 产物 `dist/main/pi-server.mjs`；CJS 壳产物不变。
+- 验证：typecheck 0、单测 14 文件通过（307）、构建成功（host 13.96MB + pi-server 20.05MB）、`/api/health` 200、旧 CJS 壳回归正常。
+- 后续联调（P6）：desktop launcher 以 `utilityProcess.fork('dist/main/pi-server.mjs')` 启动，用 `PI_SERVER_READY_LINE_RE` 解析端口/token；`PI_WEB_SKIP_PI_SERVER=1` 可跳过该构建步骤。
 
 ## 七、SDK 版本核查结论（2026-11-08，已澄清）
 

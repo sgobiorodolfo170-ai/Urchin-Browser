@@ -22,6 +22,11 @@ export {
   HOST_TOKEN_COOKIE,
 } from './auth';
 export { createStaticHandler, StaticHandler, type StaticHandlerOptions } from './http-static';
+export {
+  PI_SERVER_READY_PREFIX,
+  PI_SERVER_READY_LINE_RE,
+  buildPiServerUrl,
+} from './pi-server-ready';
 export { handleClientMessage, sendJson, sendError } from './ws-handler';
 export {
   createAgentBridge,

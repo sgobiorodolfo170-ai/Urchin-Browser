@@ -76,6 +76,38 @@ async function probe(url: string): Promise<number> {
   }
 }
 
+/**
+ * 等待 pi 页面完成 WS 握手。
+ *
+ * pi 前端只有在收到 `hello_ok` 后才会把 chat.ready 置 true，并渲染
+ * `.bar-item-conn.ok` 状态灯；用该 DOM 状态验证握手，比测试进程直接连 WS 更贴近
+ * 真实用户路径（Node/undici 的 WebSocket 对该 upgrade 会直接报 error）。
+ */
+async function waitForConnected(
+  electronApp: ElectronApplication,
+  timeoutMs = 30_000,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const ready = await electronApp.evaluate(async ({ webContents }) => {
+      const wc = webContents
+        .getAllWebContents()
+        .find((w) => /^http:\/\/127\.0\.0\.1:\d+/.test(w.getURL()));
+      if (!wc) return false;
+      try {
+        return (await wc.executeJavaScript(
+          '!!document.querySelector(".bar-item-conn.ok")',
+        )) as boolean;
+      } catch {
+        return false;
+      }
+    });
+    if (ready) return true;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
 test.describe('pi 阶段 2 自研托管服务（M2A 骨架）', () => {
   test('launch → 鉴权 URL → 前端加载 + WS 握手 → 退出杀进程', async () => {
     test.setTimeout(150_000);
@@ -139,6 +171,9 @@ test.describe('pi 阶段 2 自研托管服务（M2A 骨架）', () => {
       // BrowserView 加载后 URL 中的 token 被 Cookie 取代（server.ts Set-Cookie 后不再需要 query token），
       // 只验证页面已打开到正确端口即可；token 已在 launchRes.url（第 91 行）中验证。
       expect(result.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+/);
+
+      // 6. P7：等待页面进入「已连接」（hello_ok 后 chat.ready=true → .bar-item-conn.ok）
+      expect(await waitForConnected(electronApp)).toBe(true);
     } finally {
       // 6. 关闭应用 → utility 子进程随 performCleanup 终止 → 端口不可达
       await electronApp.close();
@@ -146,5 +181,67 @@ test.describe('pi 阶段 2 自研托管服务（M2A 骨架）', () => {
 
     expect(await probe(url).catch(() => 0)).toBe(0);
     expect(await probe(`http://127.0.0.1:${launchRes.port}/`).catch(() => 0)).toBe(0);
+  });
+
+  test('π 按钮 → 服务启动 → pi 页面渲染 → 无凭据仍可 WS 握手', async () => {
+    test.setTimeout(180_000);
+    const { electronApp, window } = await launchApp();
+
+    try {
+      // 1. 点击左侧栏 π 入口（真实用户路径：确保服务运行 + 打开/聚焦聊天页）
+      const piButton = window.locator('button[aria-label="pi"]').first();
+      await expect(piButton).toBeVisible({ timeout: 15_000 });
+      await piButton.click();
+
+      // 2. 等待 BrowserView 打开 127.0.0.1 的 pi 页面
+      const opened = await electronApp.evaluate(async ({ webContents }) => {
+        const deadline = Date.now() + 90_000;
+        while (Date.now() < deadline) {
+          const wc = webContents
+            .getAllWebContents()
+            .find((w) => /^http:\/\/127\.0\.0\.1:\d+/.test(w.getURL()));
+          if (wc) return { found: true, url: wc.getURL() };
+          await new Promise((r) => setTimeout(r, 500));
+        }
+        return { found: false, url: '' };
+      });
+      expect(opened.found).toBe(true);
+      expect(opened.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+/);
+
+      // 3. 无凭据（临时 userData 无 provider 配置）：页面仍应完成渲染并显示输入区，
+      //    而不是白屏/崩溃；实际 UI 允许用户随后在 pi 设置里补 Provider。
+      await expect
+        .poll(
+          async () =>
+            electronApp.evaluate(async ({ webContents }) => {
+              const wc = webContents
+                .getAllWebContents()
+                .find((w) => /^http:\/\/127\.0\.0\.1:\d+/.test(w.getURL()));
+              if (!wc) return false;
+              try {
+                return (await wc.executeJavaScript(`(() => {
+                  const textarea = document.querySelector('textarea');
+                  const tools = document.querySelector('.composer-tools');
+                  return !!textarea && !!tools;
+                })()`)) as boolean;
+              } catch {
+                return false;
+              }
+            }),
+          { timeout: 45_000, intervals: [500, 1000, 2000] },
+        )
+        .toBe(true);
+
+      // 4. 无凭据下的 WS 仍然握手成功（页面进入「已连接」）
+      expect(await waitForConnected(electronApp)).toBe(true);
+
+      // 5. 页面仍在运行（没有因无凭据崩掉）
+      const stillAlive = await electronApp.evaluate(({ webContents }) =>
+        webContents.getAllWebContents().some((w) => /^http:\/\/127\.0\.0\.1:\d+/.test(w.getURL())),
+      );
+      expect(stillAlive).toBe(true);
+    } finally {
+      await electronApp.close();
+    }
   });
 });

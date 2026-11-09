@@ -48,6 +48,10 @@ function makeHarness(options: {
   let loginCalls = 0;
   const onLoginSuccess = vi.fn(() => Promise.resolve());
   const runtime = {
+    // 本用例只走 OAuth 流程、不触发补全；`src/pi-shims-coding-agent.d.ts` 已按 vendor 源码
+    // 精确声明 `completeSimple`（D8 修复的一环），故给一个永不被调用的桩，
+    // 保持 fake runtime 与真实接口同形。
+    completeSimple: () => Promise.reject(new Error('completeSimple is not used in this test')),
     getProvider: (id: string) =>
       options.supportsOAuth === false
         ? { id, auth: {} }

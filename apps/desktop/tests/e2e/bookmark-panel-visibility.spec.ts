@@ -24,7 +24,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { getStatusBarPage } from './helpers/status-bar';
+import { getStatusBarPage, waitForShellReady } from './helpers/status-bar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -51,6 +51,8 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
   });
   const window = await electronApp.firstWindow();
   await window.waitForLoadState('domcontentloaded');
+  // 壳就绪后再找悬浮层：悬浮层由渲染层首帧后的 ui.statusbar.sync 懒创建（见 helper 注释）
+  await waitForShellReady(window);
   return { electronApp, window };
 }
 

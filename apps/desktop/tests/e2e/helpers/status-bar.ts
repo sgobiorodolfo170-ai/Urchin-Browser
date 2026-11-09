@@ -37,6 +37,22 @@ export async function setMainWindowSize(
 }
 
 /**
+ * 等主窗口 Shell UI 就绪（React 已挂载）。
+ *
+ * 为什么要等：底部悬浮层是**渲染层首帧之后**才创建的 —— App 挂载时经 `ui.statusbar.sync`
+ * 把 `visible: true` 推给主进程，`StatusBarOverlay.applyVisibility` 才 `open()` 窗口。
+ * 因此 `domcontentloaded` 之后立刻找 `?view=statusbar` 页面是**必然的竞态**：本机快机器
+ * 通常碰巧赢，CI 冷启动（首个用例 + AV 扫 2MB bundle）会输——2026-11-09 CI 的
+ * `bookmark-folder-delete` 首跑即此形态（`windows: [main, ?view=statusbar-ball]`），重试才绿。
+ *
+ * 判据用「#root 已有子节点」而不是「新建标签可见」：后者依赖右侧栏是否展开，
+ * 各 spec 的前置状态不同；React 提交 = 副作用已跑 = sync 已发。
+ */
+export async function waitForShellReady(window: Page, timeout = 15_000): Promise<void> {
+  await window.locator('#root > *').first().waitFor({ state: 'attached', timeout });
+}
+
+/**
  * 判定是否为「状态栏」窗口。
  *
  * ⚠ 不能用 `url.includes('view=statusbar')`：悬浮球的 URL 是

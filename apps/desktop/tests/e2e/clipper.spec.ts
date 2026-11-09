@@ -16,7 +16,7 @@ import { mkdtempSync, readFileSync, readdirSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getStatusBarPage } from './helpers/status-bar';
+import { getStatusBarPage, waitForShellReady } from './helpers/status-bar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -82,6 +82,8 @@ async function launchApp(dataDir: string): Promise<{ app: ElectronApplication; w
   });
   const window = await app.firstWindow();
   await window.waitForLoadState('domcontentloaded');
+  // 壳就绪后再找悬浮层：悬浮层由渲染层首帧后的 ui.statusbar.sync 懒创建（见 helper 注释）
+  await waitForShellReady(window);
   return { app, window };
 }
 

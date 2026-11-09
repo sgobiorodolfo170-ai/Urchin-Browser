@@ -33,6 +33,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # G18：源码/测试目录内不得出现被 .gitignore 忽略的文件
+      # （2026-11-09：.gitignore 的 `logs/` 吞掉 apps/desktop/src/main/logs/，
+      #  本机 typecheck 绿、CI 干净 clone 直接 TS2307，此处前置拦截）
+      - name: Source tracking check
+        run: pnpm check:src
+
       - name: Lint
         run: pnpm lint
 

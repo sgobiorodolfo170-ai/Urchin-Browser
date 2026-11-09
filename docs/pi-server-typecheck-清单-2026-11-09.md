@@ -256,3 +256,16 @@ git add <本批文件>
    新增**独立文件**（不改动 `src/pi-shims.d.ts`），由两个 tsconfig 同时收录。请确认这个落点。
 3. **C5 的 `plugin-sdk`**：新建 `src/plugin-sdk/`（只含类型，从上游裁剪）还是用 ambient 声明？前者更接近上游结构。
 4. **B6 的 `tests/pi-server`**：确认「先接 `src`、`tests` 单独开批」的节奏。
+
+---
+
+## 9. 执行进展（回写）
+
+> 用户 2026-11-09「同意，全部按推荐方案推进」后开始执行。每批一次提交，`pnpm verify` 全绿才提交。
+
+| 批 | 提交 | 实际结果 | 与计划的差异 |
+| --- | --- | --- | --- |
+| B0 | `bf7b5c24` | 新增 `tsconfig.pi-server.json` + `typecheck:pi-server`（包内 + 根）+ 本清单 + 文档索引行；不接入 verify | 无 |
+| 文档补测 | `364cfc53` | §7 记录 tests 纳入探针：52 文件 / 0 错误；src 412 → 294 | 无 |
+| B1 | `fbd531ab` | 新增 `src/pi-shims-coding-agent.d.ts`（精确 `completeSimple` / `AssistantMessage` / `Context` / `Message` / 工具与内容块 / `StopReason` / `Model`）；实际 **412 → 404（修 8、零新增）**：vision-bridge 2 条 TS7006（D8 的类型面）、`group-router-runtime` 3 条、`quick-ask` 3 条 | 计划预估 412 → 410。实际多修 6 条——`Context` / `Message` 一旦精确，`tools` 与 `toolResult` 的连带 `any` 也一并消除；`tsconfig.pi-server.json` 的 `include` 由点名 `src/pi-shims.d.ts` 改为 `src/pi-shims*.d.ts` |
+| B2 | 本批 | **D8 运行时真修**：`vision-bridge.ts` 新增并导出 `extractAssistantText(content: unknown)`，逐层校验（非数组 → 空串；非对象 / 非 `text` / `text` 非字符串 → 跳过），替换 `filter` + `as { text?: string }`；错误数 **404 → 404（零新增）**；新增 `tests/pi-server/vision-bridge.test.ts` 13 例（红 → 绿），并把该文件加入覆盖率 include | 计划预估 410 → 408。B1 已把类型面清零，B2 只剩运行时加固，故计数不变——这正是 D8 的本质：**类型报错消失 ≠ 运行时缺口消失** |

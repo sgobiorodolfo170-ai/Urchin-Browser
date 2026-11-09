@@ -102,6 +102,7 @@ export default defineConfig({
         'src/pi-server/tool-prompt-overrides.ts',
         'src/pi-server/transcript-prepare.ts',
         'src/pi-server/uploads.ts',
+        'src/pi-server/vision-bridge.ts',
         'src/pi-server/wait-subscription-scan.ts',
       ],
       thresholds: {

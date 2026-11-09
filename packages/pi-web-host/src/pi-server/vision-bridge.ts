@@ -91,6 +91,35 @@ function buildUserPrompt(count: number, lang: ServerLang = "en"): string {
 	);
 }
 
+/**
+ * 从助手消息的 `content` 中提取纯文本（D8 修复点）。
+ *
+ * 为什么不直接 `content.filter((b) => b.type === "text")`：
+ * `completeSimple()` 的返回形状由 provider 决定，运行期会漂移——实测见过
+ * `content` 是整段字符串（而不是块数组）、数组里混入 `null` / 数字 / 缺 `text`
+ * 字段的块。旧实现直接 `.filter`、直接读 `b.type`，于是抛
+ * `TypeError: msg.content.filter is not a function` 或
+ * `Cannot read properties of null (reading 'type')`——把「上游返回格式不对」
+ * 变成与业务无关的崩溃，掩盖了真实原因。
+ *
+ * 因此入参放宽为 `unknown` 并逐层校验：非数组 → 空串；非对象块 → 跳过；
+ * `type` 不是 `"text"` → 跳过；`text` 不是字符串 → 跳过。
+ * 拼接用 `\n`，不在此处 trim（调用方统一 trim 后再判空，保持
+ * 「空转写」错误的语义不变）。返回值恒为 string，永不抛错。
+ */
+export function extractAssistantText(content: unknown): string {
+	if (!Array.isArray(content)) return "";
+	const parts: string[] = [];
+	for (const block of content) {
+		if (typeof block !== "object" || block === null) continue;
+		const candidate = block as { type?: unknown; text?: unknown };
+		if (candidate.type !== "text") continue;
+		if (typeof candidate.text !== "string") continue;
+		parts.push(candidate.text);
+	}
+	return parts.join("\n");
+}
+
 export interface BridgeImage {
 	data: string;
 	mimeType: string;
@@ -172,11 +201,7 @@ export async function transcribeImages(
 					),
 			);
 		}
-		const text = msg.content
-			.filter((b) => b.type === "text")
-			.map((b) => (b as { text?: string }).text ?? "")
-			.join("\n")
-			.trim();
+		const text = extractAssistantText(msg.content).trim();
 		if (!text) {
 			throw new Error(
 				pick(

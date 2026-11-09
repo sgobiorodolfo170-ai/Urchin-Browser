@@ -278,3 +278,11 @@ git add <本批文件>
 | B4（2/2） | 本批 | **`native-cli-session.ts` 删除 claude / codex / agy 会话绑定**：约 220 行（claude 的 `~/.claude/projects` 扫描与 hook `--settings` 注入、codex 的 `~/.codex/config.toml` 冲突检测与 `resume` 注入、agy 的 `--conversation`），连带删除只服务于它们的 `codexSubcommand()`、`EVENTS` 常量、`glob` / `nativeCliCodexHookConflicts` 导入；`explicit` 与 observeOnly 的 `resume` 判定按 `"pi" \| "custom"` 收窄。错误数 **23 → 17**（6 条 TS2367 全清） | 计划 −6，实际 −6。`nativeCliCodexHookConflicts` 仍以导出形式留在 `native-cli-session-hooks.ts`（无引用但不属死分支，删除会动 hooks 模块与测试，另议） |
 | B5 | 本批 | **零散真实缺陷收尾**：<br>① 新增 `src/plugin-sdk/index.d.ts`（上游 `pi-web-ui@0.118.0/plugin-sdk/index.d.ts` 逐字副本，710 行、0 import），并把该目录加入 `.prettierignore` 与 eslint ignores；`plugins.ts` 的 3 处 `import("../plugin-sdk/index.js")` 立即解析（13 → 0），`index.ts` 的 `workItems` 键类型也随之恢复为字符串联合（1 → 0）；<br>② `plugin-assets.ts`：`new Promise` 补 `<void>` 泛型 + 零参 resolve，修 `(value: unknown) => void` 与 `() => void` 不兼容；<br>③ `device-lan.ts`：`sockets` 由 `Set<net.Socket>` 改为 `Set<Duplex>`（https 的 connection 回调给的是 Duplex，实际只用到 `destroy()`）；<br>④ `tsconfig.pi-server.json` 关掉 `declaration` / `declarationMap`——本程序只跑 `--noEmit`，关掉后跳过「声明可移植性」检查（TS2742：3 个 device-center 导出函数返回 express app，类型经 pnpm 的 `.pnpm` 路径引用 `@types/express-serve-static-core`，属 pnpm 布局固有现象），不影响任何 strict 开关。**错误数 17 → 0** | 计划 → 0，实际 → 0。TS2742 不是代码缺陷，是声明产物在 pnpm 布局下不可命名；若将来把 pi-server 并回主程序（declaration: true），需要给这 3 个函数补显式返回类型——已记入 B6 遗留项 |
 | B6 | 本批 | **接门禁 + 收口**：根 `package.json` 的 `verify` 加入 `pnpm typecheck:pi-server`（紧跟主 typecheck）；`.github/workflows/ci.yml` 新增 `Typecheck pi-server` 步骤；AGENTS 工作流约定第 1 条、§九.2 CI 行、§九.4 新 **G19**、适配修订记录各补一处；`docs/03 §5` CI 门槛行、本清单 §6 B6 行、交接文档 §9.2 数字与新增 §9.5 小节。`tests/pi-server` 纳入 `tsconfig.pi-server.json` 的 include，并把 `ExtensionToolContext.tools` / `executeTool` 改为可选（上游 30 处测试把 `{}` 当 ctx 传入，src 侧从不访问这两个成员）。**错误数保持 0**，覆盖 399 文件 | 计划保持 0，实际 0。tests 纳入实测 0 错误（与 §7 探针一致） |
+
+---
+
+## 10. 之后看什么
+
+> 本文是「怎么从 412 到 0」的账本。**清零之后的后续事项、风险与交接提示词**已单独落盘：
+> [pi-server 后续与风险（2026-11-09）](./pi-server-后续与风险-2026-11-09.md)
+> （P0-P3 后续清单 + R1-R9 风险 + 可直接粘贴的新会话提示词 + 复验命令）。

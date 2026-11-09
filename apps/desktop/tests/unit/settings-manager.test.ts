@@ -99,8 +99,9 @@ describe('SettingsManager', () => {
     //   workspaces.registry 工作区注册表 TP7/
     //   clipper.* 剪藏默认格式/清洗/选中优先/懒加载/尾部信息栏剪除/模板/保存路径 8 项/
     //   notebook.state 笔记与便利贴整体状态 M27/
+    //   mail.state 邮箱页三区栏宽 2026-11-10/
     //   transit.items 中转区项目索引） + 自定义 1 项
-    expect(entries).toHaveLength(40);
+    expect(entries).toHaveLength(41);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');
@@ -126,6 +127,7 @@ describe('SettingsManager', () => {
     expect(keys).toContain('clipper.properties');
     expect(keys).toContain('clipper.content');
     expect(keys).toContain('notebook.state');
+    expect(keys).toContain('mail.state');
     expect(keys).toContain('customKey');
   });
 

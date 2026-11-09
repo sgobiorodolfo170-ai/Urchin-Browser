@@ -3,6 +3,8 @@
  *
  * 依据：用户反馈「排版偏居一角、未照顾窗口大小变化、需要附件功能」（2026-09-29）
  * 布局：flex column 撑满父容器——头部固定 / 表单字段紧凑 / 附件列表 / 正文 flex-1 自动撑满 / 底部固定
+ * 2026-11-10 修复「未铺满右区」：根容器在行向 flex/grid 中缺 flex-1 时宽度按内容
+ * 收缩，补 min-w-0 flex-1（与 MessageDetail 一致），随三区 grid 的 minmax(0,1fr) 列铺满。
  */
 import { useState } from 'react';
 import { Button } from '../components/ui/button';
@@ -140,7 +142,8 @@ export function ComposeView({
 
   return (
     <div
-      className="flex h-full flex-col bg-surface"
+      data-testid="mail-compose"
+      className="flex h-full min-w-0 flex-1 flex-col bg-surface"
       onDrop={(e) => void handleDrop(e)}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('application/x-urchin-transit')) {

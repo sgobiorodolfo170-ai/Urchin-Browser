@@ -4,18 +4,32 @@
  * 依据：ADR-010 ML4 / 邮箱模块功能规划 §5
  * 职责：邮箱标签页的主入口组件，根据状态渲染：
  *   无账户 → 账户配置表单
- *   有账户 → 文件夹列表 + 邮件列表 + 邮件详情
+ *   有账户 → 文件夹列表 + 邮件列表 + 邮件详情（三区 grid 布局）
+ *
+ * 三区布局：左（文件夹）/ 中（邮件列表）为可拖拽像素宽度，右（详情/写邮件）
+ * 始终铺满余量；两条分割线可拖拽，拖拽结束写入 settings 键 mail.state
+ * （同 notebook.state 机制），重启恢复。本页不参与内容区 Ctrl+滚轮缩放
+ * （见 ContentArea），避免三区随缩放错位。
  *
  * 主题：使用 M19 令牌（bg-surface / text-text / border-border 等 Tailwind class）
  * 入口：左侧栏「邮箱」按钮 → 创建/激活 urchin://mail 标签页
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Mail, RefreshCw, AlertTriangle, Loader2, Settings as SettingsIcon } from 'lucide-react';
 import { AccountSetup } from './AccountSetup';
 import { FolderList } from './FolderList';
 import { MessageList } from './MessageList';
 import { MessageDetail } from './MessageDetail';
 import { ComposeView } from './ComposeView';
+import { cn } from '../lib/utils';
+import {
+  MAIL_STATE_KEY,
+  SPLITTER_WIDTH,
+  buildMailState,
+  resizeFolderWidth,
+  resizeListWidth,
+  restoreWidths,
+} from './layout';
 
 interface MailAccount {
   id: string;
@@ -88,6 +102,114 @@ export function MailView() {
     defaultText?: string;
     inReplyToUid?: number;
   }>({});
+
+  // ────────────── 三区布局（可拖拽分割线 + 持久化） ──────────────
+
+  /** 三区 grid 容器引用与实测宽度（拖拽上限按容器宽度收敛） */
+  const threePaneRef = useRef<HTMLDivElement | null>(null);
+  const [containerWidth, setContainerWidth] = useState(1200);
+
+  /** 持久化原始值（未加载 = null → restoreWidths 回退默认宽） */
+  const [persisted, setPersisted] = useState<unknown>(null);
+  /** 拖拽中的实时宽度（null = 未拖拽，用持久化/默认值） */
+  const [live, setLive] = useState<{ folderWidth: number; listWidth: number } | null>(null);
+  const [dragging, setDragging] = useState<'folder' | 'list' | null>(null);
+  const dragRef = useRef<{
+    kind: 'folder' | 'list';
+    startX: number;
+    startFolder: number;
+    startList: number;
+  } | null>(null);
+
+  // 加载持久化宽度（一次性；失败静默回退默认）
+  useEffect(() => {
+    let alive = true;
+    void (
+      window.urchin.invoke('settings.get', { key: MAIL_STATE_KEY }) as Promise<{
+        value?: unknown;
+      }>
+    )
+      .then((res) => {
+        if (alive) setPersisted(res?.value ?? null);
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to load mail layout:', error);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const showThreePane = !loadingAccounts && !showAccountSetup && accounts.length > 0;
+
+  // 测量三区容器宽度（窗口缩放跟随；showThreePane 变化时 grid 才挂载，需重跑）
+  useLayoutEffect(() => {
+    if (!showThreePane) return undefined;
+    const element = threePaneRef.current;
+    if (!element) return undefined;
+    const measure = (): void => {
+      const w = element.getBoundingClientRect().width;
+      if (w > 0) setContainerWidth(w);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => measure());
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [showThreePane]);
+
+  const persistWidths = useCallback((w: { folderWidth: number; listWidth: number }) => {
+    void window.urchin
+      .invoke('settings.set', {
+        key: MAIL_STATE_KEY,
+        value: buildMailState(w.folderWidth, w.listWidth),
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to persist mail layout:', error);
+      });
+  }, []);
+
+  const startResize = (kind: 'folder' | 'list', event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const base = live ?? restoreWidths(persisted, containerWidth);
+    dragRef.current = {
+      kind,
+      startX: event.clientX,
+      startFolder: base.folderWidth,
+      startList: base.listWidth,
+    };
+    setDragging(kind);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const delta = event.clientX - drag.startX;
+    const next =
+      drag.kind === 'folder'
+        ? resizeFolderWidth(drag.startFolder, drag.startList, delta, containerWidth)
+        : resizeListWidth(drag.startFolder, drag.startList, delta, containerWidth);
+    setLive(next);
+  };
+
+  const endResize = () => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    if (live) persistWidths(live);
+    setLive(null);
+    setDragging(null);
+  };
+
+  const splitterProps = (kind: 'folder' | 'list', label: string) => ({
+    role: 'separator' as const,
+    'aria-orientation': 'vertical' as const,
+    'aria-label': label,
+    onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => startResize(kind, e),
+    onPointerMove: moveResize,
+    onPointerUp: endResize,
+    onPointerCancel: endResize,
+  });
 
   // ────────────── 账户加载 ──────────────
 
@@ -269,6 +391,9 @@ export function MailView() {
     );
   }
 
+  // 生效宽度：拖拽中用实时值，否则按持久化值恢复（null → 默认宽）
+  const widths = live ?? restoreWidths(persisted, containerWidth);
+
   return (
     <div className="flex h-full flex-col bg-surface">
       {/* 顶栏：账户选择 + 刷新 + 设置 */}
@@ -323,19 +448,37 @@ export function MailView() {
         </div>
       )}
 
-      {/* 三栏布局：文件夹 | 邮件列表 | 邮件详情 */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* 三区布局：文件夹 | 邮件列表 | 邮件详情（分割线可拖拽，宽度持久化 mail.state） */}
+      <div
+        ref={threePaneRef}
+        className="grid h-full w-full min-w-0 flex-1 overflow-hidden"
+        style={{
+          gridTemplateColumns: `${widths.folderWidth}px ${SPLITTER_WIDTH}px ${widths.listWidth}px ${SPLITTER_WIDTH}px minmax(0, 1fr)`,
+        }}
+      >
         {/* 左：文件夹列表 */}
         <FolderList
           folders={folders}
           selectedFolder={selectedFolder}
           onSelect={setSelectedFolder}
           loading={loadingFolders}
+          width={widths.folderWidth}
           onCompose={() => {
             setComposeData({});
             setComposing(true);
           }}
         />
+
+        {/* 分割线 1：文件夹 | 列表（拖拽调文件夹栏宽） */}
+        <div
+          {...splitterProps('folder', '调整文件夹栏宽度')}
+          className={cn(
+            'relative h-full cursor-col-resize select-none',
+            dragging === 'folder' && 'bg-primary/20',
+          )}
+        >
+          <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
+        </div>
 
         {/* 中：邮件列表 */}
         <MessageList
@@ -344,9 +487,21 @@ export function MailView() {
           selectedUid={selectedMessage?.uid ?? null}
           onSelect={(msg) => void openMessage(msg)}
           loading={loadingMessages}
+          width={widths.listWidth}
         />
 
-        {/* 右：邮件详情 / 撰写邮件 */}
+        {/* 分割线 2：列表 | 详情（拖拽调列表栏宽） */}
+        <div
+          {...splitterProps('list', '调整邮件列表栏宽度')}
+          className={cn(
+            'relative h-full cursor-col-resize select-none',
+            dragging === 'list' && 'bg-primary/20',
+          )}
+        >
+          <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
+        </div>
+
+        {/* 右：邮件详情 / 撰写邮件（minmax(0,1fr) 铺满余量） */}
         {composing && selectedAccount ? (
           <ComposeView
             accountId={selectedAccount.id}

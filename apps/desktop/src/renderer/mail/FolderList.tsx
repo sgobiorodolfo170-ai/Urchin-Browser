@@ -16,6 +16,8 @@ export interface FolderListProps {
   loading: boolean;
   /** 写邮件回调（v0.2 发信功能入口） */
   onCompose?: () => void;
+  /** 栏宽（px）：由 MailView 的可拖拽分割线控制；不传时回退默认 192（原 w-48） */
+  width?: number;
 }
 
 /** 文件夹排序优先级：INBOX 最前 → 特殊用途 → 其他按名称 */
@@ -59,6 +61,7 @@ export function FolderList({
   onSelect,
   loading,
   onCompose,
+  width,
 }: FolderListProps) {
   const sorted = [...folders].sort((a, b) => {
     const pa = folderSortKey(a);
@@ -68,7 +71,11 @@ export function FolderList({
   });
 
   return (
-    <div className="flex w-48 shrink-0 flex-col border-r border-border">
+    <div
+      className="flex shrink-0 flex-col"
+      style={{ width: width ?? 192 }}
+      data-testid="mail-folder-list"
+    >
       {/* 写邮件按钮 */}
       {onCompose && (
         <button

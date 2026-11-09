@@ -19,6 +19,8 @@ export interface MessageListProps {
   selectedUid: number | null;
   onSelect: (msg: MailMessageSummary) => void;
   loading: boolean;
+  /** 栏宽（px）：由 MailView 的可拖拽分割线控制；不传时回退默认 284（原 w-72） */
+  width?: number;
 }
 
 function formatDate(iso: string): string {
@@ -39,9 +41,20 @@ function isUnread(flags: string[]): boolean {
   return !flags.includes('\\Seen');
 }
 
-export function MessageList({ messages, total, selectedUid, onSelect, loading }: MessageListProps) {
+export function MessageList({
+  messages,
+  total,
+  selectedUid,
+  onSelect,
+  loading,
+  width,
+}: MessageListProps) {
   return (
-    <div className="flex w-72 shrink-0 flex-col border-r border-border">
+    <div
+      className="flex shrink-0 flex-col"
+      style={{ width: width ?? 284 }}
+      data-testid="mail-message-list"
+    >
       <div className="shrink-0 border-b border-border px-3 py-2 text-xs font-semibold uppercase text-text-secondary">
         收件箱 ({total})
       </div>

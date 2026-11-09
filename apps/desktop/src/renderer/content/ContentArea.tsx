@@ -70,6 +70,8 @@ export function ContentArea({
 }: ContentAreaProps) {
   /** 笔记页不参与内容区 Ctrl+滚轮缩放（画布有自己的滚轮缩放），用 ref 在 wheel 闭包里读取。 */
   const isNotebookTabRef = useRef(false);
+  /** 邮箱页同样不参与 Ctrl+滚轮缩放（用户指令 2026-11-10）：三区布局被缩放会错位。 */
+  const isMailTabRef = useRef(false);
 
   /** 中区内部页缩放倍率（Ctrl+滚轮；网页标签由主进程单独缩放 BrowserView）。 */
   const [contentZoom, setContentZoom] = useState(1);
@@ -84,6 +86,8 @@ export function ContentArea({
       if (!e.ctrlKey) return;
       // 笔记页画布自行处理滚轮缩放，且页面整体不应被 Ctrl+滚轮缩放
       if (isNotebookTabRef.current) return;
+      // 邮箱页屏蔽 Ctrl+滚轮缩放（用户指令 2026-11-10）：三区布局随缩放错位
+      if (isMailTabRef.current) return;
       e.preventDefault();
       setContentZoom((prev) => {
         const raw = e.deltaY < 0 ? prev * CONTENT_ZOOM_STEP : prev / CONTENT_ZOOM_STEP;
@@ -98,9 +102,10 @@ export function ContentArea({
   // 注意：urchin://settings 会被 Electron URL 规范化为带末尾斜杠，
   // 所以用 startsWith 判断而非严格相等，避免匹配失败导致组件不渲染。
   const isSettingsTab = !!activeTab?.url?.startsWith('urchin://settings');
-  const isMailTab = !!activeTab?.url?.startsWith('urchin://mail');
   const isNotebookTab = !!activeTab?.url?.startsWith('urchin://notebook');
   isNotebookTabRef.current = isNotebookTab;
+  const isMailTab = !!activeTab?.url?.startsWith('urchin://mail');
+  isMailTabRef.current = isMailTab;
   const isGenOfficeHomeTab = !!activeTab?.url?.startsWith('urchin://genoffice-home');
   const isNewTab = !!activeTab?.url?.startsWith('urchin://newtab');
   const isWorkspacesTab = !!activeTab?.url?.startsWith('urchin://workspaces');
@@ -109,10 +114,11 @@ export function ContentArea({
   // React 中区留空、底部地址栏隐藏（编辑器自带工具条与保存流程）
   const isGenOfficeTab = activeTab?.viewKind === 'genoffice';
 
-  // 进入笔记页时重置内容区缩放：笔记页不参与 Ctrl+滚轮缩放，避免残留倍率导致三区不铺满。
+  // 进入笔记页 / 邮箱页时重置内容区缩放：两页均不参与 Ctrl+滚轮缩放，
+  // 避免其它内部页残留的倍率把整页缩小（邮箱页三区会因此错位、写邮件表单被缩小）。
   useEffect(() => {
-    if (isNotebookTab) setContentZoom(1);
-  }, [isNotebookTab]);
+    if (isNotebookTab || isMailTab) setContentZoom(1);
+  }, [isNotebookTab, isMailTab]);
 
   // 设置页深链参数（?tab=<key>）：调用方以 key 绑定该值驱动 SettingsPage 初始选项卡
   const settingsInitialTab = (() => {

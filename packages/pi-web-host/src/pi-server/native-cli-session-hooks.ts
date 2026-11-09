@@ -53,73 +53,14 @@ export function quoteNativeCliShell(value: string): string {
 }
 
 /**
- * POSIX reporter for Claude/Codex. No Node/Python dependency on the remote host.
- * Read a bounded prefix of stdin in memory; never persist the hook payload.
- * Atomic, private, bounded event files survive server disconnects and tmux reattach.
+ * 2026-11-09（P2-2 死链定性）：此处原有 `nativeCliPosixReporter()`（Claude/Codex 的 POSIX
+ * hook 上报脚本，60 行）。它的唯一入口是 `native-cli-session.ts` 里从未被调用的
+ * `const reporter = …`；本仓 `NativeCliPreset` 只剩 `pi` / `custom`（engine-catalog.ts），
+ * 没有任何分支会写出或执行这段 hook.sh。pi 预设的原生事件由下方的
+ * `nativeCliPiExtension()`（--extension）产生，与本脚本无关。
+ * 恢复路径：`git show 3fcabf83:packages/pi-web-host/src/pi-server/native-cli-session-hooks.ts`
+ * 或上游 pi-web-ui 同名文件。
  */
-export function nativeCliPosixReporter(directory: string): string {
-	return `#!/bin/sh
-umask 077
-dir=${quoteNativeCliShell(directory)}
-[ -d "$dir/events" ] || exit 0
-kind=$1
-payload=$(dd bs=4096 count=64 2>/dev/null)
-# Drain the remaining pipe without retaining it, so upstream hook writers do not get EPIPE.
-cat >/dev/null
-extract() {
- printf '%s' "$payload" | awk -v wanted="$1" '
- BEGIN { depth=0; quoted=0; escaped=0; token=""; previous=""; key="" }
- {
-  for (i=1; i<=length($0); i++) {
-   c=substr($0,i,1)
-   if (quoted) {
-    if (escaped) { escaped=0; invalid=1; continue }
-    if (c=="\\\\") { escaped=1; continue }
-    if (c=="\\\"") {
-     quoted=0
-     if (depth==1 && !invalid) {
-      if (role=="key") key=token
-      else if (role=="value" && key==wanted) { print token; exit }
-     }
-     previous="string"; continue
-    }
-    if (depth==1) token=token c
-    continue
-   }
-   if (c=="\\\"") { quoted=1; token=""; invalid=0; role=(depth==1 && (previous=="{" || previous==",") ? "key" : (depth==1 && previous==":" ? "value" : "other")); continue }
-   if (c=="{" || c=="[") depth++
-   if (c=="}" || c=="]") depth--
-   if (c !~ /[[:space:]]/) previous=c
-  }
- }'
-}
-native=$(extract session_id)
-case "$native" in *[!a-fA-F0-9-]*) native= ;; esac
-case "$native" in ????????-????-????-????-????????????) ;; *) native= ;; esac
-case "$kind" in
- submitted) [ "$(extract hook_event_name)" = UserPromptSubmit ] || exit 0 ;;
- notification)
-  notification=$(extract notification_type)
-  case "$notification" in permission_prompt) kind=approval ;; elicitation_dialog) kind=question ;; *) exit 0 ;; esac ;;
- session|working|done|question|approval|error) ;;
- *) exit 0 ;;
-esac
-stamp=$(date +%s%N 2>/dev/null | tr -cd '0-9')
-[ -n "$stamp" ] || stamp=0
-id="$stamp-$$-$kind"
-if [ "$kind" = session ] && [ -n "$native" ]; then
- printf '%s' "$native" > "$dir/.native-id.$$" && mv -f "$dir/.native-id.$$" "$dir/native-id"
-fi
-file="$dir/events/$id.json"
-tmp="$file.tmp"
-printf '{"eventId":"%s","type":"%s","nativeId":"%s"}\\n' "$id" "$kind" "$native" > "$tmp" || exit 0
-chmod 600 "$tmp" 2>/dev/null
-mv -f "$tmp" "$file" 2>/dev/null
-set -- "$dir"/events/*.json
-while [ "$#" -gt ${NATIVE_CLI_EVENT_LIMIT} ]; do rm -f "$1"; shift; done
-exit 0
-`;
-}
 
 /** Uses Pi's public extension API and final-settlement/UI events, not screen text. */
 export function nativeCliPiExtension(directory: string): string {

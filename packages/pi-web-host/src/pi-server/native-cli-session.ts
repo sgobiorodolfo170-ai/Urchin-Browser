@@ -9,7 +9,6 @@ import {
 	NATIVE_CLI_EVENT_LIMIT,
 	nativeCliEventId,
 	nativeCliPiExtension,
-	nativeCliPosixReporter,
 	parseNativeCliHookEvent,
 	quoteNativeCliShell as quote,
 	type NativeCliHookEvent,
@@ -234,14 +233,23 @@ export async function prepareNativeCliSessionLaunch(
 	let acceptsEvents = false;
 	let confirmNativeId = async (_id: string): Promise<boolean> => true;
 	const scriptDirectory = directory.replace(/\\/g, "/");
-	const reporter = async () => `sh ${quote(await put("hook.sh", nativeCliPosixReporter(scriptDirectory)))}`;
 
 	if (ctx.observeOnly) {
 		if (durableId) ref.nativeId = durableId;
 		observedId = ref.nativeId;
+		// observeOnly（keepAlive 重连一个仍存活的远程会话）**不能再安装上报器**：
+		// 事件只能由原启动时留下的写入者产生 —— 只有 pi preset 会装 `--extension
+		// <dir>/pi-extension.mjs`（跑在远程 pi 进程里，持续写 events/*.json）。
+		// custom preset 从未安装过写入者；此前无条件声明 `events: "hooks"` 会让
+		// nativeEvents 谎报「有原生事件」，实际永远等不到（静默失效）。
+		// 判据是磁盘事实（脚本仍在）+ 历史事件可读，而不是猜预设。
+		const hooksInstalled =
+			!observationFailed &&
+			config.preset === "pi" &&
+			(await exists(join(directory, "pi-extension.mjs")));
 		capabilities = {
 			resume: config.preset === "custom" ? "none" : !ref.nativeId ? "explicit-only" : "exact",
-			events: observationFailed ? "process" : "hooks",
+			events: hooksInstalled ? "hooks" : "process",
 		};
 		acceptsEvents = true;
 	} else if (config.preset === "pi") {

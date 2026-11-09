@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmod, glob, lstat, mkdir, open, readdir, rename, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, open, readdir, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { NativeCliConfig } from "./protocol.js";
@@ -7,7 +7,6 @@ import type { RemoteSshService } from "./remote-ssh-service.js";
 import {
 	NATIVE_CLI_EVENT_BYTES,
 	NATIVE_CLI_EVENT_LIMIT,
-	nativeCliCodexHookConflicts,
 	nativeCliEventId,
 	nativeCliPiExtension,
 	nativeCliPosixReporter,
@@ -52,7 +51,6 @@ export interface NativeCliSessionContext {
 }
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const EVENTS = ["SessionStart", "UserPromptSubmit", "PermissionRequest", "Stop", "PreToolUse", "PostToolUse"];
 const EVENT_FILE = /^[a-zA-Z0-9_.-]{1,180}\.json$/;
 
 function flag(args: readonly string[], names: string[]): boolean {
@@ -75,38 +73,6 @@ function flagValue(args: readonly string[], names: string[]): string | undefined
 		}
 	}
 	return undefined;
-}
-function codexSubcommand(args: string[]): number {
-	const values = new Set([
-		"--config",
-		"-c",
-		"--model",
-		"-m",
-		"--profile",
-		"-p",
-		"--sandbox",
-		"-s",
-		"--ask-for-approval",
-		"-a",
-		"--cd",
-		"-C",
-		"--image",
-		"-i",
-		"--add-dir",
-		"--enable",
-		"--disable",
-		"--local-provider",
-	]);
-	for (let index = 0; index < args.length; index++) {
-		if (args[index] === "--") break;
-		if (values.has(args[index])) {
-			index++;
-			continue;
-		}
-		if (args[index].startsWith("-")) continue;
-		return args[index] === "resume" || args[index] === "fork" ? index : -1;
-	}
-	return -1;
 }
 function addOptions(args: string[], options: string[]): string[] {
 	const separator = args.indexOf("--");
@@ -246,22 +212,18 @@ export async function prepareNativeCliSessionLaunch(
 	}
 	if (durableId && /[\x00-\x1f\x7f]/.test(durableId)) durableId = undefined;
 	const explicit =
-		config.preset === "claude"
-			? flag(optionArgs, ["--session-id", "--resume", "-r", "--continue", "-c"])
-			: config.preset === "codex"
-				? codexSubcommand(optionArgs) >= 0
-				: config.preset === "pi"
-					? flag(optionArgs, [
-							"--session",
-							"--session-id",
-							"--continue",
-							"-c",
-							"--resume",
-							"-r",
-							"--fork",
-							"--no-session",
-						])
-					: flag(optionArgs, ["--conversation", "--continue", "-c"]);
+		config.preset === "pi"
+			? flag(optionArgs, [
+					"--session",
+					"--session-id",
+					"--continue",
+					"-c",
+					"--resume",
+					"-r",
+					"--fork",
+					"--no-session",
+				])
+			: flag(optionArgs, ["--conversation", "--continue", "-c"]);
 	const recoveredId =
 		durableId ||
 		[...oldEvents].reverse().find((event) => event.type === "session" && event.nativeId)?.nativeId ||
@@ -278,70 +240,10 @@ export async function prepareNativeCliSessionLaunch(
 		if (durableId) ref.nativeId = durableId;
 		observedId = ref.nativeId;
 		capabilities = {
-			resume:
-				config.preset === "custom" ? "none" : config.preset === "agy" || !ref.nativeId ? "explicit-only" : "exact",
+			resume: config.preset === "custom" ? "none" : !ref.nativeId ? "explicit-only" : "exact",
 			events: observationFailed ? "process" : "hooks",
 		};
 		acceptsEvents = true;
-	} else if (config.preset === "claude") {
-		capabilities.resume = "exact";
-		const explicitId = flagValue(optionArgs, ["--session-id", "--resume", "-r"]);
-		if (explicit && (!explicitId || !UUID.test(explicitId))) capabilities.resume = "explicit-only";
-		if (explicitId && UUID.test(explicitId)) observedId = explicitId;
-		let id = !explicit ? (ref.nativeId ?? ref.key) : explicitId;
-		if (id && !UUID.test(id)) throw new Error("Invalid bound Claude session ID");
-		const claudeRecord = async (nativeId: string): Promise<boolean> => {
-			const claudeHome = remote
-				? await exec("printf '%s' \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\"")
-				: process.env.CLAUDE_CONFIG_DIR || join(home, ".claude");
-			const projects = join(claudeHome, "projects");
-			if (remote)
-				return (
-					(await exec(
-						`for f in ${quote(projects)}/*/${quote(nativeId + ".jsonl")}; do if [ -f "$f" ]; then printf yes; break; fi; done`,
-					)) === "yes"
-				);
-			try {
-				for (const project of await readdir(projects))
-					if (await exists(join(projects, project, nativeId + ".jsonl"))) return true;
-				return false;
-			} catch (error) {
-				if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-				throw error;
-			}
-		};
-		confirmNativeId = claudeRecord;
-		if (!explicit) {
-			const candidate = durableId || (!ref.nativeId ? recoveredId : undefined);
-			if (candidate && UUID.test(candidate) && (await claudeRecord(candidate))) id = candidate;
-			const persisted = await claudeRecord(id!);
-			if (ref.nativeId && !persisted)
-				throw new Error("Bound Claude session no longer exists; create a new CLI conversation to start over");
-			if (persisted) ref.nativeId = id;
-			launchOptions.push(persisted ? "--resume" : "--session-id", id!);
-		}
-		// A second --settings flag would replace the user's explicit settings argument.
-		if (!flag(optionArgs, ["--settings", "--disable-hooks", "--bare"])) {
-			const command = await reporter();
-			const hook = (type: string, matcher?: string) => [
-				{ ...(matcher ? { matcher } : {}), hooks: [{ type: "command", command: `${command} ${type}`, timeout: 5 }] },
-			];
-			launchOptions.push(
-				"--settings",
-				JSON.stringify({
-					hooks: {
-						SessionStart: hook("session"),
-						UserPromptSubmit: hook("submitted"),
-						Stop: hook("done"),
-						PermissionRequest: hook("approval"),
-						Notification: hook("notification"),
-						StopFailure: hook("error"),
-					},
-				}),
-			);
-			capabilities.events = "hooks";
-			acceptsEvents = true;
-		}
 	} else if (config.preset === "pi") {
 		capabilities.resume = explicit && !flagValue(optionArgs, ["--session", "--session-id"]) ? "explicit-only" : "exact";
 		if (!explicit) {
@@ -364,111 +266,6 @@ export async function prepareNativeCliSessionLaunch(
 			capabilities.events = "hooks";
 			acceptsEvents = true;
 		}
-	} else if (config.preset === "codex") {
-		const conflicts = new Set<string>();
-		const configFiles = [join(process.env.CODEX_HOME || join(home, ".codex"), "config.toml")];
-		if (remote) {
-			const found = await exec(
-				`scan() { [ -f "$1" ] || return 0; for ev in ${EVENTS.join(" ")}; do if grep -q "$ev" "$1"; then printf '%s\\n' "$ev"; fi; done; }; scan "\${CODEX_HOME:-$HOME/.codex}/config.toml"; d=$PWD; n=0; while [ "$n" -lt 32 ]; do scan "$d/.codex/config.toml"; [ "$d" = / ] && break; d=\${d%/*}; [ -n "$d" ] || d=/; n=$((n+1)); done`,
-			);
-			for (const name of found.split("\n")) if (EVENTS.includes(name)) conflicts.add(name);
-		} else {
-			let current = path.resolve(ctx.cwd);
-			for (let depth = 0; depth < 32; depth++) {
-				configFiles.push(join(current, ".codex", "config.toml"));
-				const parent = path.dirname(current);
-				if (parent === current) break;
-				current = parent;
-			}
-			for (const file of configFiles) {
-				try {
-					if ((await lstat(file)).size > 256 * 1024) {
-						for (const event of EVENTS) conflicts.add(event);
-						continue;
-					}
-					for (const event of nativeCliCodexHookConflicts(await boundedRead(file, 256 * 1024))) conflicts.add(event);
-				} catch (error) {
-					if ((error as NodeJS.ErrnoException).code !== "ENOENT") for (const event of EVENTS) conflicts.add(event);
-				}
-			}
-		}
-		for (const event of nativeCliCodexHookConflicts(optionArgs.join("\n"))) conflicts.add(event);
-		if (!explicit) {
-			const candidate = durableId || (!ref.nativeId ? recoveredId : undefined);
-			if (candidate && UUID.test(candidate)) {
-				const codexHome = remote
-					? await exec("printf '%s' \"${CODEX_HOME:-$HOME/.codex}\"")
-					: process.env.CODEX_HOME || join(home, ".codex");
-				const suffix = candidate.toLowerCase() + ".jsonl";
-				let persisted = false;
-				if (remote) {
-					persisted =
-						(await exec(
-							`for f in ${quote(codexHome)}/sessions/*/*/*/rollout-*-${quote(suffix)} ${quote(codexHome)}/archived_sessions/rollout-*-${quote(suffix)}; do if [ -f "$f" ]; then printf yes; break; fi; done`,
-						)) === "yes";
-				} else {
-					const patterns = [
-						path.join(codexHome, "sessions", "*", "*", "*", "rollout-*-" + suffix),
-						path.join(codexHome, "archived_sessions", "rollout-*-" + suffix),
-					].map((pattern) => pattern.replace(/\\/g, "/"));
-					for await (const file of glob(patterns)) {
-						if (await exists(file)) {
-							persisted = true;
-							break;
-						}
-					}
-				}
-				if (persisted) ref.nativeId = candidate;
-			}
-		}
-		const id = ref.nativeId;
-		let explicitExact = false;
-		if (explicit) {
-			const index = codexSubcommand(optionArgs);
-			if (index >= 0 && optionArgs[index] === "resume" && UUID.test(optionArgs[index + 1] ?? "")) {
-				observedId = optionArgs[index + 1];
-				explicitExact = true;
-			}
-		} else if (id) {
-			if (!UUID.test(id)) throw new Error("Invalid bound Codex session ID");
-			// Official resume handles an absent exact ID with an error, never --last.
-			args.unshift("resume", id);
-		}
-		const command = await reporter();
-		const mappings: Array<[string, string, string?]> = [
-			["SessionStart", "session"],
-			["UserPromptSubmit", "submitted"],
-			["PermissionRequest", "approval"],
-			["Stop", "done"],
-			["PreToolUse", "question", "request_user_input"],
-			["PostToolUse", "working", "request_user_input"],
-		];
-		for (const [event, type, matcher] of mappings) {
-			if (conflicts.has(event)) continue;
-			const groups = [
-				{ ...(matcher ? { matcher } : {}), hooks: [{ type: "command", command: `${command} ${type}`, timeout: 5 }] },
-			];
-			const toml = groups
-				.map(
-					(group) =>
-						`{ ${matcher ? `matcher = ${JSON.stringify(matcher)}, ` : ""}hooks = [{ type = "command", command = ${JSON.stringify(group.hooks[0].command)}, timeout = 5 }] }`,
-				)
-				.join(", ");
-			launchOptions.push("--config", `hooks.${event}=[${toml}]`);
-			acceptsEvents = true;
-		}
-		capabilities = {
-			resume:
-				explicit && !explicitExact
-					? "explicit-only"
-					: !conflicts.has("SessionStart") || Boolean(id)
-						? "exact"
-						: "explicit-only",
-			events: !conflicts.has("UserPromptSubmit") && !conflicts.has("Stop") ? "hooks" : "process",
-		};
-	} else if (config.preset === "agy") {
-		capabilities.resume = "explicit-only";
-		if (!explicit && ref.nativeId) launchOptions.push("--conversation", ref.nativeId);
 	}
 
 	if (!explicit) observedId = ref.nativeId;

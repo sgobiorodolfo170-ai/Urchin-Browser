@@ -381,7 +381,6 @@ import {
 	readNativeCliConfig,
 	validateNativeCliConfig,
 } from "./native-cli.js";
-import { resolveNativeCliModelConnection } from "./native-cli-model.js";
 import { prepareNativeCliSessionLaunch } from "./native-cli-session.js";
 import type { NativeCliSessionEvent } from "./native-cli-runtime.js";
 import {
@@ -953,7 +952,6 @@ export class ClientSession {
 			cwd,
 			() => this.getLang(),
 			"conversation",
-			(config) => resolveNativeCliModelConnection(config, this.sharedModelRuntime),
 		);
 		this.configureNativeCliRuntime(conversationId, mgr);
 		mgr.onAgentIdle = (terminalId, idleMs, title, lastLines) =>

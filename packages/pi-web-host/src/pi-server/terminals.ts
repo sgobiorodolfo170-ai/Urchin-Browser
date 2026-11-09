@@ -15,7 +15,6 @@ import {
 	sanitizeNativeCliPaste,
 	validateNativeCliConfig,
 } from "./native-cli.js";
-import type { NativeCliModelConnection } from "./native-cli-model.js";
 import type { NativeCliRuntimeHooks, PreparedNativeCliSession } from "./native-cli-runtime.js";
 import {
 	attachPersistentRemoteNativeCli,
@@ -826,7 +825,6 @@ export class TerminalManager {
 		private readonly rootSource: string | (() => string),
 		private readonly lang?: () => ServerLang,
 		readonly ownerKind: "client" | "conversation" = "conversation",
-		private readonly resolveNativeCliModel?: (config: NativeCliConfig) => Promise<NativeCliModelConnection | undefined>,
 	) {
 		this.emit = this.ownedEmit(emit);
 	}
@@ -908,10 +906,6 @@ export class TerminalManager {
 						throw new Error("Persistent CLI requires a saved session binding and SSH service");
 					observeOnly = (await probePersistentRemoteNativeCli(remoteService, safeCwd, persistentRef.key)).alive;
 				}
-				// 引擎剪枝后不再有「为 claude / codex 注入模型凭据」的路径，connection 恒为
-				// undefined；保留该变量与下游 `nativeCliConnection` 形参是为了不牵动
-				// remote launch 的签名（彻底移除见 B4 说明/后续清理）。
-				const connection: NativeCliModelConnection | undefined = undefined;
 				if (
 					this.pendingNativeCli.get(id) !== pending ||
 					root !== this.workspaceRoot ||
@@ -946,7 +940,6 @@ export class TerminalManager {
 				if (!remote) {
 					args[6] = {
 						...opts,
-						nativeCliConnection: connection,
 						nativeCliLaunchConfig: launchConfig,
 						nativeCliEnv: prepared?.env,
 						nativeCliRun: run,
@@ -973,7 +966,6 @@ export class TerminalManager {
 						service,
 						launchConfig,
 						safeCwd,
-						connection,
 						pending.controller.signal,
 					);
 					if (prepared?.env) launch.env = { ...launch.env, ...prepared.env };
@@ -1220,7 +1212,6 @@ export class TerminalManager {
 			agentBash?: boolean;
 			locale?: string;
 			nativeCli?: NativeCliConfig;
-			nativeCliConnection?: NativeCliModelConnection;
 			nativeCliLaunchConfig?: NativeCliConfig;
 			nativeCliEnv?: NodeJS.ProcessEnv;
 			nativeCliRun?: NativeCliRun;
@@ -1272,7 +1263,6 @@ export class TerminalManager {
 				priorAgentBash,
 				opts?.locale,
 				nativeCli,
-				opts?.nativeCliConnection,
 				opts?.nativeCliLaunchConfig,
 				opts?.nativeCliEnv,
 				opts?.nativeCliRun,
@@ -1374,7 +1364,6 @@ export class TerminalManager {
 		agentBash = false,
 		locale?: string,
 		nativeCli?: NativeCliConfig,
-		nativeCliConnection?: NativeCliModelConnection,
 		nativeCliLaunchConfig?: NativeCliConfig,
 		nativeCliEnv?: NodeJS.ProcessEnv,
 		nativeCliRun?: NativeCliRun,
@@ -1436,7 +1425,6 @@ export class TerminalManager {
 				const launch = resolveNativeCliLaunch(nativeCliLaunchConfig ?? nativeCli, {
 					cwd: abs,
 					env,
-					modelConnection: nativeCliConnection,
 				});
 				if (launch.env) env = launch.env as Record<string, string>;
 				shell = launch.file;

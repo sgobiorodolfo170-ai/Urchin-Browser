@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { ENGINE_CATALOG, type NativeCliEngineId } from "./engine-catalog.js";
 import { nativeCliLaunchArgs, validateNativeCliConfig } from "./native-cli.js";
-import { nativeCliModelLaunch, type NativeCliModelConnection } from "./native-cli-model.js";
+import { nativeCliModelLaunch } from "./native-cli-model.js";
 import type { NativeCliConfig } from "./protocol.js";
 import { shellQuotePosix, type RemoteSshService } from "./remote-ssh-service.js";
 
@@ -92,7 +92,6 @@ export async function resolveRemoteNativeCliLaunch(
 	service: RemoteExec,
 	value: NativeCliConfig,
 	uri: string,
-	connection?: NativeCliModelConnection,
 	signal?: AbortSignal,
 ): Promise<{ file: string; args: string[]; env?: NodeJS.ProcessEnv; unsetEnv?: string[] }> {
 	const config = validateNativeCliConfig(value);
@@ -101,7 +100,10 @@ export async function resolveRemoteNativeCliLaunch(
 	const file = inspected.executables[0];
 	if (!file) throw new Error(`Remote CLI executable is unavailable: ${requested}`);
 	const launchPath = `${file.slice(0, file.lastIndexOf("/")) || "/"}:${inspected.path}`;
-	const model = nativeCliModelLaunch(config, connection, { PATH: launchPath });
+	// 引擎剪枝后（只剩 pi / custom）不存在「为 claude / codex 注入模型凭据」的路径，
+	// 调用方也不再持有 connection；仍走 nativeCliModelLaunch 是为了保持与上游同源的
+	// 结构（该函数当前恒返回 { args: [] }，见 native-cli-model.ts 注释）。
+	const model = nativeCliModelLaunch(config, undefined, { PATH: launchPath });
 	return {
 		file,
 		args: [...model.args, ...nativeCliLaunchArgs(config)],

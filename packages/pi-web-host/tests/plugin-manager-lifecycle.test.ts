@@ -7,6 +7,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   installPlugin,
@@ -26,8 +27,27 @@ import {
 
 let agentDir: string;
 
+/**
+ * 测试用临时根目录。
+ *
+ * 为什么不用裸 `tmpdir()`：CI 的 TEMP 是 8.3 短名（`C:\Users\RUNNER~1\…`），而
+ * `pathToFileURL()` 会把 `~` 编码成 `%7E`。`%7E` 是合法 URL，原生 Node 的 ESM
+ * 解析器会解码（已实测：`file:///…%7E…/mod.mjs` 可正常加载），但 vitest 的
+ * vite-node 解析器不解码，于是插件入口的动态 import 直接 ENOENT。本机 TEMP 不含
+ * `~`，所以只在 CI 复现。这里当 `tmpdir()` 含 `~` 时退回仓库 `tmp/`（已被
+ * `.gitignore` 忽略）——绕开的是测试运行器，不是产品逻辑，产品侧仍用
+ * `pathToFileURL` 这个正确 API。
+ */
+function tempRoot(): string {
+  const base = tmpdir();
+  if (!base.includes('~')) return base;
+  const fallback = join(process.cwd(), 'tmp');
+  mkdirSync(fallback, { recursive: true });
+  return fallback;
+}
+
 beforeEach(() => {
-  agentDir = mkdtempSync(join(tmpdir(), 'pi-plugin-life-'));
+  agentDir = mkdtempSync(join(tempRoot(), 'pi-plugin-life-'));
 });
 
 afterEach(async () => {
@@ -246,5 +266,16 @@ describe('catalog merge', () => {
   it('should ignore a malformed custom catalog file', async () => {
     writeFileSync(join(agentDir, 'plugin-catalog.json'), 'not json');
     expect(await readCatalog(agentDir)).toEqual([]);
+  });
+});
+
+describe('plugin entry loading environment', () => {
+  it('should use a temp root whose path survives file-URL encoding', () => {
+    // 回归锁：插件入口靠 pathToFileURL()+import() 加载，而 `~` 会被编码成 `%7E`，
+    // vitest 的解析器不解码 → 动态 import 直接失败（CI 上就是这条）。这里断言
+    // 测试目录不含会被 percent-encode 的 `~`，把「换个 temp 根就静默变红」的情形钉住。
+    expect(pathToFileURL(join(tempRoot(), 'pi-plugin-life-x', 'index.mjs')).href).not.toContain(
+      '%7E',
+    );
   });
 });

@@ -549,6 +549,8 @@ adapted_for: Urchin-Browser
 > **唯一仍失败的步骤是 E2E（步骤 12）**：2026-11-05 最近一次运行（`gh run view 41998142958`）5 个 spec 失败——`launch.spec` / `tab-order-repro.spec` / `translate.spec` / `workspaces.spec` / `settings-page.spec`，失败模式统一为 `TimeoutError: locator.fill: Timeout 30000ms exceeded`（omnibox / 地址栏输入框在 CI headless 环境下 30s 内未定位到或不可填充），属 CI 环境下 UI 选择器 / 时序问题，非代码逻辑回归。E2E 绿之前，G6 仍是目标而非事实——本行必须随状态更新，不得沿用旧结论。
 >
 > **历史脉络**（备查）：2026-08-02 ~ 2026-10-27 间 CI 因前置链断裂（pnpm 版本双写缺失 / lockfile 不一致 / vendor 排出 workspace）从未跑到过 typecheck；2026-10-27 连修三道墙后前置链贯通；2026-11 起 typecheck/lint/单测/coverage 全部在 CI 实跑并放行，仅 E2E 待治。
+>
+> **2026-11-09 更正（P0）**：上一条「步骤 1-11 全绿」已过期——2026-11-08 起 CI **每次都在 typecheck 就红**，根因是 `.gitignore` 的无锚定 `logs/` 把 `apps/desktop/src/main/logs/`（3 源文件）与 `apps/desktop/tests/unit/logs/`（2 测试）整体忽略、从未入库；本地因文件在磁盘上始终绿，干净 clone 直接 `TS2307 Cannot find module './logs'`。已修：规则收窄为 `/logs/` + 5 文件入库 + 新增 G18 `pnpm check:src`（verify 链 + CI 独立步骤）。**结论修正**：此前「只差 E2E」的判断只对 2026-11-06 那次运行成立；logs 模块引入之后，lint/format/coverage/E2E 在 CI 里根本没被执行过，需以修复后的新运行为准重新评估。
 
 ### 3. 与人工评审的区别
 

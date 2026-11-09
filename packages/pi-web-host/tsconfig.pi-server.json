@@ -1,17 +1,17 @@
 {
-  // pi-server 独立 typecheck 程序：src/pi-server + tests/pi-server（399 文件）一起检查。
-  // 主 tsconfig.json 排除了这两处（见 docs/pi-web-测试交接-2026-11-08.md §3），
-  // 本文件把它们单独收进一个程序（已 0 错误，门禁 G19）。
-  // eslint.config.js 里 packages/pi-web-host/tests/pi-server/** 的 project 也指向本文件，
-  // 改动 include 必须同步那里，否则那些测试会失去类型信息或报 not found by project service。
+  // pi-server 的独立类型检查（399 文件）。2026-11-09 起主 tsconfig.json 已包含
+  // src/pi-server 与 tests/pi-server，本文件不再是「唯一的覆盖面」——它保留为
+  // 快速专项检查（关掉 declaration 后约 14s，主程序约 18s），G19 门禁仍指向它。
+  // 若将来决定退休该专项检查，直接删本文件并同步 verify / CI / AGENTS §九.4 G19；
+  // eslint.config.js 里 tests/pi-server 的 project 也指向本文件，一并改回 tsconfig.json。
   // 继承 ./tsconfig.json → strict 与 noUncheckedIndexedAccess 与包内现状一致；
   // skipLibCheck 沿用 tsconfig.base.json 现状，不新增任何宽化开关。
   "extends": "./tsconfig.json",
   "compilerOptions": {
     // 本程序只做检查（tsc --noEmit），从不产出 .d.ts。关掉 declaration 是为了跳过
-    // 「声明可移植性」检查（TS2742/TS4023）：device-center 的 3 个导出函数返回
-    // express app，其类型经 pnpm 的 .pnpm 路径引用 @types/express-serve-static-core，
-    // 属于 pnpm 布局的固有现象，与代码正确性无关。类型检查本身（strict 全家桶）不变。
+    // 「声明可移植性」检查（TS2742/TS4023）。注意：主程序（declaration: true）已通过
+    // 显式返回类型解决 device-center 的 3 处 TS2742，所以这里不再是「掩盖问题」，
+    // 只是省掉不产出声明时的多余检查。
     "declaration": false,
     "declarationMap": false
   },

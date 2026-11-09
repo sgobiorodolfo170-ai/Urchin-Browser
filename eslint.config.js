@@ -76,22 +76,6 @@ export default tseslint.config(
     },
   },
 
-  // pi-server 的测试（上游 pi-web-ui server 同源）纳入 lint。
-  // 这些文件只被 packages/pi-web-host/tsconfig.pi-server.json 收录，主 tsconfig.json
-  // 里 exclude 了它们；而 projectService 只认最近的 tsconfig.json，直接开就会
-  // 报 "was not found by the project service"。故这里关掉 projectService，
-  // 显式把 project 指向 pi-server 程序（改动其 include 时必须同步本行）。
-  {
-    files: ['packages/pi-web-host/tests/pi-server/**/*.ts'],
-    languageOptions: {
-      parserOptions: {
-        projectService: false,
-        project: ['./packages/pi-web-host/tsconfig.pi-server.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
-  },
-
   // React 渲染进程代码
   {
     files: ['apps/desktop/src/renderer/**/*.{ts,tsx}'],

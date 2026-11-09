@@ -6,6 +6,10 @@
     "baseUrl": ".",
     "noUncheckedIndexedAccess": false
   },
+  // pi-server（src/pi-server + tests/pi-server）自 2026-11-09 起并入本程序：
+  // 靠 pi-shims-*.d.ts 补上 vendored 包的类型面、device-center 的 3 个导出补了
+  // 显式 `: Express` 返回类型（解 TS2742）后，主程序已达到 0 错误。
+  // src/browser 仍是单独的上游代码树，暂不并入。
   "include": ["src/**/*.ts", "tests/**/*.ts"],
-  "exclude": ["node_modules", "dist", "src/pi-server", "src/browser", "tests/pi-server"]
+  "exclude": ["node_modules", "dist", "src/browser"]
 }

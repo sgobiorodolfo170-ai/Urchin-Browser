@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import express from "express";
+import express, { type Express } from "express";
 import { validInteractionAnswer, validInteractionProjection } from "./human-interaction.js";
 import type { DeviceTaskInteraction } from "../protocol.js";
 import { createGroupEvents } from "./group-events.js";
@@ -258,7 +258,7 @@ export async function createDeviceHub(options: DeviceHubOptions) {
 		}
 		return getAccount(req) ?? fail(401, "Authentication required");
 	};
-	const app = express();
+	const app: Express = express();
 	app.disable("x-powered-by");
 	const loginLimit = new HubRateLimiter(10, 60000);
 	const mobilePush = createMobilePushService({ dataDir: options.dataDir });

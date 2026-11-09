@@ -1,4 +1,4 @@
-import express, { type NextFunction, type Request, type Response } from "express";
+import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import {
 	createNativeAccountAuth,
 	nativeOrigin,
@@ -41,9 +41,15 @@ function text(value: unknown, max: number): string {
 	return value;
 }
 
-/** Own middleware boundary: native bearer never enters the cookie-authenticated Hub routes. */
-export function createHubMobileApp(options: HubMobileOptions) {
-	const app = express();
+/**
+ * Own middleware boundary: native bearer never enters the cookie-authenticated Hub routes.
+ *
+ * 显式 `: Express` 返回类型是必需的：`express()` 推断出的是
+ * `express-serve-static-core` 里的类型，本包只直接依赖 `@types/express`，
+ * pnpm 布局下声明产物无法命名它（TS2742）。注解成本 0、语义不变。
+ */
+export function createHubMobileApp(options: HubMobileOptions): Express {
+	const app: Express = express();
 	app.disable("x-powered-by");
 	const host = new URL(options.publicUrl).host;
 	const auth = createNativeAccountAuth(options.store);

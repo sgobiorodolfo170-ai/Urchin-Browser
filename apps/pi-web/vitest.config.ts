@@ -8,12 +8,15 @@ import { dirname, resolve } from 'node:path';
 const root = dirname(fileURLToPath(import.meta.url));
 
 /**
- * 覆盖率口径（P9/P6，2026-11-08）：
+ * 覆盖率口径（P9/P6，2026-11-08；P6 欠账补齐 2026-11-10）：
  * - 纯函数：P3/P4 已移植的 66 个顶层模块（`src/*.ts`），门槛 90/85/90（docs/03 §4 纯函数 ≥90）。
- *   实测：95.86 lines / 88.77 branches / 97.84 functions。
- * - 核心组件：7 个 jsdom 渲染组件（`src/components/**`），门槛 60/70/40。
- *   实测：60.57 / 71.91 / 42.89。
- * React hooks（use-chat 等）与未移植组件不在本口径内。
+ *   实测：95.95 lines / 89.29 branches / 98.11 functions。
+ * - 核心组件 8 个（`src/components/**` 中除 SettingsModal 外的 jsdom 渲染组件），门槛 60/70/40。
+ *   实测（含 SCMPanel / ChatInput 欠账补齐）：62.49 / 70.01 / 44.02。
+ * - SettingsModal 单列冒烟口径 40/40/40/15：6786 行 / 21 个 tab 的巨石组件，P6 对它的既定
+ *   定位是「各 tab 渲染冒烟」（同 backend pi-server「有测试模块集合」单列口径的先例）。
+ *   实测 45.91 / 44.87 / 19.35。增量规则：tab 被改动时补该 tab 交互测试，逐步抬升此门槛。
+ * React hooks（use-chat 等）与其余未测组件不在本口径内。
  */
 export default defineConfig({
   resolve: {
@@ -101,6 +104,8 @@ export default defineConfig({
         'src/components/SCMPanel.tsx',
         // P6 欠账补齐（2026-11-10）：ChatInput（发送链路 / slash 菜单 / 快捷短语冒烟）
         'src/components/ChatInput.tsx',
+        // P6 欠账补齐（2026-11-10）：SettingsModal（各 tab 渲染冒烟，单列口径）
+        'src/components/SettingsModal.tsx',
         'src/components/LeftPanel.tsx',
         'src/components/TopBar.tsx',
         'src/components/ModelConfigModal.tsx',
@@ -108,19 +113,26 @@ export default defineConfig({
         'src/components/ProjectPicker.tsx',
       ],
       thresholds: {
-        // 纯函数层（docs/03 §4：≥90%）；实测 95.86/88.77/97.84
+        // 纯函数层（docs/03 §4：≥90%）；实测 95.95/89.29/98.11
         'src/*.ts': {
           lines: 90,
           statements: 90,
           branches: 85,
           functions: 90,
         },
-        // 核心组件渲染（P6 目标 ≥60%）；实测 60.57/71.91/42.89
-        'src/components/**': {
+        // 核心 8 组件（排除 SettingsModal）；实测 62.49/70.01/44.02
+        'src/components/!(SettingsModal)*': {
           lines: 60,
           statements: 60,
           branches: 70,
           functions: 40,
+        },
+        // SettingsModal 冒烟口径；实测 45.91/44.87/19.35
+        'src/components/SettingsModal*': {
+          lines: 40,
+          statements: 40,
+          branches: 40,
+          functions: 15,
         },
       },
     },

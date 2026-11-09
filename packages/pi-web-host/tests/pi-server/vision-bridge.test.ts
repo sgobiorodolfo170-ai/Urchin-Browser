@@ -11,11 +11,12 @@
  * 2. 正常路径的块筛选与拼接正确（只取 text 块，thinking / toolCall 丢弃）；
  * 3. 发出去的请求形状正确（data URL 前缀已剥离、maxTokens 与 systemPrompt 到位）。
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import {
   buildVisionBridgePrompt,
   extractAssistantText,
+  findVisionModels,
   getVisionSystemPrompt,
   transcribeImages,
 } from '../../src/pi-server/vision-bridge.js';
@@ -53,6 +54,37 @@ function makeRuntime(response: unknown): {
 /** 正常的助手消息：两个 text 块 + 一个应被丢弃的 thinking 块。 */
 function assistantMessage(content: unknown): unknown {
   return { role: 'assistant', stopReason: 'stop', content, timestamp: 1 };
+}
+
+/**
+ * 只会「卡住」的 runtime：completeSimple 一直 pending，直到收到 abort 才 reject。
+ *
+ * 用来覆盖两条真实中断路径：外部 signal 透传（onOuterAbort）与超时定时器
+ * （TRANSCRIBE_TIMEOUT_MS）。真实 provider 收到 abort 也是这个行为。
+ */
+function makeHangingRuntime(): { runtime: ModelRuntime; signals: AbortSignal[] } {
+  const signals: AbortSignal[] = [];
+  const runtime = {
+    getProviders: () => [{ id: 'prov-1' }],
+    hasConfiguredAuth: () => true,
+    getModels: () => [{ id: 'vision-1', name: 'Vision One', input: ['image'] }],
+    getModel: () => ({ id: 'vision-1', provider: 'prov-1' }),
+    completeSimple: (_model: unknown, _context: unknown, options: unknown) =>
+      new Promise<never>((_resolve, reject) => {
+        const signal = (options as { signal?: AbortSignal }).signal;
+        if (!signal) {
+          reject(new Error('missing abort signal'));
+          return;
+        }
+        signals.push(signal);
+        if (signal.aborted) {
+          reject(new Error('aborted before start'));
+          return;
+        }
+        signal.addEventListener('abort', () => reject(new Error('aborted by signal')));
+      }),
+  };
+  return { runtime: runtime as unknown as ModelRuntime, signals };
 }
 
 const ONE_IMAGE = [{ data: 'data:image/png;base64,QUJD', mimeType: 'image/png' }];
@@ -134,6 +166,123 @@ describe('transcribeImages', () => {
       /No vision-capable model|未找到可用的视觉模型/,
     );
     expect(calls).toHaveLength(0);
+  });
+
+  it('should fail when the runtime lists a vision model but returns none for it', async () => {
+    // findVisionModels 命中、但 getModel 返回空（models.json 与运行时状态不一致）。
+    const runtime = {
+      getProviders: () => [{ id: 'prov-1' }],
+      hasConfiguredAuth: () => true,
+      getModels: () => [{ id: 'vision-1', name: 'Vision', input: ['image'] }],
+      getModel: () => undefined,
+      completeSimple: () => Promise.resolve(assistantMessage([])),
+    } as unknown as ModelRuntime;
+
+    await expect(transcribeImages(runtime, ONE_IMAGE)).rejects.toThrow(
+      /Vision model unavailable|视觉模型不可用/,
+    );
+  });
+
+  it('should report an abnormal termination when stopReason is aborted', async () => {
+    const { runtime } = makeRuntime({ role: 'assistant', stopReason: 'aborted', content: [] });
+
+    await expect(transcribeImages(runtime, ONE_IMAGE)).rejects.toThrow(
+      /terminated abnormally|异常终止/,
+    );
+  });
+
+  it('should default an unknown mime type to png and keep multiple images in order', async () => {
+    const { runtime, calls } = makeRuntime(assistantMessage([{ type: 'text', text: 'ok' }]));
+
+    await transcribeImages(runtime, [
+      { data: 'QUJD', mimeType: 'application/octet-stream' },
+      { data: 'REVG', mimeType: 'image/jpeg' },
+    ]);
+
+    const context = calls[0]?.context as {
+      messages: { content: { type: string; data?: string; mimeType?: string; text?: string }[] }[];
+    };
+    const blocks = context.messages[0]?.content ?? [];
+    expect(blocks.slice(0, 2)).toEqual([
+      { type: 'image', data: 'QUJD', mimeType: 'image/png' },
+      { type: 'image', data: 'REVG', mimeType: 'image/jpeg' },
+    ]);
+    // 多图时用户提示切到「按顺序逐张」的批次文案。
+    expect(blocks[2]?.text).toContain('Image 1 to Image 2');
+  });
+
+  it('should honour a caller supplied system prompt and language', async () => {
+    const { runtime, calls } = makeRuntime(assistantMessage([{ type: 'text', text: 'ok' }]));
+
+    await transcribeImages(runtime, ONE_IMAGE, { systemPrompt: '自定义系统提示', lang: 'zh' });
+
+    const context = calls[0]?.context as {
+      systemPrompt?: string;
+      messages: { content: { text?: string }[] }[];
+    };
+    expect(context.systemPrompt).toBe('自定义系统提示');
+    expect(context.messages[0]?.content.at(-1)?.text).toContain('请逐字转写');
+  });
+
+  it('should forward an outer abort to the provider call', async () => {
+    const { runtime, signals } = makeHangingRuntime();
+    const controller = new AbortController();
+
+    const attempt = transcribeImages(runtime, ONE_IMAGE, { signal: controller.signal });
+    const rejection = expect(attempt).rejects.toThrow('aborted by signal');
+    controller.abort();
+    await rejection;
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(true);
+  });
+
+  it('should abort the request when the transcription timeout elapses', async () => {
+    vi.useFakeTimers();
+    try {
+      const { runtime, signals } = makeHangingRuntime();
+      const attempt = transcribeImages(runtime, ONE_IMAGE);
+      const rejection = expect(attempt).rejects.toThrow('aborted by signal');
+      // 默认 90s，这里推进足够长的一段时间，避免与 PI_WEB_VISION_TIMEOUT_MS 耦合。
+      await vi.advanceTimersByTimeAsync(10_000_000);
+      await rejection;
+      expect(signals[0]?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('findVisionModels', () => {
+  it('should only list image models of providers with configured auth', () => {
+    const runtime = {
+      getProviders: () => [{ id: 'ok' }, { id: 'no-auth' }],
+      hasConfiguredAuth: (id: string) => id === 'ok',
+      getModels: (id: string) =>
+        id === 'ok'
+          ? [
+              { id: 'vision', name: 'Vision', input: ['text', 'image'] },
+              { id: 'text-only', name: 'Text only', input: ['text'] },
+              { id: 'no-input', name: 'No input' },
+            ]
+          : [{ id: 'hidden', name: 'Hidden', input: ['image'] }],
+    } as unknown as ModelRuntime;
+
+    expect(findVisionModels(runtime)).toEqual([
+      { provider: 'ok', id: 'vision', label: 'Vision (ok)' },
+    ]);
+  });
+
+  it('should fall back to the model id when the display name is missing', () => {
+    const runtime = {
+      getProviders: () => [{ id: 'p' }],
+      hasConfiguredAuth: () => true,
+      getModels: () => [{ id: 'img-only', input: ['image'] }],
+    } as unknown as ModelRuntime;
+
+    expect(findVisionModels(runtime)).toEqual([
+      { provider: 'p', id: 'img-only', label: 'img-only (p)' },
+    ]);
   });
 });
 

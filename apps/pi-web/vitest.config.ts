@@ -97,6 +97,8 @@ export default defineConfig({
         // P6 组件渲染（jsdom）
         'src/components/Message.tsx',
         'src/components/MessageList.tsx',
+        // P6 欠账补齐（2026-11-10）：SCMPanel（D6 空仓文案断言 + 渲染冒烟）
+        'src/components/SCMPanel.tsx',
         'src/components/LeftPanel.tsx',
         'src/components/TopBar.tsx',
         'src/components/ModelConfigModal.tsx',

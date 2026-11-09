@@ -203,6 +203,8 @@ export function ScmPanel({ chat, terminal, active, onSwitchToTerminal, uiScmTool
 				ahead: data.ahead ?? 0,
 				behind: data.behind ?? 0,
 				upstreamGone: !!data.upstreamGone,
+				// D6：空仓标记（当前分支尚无提交）必须透传，否则 scmEmptyRepo 分支永远不可达
+				empty: !!data.empty,
 				files: (data.files ?? []).map((f) => ({ ...f })),
 			};
 			const brs: ScmBranch[] = (data.branches ?? []).map((x) => ({ ...x }));

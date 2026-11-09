@@ -17,6 +17,8 @@ vendor/
 apps/pi-web/
 packages/pi-web-host/src/pi-server/
 packages/pi-web-host/src/browser/
+# plugin-sdk 是上游 plugin-sdk/index.d.ts 的逐字副本，格式化会破坏与上游的 diff
+packages/pi-web-host/src/plugin-sdk/
 
 
 # AOCI 工具托管状态（JSON 结构由 aoci 生成，不参与格式化）

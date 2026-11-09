@@ -55,6 +55,9 @@ export default tseslint.config(
       // 与 apps/pi-web 同源，不纳入本项目 eslint（逐版本同步上游，不手工改格式）
       'packages/pi-web-host/src/pi-server/**',
       'packages/pi-web-host/src/browser/**',
+      // plugin-sdk 是上游 plugin-sdk/index.d.ts 的逐字副本（MIT）：不套用本项目风格规则，
+      // 便于与上游 diff 升级
+      'packages/pi-web-host/src/plugin-sdk/**',
       // pi-server 的测试与源码同源（上游 pi-web-ui server），被测源码本身已排除
       // 在 tsc/eslint 之外（见 packages/pi-web-host/tsconfig.json）。这些测试沿用
       // 上游断言风格，若做类型感知 lint 会因 import 闭包把整棵 pi-server 拉进

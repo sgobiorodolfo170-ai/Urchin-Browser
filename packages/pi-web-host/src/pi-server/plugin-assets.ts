@@ -184,7 +184,10 @@ export async function ensurePluginAsset(
 						if (value) {
 							hash.update(value);
 							if (!fileStream.write(Buffer.from(value))) {
-								await new Promise((r) => fileStream.once("drain", r));
+								// `new Promise` 不写泛型会推断成 `unknown`，resolve 变成
+								// `(value: unknown) => void`，与 "drain" 的 `() => void` 监听不兼容；
+								// 显式 `void` + 零参回调把这个不一致消掉（行为不变）。
+								await new Promise<void>((resolve) => fileStream.once("drain", () => resolve()));
 							}
 							downloaded += value.length;
 							status.downloaded = downloaded;

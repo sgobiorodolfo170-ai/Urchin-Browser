@@ -5,6 +5,14 @@
   // 继承 ./tsconfig.json → strict 与 noUncheckedIndexedAccess 与包内现状一致；
   // skipLibCheck 沿用 tsconfig.base.json 现状，不新增任何宽化开关。
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // 本程序只做检查（tsc --noEmit），从不产出 .d.ts。关掉 declaration 是为了跳过
+    // 「声明可移植性」检查（TS2742/TS4023）：device-center 的 3 个导出函数返回
+    // express app，其类型经 pnpm 的 .pnpm 路径引用 @types/express-serve-static-core，
+    // 属于 pnpm 布局的固有现象，与代码正确性无关。类型检查本身（strict 全家桶）不变。
+    "declaration": false,
+    "declarationMap": false
+  },
   "include": ["src/pi-server/**/*.ts", "src/pi-shims*.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

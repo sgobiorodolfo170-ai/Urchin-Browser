@@ -1,10 +1,10 @@
 import { randomBytes, constants } from "node:crypto";
 import http, { type IncomingHttpHeaders, type IncomingMessage } from "node:http";
 import https from "node:https";
-import { isIPv4, type Socket } from "node:net";
+import { isIPv4 } from "node:net";
 import { networkInterfaces } from "node:os";
 import type { TLSSocket } from "node:tls";
-import { Transform } from "node:stream";
+import { Transform, type Duplex } from "node:stream";
 import { cleanHeaders, safePath, RELAY_LIMITS, WS_MESSAGE_BYTES } from "./relay.js";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 
@@ -128,7 +128,10 @@ export function createDeviceLanServer(options: Options): {
 		desktopWss: WebSocketServer;
 		grants: Map<string, Entry>;
 		authenticated: WeakMap<TLSSocket, Entry>;
-		sockets: Set<Socket>;
+		// 用 `Duplex` 而不是 `net.Socket`：https.Server 的 "connection" 回调把连接
+		// 标成 `Duplex`（TLS 层），而这里只用到 `destroy()` 与 close 清理，
+		// 用更窄的 net.Socket 会在 `s.sockets.add(socket)` 处类型不兼容。
+		sockets: Set<Duplex>;
 		tasks: Set<() => void>;
 		ready: Promise<boolean>;
 		timer?: ReturnType<typeof setTimeout>;

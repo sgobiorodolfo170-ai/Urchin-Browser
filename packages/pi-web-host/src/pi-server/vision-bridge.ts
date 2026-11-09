@@ -66,7 +66,11 @@ export function getVisionSystemPrompt(lang: ServerLang = "en"): string {
 }
 
 export function buildVisionBridgePrompt(mode: "append" | "replace", custom: string, lang: ServerLang = "en"): string {
-	const text = custom?.trim() ?? "";
+	// custom 恒为字符串：三个调用方都传 ClientSettings.visionBridgePrompt，
+	// 而该字段在 client-state 的读/写路径里被 `?? ""` 归一化（readSettings:1008、
+	// mergeSettings:1145）。因此不再保留 `custom?.trim() ?? ""` —— 那一侧不可达，
+	// 只会让分支覆盖率永远差一点、并让人误以为这里有 null 保护。
+	const text = custom.trim();
 	const base = getVisionSystemPrompt(lang);
 	if (mode === "replace" && text) return text;
 	if (text) return `${base}\n\n${text}`;

@@ -2017,6 +2017,8 @@ export type TranslateSelectionRes = z.infer<typeof translateSelectionResSchema>;
  * translate:selection-result 事件 payload：划词翻译结果卡（独立透明子窗口消费）。
  * 选区锚点坐标（x/y）由主进程用于定位子窗口，不下发给渲染层；
  * theme 需显式下发——悬浮子窗口不经过主窗口渲染层的 ThemeProvider。
+ * seq：主进程递增序号，渲染层实测文本尺寸经 translate.cardResize 回报时原样带回，
+ * 供主进程丢弃旧结果的过期测量（结果卡尺寸自适应，2026-11-10）。
  */
 export const translateSelectionResultEventSchema = z.object({
   tabId: tabIdSchema,
@@ -2024,8 +2026,23 @@ export const translateSelectionResultEventSchema = z.object({
   result: z.string().optional(),
   error: z.string().optional(),
   theme: z.enum(['light', 'dark']),
+  seq: z.number().int().nonnegative().optional(),
 });
 export type TranslateSelectionResultEvent = z.infer<typeof translateSelectionResultEventSchema>;
+
+/** translate.cardResize：结果卡渲染层实测文本尺寸回报，主进程据此重设窗口 bounds */
+export const translateCardResizeReqSchema = z.object({
+  /** 关联的结果序号（translate:selection-result 的 seq 原样带回） */
+  seq: z.number().int().nonnegative(),
+  /** 文本自然宽度（px，渲染层已按测量上限截断） */
+  width: z.number().int().nonnegative(),
+  /** 文本在 width 定宽下的实际高度（px） */
+  height: z.number().int().nonnegative(),
+});
+export type TranslateCardResizeReq = z.infer<typeof translateCardResizeReqSchema>;
+
+export const translateCardResizeResSchema = z.object({});
+export type TranslateCardResizeRes = z.infer<typeof translateCardResizeResSchema>;
 
 // ============================================================================
 // Mail 域（M25 邮箱模块 · imapflow + nodemailer + postal-mime）
@@ -2889,6 +2906,8 @@ export const ipcSchema = {
     req: translateSelectionReqSchema,
     res: translateSelectionResSchema,
   },
+  // 划词结果卡尺寸自适应：渲染层实测文本尺寸回报（seq 关联结果，过期测量忽略）
+  'translate.cardResize': { req: translateCardResizeReqSchema, res: translateCardResizeResSchema },
   // Mail 域（M25 邮箱模块）
   'mail.account.list': { req: mailAccountListReqSchema, res: mailAccountListResSchema },
   'mail.account.add': { req: mailAccountAddReqSchema, res: mailAccountAddResSchema },

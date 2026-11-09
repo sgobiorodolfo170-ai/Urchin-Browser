@@ -1,17 +1,25 @@
 /**
  * 划词翻译结果卡（独立透明子窗口，悬浮于网页 BrowserView 之上）
  *
- * 设计（2026-11-07，网页翻译功能规划 §12.3 待办落地）：
+ * 设计（2026-11-07，网页翻译功能规划 §12.3 待办落地；2026-11-10 尺寸自适应改造）：
  * - 旧实现是主窗口 React 层的 fixed 结果卡（原 ContentArea.tsx），普通网页标签下
  *   被 BrowserView 覆盖——选区落在网页中部时结果卡不可见。Electron 中 BrowserView
  *   恒渲染在主窗口 webContents 之上，React 浮层无法盖住网页，因此照状态栏悬浮窗
  *   （status-bar-overlay.ts）同款架构改为独立透明 frameless 子 BrowserWindow。
  * - 透明 BrowserWindow 在仓库已有成功用例（capture-overlay / status-bar-overlay）；
  *   不用透明 BrowserView 以规避已记录的 Windows DWM/TDR 风险。
- * - 窗口高度按结果文本估算（选中文字翻译结果通常较短），结果区内部滚动兜底估算
- *   偏差；透明区域在 Windows 上会拦截点击，故不能留大片透明余量。
+ * - 尺寸自适应（2026-11-10 用户需求）：主进程只有文本估算（CJK/拉丁字宽粗估），
+ *   渲染层加载结果后按真实排版实测文本自然宽度与定宽折行高度，经
+ *   translate.cardResize 回报（seq 关联结果、过期测量丢弃），主进程夹边后重设
+ *   窗口 bounds——卡片随文字长短伸缩，不再固定 448px 宽。估算值仅决定首帧，
+ *   偏差由实测值纠正；高度超上限时结果区内部滚动兜底。
+ * - 仅显示译文不显示原文（2026-11-10 用户需求），卡片内容即结果文本。
+ * - 关闭方式（2026-11-10 用户需求）：点击卡片外任意位置关闭。卡片 show 时获取
+ *   焦点，其后任何把焦点移出卡片的点击（网页 / 浏览器界面 / 其它应用窗口）都会
+ *   触发 blur，blur 即隐藏——与 clipper panel（panel.ts）、书签面板（bookmark-panel）
+ *   同款「点外关闭」模式。旧 ✕ 按钮已随原文行一并移除。
  * - 显示/隐藏策略：新结果替换旧内容并跟随选区锚点重定位；主窗口移动/缩放时跟随；
- *   最小化/隐藏/切换标签时隐藏；✕ 关闭只隐藏不销毁（复用窗口避免反复重建闪烁）；
+ *   最小化/隐藏/切换标签时隐藏；close 只隐藏不销毁（复用窗口避免反复重建闪烁）；
  *   主窗口关闭/退出时销毁。
  */
 import { BrowserWindow } from 'electron';
@@ -20,16 +28,46 @@ import type { TranslateSelectionResultEvent } from '@urchin/ipc-contract';
 
 const log = createLogger('selection-card-overlay');
 
-/** 卡片宽度（px），与渲染层 max-w-md（28rem=448）一致 */
+/** 卡片最大宽度（px）：超过按此宽折行，渲染层测量上限与之同步 */
 export const CARD_WIDTH = 448;
+/** 卡片最小宽度（px）：超短译文（单词/短语）避免卡片缩成一条 */
+export const MIN_CARD_WIDTH = 96;
+/** 卡片内边距（px），与渲染层 p-3（12px × 2）一致 */
+export const CARD_PAD = 24;
 /** 卡片四周透明阴影边距（px），用于 3D 阴影与圆角透出网页（与状态栏同值） */
 export const SHADOW_PAD = 8;
-/** 估算高度下限：源行 + 单行结果 + 内边距 */
-export const MIN_CARD_HEIGHT = 72;
-/** 估算高度上限：超出部分由结果区内部滚动承接 */
+/** 卡片高度下限：单行结果 + 内边距 */
+export const MIN_CARD_HEIGHT = 48;
+/** 卡片高度上限：超出部分由结果区内部滚动承接 */
 export const MAX_CARD_HEIGHT = 264;
+/** 文本区最大宽度（px）：卡片最大宽 - 内边距，渲染层测量上限与之同步 */
+export const MAX_TEXT_WIDTH = CARD_WIDTH - CARD_PAD;
 /** 结果区上下安全边距（窗口定位时夹边用） */
 const CONTENT_EDGE_PAD = 8;
+
+/** 卡片文本区尺寸（px） */
+export interface CardSize {
+  width: number;
+  height: number;
+}
+
+/** 估算行高（px）：14px 字号 leading-relaxed 约 23px/行 */
+const LINE_HEIGHT = 23;
+/** 宽字符（CJK 表意/假名/谚文/全角标点等）估算字宽（px） */
+const WIDE_CHAR_WIDTH = 15;
+/** 窄字符（拉丁/数字/半角标点等）估算字宽（px） */
+const NARROW_CHAR_WIDTH = 8;
+
+/** CJK 宽字符粗判（覆盖表意文字、假名、谚文、全角形式；估算用途，不求精确） */
+function isWideChar(code: number): boolean {
+  return (
+    (code >= 0x2e80 && code <= 0x9fff) ||
+    (code >= 0xac00 && code <= 0xd7af) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xff01 && code <= 0xff60) ||
+    code === 0x3000
+  );
+}
 
 /** 宿主主窗口最小依赖接口（真实 BrowserWindow 与 mock 均满足） */
 export interface SelectionCardHostWindow {
@@ -64,23 +102,44 @@ export interface SelectionCardShowPayload {
 }
 
 /**
- * 按结果文本估算卡片内容高度（px）。
+ * 按结果文本估算文本区尺寸（px），作为首帧尺寸（渲染层实测回报前的兜底）。
  *
- * 源文本行固定单行截断（20px），结果区按 CJK 宽度假设折行（leading-relaxed
- * 14px 字号约 23px/行，448-24px 内容宽约 34 个 CJK 字/行）。混排英文会低估行数
- * 偏差不大，且结果区 overflow-y-auto 兜底。导出供单测验证边界。
+ * 宽字符按 15px、窄字符按 8px 粗估自然宽度；超过最大文本宽按上限折行。
+ * 混排/换行场景偏差不大，且渲染层实测回报后会整体纠正。导出供单测验证边界。
  */
-export function estimateCardHeight(text: string): number {
-  const CHARS_PER_LINE = 34;
-  const LINE_HEIGHT = 23;
-  const SOURCE_ROW = 26; // 源行 20px + 下边距 6px
-  const PADDING = 24; // p-3 上下
-  let lines = 0;
+export function estimateCardSize(text: string): CardSize {
+  let maxSegWidth = 0;
+  let totalLines = 0;
   for (const seg of text.split('\n')) {
-    lines += Math.max(1, Math.ceil(seg.length / CHARS_PER_LINE));
+    let natural = 0;
+    for (const ch of seg) {
+      natural += isWideChar(ch.codePointAt(0) ?? 0) ? WIDE_CHAR_WIDTH : NARROW_CHAR_WIDTH;
+    }
+    maxSegWidth = Math.max(maxSegWidth, Math.min(natural, MAX_TEXT_WIDTH));
+    totalLines += Math.max(1, Math.ceil(natural / MAX_TEXT_WIDTH));
   }
-  const h = SOURCE_ROW + PADDING + lines * LINE_HEIGHT;
-  return Math.min(MAX_CARD_HEIGHT, Math.max(MIN_CARD_HEIGHT, Math.round(h)));
+  return {
+    width: Math.max(maxSegWidth, MIN_CARD_WIDTH - CARD_PAD),
+    height: totalLines * LINE_HEIGHT,
+  };
+}
+
+/**
+ * 文本区尺寸 → 卡片尺寸夹边：宽度夹 [MIN_CARD_WIDTH, CARD_WIDTH]，高度夹
+ * [MIN_CARD_HEIGHT, MAX_CARD_HEIGHT]（超高由结果区内部滚动承接）。
+ * 纯函数导出供单测验证边界，applyBounds 与估算兜底共用。
+ */
+export function clampCardSize(
+  textWidth: number,
+  textHeight: number,
+): { cardWidth: number; cardHeight: number } {
+  return {
+    cardWidth: Math.min(CARD_WIDTH, Math.max(MIN_CARD_WIDTH, Math.round(textWidth) + CARD_PAD)),
+    cardHeight: Math.min(
+      MAX_CARD_HEIGHT,
+      Math.max(MIN_CARD_HEIGHT, Math.round(textHeight) + CARD_PAD),
+    ),
+  };
 }
 
 /**
@@ -94,10 +153,11 @@ export function computeSelectionCardBounds(params: {
   contentBounds: { x: number; y: number; width: number; height: number };
   anchorX: number;
   anchorY: number;
+  cardWidth: number;
   cardHeight: number;
 }): { x: number; y: number; width: number; height: number } {
-  const { contentBounds, anchorX, anchorY, cardHeight } = params;
-  const width = CARD_WIDTH + SHADOW_PAD * 2;
+  const { contentBounds, anchorX, anchorY, cardWidth, cardHeight } = params;
+  const width = cardWidth + SHADOW_PAD * 2;
   const height = cardHeight + SHADOW_PAD * 2;
   const x = Math.round(
     contentBounds.x +
@@ -113,6 +173,9 @@ export function computeSelectionCardBounds(params: {
   return { x, y: Math.round(y), width, height };
 }
 
+/** last（缓存结果）附加字段：递增序号（测量关联）与已解析主题 */
+type CachedResult = SelectionCardShowPayload & { theme: 'light' | 'dark'; seq: number };
+
 export class SelectionCardOverlay {
   private win: BrowserWindow | null = null;
   private parentClosing = false;
@@ -120,8 +183,12 @@ export class SelectionCardOverlay {
   private parentDisposers: (() => void)[] = [];
   /** 首帧渲染就绪标志：透明窗口 ready-to-show 前显示会白闪/合成未就绪 */
   private ready = false;
-  /** 最近一次结果（含锚点）：父窗口移动/缩放时跟随重定位 */
-  private last: (SelectionCardShowPayload & { theme: 'light' | 'dark' }) | null = null;
+  /** 最近一次结果（含锚点/序号）：父窗口移动/缩放时跟随重定位 */
+  private last: CachedResult | null = null;
+  /** 结果卡序号源：每展示一个新结果自增，渲染层实测回报按 seq 关联 */
+  private seqCounter = 0;
+  /** 渲染层最近一次实测回报（按 seq 关联到结果；新结果展示时作废旧测量） */
+  private measured: (CardSize & { seq: number }) | null = null;
   private readonly options: SelectionCardOverlayOptions;
 
   constructor(options: SelectionCardOverlayOptions) {
@@ -144,14 +211,24 @@ export class SelectionCardOverlay {
     const win = this.win;
     if (!win || win.isDestroyed()) return;
 
-    this.last = { ...payload, theme: this.options.getTheme() };
+    this.last = { ...payload, theme: this.options.getTheme(), seq: ++this.seqCounter };
+    // 新结果作废旧测量：渲染层实测回报（seq 匹配）后按实测重设尺寸
+    this.measured = null;
     this.applyBounds();
-    // 未 ready（首帧未渲染）时暂不显示，待 ready-to-show 回调补显示
-    if (!win.isVisible() && this.ready) win.showInactive();
+    // 未 ready（首帧未渲染）时暂不显示，待 ready-to-show 回调补显示。
+    // 必须获取焦点（非 showInactive）：点外关闭依赖卡片失焦信号，见文件头设计说明。
+    if (!win.isVisible() && this.ready) win.show();
     this.sendPayload();
   }
 
-  /** 隐藏结果卡（保留窗口复用；切换标签/最小化/HTML5 全屏时调用） */
+  /** 渲染层实测文本尺寸回报：仅接受当前结果的测量（seq 匹配），随后重定位 */
+  applyMeasuredSize(seq: number, width: number, height: number): void {
+    if (this.last?.seq !== seq) return;
+    this.measured = { seq, width, height };
+    this.applyBounds();
+  }
+
+  /** 隐藏结果卡（保留窗口复用；切换标签/最小化/失焦/HTML5 全屏时调用） */
   hide(): void {
     const win = this.win;
     if (win && !win.isDestroyed() && win.isVisible()) {
@@ -168,6 +245,7 @@ export class SelectionCardOverlay {
     }
     this.win = null;
     this.last = null;
+    this.measured = null;
     this.ready = false;
   }
 
@@ -208,12 +286,17 @@ export class SelectionCardOverlay {
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     win.webContents.on('will-navigate', (e) => e.preventDefault());
 
-    // ✕ 关闭：只隐藏不销毁，复用窗口避免重建闪烁；主窗口关闭时放行
+    // ✕ 已移除，close 仍只隐藏不销毁（复用窗口避免重建闪烁）；主窗口关闭时放行
     win.on('close', (e) => {
       if (this.parentClosing) return;
       e.preventDefault();
       this.hide();
     });
+
+    // 点外关闭：卡片持有焦点期间，点击卡片外任何位置（网页/浏览器界面/其它应用）
+    // 都会使卡片失焦，blur 即隐藏。hide() 自身可能再触发一次 blur，无副作用
+    // （isVisible 守卫）。
+    win.on('blur', () => this.hide());
 
     win.on('closed', () => {
       this.win = null;
@@ -224,7 +307,7 @@ export class SelectionCardOverlay {
       this.ready = true;
       if (this.last && !win.isDestroyed() && !win.isVisible()) {
         this.applyBounds();
-        win.showInactive();
+        win.show();
       }
     });
 
@@ -242,19 +325,26 @@ export class SelectionCardOverlay {
     log.info('selection card overlay created');
   }
 
-  /** 按最近锚点重定位（父窗口移动/缩放跟随） */
+  /** 按最近锚点与尺寸重定位：实测值优先（seq 匹配），估算值兜底 */
   private applyBounds(): void {
     const win = this.win;
     const last = this.last;
     if (!win || win.isDestroyed() || !last) return;
     const parent = this.options.getParentWindow();
     if (!parent) return;
+    const measured = this.measured?.seq === last.seq ? this.measured : null;
+    const est = estimateCardSize(last.error ?? last.result ?? '');
+    const { cardWidth, cardHeight } = clampCardSize(
+      measured?.width ?? est.width,
+      measured?.height ?? est.height,
+    );
     win.setBounds(
       computeSelectionCardBounds({
         contentBounds: parent.getContentBounds(),
         anchorX: last.x,
         anchorY: last.y,
-        cardHeight: estimateCardHeight(last.error ?? last.result ?? ''),
+        cardWidth,
+        cardHeight,
       }),
     );
   }
@@ -271,6 +361,7 @@ export class SelectionCardOverlay {
       result: last.result,
       error: last.error,
       theme: last.theme,
+      seq: last.seq,
     };
     win.webContents.send('translate:selection-result', payload);
   }

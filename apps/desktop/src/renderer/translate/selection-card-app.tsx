@@ -1,12 +1,14 @@
 /**
  * 划词翻译结果卡渲染入口（独立透明子窗口加载 ?view=translate-card）。
  *
- * 窗口的位置与尺寸由主进程（main/translate/selection-card-overlay.ts）按选区
- * 锚点计算；本页面只负责在窗口内绘制卡片（四周 8px 透明阴影边距透出网页）
- * 并订阅主进程的 translate:selection-result 结果事件。zod 校验跨进程边界，
- * 防主进程 payload 漂移时渲染层渲染出脏数据。
+ * 窗口位置与尺寸自适应（2026-11-10）：主进程按选区锚点定位；本页面在结果渲染后
+ * 用隐藏测量元素实测文本自然宽度（max-content + max-width 截断）与定宽折行高度，
+ * 经 translate.cardResize 回报主进程重设窗口 bounds——卡片随文字长短伸缩，不再
+ * 固定 448px 宽。仅显示译文（result/error），原文不回显；关闭由主进程在卡片失焦
+ * （点击卡片外任意位置）时处理。zod 校验跨进程边界，防主进程 payload 漂移时
+ * 渲染层渲染出脏数据。
  */
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   translateSelectionResultEventSchema,
@@ -18,9 +20,12 @@ const log = createLogger('selection-card');
 
 /** 卡片四周透明阴影边距（px），与主进程 SHADOW_PAD 一致 */
 const SHADOW_PAD = 8;
+/** 文本测量上限（px），与主进程 CARD_WIDTH - CARD_PAD（448-24）一致 */
+const MAX_TEXT_WIDTH = 424;
 
 export function SelectionCardRoot() {
   const [data, setData] = useState<TranslateSelectionResultEvent | null>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
 
   // 订阅主进程结果事件（同一事件通道，消费方由主窗口渲染层迁到本子窗口）
   useEffect(() => {
@@ -36,6 +41,24 @@ export function SelectionCardRoot() {
       off();
     };
   }, []);
+
+  // 尺寸实测回报（布局期同步执行，避免首帧闪现错误尺寸）：先量不折行自然宽度，
+  // 再按该宽度定宽量折行高度。seq 原样带回供主进程关联结果、丢弃过期测量。
+  useLayoutEffect(() => {
+    if (!data) return;
+    const m = measureRef.current;
+    if (!m) return;
+    m.textContent = data.error ?? data.result ?? '';
+    m.style.width = 'max-content';
+    const width = Math.ceil(m.getBoundingClientRect().width);
+    m.style.width = `${width}px`;
+    const height = Math.ceil(m.getBoundingClientRect().height);
+    void window.urchin
+      .invoke('translate.cardResize', { seq: data.seq ?? 0, width, height })
+      .catch((e) => {
+        log.warn('selection card: report size failed', { error: String(e) });
+      });
+  }, [data]);
 
   // 主题：直接设置 <html data-theme>，使 globals/tokens 变量生效（状态栏同模式）
   useEffect(() => {
@@ -54,24 +77,20 @@ export function SelectionCardRoot() {
     /* 外层占满窗口：四周 SHADOW_PAD 透明边距供 3D 阴影/圆角透出网页 */
     <div className="h-screen w-screen overflow-hidden" style={{ padding: SHADOW_PAD }}>
       <div className="flex h-full flex-col rounded-lg border border-border bg-surface p-3 shadow-dropdown">
-        <div className="mb-1.5 flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1 truncate text-xs text-text-secondary" title={data.source}>
-            {data.source}
-          </div>
-          <button
-            type="button"
-            className="shrink-0 text-text-secondary hover:text-text"
-            onClick={() => window.close()}
-            aria-label="关闭划词翻译"
-          >
-            ✕
-          </button>
-        </div>
-        {/* 结果区：内部滚动承接主进程估算高度偏差（估算按 CJK 折行，长英文段落可能低估） */}
+        {/* 结果区：仅显示译文（翻译失败时显示错误信息）；窗口已按实测尺寸设定，
+            超高度上限时由主进程夹边、此处内部滚动兜底 */}
         <div className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-text">
           {data.error ?? data.result}
         </div>
       </div>
+      {/* 隐藏测量元素：与结果区同排版参数（pre-wrap + 14px/leading-relaxed），
+          max-width 即测量上限，不参与视觉与交互 */}
+      <div
+        ref={measureRef}
+        aria-hidden
+        className="absolute left-0 top-0 whitespace-pre-wrap text-sm leading-relaxed"
+        style={{ visibility: 'hidden', pointerEvents: 'none', maxWidth: MAX_TEXT_WIDTH }}
+      />
     </div>
   );
 }

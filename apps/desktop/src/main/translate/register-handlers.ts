@@ -21,6 +21,8 @@ export interface TranslateHandlerDeps {
   readonly ipcMain: IpcMain;
   readonly translateManager: TranslateManager;
   readonly tabManager: TranslateTabManagerLike;
+  /** 划词结果卡渲染层实测尺寸回报（结果卡未创建时为空操作） */
+  readonly onSelectionCardResize?: (seq: number, width: number, height: number) => void;
 }
 
 /** 注册 translate 域 IPC handler。 */
@@ -65,6 +67,13 @@ export function registerTranslateHandlers(deps: TranslateHandlerDeps): void {
     log.info('translate.translateSelection', { tabId: req.tabId, length: req.text.length });
     requireTab(req.tabId);
     return translateManager.translateSelection(req.tabId, req.text, req.targetLang);
+  });
+
+  // translate.cardResize：划词结果卡渲染层实测文本尺寸回报，overlay 据此重设窗口
+  // bounds（seq 关联结果，过期测量由 overlay 丢弃）
+  registerHandler(ipcMain, 'translate.cardResize', (req) => {
+    deps.onSelectionCardResize?.(req.seq, req.width, req.height);
+    return {};
   });
 
   log.info('translate ipc handlers registered');

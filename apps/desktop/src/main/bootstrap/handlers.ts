@@ -382,7 +382,15 @@ export function registerIpcHandlers(ctx: AppContext): void {
       ),
     },
   });
-  registerTranslateHandlers({ ipcMain, translateManager, tabManager: ctx.tabManager });
+  registerTranslateHandlers({
+    ipcMain,
+    translateManager,
+    tabManager: ctx.tabManager,
+    // 划词结果卡尺寸自适应：渲染层实测回报 → overlay 夹边后重设窗口 bounds
+    // （窗口懒创建，此处 ctx.selectionCardOverlay 尚为 null，回调内动态解析）
+    onSelectionCardResize: (seq, width, height) =>
+      ctx.selectionCardOverlay?.applyMeasuredSize(seq, width, height),
+  });
   ctx.disposeTranslateManager = () => translateManager.dispose();
   ctx.translateManagerRef = translateManager;
 

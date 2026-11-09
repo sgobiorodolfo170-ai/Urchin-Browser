@@ -2,16 +2,19 @@
  * Electron safeStorage 适配器单元测试
  *
  * 验证：
- * 1. isEncryptionAvailable 委托 Electron safeStorage
- * 2. encryptString/decryptString 委托 Electron safeStorage
+ * 1. isEncryptionAvailable 委托 Electron 异步 safeStorage API
+ * 2. encryptString 委托 encryptStringAsync
+ * 3. decryptString 解包 decryptStringAsync 的 { result, shouldReEncrypt }
+ *
+ * 2026-11-09 起接口为 async（Electron 45 弃用同步 API、46 移除，见 types.ts 注释）。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('electron', () => ({
   safeStorage: {
-    isEncryptionAvailable: vi.fn(),
-    encryptString: vi.fn(),
-    decryptString: vi.fn(),
+    isAsyncEncryptionAvailable: vi.fn(),
+    encryptStringAsync: vi.fn(),
+    decryptStringAsync: vi.fn(),
   },
 }));
 
@@ -26,30 +29,29 @@ describe('ElectronSafeStorage', () => {
     storage = new ElectronSafeStorage();
   });
 
-  it('should delegate isEncryptionAvailable to electron', () => {
-    (safeStorage.isEncryptionAvailable as ReturnType<typeof vi.fn>).mockReturnValue(true);
+  it('should delegate isEncryptionAvailable to electron async API', async () => {
+    (safeStorage.isAsyncEncryptionAvailable as ReturnType<typeof vi.fn>).mockResolvedValue(true);
 
-    expect(storage.isEncryptionAvailable()).toBe(true);
-    expect(safeStorage.isEncryptionAvailable).toHaveBeenCalled();
+    await expect(storage.isEncryptionAvailable()).resolves.toBe(true);
+    expect(safeStorage.isAsyncEncryptionAvailable).toHaveBeenCalled();
   });
 
-  it('should delegate encryptString to electron', () => {
+  it('should delegate encryptString to encryptStringAsync', async () => {
     const buf = Buffer.from('encrypted');
-    (safeStorage.encryptString as ReturnType<typeof vi.fn>).mockReturnValue(buf);
+    (safeStorage.encryptStringAsync as ReturnType<typeof vi.fn>).mockResolvedValue(buf);
 
-    const result = storage.encryptString('hello');
-
-    expect(result).toBe(buf);
-    expect(safeStorage.encryptString).toHaveBeenCalledWith('hello');
+    await expect(storage.encryptString('hello')).resolves.toBe(buf);
+    expect(safeStorage.encryptStringAsync).toHaveBeenCalledWith('hello');
   });
 
-  it('should delegate decryptString to electron', () => {
+  it('should unwrap decryptStringAsync result', async () => {
     const buf = Buffer.from('encrypted');
-    (safeStorage.decryptString as ReturnType<typeof vi.fn>).mockReturnValue('hello');
+    (safeStorage.decryptStringAsync as ReturnType<typeof vi.fn>).mockResolvedValue({
+      result: 'hello',
+      shouldReEncrypt: false,
+    });
 
-    const result = storage.decryptString(buf);
-
-    expect(result).toBe('hello');
-    expect(safeStorage.decryptString).toHaveBeenCalledWith(buf);
+    await expect(storage.decryptString(buf)).resolves.toBe('hello');
+    expect(safeStorage.decryptStringAsync).toHaveBeenCalledWith(buf);
   });
 });

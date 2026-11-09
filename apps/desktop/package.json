@@ -45,7 +45,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
+    "@playwright/test": "^1.65.0",
     "@testing-library/jest-dom": "^6.5.0",
     "@testing-library/react": "^16.0.0",
     "@types/nodemailer": "^8.0.2",
@@ -60,8 +60,8 @@
     "@vitejs/plugin-react": "^4.3.2",
     "@vitest/coverage-v8": "2.1.9",
     "autoprefixer": "^10.5.4",
-    "electron": "^43.8.0",
-    "electron-builder": "^26.15.3",
+    "electron": "^43.8.7",
+    "electron-builder": "^26.18.0",
     "jsdom": "^30.0.1",
     "postcss": "^8.5.24",
     "resedit": "1.7.2",

@@ -29,11 +29,17 @@ export type DatabaseFactory = (path: string) => IDatabase;
  *
  * 用于解耦 Electron 的 safeStorage 模块，便于单元测试。
  * 生产环境由 ElectronSafeStorageBackend 实现，测试环境由 Mock 实现替换。
+ *
+ * 为何是 async（2026-11-09，Electron 45/46 前置）：
+ * Electron 45 起同步 API（isEncryptionAvailable/encryptString/decryptString）标记 deprecated，
+ * 46 起**移除**（Chromium 移除了同步 OSCrypt 后端）。异步 API 自 Electron 43 起可用，
+ * 故在仍停留在 43.x 时先完成迁移——接口先改成 Promise，避免升级时被强制波及调用链。
+ * SecretStore 的三个方法本来就是 async（历史注释「future keytar migration」），因此无同步链路被拉断。
  */
 export interface ISafeStorage {
-  isEncryptionAvailable(): boolean;
-  encryptString(plainText: string): Buffer;
-  decryptString(encrypted: Buffer): string;
+  isEncryptionAvailable(): Promise<boolean>;
+  encryptString(plainText: string): Promise<Buffer>;
+  decryptString(encrypted: Buffer): Promise<string>;
 }
 
 /**

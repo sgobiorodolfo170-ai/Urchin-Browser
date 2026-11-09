@@ -13,27 +13,27 @@ import type { ISafeStorage } from '../../src/main/storage/types';
 
 /** Mock safeStorage：用 UTF-8 Buffer 模拟加密（仅测试用，保证 round-trip） */
 class MockSafeStorage implements ISafeStorage {
-  isEncryptionAvailable(): boolean {
-    return true;
+  isEncryptionAvailable(): Promise<boolean> {
+    return Promise.resolve(true);
   }
-  encryptString(plainText: string): Buffer {
-    return Buffer.from(plainText, 'utf-8');
+  encryptString(plainText: string): Promise<Buffer> {
+    return Promise.resolve(Buffer.from(plainText, 'utf-8'));
   }
-  decryptString(encrypted: Buffer): string {
-    return encrypted.toString('utf-8');
+  decryptString(encrypted: Buffer): Promise<string> {
+    return Promise.resolve(encrypted.toString('utf-8'));
   }
 }
 
 /** 不可用加密的 Mock */
 class UnavailableSafeStorage implements ISafeStorage {
-  isEncryptionAvailable(): boolean {
-    return false;
+  isEncryptionAvailable(): Promise<boolean> {
+    return Promise.resolve(false);
   }
-  encryptString(): Buffer {
-    throw new Error('not available');
+  encryptString(): Promise<Buffer> {
+    return Promise.reject(new Error('not available'));
   }
-  decryptString(): string {
-    throw new Error('not available');
+  decryptString(): Promise<string> {
+    return Promise.reject(new Error('not available'));
   }
 }
 

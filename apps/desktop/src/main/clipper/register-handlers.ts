@@ -155,7 +155,13 @@ export function registerClipperHandlers(deps: ClipperHandlerDeps): void {
   const shouldTryClosed = deps.shouldTryClosed ?? shouldTryClosedShadow;
   const getTheme = deps.getTheme ?? (() => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light'));
   const saveSnapshot = deps.saveSnapshot ?? exportSnapshot;
-  const copyText = deps.copyText ?? ((text: string) => clipboard.writeText(text));
+  // Electron 44 起 clipboard.writeText 返回 Promise（旧同步实现已移除）；这里不依赖返回值，
+  // 显式 void 标明「fire-and-forget」，避免升级后因返回值语义变化产生隐式 any/未处理拒绝。
+  const copyText =
+    deps.copyText ??
+    ((text: string) => {
+      void clipboard.writeText(text);
+    });
 
   registerHandler(ipcMain, 'clipper.open', (req) => {
     requireClipableTab(tabManager, req.tabId, 'clipper.open');

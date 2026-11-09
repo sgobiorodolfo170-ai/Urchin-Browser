@@ -15,14 +15,14 @@ import type { ISafeStorage } from '../../src/main/storage/types';
 
 /** Mock safeStorage：用 UTF-8 Buffer 模拟加密（保证 round-trip） */
 class MockSafeStorage implements ISafeStorage {
-  isEncryptionAvailable(): boolean {
-    return true;
+  isEncryptionAvailable(): Promise<boolean> {
+    return Promise.resolve(true);
   }
-  encryptString(plainText: string): Buffer {
-    return Buffer.from(plainText, 'utf-8');
+  encryptString(plainText: string): Promise<Buffer> {
+    return Promise.resolve(Buffer.from(plainText, 'utf-8'));
   }
-  decryptString(encrypted: Buffer): string {
-    return encrypted.toString('utf-8');
+  decryptString(encrypted: Buffer): Promise<string> {
+    return Promise.resolve(encrypted.toString('utf-8'));
   }
 }
 

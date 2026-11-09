@@ -670,7 +670,8 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
       case 'integrations.saveSkillZip':
         return null;
       case 'integrations.copyText': {
-        clipboard.writeText(strArg(args[0], ''));
+        // Electron 44 起返回 Promise：不等待，显式 void（同 clipper/register-handlers.ts）
+        void clipboard.writeText(strArg(args[0], ''));
         return null;
       }
       // ── 文件搜索（Phase B：基础文件名匹配；非全文索引） ──

@@ -24,29 +24,27 @@ export class SecretStoreImpl implements SecretStore {
     private readonly safeStorage: ISafeStorage,
   ) {}
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- sync I/O per contract, async signature for future keytar migration
   async get(name: string): Promise<string | null> {
     const file = this.pathFor(name);
     if (!existsSync(file)) return null;
-    if (!this.safeStorage.isEncryptionAvailable()) {
+    if (!(await this.safeStorage.isEncryptionAvailable())) {
       throw new Error('safeStorage not available on this platform');
     }
     const encrypted = readFileSync(file);
     return this.safeStorage.decryptString(encrypted);
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- sync I/O per contract, async signature for future keytar migration
   async set(name: string, value: string): Promise<void> {
-    if (!this.safeStorage.isEncryptionAvailable()) {
+    if (!(await this.safeStorage.isEncryptionAvailable())) {
       throw new Error('safeStorage not available');
     }
-    const encrypted = this.safeStorage.encryptString(value);
+    const encrypted = await this.safeStorage.encryptString(value);
     const file = this.pathFor(name);
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, encrypted, { mode: 0o600 });
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- sync I/O per contract, async signature for future keytar migration
+  // eslint-disable-next-line @typescript-eslint/require-await -- 无加密步骤，保留 async 以匹配 SecretStore 契约
   async delete(name: string): Promise<void> {
     const file = this.pathFor(name);
     if (existsSync(file)) unlinkSync(file);

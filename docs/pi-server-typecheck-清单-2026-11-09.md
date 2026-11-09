@@ -286,3 +286,9 @@ git add <本批文件>
 > 本文是「怎么从 412 到 0」的账本。**清零之后的后续事项、风险与交接提示词**已单独落盘：
 > [pi-server 后续与风险（2026-11-09）](./pi-server-后续与风险-2026-11-09.md)
 > （P0-P3 后续清单 + R1-R9 风险 + 可直接粘贴的新会话提示词 + 复验命令）。
+
+> **补充（2026-11-09 同日，P0-2）**：本文描述的**独立类型程序已退休**——`src/pi-server` 与
+> `tests/pi-server` 并回主 `packages/pi-web-host/tsconfig.json`（3 处 TS2742 用显式 `: Express`
+> 返回类型解决），主 `pnpm typecheck` 0 错误；`tsconfig.pi-server.json` / `typecheck:pi-server` /
+> CI `Typecheck pi-server` / AGENTS §九.4 G19 均已删除。本文的批次表与错误账本作为历史记录保留，
+> 其中的命令 `pnpm typecheck:pi-server` 请以 `pnpm typecheck` 替代。

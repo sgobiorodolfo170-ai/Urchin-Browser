@@ -13,6 +13,6 @@
     "declaration": false,
     "declarationMap": false
   },
-  "include": ["src/pi-server/**/*.ts", "src/pi-shims*.d.ts"],
+  "include": ["src/pi-server/**/*.ts", "src/pi-shims*.d.ts", "tests/pi-server/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

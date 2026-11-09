@@ -78,6 +78,7 @@ adapted_for: Urchin-Browser
 | 2026-11-09 | **第 9 条补卸载语义 + 决策计数 58→59（新增 DD2）**：零风险探针实测更正「卸载不删数据」→「手动卸载删 `%APPDATA%\@urchin\desktop`、`--updated` 更新不删」；共存文档新增 §2.1（机制证据链 + 删除范围）、打包清单新增 E11（包名 = 卸载/userData 身份）、事实登记表新增 F10、决策索引新增 DD2（否决 NSIS 自定义卸载段 / 运行时带 productName）。属文档填充细化，无架构性条款修改                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 无                                                                                                                      | 用户指令（按推荐执行方案 C）                                       |
 | 2026-11-09 | **停用并移除 AOCI 仓库认知层，抢救「避坑」资产**：删除文末工具托管的 aoci 区块（106 行 / 6,396 字符）、清空 `.aoci/config.json` 的 `installed_agents` 注入授权、禁用 opencode 的 aoci MCP、清理文首目录与「分层加载」表中的 AOCI 项；新建 [docs/开发避坑清单](docs/开发避坑清单.md)（从索引 205 条 S 字段中筛选 32 条不可推断的坑，其余 F/R/A 可由 docs/ 与代码推出）；[docs/事实登记表](docs/事实登记表.md) 新增 F11。[docs/文档索引](docs/文档索引.md) 补条目。**停用依据（实测）**：`maintain` 74 次尝试仅 3 次成功（末次 2026-10-16，此后 66 次失败）；`aoci check` 治理 `blocked`（1041 findings = 458 缺条目 + 458 未建基线 + 121 stale + 3 孤儿）；索引冻结于 2026-11-01，此后 626 个源码文件变更（M26/M27 零条目）；`aoci.txt` 等机器产物未入版本控制，CI 与其它机器不可见。索引本体与 `.aoci/` 磁盘保留 1 周观察期后再删 | 无（工具链运维与文档填充；§〇.3 保护的架构性条款、审查顺序、验收语义均未变）                                            | 用户指令（2026-11-09，「全按照推荐执行」）                         |
 | 2026-11-09 | **§九.4 新增 G18（源码不被 `.gitignore` 吞掉）+ verify 组成加入 `check:src`**：CI 自查显示最近 6 次运行全部失败且停在 typecheck，根因是 `.gitignore` 的无锚定 `logs/` 通配吞掉 `apps/desktop/src/main/logs/`（3 源文件）与 `apps/desktop/tests/unit/logs/`（2 测试），本地因文件在磁盘上一路绿灯、干净 clone 直接 TS2307。修法：规则收窄为 `/logs/`、5 个文件入库、新增 `scripts/check-src-tracked.mjs`（verify 链 + CI 独立步骤）。MUST 登记 + verify 组成填充细化，未修改审查顺序与三层结构                                                                                                                                                                                                                                                                                                                                     | 无（新增一条流程层 MUST 并登记判定命令，符合 §〇.6）                                                                    | 用户指令（2026-11-09，「先做第0步方案，按需push不用问我」）        |
+| 2026-11-09 | **§九.4 新增 G19（pi-server 独立类型程序 0 错误）+ verify 组成加入 `typecheck:pi-server`**：`src/pi-server` 长期被主 `tsconfig.json` 的 `exclude` 挡在门外（347 文件 / 1.4 万行从未被编译），新增 `tsconfig.pi-server.json` 独立程序后实测 412 条错误；按 B0-B5 六批清零（精确 shim → D8 真修 → 全量 shim → 引擎剪枝死分支 → plugin-sdk + 零散缺陷），并把 `tests/pi-server` 一并纳入。MUST 登记 + verify 组成填充细化，未修改审查顺序与三层结构、strict 系开关一个未动                                                                                                                                                                                                                                                                                                                                                           | 无（新增一条流程层 MUST 并登记判定命令，符合 §〇.6）                                                                    | 用户指令（2026-11-09，「同意，全部按推荐方案推进」）               |
 
 ---
 
@@ -87,7 +88,7 @@ adapted_for: Urchin-Browser
 
 **AI Agent 强制流程**：
 
-1. **每次代码修改完成后，必须自动执行** `pnpm verify`（= `typecheck` + `check:src` + `lint` + `format:check` + `test:coverage` + `check:docs` + `check:dsh`，结尾写入 verify 内容指纹供 pre-push 校验；**含源码入库、格式、覆盖率、文档漂移、DSH 三源版本五重门禁**），并在回复中附上结果摘要（通过/失败与关键数字）；失败必须先修复再继续。
+1. **每次代码修改完成后，必须自动执行** `pnpm verify`（= `typecheck` + `typecheck:pi-server` + `check:src` + `lint` + `format:check` + `test:coverage` + `check:docs` + `check:dsh`，结尾写入 verify 内容指纹供 pre-push 校验；**含 pi-server 独立类型程序、源码入库、格式、覆盖率、文档漂移、DSH 三源版本六重门禁**），并在回复中附上结果摘要（通过/失败与关键数字）；失败必须先修复再继续。
 2. **涉及 UI / 交互 / 主进程行为变更**时，在 `pnpm verify` 通过后**追加** `pnpm e2e`（或对应 spec 单跑）验证真实 Electron 行为。
 3. **需要人工验收的改动**（界面、交互、视觉），在验证通过后**构建并启动应用**：`pnpm run build` 后执行 **`pnpm start`**（生产模式启动已构建产物，脱离本会话后台运行；直接 `electron .` 未带 `NODE_ENV=production` 会走 dev 分支连 vite dev server 导致白屏）。启动后在回复中说明如何操作。
 4. 涉及打包/资源/依赖变更时，额外跑 `pnpm package:win`（本机需 `ELECTRON_MIRROR` 与 `ELECTRON_BUILDER_BINARIES_MIRROR` 指向 npmmirror）。
@@ -536,13 +537,13 @@ adapted_for: Urchin-Browser
 
 ### 2. 全流程卡点
 
-| 阶段             | 卡点                              | 动作（项目适配）                                                                                                                             |
-| ---------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| 写代码时         | IDE 实时提示                      | ESLint + Prettier VSCode 插件实时拦截                                                                                                        |
-| 提交时           | pre-commit（Husky + lint-staged） | `lint-staged`：ESLint --fix → Prettier --write（仅暂存文件），任一失败阻止提交。typecheck 与单测**不在钩子内**，由下一行 CI 卡点兜底         |
-| PR 阶段          | GitHub Actions CI                 | `pnpm typecheck` + `pnpm check:src` + `pnpm lint` + `pnpm format:check` + `pnpm check:docs` + `pnpm test:coverage` + `pnpm e2e` 全绿方可合并 |
-| **不可逆操作前** | **人类确认门禁**                  | **数据库写/生产变更/权限修改/文件删除/对外发布——AI 生成方案后自动暂停，等待人类确认方可继续**                                                |
-| 发布前           | 人工确认门禁                      | 人工跑 `pnpm e2e` 全套、检查覆盖率报告、安装包签名验证（[docs/03 §5](docs/03-技术栈.md#5-cicd-门槛v01)）                                     |
+| 阶段             | 卡点                              | 动作（项目适配）                                                                                                                                                          |
+| ---------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 写代码时         | IDE 实时提示                      | ESLint + Prettier VSCode 插件实时拦截                                                                                                                                     |
+| 提交时           | pre-commit（Husky + lint-staged） | `lint-staged`：ESLint --fix → Prettier --write（仅暂存文件），任一失败阻止提交。typecheck 与单测**不在钩子内**，由下一行 CI 卡点兜底                                      |
+| PR 阶段          | GitHub Actions CI                 | `pnpm typecheck` + `pnpm typecheck:pi-server` + `pnpm check:src` + `pnpm lint` + `pnpm format:check` + `pnpm check:docs` + `pnpm test:coverage` + `pnpm e2e` 全绿方可合并 |
+| **不可逆操作前** | **人类确认门禁**                  | **数据库写/生产变更/权限修改/文件删除/对外发布——AI 生成方案后自动暂停，等待人类确认方可继续**                                                                             |
+| 发布前           | 人工确认门禁                      | 人工跑 `pnpm e2e` 全套、检查覆盖率报告、安装包签名验证（[docs/03 §5](docs/03-技术栈.md#5-cicd-门槛v01)）                                                                  |
 
 > 🚨 **CI 真实状态（2026-11-06 核查，必须知道）**：2026-10-27 修好前置链后，CI 步骤 1-11 **全绿**——setup / checkout / pnpm / node / install / **typecheck / lint / format:check / check:docs / test:coverage / build** 均通过（G1-G5、G13、G15 已在 CI 实际执行并放行）。这意味着「typecheck + lint + format + 文档漂移 + 单测 + 覆盖率门禁」六道闸**已从空转条款变为事实门禁**。
 >
@@ -583,8 +584,9 @@ adapted_for: Urchin-Browser
 | G16 | **推送前置条件**（内容已验证 / 无分叉 / 工作区干净）                                                                                                                                 | `scripts/check-before-push.mjs`                                          | pre-push hook                                | ✅ 2026-10-27 接入                                                                                                                                |
 | G17 | **DSH 版本三源一致**（桌面依赖 = lockfile = vendor 源码树；vendor 不在版本控制内，缺失时该子项自动跳过——CI 与未同步环境属正常态）                                                    | `pnpm check:dsh`（`scripts/check-dsh-version.mjs`；真源见事实登记表 F8） | verify 链（CI 未单列步骤，本地 verify 必过） | ✅ 2026-11-06 接入（ADR-016）                                                                                                                     |
 | G18 | **源码不被 `.gitignore` 吞掉**（`apps/*/src`、`apps/*/tests`、`packages/*/src`、`packages/*/tests` 内不得有 ignored 文件；工具状态目录 `.mimosa` / `.zcode` / `.workbuddy-ai` 豁免） | `pnpm check:src`（`scripts/check-src-tracked.mjs`）                      | verify 链 + CI `Source tracking check`       | ✅ 2026-11-09 接入（起因：`.gitignore` 的 `logs/` 吞掉 `apps/desktop/src/main/logs/` 3 源文件 + 2 测试，本地 typecheck 绿、CI 干净 clone TS2307） |
+| G19 | **pi-server 独立类型程序为 0 错误**（`src/pi-server` + `tests/pi-server` 共 399 个文件；被主 `tsconfig.json` 的 `exclude` 长期排除，主 typecheck 覆盖不到）                          | `pnpm typecheck:pi-server`（`tsconfig.pi-server.json`）                  | verify 链 + CI `Typecheck pi-server`         | ✅ 2026-11-09 接入（412 条错误已按 B0-B5 分批清零；决策与留痕见 `docs/pi-server-typecheck-清单-2026-11-09.md`）                                   |
 
-> **登记规则**：新增 MUST 时先在此表补一行并写明判定命令；无法给出判定命令的，不得标 MUST。当前 18 条中 13 条完全自动化、3 条人判、2 条流程约束——人判项是后续自动化的候选池。
+> **登记规则**：新增 MUST 时先在此表补一行并写明判定命令；无法给出判定命令的，不得标 MUST。当前 19 条中 14 条完全自动化、3 条人判、2 条流程约束——人判项是后续自动化的候选池。
 
 ---
 

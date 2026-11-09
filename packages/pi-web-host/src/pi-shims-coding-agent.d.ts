@@ -191,10 +191,17 @@ declare module '@earendil-works/pi-coding-agent' {
     partialResult: AgentToolResult<TDetails>,
   ) => void;
 
-  /** `core/extensions/types.ts` 的 `ExtensionToolContext` 子集：未建模成员可按需访问。 */
+  /**
+   * `core/extensions/types.ts` 的 `ExtensionToolContext` 子集。
+   *
+   * `tools` / `executeTool` 声明为可选：本项目 src 侧从不访问这两个成员，而上游
+   * `tests/pi-server/{tool-guards,context-evidence}.test.ts` 习惯把 `{}` 直接当 ctx
+   * 传入（共 30 处）。把它们设成必填只会强迫测试改 30 个调用点，收益为零；
+   * 其余成员按需访问（索引签名）。
+   */
   export interface ExtensionToolContext {
-    readonly tools: readonly unknown[];
-    executeTool(name: string, args: unknown, options?: unknown): Promise<unknown>;
+    readonly tools?: readonly unknown[];
+    executeTool?(name: string, args: unknown, options?: unknown): Promise<unknown>;
     [key: string]: any;
   }
 

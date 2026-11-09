@@ -24,6 +24,10 @@
 **一句话**：412 条里约 **390 条**不是「代码写错了」，而是「vendored SDK 没有类型」的连锁反应；
 真正需要动业务逻辑的只有 19 条，且高度集中（3 个文件的死分支占 10 条）。
 
+> **收口状态（2026-11-09）**：上述 412 条已按 §6 的 B0-B6 全部清零——`pnpm typecheck:pi-server`
+> 覆盖 **399** 个文件（`src/pi-server` 347 + `tests/pi-server` 52）、**0 错误**，并已接入 `pnpm verify`
+> 与 CI 门禁（AGENTS §九.4 新增 **G19**）。执行进展与每批实际数字见 [§9](#9-执行进展回写)。
+
 ---
 
 ## 2. 复现方式
@@ -208,7 +212,7 @@ vendored 导出没有类型 → 回调失去上下文类型 → 每个形参各�
 | **B3** | **全量 vendored shim**：coding-agent 剩余 38 个导出 + `pi-tui` + `pi-mcp/oauth`，形状照 `vendor/pi/packages/*/src` 抄 | 新增 2-3 个 `src/pi-shims-*.d.ts` | 408 → ≈20~40 | 中。**形状精度**决定残留量；不追求一次到位，够用即可 |
 | **B4** | **引擎剪枝收尾**（C2+C3+C4）：删 `claude` / `codex` / `agy` 死分支、修 `switch_engine` 文案 | `native-cli-session.ts` / `terminals.ts` / `index.ts` | −10 | **高**。要动约 200 行；需用户先定「删」还是「恢复引擎」 |
 | **B5** | **零散真实缺陷**（C5/C6/C7）+ 复跑残留 | `plugins.ts` / `index.ts` / `plugin-assets.ts` / `device-lan.ts` + 可能新增 `src/plugin-sdk/` | → 0 | 中。C5 的新增类型模块需确认 |
-| **B6** | **接门禁 + 收口**：`typecheck:pi-server` 进 `verify` 链、AGENTS 工作流约定第 1 条与 §九.4（新 G19）、`docs/03 §4` 与交接 §9 口径；再单独评估 `tests/pi-server` 是否纳入 | 配置 + 4 处文档 | 保持 0 | 低。tests 纳入会引入新一批缺口，**单独开批** |
+| **B6**（已完成） | **接门禁 + 收口**：`typecheck:pi-server` 进 `verify` 链（根 `package.json`）、AGENTS 工作流约定第 1 条与 §九.4 新增 **G19**、`docs/03 §5` CI 门槛行、`.github/workflows/ci.yml` 新增 `Typecheck pi-server` 步骤、交接文档 §9.2/§9.5 口径；`tests/pi-server` **已一并纳入**（实测 0 错误，eslint 继续忽略） | 配置 + 5 处文档 | 保持 0 | 低 |
 
 **每批验收**：
 
@@ -273,3 +277,4 @@ git add <本批文件>
 | B4（1/2） | `a5acce25` | **引擎剪枝死分支收尾**：`terminals.ts` 删掉恒为 false 的 `needsAuth`（入口条件简化，`connection` 恒 undefined；彻底移除 remote launch 的 `nativeCliConnection` 形参留待后续）＋ `index.ts` 的 `switch_engine` 删除「未安装全局包」不可达分支、文案改为「仅支持 pi」、移走无用的 `probeEngine` 导入；错误数 **27 → 23** | 计划 −4，实际 −4 |
 | B4（2/2） | 本批 | **`native-cli-session.ts` 删除 claude / codex / agy 会话绑定**：约 220 行（claude 的 `~/.claude/projects` 扫描与 hook `--settings` 注入、codex 的 `~/.codex/config.toml` 冲突检测与 `resume` 注入、agy 的 `--conversation`），连带删除只服务于它们的 `codexSubcommand()`、`EVENTS` 常量、`glob` / `nativeCliCodexHookConflicts` 导入；`explicit` 与 observeOnly 的 `resume` 判定按 `"pi" \| "custom"` 收窄。错误数 **23 → 17**（6 条 TS2367 全清） | 计划 −6，实际 −6。`nativeCliCodexHookConflicts` 仍以导出形式留在 `native-cli-session-hooks.ts`（无引用但不属死分支，删除会动 hooks 模块与测试，另议） |
 | B5 | 本批 | **零散真实缺陷收尾**：<br>① 新增 `src/plugin-sdk/index.d.ts`（上游 `pi-web-ui@0.118.0/plugin-sdk/index.d.ts` 逐字副本，710 行、0 import），并把该目录加入 `.prettierignore` 与 eslint ignores；`plugins.ts` 的 3 处 `import("../plugin-sdk/index.js")` 立即解析（13 → 0），`index.ts` 的 `workItems` 键类型也随之恢复为字符串联合（1 → 0）；<br>② `plugin-assets.ts`：`new Promise` 补 `<void>` 泛型 + 零参 resolve，修 `(value: unknown) => void` 与 `() => void` 不兼容；<br>③ `device-lan.ts`：`sockets` 由 `Set<net.Socket>` 改为 `Set<Duplex>`（https 的 connection 回调给的是 Duplex，实际只用到 `destroy()`）；<br>④ `tsconfig.pi-server.json` 关掉 `declaration` / `declarationMap`——本程序只跑 `--noEmit`，关掉后跳过「声明可移植性」检查（TS2742：3 个 device-center 导出函数返回 express app，类型经 pnpm 的 `.pnpm` 路径引用 `@types/express-serve-static-core`，属 pnpm 布局固有现象），不影响任何 strict 开关。**错误数 17 → 0** | 计划 → 0，实际 → 0。TS2742 不是代码缺陷，是声明产物在 pnpm 布局下不可命名；若将来把 pi-server 并回主程序（declaration: true），需要给这 3 个函数补显式返回类型——已记入 B6 遗留项 |
+| B6 | 本批 | **接门禁 + 收口**：根 `package.json` 的 `verify` 加入 `pnpm typecheck:pi-server`（紧跟主 typecheck）；`.github/workflows/ci.yml` 新增 `Typecheck pi-server` 步骤；AGENTS 工作流约定第 1 条、§九.2 CI 行、§九.4 新 **G19**、适配修订记录各补一处；`docs/03 §5` CI 门槛行、本清单 §6 B6 行、交接文档 §9.2 数字与新增 §9.5 小节。`tests/pi-server` 纳入 `tsconfig.pi-server.json` 的 include，并把 `ExtensionToolContext.tools` / `executeTool` 改为可选（上游 30 处测试把 `{}` 当 ctx 传入，src 侧从不访问这两个成员）。**错误数保持 0**，覆盖 399 文件 | 计划保持 0，实际 0。tests 纳入实测 0 错误（与 §7 探针一致） |

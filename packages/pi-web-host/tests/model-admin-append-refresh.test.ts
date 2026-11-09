@@ -103,7 +103,11 @@ describe('appendBuiltinModel（内置服务商纯 overlay 追加）', () => {
     const result = lastOf('append_builtin_result');
     expect(result?.ok).toBe(true);
     const providers = readModelsJson().providers as Record<string, unknown>;
-    const entry = providers.openai as { models?: { id: string; name?: string }[] };
+    const entry = providers.openai as {
+      baseUrl?: string;
+      api?: string;
+      models?: { id: string; name?: string }[];
+    };
     expect(entry.models?.map((m) => m.id)).toEqual(['gpt-custom-x']);
     // 纯 overlay：不写 provider 级 baseUrl/api，compose 时从同服务商现有模型继承
     expect(entry.baseUrl).toBeUndefined();

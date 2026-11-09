@@ -159,29 +159,3 @@ export default function(pi) {
 }
 `;
 }
-
-export function nativeCliCodexHookConflicts(text: string): Set<string> {
-	const events = ["SessionStart", "UserPromptSubmit", "PermissionRequest", "Stop", "PreToolUse", "PostToolUse"];
-	const identifiers = new Set<string>();
-	// Ambiguous mentions may suppress an adapter hook; preserving user hooks takes priority.
-	for (const match of text.matchAll(/"(?:\\.|[^"\\])*"|'[^']*'|[A-Za-z_][A-Za-z0-9_-]*/g)) {
-		let identifier = match[0];
-		if (identifier.startsWith("'")) {
-			if (/[\r\n]/.test(identifier)) return new Set(events);
-			identifier = identifier.slice(1, -1);
-		} else if (identifier.startsWith('"')) {
-			try {
-				identifier = JSON.parse(
-					identifier.replace(/\\U([0-9a-fA-F]{8})/g, (_escape, hex) => String.fromCodePoint(Number.parseInt(hex, 16))),
-				);
-			} catch {
-				// Unrecognized quoted syntax cannot safely authorize overriding configuration.
-				return new Set(events);
-			}
-		}
-		if (identifier === "hooks" || events.includes(identifier)) identifiers.add(identifier);
-	}
-	if (!identifiers.has("hooks")) return new Set();
-	const result = new Set(events.filter((event) => identifiers.has(event)));
-	return result.size ? result : new Set(events);
-}

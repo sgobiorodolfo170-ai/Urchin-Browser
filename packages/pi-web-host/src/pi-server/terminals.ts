@@ -859,11 +859,9 @@ export class TerminalManager {
 	async createNativeCli(...args: Parameters<TerminalManager["create"]>): Promise<TerminalInfo | null> {
 		const [id, cwd, cols, rows, fallbackCwd, title, opts] = args;
 		const remote = isRemoteWorkspaceUri(cwd || fallbackCwd) || isRemoteWorkspaceUri(this.workspaceRoot);
-		const needsAuth =
-			opts?.nativeCli?.model &&
-			this.resolveNativeCliModel &&
-			(opts.nativeCli.preset === "claude" || opts.nativeCli.preset === "codex");
-		if (!opts?.nativeCli || (!remote && !needsAuth && !this.nativeCliRuntime)) return this.create(...args);
+		// 引擎剪枝后 `NativeCliPreset` 只剩 "pi" | "custom"：原先 claude / codex 才需要的
+		// 「把模型凭据注入 CLI 启动参数」已经不存在，`needsAuth` 恒为 false，故整段删掉。
+		if (!opts?.nativeCli || (!remote && !this.nativeCliRuntime)) return this.create(...args);
 		if (this.nativeCliStops.has(id)) {
 			this.emit({ type: "notice", level: "warning", text: "CLI is stopping; reconnect after the stop completes" });
 			return null;
@@ -910,7 +908,10 @@ export class TerminalManager {
 						throw new Error("Persistent CLI requires a saved session binding and SSH service");
 					observeOnly = (await probePersistentRemoteNativeCli(remoteService, safeCwd, persistentRef.key)).alive;
 				}
-				const connection = needsAuth && !observeOnly ? await this.resolveNativeCliModel!(config) : undefined;
+				// 引擎剪枝后不再有「为 claude / codex 注入模型凭据」的路径，connection 恒为
+				// undefined；保留该变量与下游 `nativeCliConnection` 形参是为了不牵动
+				// remote launch 的签名（彻底移除见 B4 说明/后续清理）。
+				const connection: NativeCliModelConnection | undefined = undefined;
 				if (
 					this.pendingNativeCli.get(id) !== pending ||
 					root !== this.workspaceRoot ||

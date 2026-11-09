@@ -160,7 +160,6 @@ import type {
 } from "./protocol.js";
 import {
 	probeAllEngines,
-	probeEngine,
 	getCachedEngineStatuses,
 	updateEngineBackground,
 	isEngineUpdating,
@@ -2633,31 +2632,21 @@ wss.on("connection", (ws) => {
 	};
 
 	const handleSwitchEngine = async (msg: Extract<ClientMessage, { type: "switch_engine" }>): Promise<void> => {
-		const targetEngine: EngineId | null = msg.engine === "pi" ? "pi" : null;
-		if (!targetEngine) {
+		// 引擎剪枝后 `EngineId` 只剩 "pi"（`ENGINE_CATALOG` / `EnginePicker` 均只保留 pi），
+		// 因此非 pi 值一律按「无效引擎」处理；原先「引擎未安装全局包」的分支随
+		// dsh / codex / claude / durable 一起删除（旧客户端发来的值仍会在这里被拒绝）。
+		if (msg.engine !== "pi") {
 			send({
 				type: "notice",
 				level: "error",
-				text: `无效的引擎类型：${String(msg.engine)}（仅支持 pi / dsh / codex / claude / durable）`,
-				textEn: `Invalid engine "${String(msg.engine)}" (supported: pi, dsh, codex, claude, durable)`,
+				text: `无效的引擎类型：${String(msg.engine)}（仅支持 pi）`,
+				textEn: `Invalid engine "${String(msg.engine)}" (supported: pi)`,
 			});
 			return;
 		}
 		if (!clientId) return;
 
-		if (targetEngine !== "pi") {
-			const probe = await probeEngine(targetEngine);
-			if (!probe.installed) {
-				send({
-					type: "notice",
-					level: "warning",
-					text: `引擎 ${targetEngine.toUpperCase()} 尚未安装全局包（${probe.packageName ?? targetEngine}），请先安装后再切换`,
-					textEn: `Engine ${targetEngine.toUpperCase()} global package (${probe.packageName ?? targetEngine}) is not installed; please install it before switching`,
-				});
-				return;
-			}
-		}
-
+		const targetEngine: EngineId = "pi";
 		const prevEngine = resolveClientEngine(clientId);
 		if (prevEngine === targetEngine) {
 			setClientEngine(clientId, targetEngine);

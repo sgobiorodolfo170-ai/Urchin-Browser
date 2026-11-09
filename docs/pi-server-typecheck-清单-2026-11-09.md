@@ -220,7 +220,34 @@ git add <本批文件>
 
 ---
 
-## 7. 需要确认的决策点
+## 7. 补充实测：把 `tests/pi-server` 一并纳入会怎样（2026-11-09）
+
+为回答「tests 纳入会不会引入新一批缺口」，用一次性探针 tsconfig（**未入库**，跑完即删）把
+`tests/pi-server/**/*.ts` 与 4 个测试侧 shim 一并塞进同一个程序，实测结果：
+
+| 指标 | 仅 src | src + tests |
+| --- | --- | --- |
+| 程序内文件 | 347 | 347 + **52**（测试文件全部进程序，`--listFiles` 核实） |
+| 测试文件自身的错误 | — | **0** |
+| `src/pi-server` 的错误 | 412 | **294** |
+
+两个结论，直接影响分批计划：
+
+1. **tests 纳入成本≈0**：52 个测试文件全部通过类型检查。它们本来就是按类型写的，
+   只是被 `exclude` 挡在门外。
+2. **测试侧 shim 已是一份半成品 shim**：`tests/pi-server-tool-shims.d.ts`、
+   `tests/pi-server-vendored-shims.d.ts`、`tests/pi-server/session-pipeline-shims.d.ts`、
+   `tests/pi-shims-augment.d.ts` 已经精确声明了 `ToolDefinition`（含五参 `execute`）、
+   `AgentMessage`、`AgentSession`、`SessionEntry`、`estimateTokens`、
+   `DEFAULT_COMPACTION_SETTINGS` 等导出，因此 src 侧错误一次少掉 118 条。
+   → **B3 不必从零写 40 个导出**：把这批声明「提升」成 src 侧正式 shim，再补剩余约 33 个即可。
+3. **遗留动作**：两份声明一旦进同一个程序就会相遇。当前 0 冲突是因为 src 侧尚未声明
+   `ToolDefinition`；B3 落地时须把测试侧重复声明删掉、改为引用 src 侧 shim，
+   否则同一接口声明两次会报 `Subsequent property declarations must have the same type`。
+
+---
+
+## 8. 需要确认的决策点
 
 1. **C2/C3/C4 的方向**：引擎裁剪残留的 10 条死分支，是**删除**（约 200 行，与 D5 一致）还是**恢复引擎进
    `ENGINE_CATALOG`**？删除更彻底但会永久失去那部分适配代码；恢复则等于重启被裁剪的引擎。

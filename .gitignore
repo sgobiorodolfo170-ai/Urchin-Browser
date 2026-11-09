@@ -115,14 +115,9 @@ apps/desktop/launch-v8-logged.ps1
 apps/desktop/verify-asar.ps1
 apps/desktop/v8-launch.log
 
-# AOCI agent host integration (machine-bound; do not commit)
+# 本机 opencode 配置（machine-bound：含 MCP 端点与本机绝对路径，不入库）
 opencode.json
 opencode.json.backup.*
-
-# AOCI 机器认知产物（每次运行可能漂移，不纳入版本控制）
-aoci.txt
-aoci.meta.txt
-aoci.code.txt
 
 # lockfile 备份（历史误提交，不再跟踪）
 pnpm-lock.yaml.bak

@@ -21,8 +21,5 @@ packages/pi-web-host/src/browser/
 packages/pi-web-host/src/plugin-sdk/
 
 
-# AOCI 工具托管状态（JSON 结构由 aoci 生成，不参与格式化）
-.aoci/
-
 # 本地调试/一次性脚本与日志（不入版本控制，也不参与格式门禁）
 tmp/

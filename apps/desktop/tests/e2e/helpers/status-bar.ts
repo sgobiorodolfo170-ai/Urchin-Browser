@@ -6,6 +6,36 @@
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 
+/** E2E 主窗口统一尺寸：与 GitHub Windows runner（1024×768 屏幕）实际生效的窗口一致 */
+export const CI_WINDOW_SIZE = { width: 1024, height: 720 } as const;
+
+/**
+ * 把主窗口固定到 CI 尺寸（1024×720）。
+ *
+ * 背景（2026-11-09）：本机屏幕 1920×1080 下主窗口是 1280×800，CI runner 只有 1024×768，
+ * 主窗口被压到 1024×720 —— 布局类回归（如状态栏 3/5 宽卡片放不下固定按钮，把地址输入框
+ * 压成 width:0）**只在窄窗口复现**，于是「本机全绿、CI 四红」。E2E 主动把窗口设成 CI 尺寸，
+ * 同一份用例在两种环境下断言同一个布局，不再依赖 runner 屏幕大小。
+ *
+ * 主窗口识别：URL 不带 `view` 查询参数（状态栏 / 悬浮球 / 剪藏面板都是 `?view=xxx`）。
+ */
+export async function setMainWindowSize(
+  electronApp: ElectronApplication,
+  size: { width: number; height: number } = CI_WINDOW_SIZE,
+): Promise<void> {
+  await electronApp.evaluate(({ BrowserWindow }, target) => {
+    const viewOf = (url: string): string | null => {
+      try {
+        return new URL(url).searchParams.get('view');
+      } catch {
+        return null;
+      }
+    };
+    const main = BrowserWindow.getAllWindows().find((w) => viewOf(w.webContents.getURL()) === null);
+    main?.setBounds({ x: 0, y: 0, width: target.width, height: target.height });
+  }, size);
+}
+
 /**
  * 判定是否为「状态栏」窗口。
  *

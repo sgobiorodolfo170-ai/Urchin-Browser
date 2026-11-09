@@ -27,7 +27,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { getOmniboxPage, getStatusBarPage } from './helpers/status-bar';
+import { getOmniboxPage, getStatusBarPage, setMainWindowSize } from './helpers/status-bar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -98,6 +98,8 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
   });
   const window = await electronApp.firstWindow();
   await window.waitForLoadState('domcontentloaded');
+  // 与 CI runner 同尺寸（1024×720）：布局类回归只在窄窗口复现
+  await setMainWindowSize(electronApp);
   return { electronApp, window };
 }
 

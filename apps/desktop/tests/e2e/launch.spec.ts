@@ -22,7 +22,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { getOmniboxPage, getStatusBarPage } from './helpers/status-bar';
+import { getOmniboxPage, getStatusBarPage, setMainWindowSize } from './helpers/status-bar';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -49,6 +49,8 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
   // 等待第一个窗口出现
   const window = await electronApp.firstWindow();
   await window.waitForLoadState('domcontentloaded');
+  // 与 CI runner 同尺寸（1024×720）：布局类回归只在窄窗口复现
+  await setMainWindowSize(electronApp);
 
   // W7+ UI：标签列表在右侧栏内，默认折叠为图标条。
   // E2E 关键路径依赖「新建标签」按钮，先展开右侧栏暴露标签操作区。
@@ -62,86 +64,93 @@ async function launchApp(): Promise<{ electronApp: ElectronApplication; window: 
 }
 
 test.describe('v0.1 关键路径', () => {
+  // 每个用例用 try/finally 收口 Electron 实例：断言失败时若不 close，进程会留在 worker 里
+  // 占满 CPU/内存，把同一 worker 的后续用例拖成超时（2026-11-09 CI：前一个用例 30s 失败后，
+  // 下一个用例连 [aria-label="右侧边栏"] 都点不到）。
   test('启动 Electron 并显示主窗口', async () => {
     const { electronApp, window } = await launchApp();
+    try {
+      // 验证窗口标题（按 locale 显示中文「顽童浏览器」或英文「Urchin Browser」）
+      await expect(window).toHaveTitle(/Urchin Browser|顽童浏览器/i);
 
-    // 验证窗口标题（按 locale 显示中文「顽童浏览器」或英文「Urchin Browser」）
-    await expect(window).toHaveTitle(/Urchin Browser|顽童浏览器/i);
+      // 验证根容器渲染
+      await expect(window.locator('#root')).toBeVisible();
 
-    // 验证根容器渲染
-    await expect(window.locator('#root')).toBeVisible();
-
-    // 验证 Tab Bar 渲染（新建标签按钮存在）
-    await expect(window.getByRole('button', { name: '新建标签' })).toBeVisible({
-      timeout: 15_000,
-    });
-
-    await electronApp.close();
+      // 验证 Tab Bar 渲染（新建标签按钮存在）
+      await expect(window.getByRole('button', { name: '新建标签' })).toBeVisible({
+        timeout: 15_000,
+      });
+    } finally {
+      await electronApp.close();
+    }
   });
 
   test('新建标签', async () => {
     const { electronApp, window } = await launchApp();
+    try {
+      // 初始标签数量
+      const initialTabs = await window.locator('[aria-label="关闭标签"]').count();
 
-    // 初始标签数量
-    const initialTabs = await window.locator('[aria-label="关闭标签"]').count();
+      // 点击新建标签按钮
+      await window.getByRole('button', { name: '新建标签' }).click();
 
-    // 点击新建标签按钮
-    await window.getByRole('button', { name: '新建标签' }).click();
-
-    // 等待新标签出现（关闭按钮数量增加）
-    await expect(window.locator('[aria-label="关闭标签"]')).toHaveCount(initialTabs + 1, {
-      timeout: 10_000,
-    });
-
-    await electronApp.close();
+      // 等待新标签出现（关闭按钮数量增加）
+      await expect(window.locator('[aria-label="关闭标签"]')).toHaveCount(initialTabs + 1, {
+        timeout: 10_000,
+      });
+    } finally {
+      await electronApp.close();
+    }
   });
 
   test('导航到 URL', async () => {
     const { electronApp, window } = await launchApp();
+    try {
+      // 等待应用就绪
+      await expect(window.getByRole('button', { name: '新建标签' })).toBeVisible({
+        timeout: 15_000,
+      });
 
-    // 等待应用就绪
-    await expect(window.getByRole('button', { name: '新建标签' })).toBeVisible({
-      timeout: 15_000,
-    });
+      // 在地址栏输入 URL 并提交（内部页地址栏在主窗口；导航到外部页后状态栏悬浮层出现）
+      const omniboxPage = await getOmniboxPage(electronApp, window);
+      const omniboxInput = omniboxPage.getByRole('textbox', { name: '地址栏' });
+      await omniboxInput.fill('https://example.com');
+      await omniboxInput.press('Enter');
 
-    // 在地址栏输入 URL 并提交（内部页地址栏在主窗口；导航到外部页后状态栏悬浮层出现）
-    const omniboxPage = await getOmniboxPage(electronApp, window);
-    const omniboxInput = omniboxPage.getByRole('textbox', { name: '地址栏' });
-    await omniboxInput.fill('https://example.com');
-    await omniboxInput.press('Enter');
-
-    // 验证地址栏更新为新 URL（导航完成后悬浮层地址栏显示新 URL）
-    const statusBar = await getStatusBarPage(electronApp);
-    await expect(statusBar.getByRole('textbox', { name: '地址栏' })).toHaveValue(/example\.com/, {
-      timeout: 15_000,
-    });
-
-    await electronApp.close();
+      // 验证地址栏更新为新 URL（导航完成后悬浮层地址栏显示新 URL）
+      const statusBar = await getStatusBarPage(electronApp);
+      await expect(statusBar.getByRole('textbox', { name: '地址栏' })).toHaveValue(/example\.com/, {
+        timeout: 15_000,
+      });
+    } finally {
+      await electronApp.close();
+    }
   });
 
   test('关闭标签', async () => {
     const { electronApp, window } = await launchApp();
+    try {
+      // 等待应用就绪
+      await expect(window.getByRole('button', { name: '新建标签' })).toBeVisible({
+        timeout: 15_000,
+      });
 
-    // 等待应用就绪
-    await expect(window.getByRole('button', { name: '新建标签' })).toBeVisible({
-      timeout: 15_000,
-    });
+      // 先新建一个标签确保至少有 2 个标签（关闭后仍剩 1 个）
+      await window.getByRole('button', { name: '新建标签' }).click();
+      await expect(window.locator('[aria-label="关闭标签"]')).toHaveCount(2, {
+        timeout: 10_000,
+      });
 
-    // 先新建一个标签确保至少有 2 个标签（关闭后仍剩 1 个）
-    await window.getByRole('button', { name: '新建标签' }).click();
-    await expect(window.locator('[aria-label="关闭标签"]')).toHaveCount(2, {
-      timeout: 10_000,
-    });
+      // 关闭第二个标签
+      const closeButtons = window.locator('[aria-label="关闭标签"]');
+      await closeButtons.nth(1).click();
 
-    // 关闭第二个标签
-    const closeButtons = window.locator('[aria-label="关闭标签"]');
-    await closeButtons.nth(1).click();
-
-    // 验证标签数量减少
-    await expect(window.locator('[aria-label="关闭标签"]')).toHaveCount(1, {
-      timeout: 10_000,
-    });
-
-    await electronApp.close();
+      // 验证标签数量减少
+      await expect(window.locator('[aria-label="关闭标签"]')).toHaveCount(1, {
+        timeout: 10_000,
+      });
+    } finally {
+      await electronApp.close();
+    }
   });
 });

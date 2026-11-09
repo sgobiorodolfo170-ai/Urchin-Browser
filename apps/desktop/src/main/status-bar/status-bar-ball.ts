@@ -81,6 +81,12 @@ export class StatusBarBall {
   private visible = false;
   private parentClosing = false;
   private parentListenersAttached = false;
+  /** 待下发的球配置（页面加载完成后补发，避免启动期丢失） */
+  private pendingConfig: {
+    theme: 'light' | 'dark';
+    sensitivityVertical: number;
+    sensitivityHorizontal: number;
+  } | null = null;
   private readonly options: StatusBarBallOptions;
 
   constructor(options: StatusBarBallOptions) {
@@ -144,8 +150,17 @@ export class StatusBarBall {
     sensitivityVertical: number;
     sensitivityHorizontal: number;
   }): void {
+    // 缓存待下发配置：启动期球窗口刚创建、页面仍在加载，直接 send 会丢；
+    // did-finish-load 后由 flushConfig() 补发（此前只有设置变更才会再次下发）。
+    this.pendingConfig = config;
+    this.flushConfig();
+  }
+
+  /** 下发缓存的球配置（页面就绪时调用） */
+  private flushConfig(): void {
     const win = this.win;
-    if (!win || win.isDestroyed()) return;
+    const config = this.pendingConfig;
+    if (!win || win.isDestroyed() || !config) return;
     if (win.webContents.isLoadingMainFrame()) return;
     win.webContents.send('ui.statusbar.ball.state', config);
   }
@@ -219,6 +234,7 @@ export class StatusBarBall {
 
     win.webContents.once('did-finish-load', () => {
       this.applyVisibility();
+      this.flushConfig();
     });
     win.once('ready-to-show', () => {
       if (this.visible && !win.isDestroyed()) {
@@ -330,3 +346,11 @@ export class StatusBarBall {
 
 /** 球直径（供渲染层使用） */
 export const STATUS_BALL_SIZE = BALL_SIZE;
+
+/**
+ * 悬浮球在地址栏同一行占用的水平宽度（球窗口 + 滚动条让位 + 间隙）。
+ *
+ * 地址栏窗口与球共用网页区底部这一行，球固定在网页区右缘（`computeBallBounds`），
+ * 因此地址栏的宽度上限必须让出这段宽度，否则两窗重叠（球会盖住地址栏右端的动作按钮）。
+ */
+export const STATUS_BALL_RESERVED_WIDTH = SCROLLBAR_WIDTH + BALL_GAP + BALL_SIZE + BALL_PAD * 2;

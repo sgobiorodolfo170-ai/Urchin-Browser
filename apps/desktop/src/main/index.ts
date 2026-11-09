@@ -1277,8 +1277,25 @@ void app.whenReady().then(() => {
         };
       },
     });
-    // 悬浮球在所有页面常驻（仅全屏/最小化隐藏），启动即创建显示
-    ctx.statusBarBall.setVisible(true);
+    // 悬浮球在所有页面常驻（仅全屏/最小化隐藏），但**延后到主窗口首次显示后创建**：
+    // · 主窗口可见前球毫无意义（applyVisibility 本来也会把它隐藏）；
+    // · 更关键的是窗口顺序：Playwright 的 electronApp.firstWindow() 取「最先创建的页面」，
+    //   球窗口若先于主窗口 page 就绪，E2E 就会把球当成主窗口，在主窗口控件上等满超时
+    //   （2026-11-09 CI launch.spec 实测：dblclick [aria-label="右侧边栏"] 30s 超时）。
+    const hostWindow = windowManager.getWindow(mainWindow.id)?.browserWindow;
+    const showBall = (): void => {
+      ctx.statusBarBall?.setVisible(true);
+      // 球页面此刻还在加载，sendConfig 会被暂存到 did-finish-load 后补发
+      sendBallConfig();
+    };
+    const hostVisible = (
+      hostWindow as unknown as { isVisible?: () => boolean } | undefined
+    )?.isVisible?.();
+    if (!hostWindow || hostVisible === true) {
+      showBall();
+    } else {
+      hostWindow.once('show', showBall);
+    }
     // 初始下发配置 + 监听灵敏度设置变化
     sendBallConfig();
     ctx.settingsManager.on('changed', (key: string) => {

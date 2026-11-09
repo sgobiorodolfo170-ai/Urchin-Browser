@@ -12,12 +12,13 @@
  * 状态来源：主渲染进程持有 tab/建议/书签/toast/主题等状态，经本管理器缓存并转发给
  * 悬浮层；悬浮层的用户动作经本管理器转发回主渲染进程。主渲染进程仍是单一真源。
  *
- * 几何计算：悬浮层宽度 = 中区宽 × 0.6 + 阴影边距；高度 = 状态栏区域 + 阴影边距 +
- * 建议/提示展开高；底部对齐内容区底，水平居中于中区。
+ * 几何计算：悬浮层宽度 = max(中区宽 × 0.6, 卡片最小可用宽) + 阴影边距；高度 = 状态栏区域 +
+ * 阴影边距 + 建议/提示展开高；底部对齐内容区底，水平居中于中区（右缘为悬浮球让位）。
  */
 import { BrowserWindow, Menu } from 'electron';
 import { createLogger } from '@urchin/logger';
 import { WINDOW_FRAME_WIDTH } from '../tabs/view-integration';
+import { STATUS_BALL_RESERVED_WIDTH } from './status-bar-ball';
 import type { StatusBarState, StatusBarToast, UiStatusBarActionReq } from '@urchin/ipc-contract';
 
 const log = createLogger('status-bar-overlay');
@@ -30,6 +31,18 @@ const SHADOW_PAD = 8;
 const BASE_HEIGHT = CARD_HEIGHT + SHADOW_PAD * 2;
 /** 状态栏宽度占中区宽度比例（3/5） */
 const WIDTH_RATIO = 0.6;
+/**
+ * 卡片最小可用宽度（px，不含左右阴影边距）。
+ *
+ * 卡片内是「固定件 + 弹性地址输入框」的一行 flex：4 个导航按钮（32×4）、
+ * 5 个动作按钮（28×5）、卡片/按钮间隙（6×9）、卡片内边距 16、输入框内边距 24、
+ * 安全图标 20、星标 20，合计约 386px 不参与收缩；地址输入框是唯一的弹性项。
+ * 若卡片宽度低于该固定预算，flex 会把 input 压成 **0 宽** —— 视觉上地址栏还在，
+ * 但既看不见也点不进去（2026-11-09 CI 实测：1024 宽窗口 + 右侧栏展开 → 中区 603px，
+ * 3/5 = 362px 卡片，input 的 boundingBox 为 width:0，E2E 四个 spec 全红）。
+ * 取 496（窗口宽 512，含阴影边距）→ 地址输入框 ≈ 114px，保证「看得见、能输入」。
+ */
+const MIN_BAR_WIDTH = 496;
 /** 建议下拉额外高度（max-h-80=320 + 边距） */
 const SUGGESTIONS_PANEL_HEIGHT = 332;
 /** toast 额外高度 */
@@ -105,20 +118,37 @@ export function computeStatusBarBounds(params: {
   rightWidth: number;
   bottomHeight: number;
   panelHeight: number;
+  /** 右侧为悬浮球让位的水平宽度（px）；同一行共用，缺省 0 表示不避让 */
+  reserveRight?: number;
 }): { x: number; y: number; width: number; height: number } {
-  const { contentBounds, leftWidth, rightWidth, bottomHeight, panelHeight } = params;
+  const {
+    contentBounds,
+    leftWidth,
+    rightWidth,
+    bottomHeight,
+    panelHeight,
+    reserveRight = 0,
+  } = params;
   const frame = WINDOW_FRAME_WIDTH;
   const middleWidth = Math.max(0, contentBounds.width - frame * 2 - leftWidth - rightWidth);
-  const barWidth = Math.round(middleWidth * WIDTH_RATIO);
+  // 宽度 = max(3/5 中区宽, 卡片最小可用宽)，再夹到「中区减去悬浮球让位」的上限。
+  // 三段夹取缺一不可：只夹上限会在宽窗口下保持 3/5；只取最小值会在窄窗口下顶到球位。
+  const maxBarWidth = Math.max(0, middleWidth - reserveRight - SHADOW_PAD * 2);
+  const barWidth = Math.max(
+    0,
+    Math.min(Math.max(Math.round(middleWidth * WIDTH_RATIO), MIN_BAR_WIDTH), maxBarWidth),
+  );
   const width = barWidth + SHADOW_PAD * 2;
+  // 默认居中于中区；若右缘会侵入悬浮球区域，则整体左移到刚好让出球位（不超过左缘）。
+  const middleStart = contentBounds.x + frame + leftWidth;
+  const centeredX = Math.round(middleStart + (middleWidth - barWidth) / 2 - SHADOW_PAD);
+  const maxX = Math.round(middleStart + middleWidth - reserveRight - width);
+  const x = Math.max(middleStart - SHADOW_PAD, Math.min(centeredX, maxX));
   // 高度 = 基础高度 + 额外面板高；但不低于基础，且不超过内容区可视高度
   const baseWithArea = Math.max(BASE_HEIGHT, bottomHeight + SHADOW_PAD);
   const height = Math.min(
     baseWithArea + panelHeight,
     Math.max(baseWithArea, contentBounds.height - frame * 2),
-  );
-  const x = Math.round(
-    contentBounds.x + frame + leftWidth + (middleWidth - barWidth) / 2 - SHADOW_PAD,
   );
   // 底部对齐内容区底（contentBounds 下缘 - 外框）；悬浮层下缘贴内容区底
   const y = Math.round(contentBounds.y + contentBounds.height - frame - height);
@@ -352,6 +382,8 @@ export class StatusBarOverlay {
       rightWidth: layout.rightWidth,
       bottomHeight: layout.bottomHeight,
       panelHeight: this.panelHeight,
+      // 与悬浮球共用网页区底部同一行：右缘必须为球让位
+      reserveRight: STATUS_BALL_RESERVED_WIDTH,
     });
     // 若悬浮球位置改变，地址栏与球保持同一行：以球中心对齐卡片中心。
     const ballY = this.options.getBallY?.() ?? null;

@@ -37,7 +37,8 @@ export default defineConfig({
         'src/model-admin/json-utils.ts',
         'src/model-admin/model-admin.ts',
         'src/model-admin/model-enrich.ts',
-        'src/model-admin/protocol-types.ts',
+        // protocol-types.ts 是纯类型切片（0 个运行时构造，与 pi-shims-*.d.ts 同理）：
+        // 2026-11-10 移出口径——无可执行代码，留在分母只会虚拉低组均值
         'src/model-admin/provider-oauth-flow.ts',
         'src/model-admin/runtime-holder.ts',
         'src/pi-server-ready.ts',

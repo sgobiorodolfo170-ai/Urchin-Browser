@@ -329,10 +329,14 @@ export class TabManager {
       this.windowTabs.delete(tab.windowId);
       this.activeTabPerWindow.delete(tab.windowId);
     } else if (tab.active) {
-      // 如果移除的是激活 tab，自动激活同窗口的下一个 tab
+      // 如果移除的是激活 tab，自动激活相邻标签（2026-11-10 用户指令）：
+      // 右侧边栏按 id 倒序展示（新建置顶、最旧沉底），此前取 Set 首个
+      // （插入序 = 创建序 = 最旧）导致关闭后总是跳到列表最底部的标签；
+      // 现改为激活侧边栏位次的相邻项——优先正下方（id 更小的相邻项），
+      // 无则正上方（id 更大的相邻项）；同工作区已空时按同规则回退窗口全量。
       const remaining = this.windowTabs.get(tab.windowId);
       if (remaining && remaining.size > 0) {
-        const nextActive = remaining.values().next().value;
+        const nextActive = this.pickAdjacentActiveId(remaining, tab);
         if (nextActive !== undefined) {
           const nextTab = this.tabs.get(nextActive);
           if (nextTab) {
@@ -343,6 +347,27 @@ export class TabManager {
         }
       }
     }
+  }
+
+  /**
+   * 关闭激活标签后挑选接任标签：取侧边栏展示位次的相邻项。
+   *
+   * 侧边栏列表按 id 降序（新建置顶），因此在同工作区剩余标签内：
+   * 优先取 id 更小的相邻项（视觉正下方），不存在则取 id 更大的相邻项
+   * （视觉正上方）。同工作区无剩余标签时按同规则回退到窗口全量
+   * （跨工作区接管，沿用旧行为）。
+   */
+  private pickAdjacentActiveId(remaining: Set<number>, closed: Tab): number | undefined {
+    const sameWorkspace = [...remaining].filter(
+      (id) => this.tabs.get(id)?.workspaceId === closed.workspaceId,
+    );
+    // 同工作区已空 → 回退窗口全量（含跨工作区），保持关窗前总有接任标签
+    const pool = sameWorkspace.length > 0 ? sameWorkspace : [...remaining];
+    const below = pool.filter((id) => id < closed.id);
+    if (below.length > 0) return Math.max(...below);
+    const above = pool.filter((id) => id > closed.id);
+    if (above.length > 0) return Math.min(...above);
+    return undefined;
   }
 
   /**

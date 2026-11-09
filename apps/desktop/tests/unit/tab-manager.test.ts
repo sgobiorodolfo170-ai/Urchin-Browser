@@ -320,6 +320,87 @@ describe('TabManager', () => {
     expect(mgr.getTab(t2.id)?.active).toBe(true);
   });
 
+  // 2026-11-10 用户指令：关闭激活标签后应激活侧边栏相邻的下一个标签，
+  // 而不是跳到列表最底部（最旧）的标签。侧边栏按 id 倒序展示（新建置顶）。
+  it('should activate the adjacent tab below in sidebar order instead of the oldest', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+
+    // 侧边栏展示顺序（id 倒序）：t3（顶）→ t2 → t1（底）
+    const t1 = mgr.create({ windowId: 1 });
+    const t2 = mgr.create({ windowId: 1, active: false });
+    const t3 = mgr.create({ windowId: 1, active: false });
+
+    mgr.setActive(t3.id);
+    mgr.remove(t3.id);
+
+    // 关闭 t3 后应激活正下方的 t2（相邻），而不是最底部的 t1（旧行为）
+    expect(mgr.getTab(t2.id)?.active).toBe(true);
+    expect(mgr.getTab(t1.id)?.active).toBe(false);
+  });
+
+  it('should fall back to the adjacent tab above when closed tab is bottom-most', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+
+    const t1 = mgr.create({ windowId: 1 });
+    const t2 = mgr.create({ windowId: 1, active: false });
+    const t3 = mgr.create({ windowId: 1, active: false });
+
+    // t1 是列表最底部（id 最小），下方无相邻项 → 激活正上方的 t2
+    mgr.remove(t1.id);
+
+    expect(mgr.getTab(t2.id)?.active).toBe(true);
+    expect(mgr.getTab(t3.id)?.active).toBe(false);
+  });
+
+  it('should prefer same-workspace adjacent tab over cross-workspace oldest', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+
+    // other 工作区：t1（Set 头部，旧行为会激活它）；work 工作区：t2、t3
+    const t1 = mgr.create({ windowId: 1, workspaceId: 'other' });
+    const t2 = mgr.create({ windowId: 1, workspaceId: 'work', active: false });
+    const t3 = mgr.create({ windowId: 1, workspaceId: 'work', active: false });
+
+    mgr.setActive(t3.id);
+    mgr.remove(t3.id);
+
+    // 侧边栏只展示当前工作区标签：相邻的是同工作区的 t2，而非跨工作区的 t1
+    expect(mgr.getTab(t2.id)?.active).toBe(true);
+    expect(mgr.getTab(t1.id)?.active).toBe(false);
+  });
+
+  it('should wrap upward within the same workspace when closed tab is bottom-most there', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+
+    // work 工作区：t1（底部）、t3（顶部）；other 工作区：t2（Set 头部）
+    const t1 = mgr.create({ windowId: 1, workspaceId: 'work' });
+    const t2 = mgr.create({ windowId: 1, workspaceId: 'other', active: false });
+    const t3 = mgr.create({ windowId: 1, workspaceId: 'work', active: false });
+
+    mgr.setActive(t1.id);
+    mgr.remove(t1.id);
+
+    // 同工作区下方无相邻项 → 取正上方的 t3，而不是跨工作区的 t2（旧行为）
+    expect(mgr.getTab(t3.id)?.active).toBe(true);
+    expect(mgr.getTab(t2.id)?.active).toBe(false);
+  });
+
+  it('should fall back to window-level adjacency when the workspace becomes empty', () => {
+    const factory = createMockFactory();
+    const mgr = new TabManager(factory);
+
+    const t1 = mgr.create({ windowId: 1, workspaceId: 'work' });
+    const t2 = mgr.create({ windowId: 1, workspaceId: 'other', active: false });
+
+    mgr.remove(t1.id);
+
+    // work 工作区已空：按同规则回退窗口全量（沿用旧行为，跨工作区接管）
+    expect(mgr.getTab(t2.id)?.active).toBe(true);
+  });
+
   it('should support off listener removal', () => {
     const factory = createMockFactory();
     const mgr = new TabManager(factory);

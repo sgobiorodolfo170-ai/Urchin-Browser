@@ -12,6 +12,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck:pi-server": "tsc --noEmit -p tsconfig.pi-server.json",
     "test": "vitest run"
   },
   "dependencies": {

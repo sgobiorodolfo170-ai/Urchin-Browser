@@ -1,0 +1,10 @@
+{
+  // pi-server 独立 typecheck 程序：只收录 src/pi-server（暂不含 tests/pi-server）。
+  // 主 tsconfig.json 排除了 src/pi-server（见 docs/pi-web-测试交接-2026-11-08.md §3），
+  // 本文件用于把这块 347 文件的代码单独纳入判断，逐步清零后再并回主程序。
+  // 继承 ./tsconfig.json → strict 与 noUncheckedIndexedAccess 与包内现状一致；
+  // skipLibCheck 沿用 tsconfig.base.json 现状，不新增任何宽化开关。
+  "extends": "./tsconfig.json",
+  "include": ["src/pi-server/**/*.ts", "src/pi-shims.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

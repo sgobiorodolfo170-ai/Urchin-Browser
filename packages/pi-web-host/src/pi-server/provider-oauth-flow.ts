@@ -30,11 +30,15 @@ export interface ProviderOAuthFlowHost {
 }
 
 function promptPayload(prompt: AuthPrompt): ProviderOAuthPromptPayload {
+	// `AuthPrompt` 由 `Parameters<ModelRuntime["login"]>[2]` 推导，vendored shim 只建模到
+	// interaction 层，因此这里的 select 选项 / links 需要显式收窄（真实 SDK 由
+	// `AuthPrompt` / `AuthEvent` 联合自带形状）。
+	type SelectOption = { id: string; label: string; description?: string };
 	if (prompt.type === "select") {
 		return {
 			type: "select",
 			message: prompt.message,
-			options: prompt.options.map((option) => ({ ...option })),
+			options: (prompt.options as SelectOption[]).map((option) => ({ ...option })),
 		};
 	}
 	return {
@@ -45,11 +49,14 @@ function promptPayload(prompt: AuthPrompt): ProviderOAuthPromptPayload {
 }
 
 function eventPayload(event: AuthEvent): ProviderOAuthEventPayload {
+	type InfoLink = { url: string; label?: string };
 	if (event.type === "info") {
 		return {
 			type: "info",
 			message: event.message,
-			...(event.links === undefined ? {} : { links: event.links.map((link) => ({ ...link })) }),
+			...(event.links === undefined
+				? {}
+				: { links: (event.links as InfoLink[]).map((link) => ({ ...link })) }),
 		};
 	}
 	return { ...event };

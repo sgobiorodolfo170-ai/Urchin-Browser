@@ -60,7 +60,6 @@ export default tseslint.config(
       // 上游断言风格，若做类型感知 lint 会因 import 闭包把整棵 pi-server 拉进
       // 项目而报上游既有类型缺口；改由 vitest 运行 + 断言把关。
       'packages/pi-web-host/tests/pi-server/**',
-      'packages/pi-web-host/tests/pi-server-*.d.ts',
     ],
   },
 

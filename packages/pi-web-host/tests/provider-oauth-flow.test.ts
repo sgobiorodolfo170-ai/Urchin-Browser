@@ -5,6 +5,7 @@
  * 交互式 prompt 往返（text / select）、notify 事件、list 快照与 dispose 语义。
  */
 import { describe, it, expect, vi } from 'vitest';
+import type { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import { ProviderOAuthFlowManager } from '../src/model-admin/provider-oauth-flow';
 import type { ModelAdminServerMessage } from '../src/model-admin/protocol-types';
 
@@ -48,9 +49,9 @@ function makeHarness(options: {
   let loginCalls = 0;
   const onLoginSuccess = vi.fn(() => Promise.resolve());
   const runtime = {
-    // 本用例只走 OAuth 流程、不触发补全；`src/pi-shims-coding-agent.d.ts` 已按 vendor 源码
-    // 精确声明 `completeSimple`（D8 修复的一环），故给一个永不被调用的桩，
-    // 保持 fake runtime 与真实接口同形。
+    // 本用例只走 OAuth 流程、不触发补全与目录读取；`src/pi-shims-coding-agent.d.ts`
+    // 已按 vendor 源码精确声明 `ModelRuntime`（D8 修复的一环），这里只给实际用到的
+    // 成员，其余用 `as unknown as ModelRuntime` 收口，保持 fake 与真实接口的差异显式可见。
     completeSimple: () => Promise.reject(new Error('completeSimple is not used in this test')),
     getProvider: (id: string) =>
       options.supportsOAuth === false
@@ -64,7 +65,7 @@ function makeHarness(options: {
     },
   };
   const manager = new ProviderOAuthFlowManager({
-    modelRuntime: () => runtime,
+    modelRuntime: () => runtime as unknown as ModelRuntime,
     emit: (msg: ModelAdminServerMessage) => emitted.push(msg),
     isDisposed: () => disposed,
     onLoginSuccess: onLoginSuccess,

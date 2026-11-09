@@ -2068,6 +2068,8 @@ export const mailAccountSchema = z.object({
   smtpPort: z.number().int().positive().optional(),
   smtpSecure: z.boolean().optional(),
   createdAt: z.number().int(),
+  /** 密码密文是否在库（2026-11-10）：false = 需 UI 重授权（卸载重装/迁移可致丢失） */
+  hasPassword: z.boolean(),
 });
 export type MailAccount = z.infer<typeof mailAccountSchema>;
 
@@ -2100,6 +2102,19 @@ export const mailAccountAddResSchema = z.object({
   account: mailAccountSchema,
 });
 export type MailAccountAddRes = z.infer<typeof mailAccountAddResSchema>;
+
+// --- mail.account.setPassword ---
+
+export const mailAccountSetPasswordReqSchema = z.object({
+  accountId: mailAccountIdSchema,
+  password: z.string().min(1),
+});
+export type MailAccountSetPasswordReq = z.infer<typeof mailAccountSetPasswordReqSchema>;
+
+export const mailAccountSetPasswordResSchema = z.object({
+  ok: z.literal(true),
+});
+export type MailAccountSetPasswordRes = z.infer<typeof mailAccountSetPasswordResSchema>;
 
 // --- mail.account.delete ---
 
@@ -2911,6 +2926,10 @@ export const ipcSchema = {
   // Mail 域（M25 邮箱模块）
   'mail.account.list': { req: mailAccountListReqSchema, res: mailAccountListResSchema },
   'mail.account.add': { req: mailAccountAddReqSchema, res: mailAccountAddResSchema },
+  'mail.account.setPassword': {
+    req: mailAccountSetPasswordReqSchema,
+    res: mailAccountSetPasswordResSchema,
+  },
   'mail.account.delete': { req: mailAccountDeleteReqSchema, res: mailAccountDeleteResSchema },
   'mail.account.test': { req: mailAccountTestReqSchema, res: mailAccountTestResSchema },
   'mail.folder.list': { req: mailFolderListReqSchema, res: mailFolderListResSchema },

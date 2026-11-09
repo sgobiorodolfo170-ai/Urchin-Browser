@@ -29,6 +29,7 @@ function createMockSecretStore() {
       void name;
       secrets.delete(name);
     }),
+    has: vi.fn((name: string): boolean => secrets.has(name)),
   };
 }
 
@@ -117,6 +118,92 @@ describe('MailManager', () => {
       });
 
       expect(a1.id).not.toBe(a2.id);
+    });
+
+    it('addAccount: should write password BEFORE inserting row (atomicity, 2026-11-10)', async () => {
+      const persistence = createMockPersistence();
+      const insertSpy = vi.spyOn(persistence, 'insertAccount');
+      const secrets = createMockSecretStore();
+      const manager = new MailManager(persistence, secrets);
+
+      await manager.addAccount({
+        name: '顺序',
+        email: 'order@example.com',
+        imapHost: 'imap.example.com',
+        imapPort: 993,
+        imapSecure: true,
+        password: 'pw',
+      });
+
+      // 先写密文后插行：密文失败时不能留下「账户在、密码缺」的残缺行
+      const setOrder = secrets.set.mock.invocationCallOrder[0]!;
+      const insertOrder = insertSpy.mock.invocationCallOrder[0]!;
+      expect(setOrder).toBeLessThan(insertOrder);
+    });
+
+    it('addAccount: should NOT persist row when secret write fails', async () => {
+      const persistence = createMockPersistence();
+      const secrets = createMockSecretStore();
+      secrets.set.mockRejectedValueOnce(new Error('safeStorage not available'));
+      const manager = new MailManager(persistence, secrets);
+
+      await expect(
+        manager.addAccount({
+          name: '失败',
+          email: 'fail@example.com',
+          imapHost: 'imap.example.com',
+          imapPort: 993,
+          imapSecure: true,
+          password: 'pw',
+        }),
+      ).rejects.toThrow('safeStorage not available');
+      expect(persistence.accounts).toHaveLength(0);
+    });
+
+    it('hasPassword: should reflect secret presence', async () => {
+      const persistence = createMockPersistence();
+      const secrets = createMockSecretStore();
+      const manager = new MailManager(persistence, secrets);
+
+      const account = await manager.addAccount({
+        name: '探测',
+        email: 'probe@example.com',
+        imapHost: 'imap.example.com',
+        imapPort: 993,
+        imapSecure: true,
+        password: 'pw',
+      });
+      expect(manager.hasPassword(account.id)).toBe(true);
+      await manager.deleteAccount(account.id);
+      expect(manager.hasPassword(account.id)).toBe(false);
+    });
+
+    it('setPassword: should store new password for existing account', async () => {
+      const persistence = createMockPersistence();
+      const secrets = createMockSecretStore();
+      const manager = new MailManager(persistence, secrets);
+
+      const account = await manager.addAccount({
+        name: '重授权',
+        email: 'reauth@example.com',
+        imapHost: 'imap.example.com',
+        imapPort: 993,
+        imapSecure: true,
+        password: 'old',
+      });
+      await manager.setPassword(account.id, 'new-auth-code');
+      expect(secrets.set).toHaveBeenLastCalledWith(
+        expect.stringContaining(account.id),
+        'new-auth-code',
+      );
+      expect(await secrets.get(`mail-account/${account.id}/password`)).toBe('new-auth-code');
+    });
+
+    it('setPassword: should reject for non-existent account', async () => {
+      const persistence = createMockPersistence();
+      const manager = new MailManager(persistence, createMockSecretStore());
+
+      await expect(manager.setPassword('no-such-id', 'pw')).rejects.toThrow('账户不存在');
     });
 
     it('deleteAccount: should remove account and delete password', async () => {

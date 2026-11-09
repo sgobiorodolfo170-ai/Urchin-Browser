@@ -52,6 +52,8 @@ export interface SecretStore {
   get(name: string): Promise<string | null>;
   set(name: string, value: string): Promise<void>;
   delete(name: string): Promise<void>;
+  /** 密文是否已存在（同步文件探测，不触碰加密 API；用于密码缺失检测/迁移判断） */
+  has(name: string): boolean;
 }
 
 /**

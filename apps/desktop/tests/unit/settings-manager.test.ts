@@ -390,6 +390,7 @@ describe('SettingsManager', () => {
       get: vi.fn().mockResolvedValue(null),
       set: vi.fn().mockResolvedValue(undefined),
       delete: vi.fn().mockResolvedValue(undefined),
+      has: vi.fn().mockReturnValue(false),
     };
   }
 

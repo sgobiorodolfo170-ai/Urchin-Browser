@@ -83,6 +83,25 @@ export class MailManager {
     return this.persistence.loadAccounts();
   }
 
+  /** 账户密码密文是否存在（同步文件探测；缺失 = 需 UI 重授权） */
+  hasPassword(accountId: string): boolean {
+    return this.secrets.has(mailPasswordKey(accountId));
+  }
+
+  /**
+   * 为既有账户重设密码（重授权）。
+   *
+   * 场景：密码密文因卸载重装 / 数据目录迁移丢失（2026-11-10 QQ 邮箱实例）、
+   * 或服务端改密后旧授权码失效。写入成功即返回；连接验证由后续 IMAP 操作自然完成。
+   */
+  async setPassword(accountId: string, password: string): Promise<void> {
+    const account = this.persistence.loadAccounts().find((a) => a.id === accountId);
+    if (!account) {
+      throw new IpcError(IpcErrorCode.NOT_FOUND, `账户不存在: ${accountId}`, {});
+    }
+    await this.secrets.set(mailPasswordKey(accountId), password);
+  }
+
   async addAccount(params: {
     name: string;
     email: string;
@@ -107,8 +126,10 @@ export class MailManager {
       smtpSecure: params.smtpSecure ?? null,
       createdAt: Date.now(),
     };
-    this.persistence.insertAccount(account);
+    // 先写密码再插账户行（2026-11-10 修复）：反过来的话，密文写入失败会留下
+    // 「账户在、密码缺」的残缺行（连接时报 账户密码缺失 且 UI 无补救入口）。
     await this.secrets.set(mailPasswordKey(id), params.password);
+    this.persistence.insertAccount(account);
     return account;
   }
 

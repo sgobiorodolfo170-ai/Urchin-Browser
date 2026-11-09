@@ -86,14 +86,24 @@ class NamespaceStorageImpl implements NamespaceStorage {
 }
 
 export class StorageLayer {
-  private readonly dataDir: string;
-  private readonly piDataDir: string;
+  /** 数据目录根（DD1）：主库与邮箱密码同域，migrateMailSecrets 需要读取 */
+  readonly dataDir: string;
+  /** pi 目录根（固定 userData/pi，不随数据目录）：迁移前旧密码密文所在 */
+  readonly piDataDir: string;
   private readonly main: IDatabase;
   private readonly ai: IDatabase;
   private readonly connectionPool = new Map<string, IDatabase>();
   private readonly maxConnections: number;
   private readonly dbFactory: DatabaseFactory;
   readonly secrets: SecretStore;
+  /**
+   * 邮箱域专用密钥库，根在数据目录（<dataDir>/secrets）。
+   *
+   * 依据：2026-11-10 排查「账户密码缺失」——mail 账户行随数据目录（urchin.db）走，
+   * 而此前复用 pi 根的 secrets（固定 userData/pi，不随数据目录变动），卸载重装 /
+   * 数据目录切换后两侧失配，账户在、密文丢。mail 密码必须与账户同域存放。
+   */
+  readonly mailSecrets: SecretStore;
 
   constructor(
     dataDir: string,
@@ -122,6 +132,8 @@ export class StorageLayer {
 
     // 密钥（pi.apiKey 等）属 pi 敏感数据，加密落盘到 pi 目录
     this.secrets = new SecretStoreImpl(piDataDir, safeStorage);
+    // 邮箱密码随数据目录走（与 mail_accounts 同域），不与 pi 密钥混放
+    this.mailSecrets = new SecretStoreImpl(join(dataDir, 'secrets'), safeStorage);
 
     log.info('storage layer initialized', { dataDir, piDataDir });
   }

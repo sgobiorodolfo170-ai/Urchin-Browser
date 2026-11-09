@@ -62,7 +62,13 @@ import { ClipperStore } from '../clipper/store';
 import { registerClipperHandlers } from '../clipper/register-handlers';
 import { TranslateManager, TRANSLATE_PROGRESS_CHANNEL } from '../translate/translate-manager';
 import { registerTranslateHandlers } from '../translate/register-handlers';
-import { registerMailHandlers, MailManager, MailStorage, MailContentStore } from '../mail';
+import {
+  registerMailHandlers,
+  MailManager,
+  MailStorage,
+  MailContentStore,
+  migrateMailSecrets,
+} from '../mail';
 import { createMicrosoftEngine } from '../translate/engines/microsoft';
 import { createGoogleEngine } from '../translate/engines/google';
 import { createMyMemoryEngine } from '../translate/engines/mymemory';
@@ -678,13 +684,21 @@ export function registerIpcHandlers(ctx: AppContext): void {
       throw new Error('translateManager must be registered before mail handlers');
     }
     ctx.mailContentStore = new MailContentStore();
+    // 密码密文一次性迁移：旧根（pi/secrets，随 userData）→ 新根（dataDir/secrets，
+    // 与 mail_accounts 同域）。2026-11-10「账户密码缺失」修复的存量数据搬迁。
+    migrateMailSecrets(
+      join(ctx.storageLayer.piDataDir, 'secrets'),
+      join(ctx.storageLayer.dataDir, 'secrets'),
+    );
     const mailStorage = new MailStorage(
       ctx.storageLayer.mainStore.query.bind(ctx.storageLayer.mainStore),
       ctx.storageLayer.mainStore.run.bind(ctx.storageLayer.mainStore),
     );
+    // 注意用 mailSecrets（数据目录根），不用 pi 根的 secrets——账户随数据目录走，
+    // 密码必须同域，否则卸载重装/切换数据目录后账户在、密文丢
     const mailManager = new MailManager(
       mailStorage,
-      ctx.storageLayer.secrets,
+      ctx.storageLayer.mailSecrets,
       ctx.mailContentStore,
     );
     registerMailHandlers({

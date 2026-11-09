@@ -15,7 +15,14 @@
  * 入口：左侧栏「邮箱」按钮 → 创建/激活 urchin://mail 标签页
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Mail, RefreshCw, AlertTriangle, Loader2, Settings as SettingsIcon } from 'lucide-react';
+import {
+  Mail,
+  RefreshCw,
+  AlertTriangle,
+  Loader2,
+  Settings as SettingsIcon,
+  KeyRound,
+} from 'lucide-react';
 import { AccountSetup } from './AccountSetup';
 import { FolderList } from './FolderList';
 import { MessageList } from './MessageList';
@@ -39,6 +46,8 @@ interface MailAccount {
   imapPort: number;
   imapSecure: boolean;
   createdAt: number;
+  /** 密码密文是否存在（false = 密文丢失，需重授权；2026-11-10） */
+  hasPassword: boolean;
 }
 
 interface MailFolder {
@@ -102,6 +111,12 @@ export function MailView() {
     defaultText?: string;
     inReplyToUid?: number;
   }>({});
+
+  // ────────────── 重授权（密码密文丢失，2026-11-10） ──────────────
+
+  const [reauthPassword, setReauthPassword] = useState('');
+  const [reauthSaving, setReauthSaving] = useState(false);
+  const [reauthError, setReauthError] = useState<string | null>(null);
 
   // ────────────── 三区布局（可拖拽分割线 + 持久化） ──────────────
 
@@ -219,19 +234,46 @@ export function MailView() {
         accounts: MailAccount[];
       };
       setAccounts(res.accounts);
-      if (res.accounts.length > 0 && !selectedAccount) {
-        setSelectedAccount(res.accounts[0]!);
+      // 选中态同步：保持当前选择（按 id 映射到新列表，刷新 hasPassword 等字段）；
+      // 无选择时回落首个账户。首次加载后 hasPassword 变化不再依赖此回调重建。
+      if (res.accounts.length > 0) {
+        setSelectedAccount((prev) => {
+          if (!prev) return res.accounts[0]!;
+          return res.accounts.find((a) => a.id === prev.id) ?? res.accounts[0]!;
+        });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoadingAccounts(false);
     }
-  }, [selectedAccount]);
+  }, []);
 
   useEffect(() => {
     void refreshAccounts();
   }, [refreshAccounts]);
+
+  // ────────────── 重授权提交（密码密文丢失时） ──────────────
+
+  const handleReauthSave = useCallback(async () => {
+    if (!selectedAccount || !reauthPassword) return;
+    setReauthSaving(true);
+    setReauthError(null);
+    try {
+      await window.urchin.invoke('mail.account.setPassword', {
+        accountId: selectedAccount.id,
+        password: reauthPassword,
+      });
+      setReauthPassword('');
+      // 刷新账户列表 → hasPassword 变 true → 重授权卡片消失，
+      // selectedAccount 引用更新触发文件夹加载（重连 IMAP）
+      await refreshAccounts();
+    } catch (e) {
+      setReauthError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setReauthSaving(false);
+    }
+  }, [selectedAccount, reauthPassword, refreshAccounts]);
 
   // ────────────── 文件夹加载 ──────────────
 
@@ -259,7 +301,8 @@ export function MailView() {
   }, []);
 
   useEffect(() => {
-    if (selectedAccount) {
+    // 密码缺失时不发起连接（会报 账户密码缺失），先展示重授权卡片
+    if (selectedAccount?.hasPassword) {
       void loadFolders(selectedAccount.id);
     }
   }, [selectedAccount, loadFolders]);
@@ -290,7 +333,7 @@ export function MailView() {
   }, []);
 
   useEffect(() => {
-    if (selectedAccount && selectedFolder) {
+    if (selectedAccount && selectedAccount.hasPassword && selectedFolder) {
       void loadMessages(selectedAccount.id, selectedFolder);
     }
   }, [selectedAccount, selectedFolder, loadMessages]);
@@ -386,6 +429,89 @@ export function MailView() {
             }}
             onCancel={() => setShowAccountSetup(false)}
           />
+        </div>
+      </div>
+    );
+  }
+
+  // 密码密文缺失 → 重授权卡片（顶栏保留可切换/添加账户；2026-11-10）
+  if (selectedAccount && !selectedAccount.hasPassword) {
+    return (
+      <div className="flex h-full flex-col bg-surface">
+        {/* 顶栏（与主视图一致）：账户选择 + 刷新 + 设置 */}
+        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+          <select
+            className="rounded-md border border-border bg-surface px-2 py-1 text-sm text-text"
+            value={selectedAccount.id}
+            onChange={(e) => {
+              const acc = accounts.find((a) => a.id === e.target.value);
+              if (acc) setSelectedAccount(acc);
+            }}
+          >
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} ({a.email}){!a.hasPassword ? ' — 需重新登录' : ''}
+              </option>
+            ))}
+          </select>
+          <div className="flex-1" />
+          <button
+            className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+            onClick={() => setShowAccountSetup(true)}
+            title="添加账户"
+          >
+            <SettingsIcon className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div className="w-full max-w-md rounded-lg border border-border bg-surface p-5">
+            <div className="mb-1 flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-text-secondary" />
+              <h2 className="text-sm font-semibold text-text">
+                需要重新登录「{selectedAccount.name}」
+              </h2>
+            </div>
+            <p className="mb-3 text-xs leading-relaxed text-text-secondary">
+              该账户的密码凭据已丢失（可能因卸载重装或数据目录迁移）。请输入 {selectedAccount.email}{' '}
+              的 IMAP 密码 （QQ 邮箱请填写「授权码」，在 QQ 邮箱网页版 设置 → 账号 中生成，不是 QQ
+              密码）。
+            </p>
+            <input
+              type="password"
+              className="mb-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary focus:outline-none"
+              value={reauthPassword}
+              onChange={(e) => setReauthPassword(e.target.value)}
+              placeholder="IMAP 密码 / 授权码"
+              aria-label="IMAP 密码 / 授权码"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && reauthPassword) void handleReauthSave();
+              }}
+            />
+            {reauthError && (
+              <p className="mb-2 text-xs text-red-600 dark:text-red-400">{reauthError}</p>
+            )}
+            <div className="flex items-center justify-end gap-2">
+              <button
+                className="rounded-md px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-secondary hover:text-text"
+                onClick={() => {
+                  setReauthPassword('');
+                  setReauthError(null);
+                }}
+                disabled={reauthSaving}
+              >
+                清空
+              </button>
+              <button
+                className="rounded-md bg-blue-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+                onClick={() => void handleReauthSave()}
+                disabled={reauthSaving || !reauthPassword}
+              >
+                {reauthSaving ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : null}
+                保存并重连
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );

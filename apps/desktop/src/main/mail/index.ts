@@ -9,6 +9,7 @@ export type { NotifyNewMessage, NotifyFoldersUpdated } from './mail-manager';
 export { MailStorage } from './mail-storage';
 export type { MailPersistence } from './mail-storage';
 export { MailContentStore } from './mail-content-store';
+export { migrateMailSecrets } from './migrate-mail-secrets';
 export { prepareMailHtml, sanitizeMailHtml, rewriteCidImages } from './mail-html';
 export { registerMailHandlers } from './register-handlers';
 export type { MailHandlerDeps } from './register-handlers';

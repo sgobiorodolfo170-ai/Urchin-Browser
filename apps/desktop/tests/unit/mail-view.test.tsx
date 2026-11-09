@@ -36,6 +36,7 @@ const ACCOUNT = {
   imapPort: 993,
   imapSecure: true,
   createdAt: 1,
+  hasPassword: true,
 };
 
 describe('MailView 三区布局', () => {
@@ -148,5 +149,59 @@ describe('MailView 三区布局', () => {
     // 回归锚点（2026-11-10）：根容器必须 flex-1 + min-w-0，铺满右区而非按内容收缩
     expect(compose.className).toContain('flex-1');
     expect(compose.className).toContain('min-w-0');
+  });
+
+  it('should show re-auth card instead of panes when password is missing', async () => {
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'mail.account.list') {
+        return Promise.resolve({ accounts: [{ ...ACCOUNT, hasPassword: false }] });
+      }
+      return Promise.resolve({});
+    });
+    render(<MailView />);
+
+    expect(await screen.findByText(/需要重新登录/)).toBeInTheDocument();
+    // 密码缺失时不得发起 IMAP 连接
+    const folderCalls = invoke.mock.calls.filter((call) => call[0] === 'mail.folder.list');
+    expect(folderCalls).toHaveLength(0);
+  });
+
+  it('should save re-auth password via mail.account.setPassword and reconnect', async () => {
+    let hasPassword = false;
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'mail.account.list') {
+        return Promise.resolve({ accounts: [{ ...ACCOUNT, hasPassword }] });
+      }
+      if (channel === 'mail.account.setPassword') {
+        hasPassword = true;
+        return Promise.resolve({ ok: true });
+      }
+      if (channel === 'mail.folder.list') {
+        return Promise.resolve({ folders: [], fromCache: true });
+      }
+      if (channel === 'mail.message.list') {
+        return Promise.resolve({ messages: [], total: 0, fromCache: true });
+      }
+      return Promise.resolve({});
+    });
+    render(<MailView />);
+
+    await screen.findByText(/需要重新登录/);
+    const input = screen.getByLabelText('IMAP 密码 / 授权码');
+    fireEvent.change(input, { target: { value: 'qq-auth-code' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存并重连' }));
+
+    await waitFor(() => {
+      const calls = invoke.mock.calls.filter((call) => call[0] === 'mail.account.setPassword');
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.[1]).toEqual({ accountId: 'a1', password: 'qq-auth-code' });
+    });
+    // 重授权成功 → 卡片消失、三区恢复、文件夹重新加载
+    await waitFor(() => {
+      expect(screen.queryByText(/需要重新登录/)).not.toBeInTheDocument();
+      expect(screen.getByTestId('mail-folder-list')).toBeInTheDocument();
+      const folderCalls = invoke.mock.calls.filter((call) => call[0] === 'mail.folder.list');
+      expect(folderCalls.length).toBeGreaterThan(0);
+    });
   });
 });

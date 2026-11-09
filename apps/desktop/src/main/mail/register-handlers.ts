@@ -95,7 +95,7 @@ export function registerMailHandlers(deps: MailHandlerDeps): void {
     }
   });
 
-  // mail.account.list：列出已配置的邮件账户
+  // mail.account.list：列出已配置的邮件账户（含密码密文存在性，驱动 UI 重授权卡片）
   registerHandler(ipcMain, 'mail.account.list', () => {
     const accounts = mailManager.listAccounts();
     return {
@@ -110,8 +110,16 @@ export function registerMailHandlers(deps: MailHandlerDeps): void {
         smtpPort: a.smtpPort ?? undefined,
         smtpSecure: a.smtpSecure ?? undefined,
         createdAt: a.createdAt,
+        hasPassword: mailManager.hasPassword(a.id),
       })),
     };
+  });
+
+  // mail.account.setPassword：为既有账户重设密码（重授权，2026-11-10）
+  registerHandler(ipcMain, 'mail.account.setPassword', async (req) => {
+    log.info('mail.account.setPassword', { accountId: req.accountId });
+    await mailManager.setPassword(req.accountId, req.password);
+    return { ok: true as const };
   });
 
   // mail.account.add：添加 IMAP 账户（密码经 safeStorage 加密）
@@ -140,6 +148,7 @@ export function registerMailHandlers(deps: MailHandlerDeps): void {
         smtpPort: account.smtpPort ?? undefined,
         smtpSecure: account.smtpSecure ?? undefined,
         createdAt: account.createdAt,
+        hasPassword: true,
       },
     };
   });

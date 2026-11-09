@@ -50,6 +50,10 @@ export class SecretStoreImpl implements SecretStore {
     if (existsSync(file)) unlinkSync(file);
   }
 
+  has(name: string): boolean {
+    return existsSync(this.pathFor(name));
+  }
+
   /**
    * ST6 决策：严格白名单字符，拒绝路径穿越。
    * name 格式: <providerId>/<keyName>，仅允许字母数字/下划线/连字符/斜杠

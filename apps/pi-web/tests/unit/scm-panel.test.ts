@@ -139,6 +139,12 @@ describe("ScmPanel 渲染冒烟", () => {
 		panel.unmount();
 	});
 
+	it("未就绪时显示连接中文案而非加载中", () => {
+		const panel = mount({ ready: false, status: "connecting" } as Partial<ChatState>);
+		expect(panel.container.querySelector(".scm-empty")?.textContent).toContain("Waiting for connection");
+		panel.unmount();
+	});
+
 	it("notRepo 响应显示非 Git 仓库提示", () => {
 		const panel = mount();
 		panel.render({ scmData: scmStatusResponse(1, { notRepo: true }) } as Partial<ChatState>);
@@ -205,5 +211,82 @@ describe("ScmPanel 历史视图与 D6 空仓语义", () => {
 		expect(panel.container.querySelectorAll(".scm-commit")).toHaveLength(1);
 		expect(panel.container.querySelector(".scm-files-count")?.textContent).toBe("1/2");
 		panel.unmount();
+	});
+
+	it("点击文件行请求 diff 并渲染暂存/未暂存视图；行数统计显示", () => {
+		const panel = mount();
+		panel.render({
+			scmData: scmStatusResponse(1, {
+				files: [{ path: "src/a.ts", x: "M", y: "M" }],
+				stats: { "src/a.ts": [3, 1] },
+			}),
+		} as Partial<ChatState>);
+		expect(panel.container.textContent).toContain("+3");
+		expect(panel.container.textContent).toContain("-1");
+		const row = panel.container.querySelector(".scm-file") as HTMLButtonElement;
+		expect(row).not.toBeNull();
+		act(() => row.click());
+		const diffReq = panel.sent.filter((m) => m.type === "scm_filediff").at(-1) as { reqId: number; path: string };
+		expect(diffReq?.path).toBe("src/a.ts");
+		panel.render({
+			scmData: { type: "scm_data", reqId: diffReq.reqId, ok: true, stagedText: "+staged", worktreeText: "-work" },
+		} as unknown as Partial<ChatState>);
+		expect(panel.container.textContent).toContain("+staged");
+		expect(panel.container.textContent).toContain("-work");
+		panel.unmount();
+	});
+
+	it("未跟踪文件直接进入 untracked 视图，不发 diff 请求", () => {
+		const panel = mount();
+		panel.render({
+			scmData: scmStatusResponse(1, { files: [{ path: "new.txt", x: "?", y: "?" }] }),
+		} as Partial<ChatState>);
+		const row = panel.container.querySelector(".scm-file") as HTMLButtonElement;
+		act(() => row.click());
+		expect(panel.sent.filter((m) => m.type === "scm_filediff")).toHaveLength(0);
+		expect(panel.container.textContent).toContain("new.txt");
+		panel.unmount();
+	});
+
+	it("分支列表渲染：当前分支选中、远端分组展示", () => {
+		const panel = mount();
+		panel.render({
+			scmData: scmStatusResponse(1, {
+				branches: [
+					{ name: "main", current: true },
+					{ name: "dev", current: false },
+					{ name: "origin/main", remote: true, current: false },
+				],
+			}),
+		} as Partial<ChatState>);
+		const select = panel.container.querySelector("select") as HTMLSelectElement;
+		expect(select).not.toBeNull();
+		expect(select.value).toBe("main");
+		const options = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+		expect(options).toContain("main");
+		expect(options).toContain("dev");
+		expect(options).toContain("origin/main");
+		panel.unmount();
+	});
+
+	it("分离头指针 / 上游丢失 / 领先落后 各分支文案", () => {
+		const cases: Record<string, Record<string, unknown>> = {
+			detached: { detached: true },
+			upstreamGone: { upstream: "origin/main", upstreamGone: true },
+			aheadBehind: { upstream: "origin/main", ahead: 2, behind: 1 },
+		};
+		for (const [name, patch] of Object.entries(cases)) {
+			const panel = mount();
+			panel.render({ scmData: scmStatusResponse(1, { files: [], ...patch }) } as Partial<ChatState>);
+			const header = panel.container.querySelector(".scm-branch-current")?.textContent ?? "";
+			if (name === "detached") {
+				expect(header).toContain("Detached HEAD");
+			} else if (name === "upstreamGone") {
+				expect(header).toContain("Upstream deleted");
+			} else {
+				expect(header).toContain("↑2 ↓1");
+			}
+			panel.unmount();
+		}
 	});
 });

@@ -99,6 +99,8 @@ export default defineConfig({
         'src/components/MessageList.tsx',
         // P6 欠账补齐（2026-11-10）：SCMPanel（D6 空仓文案断言 + 渲染冒烟）
         'src/components/SCMPanel.tsx',
+        // P6 欠账补齐（2026-11-10）：ChatInput（发送链路 / slash 菜单 / 快捷短语冒烟）
+        'src/components/ChatInput.tsx',
         'src/components/LeftPanel.tsx',
         'src/components/TopBar.tsx',
         'src/components/ModelConfigModal.tsx',

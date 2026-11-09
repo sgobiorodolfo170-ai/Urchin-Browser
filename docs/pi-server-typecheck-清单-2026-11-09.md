@@ -212,7 +212,7 @@ vendored 导出没有类型 → 回调失去上下文类型 → 每个形参各�
 | **B3** | **全量 vendored shim**：coding-agent 剩余 38 个导出 + `pi-tui` + `pi-mcp/oauth`，形状照 `vendor/pi/packages/*/src` 抄 | 新增 2-3 个 `src/pi-shims-*.d.ts` | 408 → ≈20~40 | 中。**形状精度**决定残留量；不追求一次到位，够用即可 |
 | **B4** | **引擎剪枝收尾**（C2+C3+C4）：删 `claude` / `codex` / `agy` 死分支、修 `switch_engine` 文案 | `native-cli-session.ts` / `terminals.ts` / `index.ts` | −10 | **高**。要动约 200 行；需用户先定「删」还是「恢复引擎」 |
 | **B5** | **零散真实缺陷**（C5/C6/C7）+ 复跑残留 | `plugins.ts` / `index.ts` / `plugin-assets.ts` / `device-lan.ts` + 可能新增 `src/plugin-sdk/` | → 0 | 中。C5 的新增类型模块需确认 |
-| **B6**（已完成） | **接门禁 + 收口**：`typecheck:pi-server` 进 `verify` 链（根 `package.json`）、AGENTS 工作流约定第 1 条与 §九.4 新增 **G19**、`docs/03 §5` CI 门槛行、`.github/workflows/ci.yml` 新增 `Typecheck pi-server` 步骤、交接文档 §9.2/§9.5 口径；`tests/pi-server` **已一并纳入**（实测 0 错误，eslint 继续忽略） | 配置 + 5 处文档 | 保持 0 | 低 |
+| **B6**（已完成） | **接门禁 + 收口**：`typecheck:pi-server` 进 `verify` 链（根 `package.json`）、AGENTS 工作流约定第 1 条与 §九.4 新增 **G19**、`docs/03 §5` CI 门槛行、`.github/workflows/ci.yml` 新增 `Typecheck pi-server` 步骤、交接文档 §9.2/§9.5 口径；`tests/pi-server` **已一并纳入**（实测 0 错误；eslint 当时仍忽略，同日 P1-1 已补上） | 配置 + 5 处文档 | 保持 0 | 低 |
 
 **每批验收**：
 

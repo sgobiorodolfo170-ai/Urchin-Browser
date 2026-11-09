@@ -58,11 +58,6 @@ export default tseslint.config(
       // plugin-sdk 是上游 plugin-sdk/index.d.ts 的逐字副本（MIT）：不套用本项目风格规则，
       // 便于与上游 diff 升级
       'packages/pi-web-host/src/plugin-sdk/**',
-      // pi-server 的测试与源码同源（上游 pi-web-ui server），被测源码本身已排除
-      // 在 tsc/eslint 之外（见 packages/pi-web-host/tsconfig.json）。这些测试沿用
-      // 上游断言风格，若做类型感知 lint 会因 import 闭包把整棵 pi-server 拉进
-      // 项目而报上游既有类型缺口；改由 vitest 运行 + 断言把关。
-      'packages/pi-web-host/tests/pi-server/**',
     ],
   },
 
@@ -76,6 +71,22 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+
+  // pi-server 的测试（上游 pi-web-ui server 同源）纳入 lint。
+  // 这些文件只被 packages/pi-web-host/tsconfig.pi-server.json 收录，主 tsconfig.json
+  // 里 exclude 了它们；而 projectService 只认最近的 tsconfig.json，直接开就会
+  // 报 "was not found by the project service"。故这里关掉 projectService，
+  // 显式把 project 指向 pi-server 程序（改动其 include 时必须同步本行）。
+  {
+    files: ['packages/pi-web-host/tests/pi-server/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: ['./packages/pi-web-host/tsconfig.pi-server.json'],
         tsconfigRootDir: import.meta.dirname,
       },
     },

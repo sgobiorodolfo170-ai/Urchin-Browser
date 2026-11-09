@@ -40,7 +40,10 @@ desktop.ini
 
 # 日志与本地数据
 *.log
-logs/
+# 只忽略仓库根的 logs/，不要用无锚定的 `logs/`：它会吞掉同名源码目录
+# （2026-11-09 实测：apps/desktop/src/main/logs/ 的 3 个源文件 + 2 个测试因此从未入库，
+#  本地 typecheck 绿、CI 干净 clone 直接 TS2307）。门禁见 scripts/check-src-tracked.mjs（G18）
+/logs/
 .env
 .env.local
 .env.*.local

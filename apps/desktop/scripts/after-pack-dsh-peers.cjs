@@ -114,4 +114,72 @@ exports.default = async function afterPack(context) {
       `补齐 peer-only 依赖 ${copied.length} 个`,
   );
   for (const name of copied.sort()) console.log(`[after-pack]   + ${name}`);
+
+  pruneLongPaths(appDir);
 };
+
+/**
+ * MAX_PATH 剪除（2026-11-10 dev.175 自动更新失败事故根源修复）。
+ *
+ * 背景：electron-builder NSIS 卸载器在 --updated 语义下把安装目录文件逐个
+ * Rename 到 %TEMP%\nsX.tmp\old-install 暂存区（uninstaller.nsh atomicRMDir，
+ * 事务式卸载：任一文件失败即整体还原 + Abort，卸载器退出码 2，安装器显示
+ * 「Failed to uninstall old application files ... : 2」）。NSIS 不感知
+ * longPathAware，目标路径 >259 字符即 MoveFile 失败并被误报为 "File is busy"。
+ *
+ * dev.159/175 实测踩雷文件：@deepseek-ai/dsh-experimental-inspector 内的
+ * Chromium DevTools issue 描述文档（genericFormInputAssignedAutocompleteValueToIdOrNameAttributeError.md
+ * 等 4-5 个，相对路径 195~206 字符，暂存目标 264~269）。这些 .md 只在实验性
+ * inspector 的 devtools 前端展示弃用告警时读取，运行主链路不依赖。
+ *
+ * 阈值推导（与 src/main/update/long-path-guard.ts 同一公式，双重保险）：
+ * - 安装目录前缀最坏情形 C:\Users\<20 字符用户名>\AppData\Local\Programs\@urchindesktop ≈ 64
+ * - 暂存前缀最坏情形 C:\Users\<20>\AppData\Local\Temp + \nsXXXXXX.tmp\old-install ≈ 71
+ * - 源路径 ≤259 才能安装成功 → rel ≤ 195；更新时暂存目标 ≤259 → rel ≤ 188
+ * 剪除 >188 的文件（当前唯一命中即上述 devtools 文档），并在剪除后断言无
+ * rel >195 的残余（>195 连安装都会失败，必须让打包失败而不是发货）。
+ */
+function pruneLongPaths(appOutDir) {
+  const PRUNE_REL_LIMIT = 188; // 相对 appOutDir 的路径长度阈值
+  const FAIL_REL_LIMIT = 195; // 残余超过此值直接让打包失败
+  const pruned = [];
+  const remaining = [];
+
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile()) {
+        const rel = full.slice(appOutDir.length); // 含前导分隔符
+        if (rel.length > PRUNE_REL_LIMIT) {
+          try {
+            require('node:fs').rmSync(full, { force: true });
+            pruned.push(rel);
+          } catch (error) {
+            remaining.push(`${rel}（删除失败: ${error.message}）`);
+          }
+        }
+      }
+    }
+  };
+  walk(appOutDir);
+
+  const overFail = remaining.filter((r) => r.split('（')[0].length > FAIL_REL_LIMIT);
+  console.log(
+    `[after-pack] MAX_PATH 剪除 ${pruned.length} 个超长路径文件（阈值 ${PRUNE_REL_LIMIT}）`,
+  );
+  for (const rel of pruned) console.log(`[after-pack]   - ${rel}`);
+  if (overFail.length > 0) {
+    throw new Error(
+      `[after-pack] 仍有 ${overFail.length} 个文件相对路径 >${FAIL_REL_LIMIT}（安装/更新必败）:\n` +
+        overFail.join('\n'),
+    );
+  }
+}

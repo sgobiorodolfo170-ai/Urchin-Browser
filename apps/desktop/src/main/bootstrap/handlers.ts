@@ -27,7 +27,7 @@ import {
   session,
   net,
 } from 'electron';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createLogger } from '@urchin/logger';
 import { registerHandler, DEVTOOLS_EVENT_CHANNEL } from '@urchin/ipc-contract';
@@ -324,6 +324,8 @@ export function registerIpcHandlers(ctx: AppContext): void {
     currentVersion: app.getVersion(),
     isPackaged: app.isPackaged,
     notify: (state) => sendToMainWindow(UPDATE_EVENT_CHANNEL, state),
+    // 超长路径自卫（long-path-guard）：打包态安装目录 = exe 所在目录
+    installDir: app.isPackaged ? dirname(app.getPath('exe')) : undefined,
   });
   registerUpdateHandlers(ipcMain, updateService);
 

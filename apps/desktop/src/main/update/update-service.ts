@@ -32,6 +32,7 @@
 import { createLogger } from '@urchin/logger';
 import { IpcError, IpcErrorCode } from '@urchin/ipc-contract';
 import type { UpdateProgress, UpdateState, UpdateStatus } from '@urchin/ipc-contract';
+import { precleanLongPaths } from './long-path-guard';
 
 const log = createLogger('update-service');
 
@@ -107,6 +108,12 @@ export interface UpdateServiceOptions {
   notify: (state: UpdateState) => void;
   /** 更新器工厂（默认真实 electron-updater；测试注入 mock）。 */
   createUpdater?: () => Promise<UpdaterHandle>;
+  /**
+   * 安装目录（打包态传 path.dirname(app.getPath('exe'))）。
+   * 用于 quitAndInstall 前的超长路径自卫（long-path-guard，2026-11-10
+   * dev.175 更新失败事故）：缺省不执行自卫，保持旧路径行为可测。
+   */
+  installDir?: string;
 }
 
 export interface UpdateService {
@@ -368,6 +375,25 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
     // NSIS non-oneClick 沿用上次安装目录）。
     setImmediate(() => {
       try {
+        // 超长路径自卫（2026-11-10 事故）：NSIS 卸载器把旧文件 Rename 到
+        // %TEMP% 暂存区，目标路径超 MAX_PATH 会误报 "File is busy" 并以
+        // 退出码 2 中止更新。先把越界文件就地改短名——任何失败只记日志，
+        // 不阻断更新（打包侧 afterPack 剪除是源头硬门禁，这里是运行时兜底）。
+        if (options.installDir) {
+          try {
+            const preclean = precleanLongPaths(options.installDir);
+            if (preclean.renamed.length > 0 || preclean.skipped.length > 0) {
+              log.info('long-path preclean before quitAndInstall', {
+                renamed: preclean.renamed.length,
+                skipped: preclean.skipped.length,
+              });
+            }
+          } catch (e) {
+            log.warn('long-path preclean failed (continue update anyway)', {
+              error: toMessage(e),
+            });
+          }
+        }
         updater?.quitAndInstall(true, true);
       } catch (e) {
         log.error('quitAndInstall failed', { error: toMessage(e) });

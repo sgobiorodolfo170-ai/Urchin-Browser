@@ -9,7 +9,7 @@
  * - 防降级：每次切通道后 allowDowngrade=false
  * - download：状态守卫（非 available 抛 IpcError STATE）→ downloading（进度推送）
  *   → downloaded（事件路径 + 兜底路径）
- * - install：状态守卫 → installing + quitAndInstall(true, true)（静默装 + 装完拉起）
+ * - install：状态守卫 → installing + quitAndInstall(false, true)（可见安装向导 + 装完拉起）
  * - 懒加载单例：多次操作只初始化一次更新器；初始化失败允许重试
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -380,6 +380,6 @@ describe('createUpdateService', () => {
     expect(state.status).toBe('installing');
     expect(updater.quitAndInstall).not.toHaveBeenCalled(); // setImmediate 前不退出
     await flushImmediate();
-    expect(updater.quitAndInstall).toHaveBeenCalledWith(true, true);
+    expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
   });
 });

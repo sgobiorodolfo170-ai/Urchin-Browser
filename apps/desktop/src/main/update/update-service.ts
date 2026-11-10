@@ -370,9 +370,12 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
       });
     }
     const snap = setStatus('installing');
-    // setImmediate：先让 IPC 响应返回渲染层，再 quitAndInstall 触发退出安装
-    // （isSilent=true 静默装、isForceRunAfter=true 装完自动拉起应用；
-    // NSIS non-oneClick 沿用上次安装目录）。
+    // setImmediate：先让 IPC 响应返回渲染层，再 quitAndInstall 触发退出安装。
+    // isSilent=false（2026-11-10 dev.176 用户反馈）：静默装全程无任何进度参照，
+    // 用户以为没反应会在 NSIS 就地解压期间手动启动应用——半装树下主进程共享
+    // chunk 加载失败（Cannot find module 'better-sqlite3' 弹窗事故）。改为可见
+    // 安装向导（oneClick=false 配置生效），自带进度条与完成页，且装完由向导
+    // 自动拉起应用（isForceRunAfter=true）。
     setImmediate(() => {
       try {
         // 超长路径自卫（2026-11-10 事故）：NSIS 卸载器把旧文件 Rename 到
@@ -394,7 +397,7 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
             });
           }
         }
-        updater?.quitAndInstall(true, true);
+        updater?.quitAndInstall(false, true);
       } catch (e) {
         log.error('quitAndInstall failed', { error: toMessage(e) });
       }

@@ -49,8 +49,8 @@ export interface ImportHandlerDeps {
   readonly parseBookmarksHtml?: (html: string) => ImportTreeNode;
   /** 解析 Chromium profile 收藏夹（默认读 Bookmarks JSON）。 */
   readonly parseChromiumBookmarks?: (profileDir: string) => ImportTreeNode;
-  /** 解析 Firefox profile places.sqlite（默认复制临时文件只读打开）。 */
-  readonly parseFirefoxPlaces?: (profileDir: string) => ImportTreeNode;
+  /** 解析 Firefox profile places.sqlite（默认复制临时文件只读打开；better-sqlite3 按需加载故为异步）。 */
+  readonly parseFirefoxPlaces?: (profileDir: string) => ImportTreeNode | Promise<ImportTreeNode>;
   /** 从 IPC sender 反查宿主窗口（默认 BrowserWindow.fromWebContents）。 */
   readonly getWindowFromSender?: (sender: unknown) => BrowserWindow | undefined;
 }
@@ -119,7 +119,8 @@ export function registerImportHandlers(deps: ImportHandlerDeps): void {
   });
 
   // import.bookmarksFromBrowser：按 detect 返回的 id 导入指定浏览器 profile
-  registerHandler(ipcMain, 'import.bookmarksFromBrowser', (req) => {
+  // （async：Firefox 分支的 better-sqlite3 按需加载为异步，见 firefox-profiles.ts）
+  registerHandler(ipcMain, 'import.bookmarksFromBrowser', async (req) => {
     log.info('import.bookmarksFromBrowser', { id: req.id });
     const browsers = detect();
     const target = browsers.find((b) => b.id === req.id);
@@ -132,7 +133,7 @@ export function registerImportHandlers(deps: ImportHandlerDeps): void {
       const tree =
         target.bookmarksSource === 'chromium-json'
           ? parseChromium(target.profileDir)
-          : parseFirefox(target.profileDir);
+          : await parseFirefox(target.profileDir);
       const summary = importTreeIntoBookmarks(bookmarkManager, {
         sourceName: target.displayName,
         root: tree,

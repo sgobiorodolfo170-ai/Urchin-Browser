@@ -255,7 +255,10 @@ function buildJson(selection, entries) {
     files: selection.files,
     totalDurationSec: selection.totalDurationSec,
     totalTests: selection.recommended.reduce((n, e) => n + e.tests, 0),
-    recommended: selection.recommended,
+    recommended: selection.recommended.map((entry) => ({
+      ...entry,
+      durationLabel: formatDuration(entry.durationSec),
+    })),
     all: [...entries]
       .sort((a, b) => a.spec.localeCompare(b.spec))
       .map((entry) => ({

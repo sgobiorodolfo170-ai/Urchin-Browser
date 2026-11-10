@@ -3,6 +3,12 @@
 > 状态：已生效 · 建立：2026-11-10 · 决策：[ADR-018](./decisions/ADR-018-E2E按需选择.md)（按需选择）· [ADR-019](./decisions/ADR-019-内存回归线环境分线.md)（内存回归线）
 > 单一真源：[`apps/desktop/tests/e2e/manifest.json`](../apps/desktop/tests/e2e/manifest.json) · 门禁：G20 `pnpm check:e2e-manifest` · 运行器：`scripts/e2e-select.mjs`
 
+> **30 秒看懂**
+> 1. 改完代码，AI 先跑 `pnpm e2e:select -- --dry-run --json`，算出「这次建议跑哪些」。
+> 2. AI 在**聊天里**列出 spec 让你勾选（项目不弹窗、不建窗口）。
+> 3. 你选完，AI 只跑你选的；想全量跑就 `pnpm e2e`。
+> 4. 这套按需机制坏了/算不出来/你不在场 → 直接 `pnpm e2e` 回退，原方式永远可用。
+
 ---
 
 ## 1. 一句话规则

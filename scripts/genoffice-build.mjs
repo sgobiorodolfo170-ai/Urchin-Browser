@@ -33,6 +33,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const vendorRoot = join(repoRoot, 'vendor', 'genoffice');
 
+/**
+ * electron-vite 取 Electron 主版本时优先读 `ELECTRON_MAJOR_VER`，否则
+ * `require.resolve('electron/package.json')`。vendor 的 electron 是**嵌套安装**
+ * （`apps/<app>/node_modules/electron`，版本 43.8.6/43.8.7），根 `node_modules` 没有——
+ * 干净构建会直接 `Cannot find module 'electron/package.json'`（2026-11-10 CI 实测）。
+ * GenOffice 上游 pin `electron ^43.8`，且构建产物与 Electron 二进制无关，显式给主版本即可。
+ */
+if (!process.env.ELECTRON_MAJOR_VER) process.env.ELECTRON_MAJOR_VER = '43';
+
 /** 支持的编辑器 app（npm workspace 名后缀）。shell = 上游 Home 前端（阶段 4.6）。
  *  slides = PowerPoint 演示文档（阶段 5）；sheets = Excel 表格（阶段 5，需 Rust sidecar）。 */
 const SUPPORTED = ['markdown', 'pdf', 'html', 'docs', 'slides', 'sheets', 'shell'];
@@ -70,7 +79,12 @@ if (!existsSync(join(vendorRoot, 'package.json'))) {
 if (!checkOnly) {
   if (!existsSync(join(vendorRoot, 'node_modules'))) {
     console.log('[genoffice] node_modules 缺失，先执行 npm ci（首次较慢，需联网）');
-    npm(['ci', '--no-audit', '--no-fund']);
+    // --ignore-scripts：vendor 根 postinstall 是 `install-electron`，它依赖根
+    // node_modules/electron 的 bin；而 electron 被 npm 嵌套安装到 apps/*，
+    // 干净环境会在 postinstall 阶段 `'install-electron' is not recognized` 直接失败。
+    // 构建（electron-vite + cargo + notices）不需要 Electron 二进制；主版本经上方
+    // ELECTRON_MAJOR_VER 提供。本机验证：npm ci --ignore-scripts 后 markdown 构建通过。
+    npm(['ci', '--no-audit', '--no-fund', '--ignore-scripts']);
   }
 
   for (const app of apps) {

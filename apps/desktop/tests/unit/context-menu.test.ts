@@ -523,7 +523,7 @@ describe('buildMenuTemplate 翻译项', () => {
     ).toBe(false);
   });
 
-  it('handleContextMenu should pass tabId and offset-compensated coords to translateSelection', () => {
+  it('handleContextMenu should pass tabId and offset-compensated coords to translateSelection', async () => {
     const translate = {
       isActive: vi.fn().mockReturnValue(false),
       translatePage: vi.fn(),
@@ -548,6 +548,52 @@ describe('buildMenuTemplate 翻译项', () => {
       { x: 10, y: 20 },
     );
     clickItem(contextMenuRuntime.lastTemplate!, '翻译选中文字');
-    expect(translate.translateSelection).toHaveBeenCalledWith(1, 'Hi', 15, 26);
+    // 选区几何采集是异步的（executeJavaScript），派发在微任务里
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // 无 executeJavaScript（测试替身）：几何缺省，第五参为 undefined
+    expect(translate.translateSelection).toHaveBeenCalledWith(1, 'Hi', 15, 26, undefined);
+  });
+
+  it('handleContextMenu should pass offset-compensated selection geometry to translateSelection', async () => {
+    const translate = {
+      isActive: vi.fn().mockReturnValue(false),
+      translatePage: vi.fn(),
+      translateSelection: vi.fn(),
+      restore: vi.fn(),
+    };
+    const wc = {
+      copy: vi.fn(),
+      paste: vi.fn(),
+      savePage: vi.fn(),
+      executeJavaScript: vi.fn().mockResolvedValue({
+        x: 100,
+        y: 200,
+        width: 320,
+        height: 69,
+        lines: 3,
+      }),
+    } as unknown as Electron.WebContents;
+    handleContextMenu(
+      wc,
+      {
+        x: 5,
+        y: 6,
+        selectionText: 'Hello',
+        editFlags: { canCopy: true, canPaste: true },
+      } as unknown as Electron.ContextMenuParams,
+      baseTab,
+      { getDataDir: () => 'C:/data', translate },
+      { x: 10, y: 20 },
+    );
+    clickItem(contextMenuRuntime.lastTemplate!, '翻译选中文字');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // 选区几何随行（x/y 已按 BrowserView 偏移补偿；宽高/行数原样）
+    expect(translate.translateSelection).toHaveBeenCalledWith(1, 'Hello', 15, 26, {
+      x: 110,
+      y: 220,
+      width: 320,
+      height: 69,
+      lines: 3,
+    });
   });
 });

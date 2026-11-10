@@ -13,12 +13,15 @@ import {
   computeSelectionCardBounds,
   estimateCardSize,
   clampCardSize,
+  maxCardHeightFor,
+  resolveTextSize,
   CARD_WIDTH,
   SHADOW_PAD,
   CARD_PAD,
   MIN_CARD_WIDTH,
   MIN_CARD_HEIGHT,
   MAX_CARD_HEIGHT,
+  MAX_CARD_HEIGHT_LIMIT,
   MAX_TEXT_WIDTH,
   type SelectionCardHostWindow,
 } from '../../src/main/translate/selection-card-overlay';
@@ -167,6 +170,13 @@ describe('clampCardSize', () => {
     });
   });
 
+  it('should honor a custom max height (content area larger than default cap)', () => {
+    expect(clampCardSize(10000, 10000, MAX_CARD_HEIGHT_LIMIT)).toEqual({
+      cardWidth: CARD_WIDTH,
+      cardHeight: MAX_CARD_HEIGHT_LIMIT,
+    });
+  });
+
   it('should add padding for in-range text size', () => {
     expect(clampCardSize(400, 200)).toEqual({
       cardWidth: 400 + CARD_PAD,
@@ -179,6 +189,58 @@ describe('clampCardSize', () => {
       cardWidth: 100 + CARD_PAD,
       cardHeight: 48 + CARD_PAD,
     });
+  });
+});
+
+// ── 选区几何基准（2026-11-10 用户需求） ─────────────────────────────
+
+describe('maxCardHeightFor', () => {
+  it('should keep the default cap on a normal window', () => {
+    // 内容区 800 高 → 可容纳 784，硬上限 560 > 264 → 560
+    expect(maxCardHeightFor(800)).toBe(MAX_CARD_HEIGHT_LIMIT);
+  });
+
+  it('should never go below the default cap', () => {
+    expect(maxCardHeightFor(120)).toBe(MAX_CARD_HEIGHT);
+  });
+
+  it('should follow the content height on small windows', () => {
+    expect(maxCardHeightFor(300)).toBe(300 - 16);
+  });
+});
+
+describe('resolveTextSize', () => {
+  it('should return the translated size when no selection geometry is available', () => {
+    expect(resolveTextSize({ width: 120, height: 23 })).toEqual({ width: 120, height: 23 });
+  });
+
+  it('should grow a short translation card to the selection width and height', () => {
+    // 选中 380×70（3 行）的段落，译文只有「短」两字（估算 72×23）
+    expect(
+      resolveTextSize({ width: 72, height: 23 }, { width: 380, height: 70, lines: 3 }),
+    ).toEqual({
+      width: 380,
+      height: 70,
+    });
+  });
+
+  it('should keep a wider translation width instead of truncating it', () => {
+    expect(
+      resolveTextSize({ width: 400, height: 46 }, { width: 200, height: 24, lines: 1 }),
+    ).toEqual({ width: 400, height: 46 });
+  });
+
+  it('should floor the height by selection line count when rect height is small', () => {
+    // 页面行高比结果卡行高小：2 行 × 23 = 46 > 选区矩形高 20
+    expect(
+      resolveTextSize({ width: 10, height: 10 }, { width: 10, height: 20, lines: 2 }).height,
+    ).toBe(46);
+  });
+
+  it('should ceil fractional selection geometry', () => {
+    expect(
+      resolveTextSize({ width: 10, height: 10 }, { width: 99.2, height: 30.4, lines: 1 }),
+    ).toEqual({ width: 100, height: 31 });
   });
 });
 
@@ -266,7 +328,7 @@ describe('SelectionCardOverlay.applyMeasuredSize', () => {
       onLoad: () => Promise.resolve(),
       createWindow: () => win as unknown as Electron.BrowserWindow,
     });
-    // 长文本估算高度超上限；实测单行窄结果应显著小于估算夹边后的 MAX_CARD_HEIGHT
+    // 长文本估算高度超上限；实测单行窄结果应显著小于估算夹边后的内容区上限
     overlay.show({
       tabId: 1,
       source: 'a',
@@ -275,11 +337,34 @@ describe('SelectionCardOverlay.applyMeasuredSize', () => {
       y: 100,
     });
     const estimatedHeight = boundsHistory.at(-1)?.height ?? 0;
-    expect(estimatedHeight).toBe(MAX_CARD_HEIGHT + SHADOW_PAD * 2);
+    expect(estimatedHeight).toBe(maxCardHeightFor(800) + SHADOW_PAD * 2);
 
     overlay.applyMeasuredSize(1, MAX_TEXT_WIDTH, 23);
     const measuredHeight = boundsHistory.at(-1)?.height ?? 0;
     // 单行实测 23+24=47 < 高度下限 48 → 抬到 MIN_CARD_HEIGHT
     expect(measuredHeight).toBe(MIN_CARD_HEIGHT + SHADOW_PAD * 2);
+  });
+
+  it('should size the card to the selection geometry for a short translation', () => {
+    const { win, boundsHistory } = makeFakeWin();
+    const overlay = new SelectionCardOverlay({
+      getParentWindow: makeFakeParent,
+      preloadPath: 'test',
+      getTheme: () => 'light',
+      onLoad: () => Promise.resolve(),
+      createWindow: () => win as unknown as Electron.BrowserWindow,
+    });
+    // 选中 380×70、3 行的段落，译文只有「短」：卡片不得折叠成小方块
+    overlay.show({
+      tabId: 1,
+      source: 'a long english paragraph',
+      result: '短',
+      x: 100,
+      y: 100,
+      selection: { x: 100, y: 100, width: 380, height: 70, lines: 3 },
+    });
+    const bounds = boundsHistory.at(-1);
+    expect(bounds?.width).toBe(380 + CARD_PAD + SHADOW_PAD * 2);
+    expect(bounds?.height).toBe(70 + CARD_PAD + SHADOW_PAD * 2);
   });
 });

@@ -27,6 +27,7 @@ import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import type { TabManager } from '../tabs/tab-manager';
 import type { TabSnapshot } from '../tabs/types';
+import { readSelectionRect, type SelectionRect } from '../translate/selection-rect';
 import { createLogger } from '@urchin/logger';
 
 const log = createLogger('context-menu');
@@ -52,7 +53,17 @@ export interface ContextMenuDeps {
     /** 该 tab 当前是否处于翻译激活态（决定「翻译页面」vs「恢复原文」） */
     isActive: (tabId: number) => boolean;
     translatePage: (tabId: number) => void;
-    translateSelection: (tabId: number, text: string, x: number, y: number) => void;
+    /**
+     * 划词翻译。x/y 为窗口相对锚点坐标；selection 为选区几何（窗口相对），
+     * 供结果卡按选中的文字宽高/行数定形（读取失败时缺省，卡片退回译文估算）。
+     */
+    translateSelection: (
+      tabId: number,
+      text: string,
+      x: number,
+      y: number,
+      selection?: SelectionRect,
+    ) => void;
     restore: (tabId: number) => void;
   };
   /**
@@ -325,6 +336,14 @@ export function handleContextMenu(
   deps: ContextMenuDeps,
   offset: { x: number; y: number } = { x: 0, y: 0 },
 ): void {
+  // 选区几何（2026-11-10）：菜单弹出时选区仍在页面里，先异步取一次并集矩形与行数，
+  // 点「翻译选中文字」时随结果一起交给结果卡做尺寸基准。读取与菜单弹出并行，不阻塞
+  // 菜单显示；失败/无选区时为 null，卡片退回译文估算尺寸。
+  const selectionRectPromise =
+    tabInfo?.id !== undefined && deps.translate && params.selectionText
+      ? readSelectionRect(wc)
+      : null;
+
   const template = buildMenuTemplate(params, tabInfo, {
     copy: () => {
       try {
@@ -347,15 +366,28 @@ export function handleContextMenu(
         });
       }
     },
-    // 翻译动作（M24 dev.81）：deps.translate 未注入（如部分测试场景）时模板自动省略
+    // 翻译动作（M24 dev.81）：deps.translate 未注入（如部分测试场景）时模板自动省略。
+    // 选区几何读取是异步的：点击时若已就绪就直接带过去，否则等它落定再派发——
+    // 期间 tab 可能被关闭，由装配方（index.ts）的活跃 tab 守卫兜底。
     translateSelection: (text) => {
-      if (tabInfo?.id !== undefined && deps.translate) {
-        deps.translate.translateSelection(
-          tabInfo.id,
+      const translateDeps = deps.translate;
+      if (tabInfo?.id === undefined || !translateDeps) return;
+      const tabId = tabInfo.id;
+      const anchorX = Math.round(params.x + offset.x);
+      const anchorY = Math.round(params.y + offset.y);
+      const dispatch = (rect: SelectionRect | null): void => {
+        translateDeps.translateSelection(
+          tabId,
           text,
-          Math.round(params.x + offset.x),
-          Math.round(params.y + offset.y),
+          anchorX,
+          anchorY,
+          rect ? { ...rect, x: rect.x + offset.x, y: rect.y + offset.y } : undefined,
         );
+      };
+      if (selectionRectPromise) {
+        void selectionRectPromise.then(dispatch);
+      } else {
+        dispatch(null);
       }
     },
     translatePage: () => {

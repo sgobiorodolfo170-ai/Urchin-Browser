@@ -8,11 +8,17 @@
  *   （status-bar-overlay.ts）同款架构改为独立透明 frameless 子 BrowserWindow。
  * - 透明 BrowserWindow 在仓库已有成功用例（capture-overlay / status-bar-overlay）；
  *   不用透明 BrowserView 以规避已记录的 Windows DWM/TDR 风险。
- * - 尺寸自适应（2026-11-10 用户需求）：主进程只有文本估算（CJK/拉丁字宽粗估），
- *   渲染层加载结果后按真实排版实测文本自然宽度与定宽折行高度，经
- *   translate.cardResize 回报（seq 关联结果、过期测量丢弃），主进程夹边后重设
- *   窗口 bounds——卡片随文字长短伸缩，不再固定 448px 宽。估算值仅决定首帧，
- *   偏差由实测值纠正；高度超上限时结果区内部滚动兜底。
+ * - 尺寸自适应（2026-11-10 用户需求，同日第二轮按用户反馈改正）：
+ *   旧口径只按「译文自身排版」定尺寸——短译文会把卡片折叠成一个小方块，与用户选中的
+ *   那段文字的宽高、行数完全不成比例，背景矩形与文本区也显得一大一小。现口径以选区
+ *   几何为基准：卡片宽高至少覆盖选区矩形（宽取「选区宽 / 译文自然宽」较大者，高取
+ *   「选区高 / 选区行数×行高 / 译文实测高」三者最大），背景矩形与文本区始终同一形状
+ *   （文本区填满卡片内边距以内的全部空间，不再出现空腔或折叠）。主进程只有文本估算
+ *   （CJK/拉丁字宽粗估）决定首帧，渲染层加载结果后按真实排版实测文本自然宽度与定宽
+ *   折行高度，经 translate.cardResize 回报（seq 关联结果、过期测量丢弃），主进程与
+ *   选区几何取并集后重设窗口 bounds。高度上限随内容区高度放大（见 maxCardHeightFor，
+ *   硬上限 MAX_CARD_HEIGHT_LIMIT），避免长选区被压成内部滚动区；仍超限时结果区内部
+ *   滚动兜底。
  * - 仅显示译文不显示原文（2026-11-10 用户需求），卡片内容即结果文本。
  * - 关闭方式（2026-11-10 用户需求）：点击卡片外任意位置关闭。卡片 show 时获取
  *   焦点，其后任何把焦点移出卡片的点击（网页 / 浏览器界面 / 其它应用窗口）都会
@@ -25,6 +31,7 @@
 import { BrowserWindow } from 'electron';
 import { createLogger } from '@urchin/logger';
 import type { TranslateSelectionResultEvent } from '@urchin/ipc-contract';
+import type { SelectionRect } from './selection-rect';
 
 const log = createLogger('selection-card-overlay');
 
@@ -38,8 +45,13 @@ export const CARD_PAD = 24;
 export const SHADOW_PAD = 8;
 /** 卡片高度下限：单行结果 + 内边距 */
 export const MIN_CARD_HEIGHT = 48;
-/** 卡片高度上限：超出部分由结果区内部滚动承接 */
+/** 卡片高度默认上限（px）：短结果不超过此高，超出部分由结果区内部滚动承接 */
 export const MAX_CARD_HEIGHT = 264;
+/**
+ * 卡片高度硬上限（px）：窗口越高卡片可越高（长选区不被压成滚动区），
+ * 但再大也不超过此值，避免结果卡铺满整个内容区。
+ */
+export const MAX_CARD_HEIGHT_LIMIT = 560;
 /** 文本区最大宽度（px）：卡片最大宽 - 内边距，渲染层测量上限与之同步 */
 export const MAX_TEXT_WIDTH = CARD_WIDTH - CARD_PAD;
 /** 结果区上下安全边距（窗口定位时夹边用） */
@@ -99,6 +111,11 @@ export interface SelectionCardShowPayload {
   error?: string;
   x: number;
   y: number;
+  /**
+   * 选区几何（窗口相对坐标，2026-11-10 用户需求）：结果卡的宽高与行数以选中的文字
+   * 为基准，背景矩形与译文文本区同一形状。缺省（脚本读取失败/无选区）时退回译文估算。
+   */
+  selection?: SelectionRect;
 }
 
 /**
@@ -126,19 +143,55 @@ export function estimateCardSize(text: string): CardSize {
 
 /**
  * 文本区尺寸 → 卡片尺寸夹边：宽度夹 [MIN_CARD_WIDTH, CARD_WIDTH]，高度夹
- * [MIN_CARD_HEIGHT, MAX_CARD_HEIGHT]（超高由结果区内部滚动承接）。
+ * [MIN_CARD_HEIGHT, maxHeight]（默认 MAX_CARD_HEIGHT；超高由结果区内部滚动承接）。
  * 纯函数导出供单测验证边界，applyBounds 与估算兜底共用。
  */
 export function clampCardSize(
   textWidth: number,
   textHeight: number,
+  maxHeight: number = MAX_CARD_HEIGHT,
 ): { cardWidth: number; cardHeight: number } {
   return {
     cardWidth: Math.min(CARD_WIDTH, Math.max(MIN_CARD_WIDTH, Math.round(textWidth) + CARD_PAD)),
     cardHeight: Math.min(
-      MAX_CARD_HEIGHT,
+      Math.max(MIN_CARD_HEIGHT, maxHeight),
       Math.max(MIN_CARD_HEIGHT, Math.round(textHeight) + CARD_PAD),
     ),
+  };
+}
+
+/**
+ * 内容区高度 → 卡片高度上限：随窗口放大（长选区不被压成滚动区），
+ * 下限保持 MAX_CARD_HEIGHT，上限 MAX_CARD_HEIGHT_LIMIT，且不超出内容区可容纳高度。
+ * 导出供单测验证边界。
+ */
+export function maxCardHeightFor(contentHeight: number): number {
+  return Math.max(
+    MAX_CARD_HEIGHT,
+    Math.min(MAX_CARD_HEIGHT_LIMIT, contentHeight - CONTENT_EDGE_PAD * 2),
+  );
+}
+
+/**
+ * 结果卡文本区尺寸决策：译文尺寸（估算或实测）与选区几何取并集。
+ *
+ * - 宽：至少覆盖选区宽度（选中 400px 宽的段落，结果卡不再缩成小方块）
+ * - 高：至少覆盖选区高度与「选区行数 × 结果卡行高」，避免卡片比选区还扁
+ * - 无选区几何（脚本读取失败 / 无选区）时原样返回译文尺寸
+ *
+ * 只做「取大」，不做折行重排：译文自然宽度更大时仍按译文的宽（不横向截断）；
+ * 译文高度来自「自然宽度下的实测值」——并集只会把宽度变大，定宽折行不会因此增加
+ * 行数，所以该高度对最终宽度仍然成立，不会出现被裁掉的文本。
+ * 纯函数导出供单测验证。
+ */
+export function resolveTextSize(
+  translated: CardSize,
+  selection?: Pick<SelectionRect, 'width' | 'height' | 'lines'>,
+): CardSize {
+  if (!selection) return translated;
+  return {
+    width: Math.ceil(Math.max(translated.width, selection.width)),
+    height: Math.ceil(Math.max(translated.height, selection.height, selection.lines * LINE_HEIGHT)),
   };
 }
 
@@ -325,22 +378,27 @@ export class SelectionCardOverlay {
     log.info('selection card overlay created');
   }
 
-  /** 按最近锚点与尺寸重定位：实测值优先（seq 匹配），估算值兜底 */
+  /** 按最近锚点与尺寸重定位：实测值优先（seq 匹配），估算值兜底，再与选区几何取并集 */
   private applyBounds(): void {
     const win = this.win;
     const last = this.last;
     if (!win || win.isDestroyed() || !last) return;
     const parent = this.options.getParentWindow();
     if (!parent) return;
+    const contentBounds = parent.getContentBounds();
     const measured = this.measured?.seq === last.seq ? this.measured : null;
     const est = estimateCardSize(last.error ?? last.result ?? '');
+    // 译文尺寸（实测优先）+ 选区几何（宽高/行数）取并集：短译文不再折叠成小方块，
+    // 长选区不被压扁；两者都在同一文本宽度下成立，并集后无裁切。
+    const textSize = resolveTextSize(measured ?? est, last.selection);
     const { cardWidth, cardHeight } = clampCardSize(
-      measured?.width ?? est.width,
-      measured?.height ?? est.height,
+      textSize.width,
+      textSize.height,
+      maxCardHeightFor(contentBounds.height),
     );
     win.setBounds(
       computeSelectionCardBounds({
-        contentBounds: parent.getContentBounds(),
+        contentBounds,
         anchorX: last.x,
         anchorY: last.y,
         cardWidth,

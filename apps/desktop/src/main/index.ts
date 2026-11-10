@@ -60,6 +60,7 @@ import { BookmarkPanel } from './panel/bookmark-panel';
 import { StatusBarOverlay, type StatusBarHostWindow } from './status-bar/status-bar-overlay';
 import { StatusBarBall, type StatusBarBallHostWindow } from './status-bar/status-bar-ball';
 import { SelectionCardOverlay } from './translate/selection-card-overlay';
+import type { SelectionRect } from './translate/selection-rect';
 import { TrayManager } from './tray';
 import { displayNameForLocale } from '../shared/brand';
 import {
@@ -1003,23 +1004,41 @@ void app.whenReady().then(() => {
           log.warn('context-menu translate page failed', { tabId, error: String(err) });
         });
       },
-      translateSelection: (tabId: number, text: string, x: number, y: number) => {
+      translateSelection: (
+        tabId: number,
+        text: string,
+        x: number,
+        y: number,
+        selection?: SelectionRect,
+      ) => {
         const mgr = ctx.translateManagerRef;
         if (!mgr) return;
         // 仅活跃 tab 展示：右键必然发生在活跃 tab，但结果异步返回前用户可能已切换
         if (!tabManager.getTab(tabId)?.active) return;
+        // 有选区几何时以选区左下角为锚点（结果卡贴在选中的文字下方，尺寸同源），
+        // 无几何（脚本读取失败）时退回鼠标坐标。
+        const anchorX = selection?.x ?? x;
+        const anchorY = selection ? selection.y + selection.height : y;
         void mgr
           .translateSelection(tabId, text)
           .then((res) => {
-            ctx.selectionCardOverlay?.show({ tabId, source: text, result: res.result, x, y });
+            ctx.selectionCardOverlay?.show({
+              tabId,
+              source: text,
+              result: res.result,
+              x: anchorX,
+              y: anchorY,
+              selection,
+            });
           })
           .catch(() => {
             ctx.selectionCardOverlay?.show({
               tabId,
               source: text,
               error: '翻译失败，请检查网络后重试',
-              x,
-              y,
+              x: anchorX,
+              y: anchorY,
+              selection,
             });
           });
       },

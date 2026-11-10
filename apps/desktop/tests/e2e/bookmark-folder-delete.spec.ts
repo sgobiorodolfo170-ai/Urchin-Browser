@@ -78,7 +78,9 @@ test('收藏夹面板：新建文件夹可在面板内确认后删除', async ()
 
   try {
     // 1. 点击状态栏收藏夹按钮 → 弹出面板（normal 模式）
-    const statusBar = await getStatusBarPage(electronApp);
+    // 冷启动首跑（CI 干净环境 + AV 扫描）状态栏悬浮窗创建可能晚于默认 15s：
+    // 2026-11-10 CI 实测该行超时 1 次（重试后绿），故显式给 30s 就绪轮询预算。
+    const statusBar = await getStatusBarPage(electronApp, 30_000);
     await statusBar.getByLabel('收藏夹').click();
     const panelWindow = await findPanelWindow(electronApp);
 

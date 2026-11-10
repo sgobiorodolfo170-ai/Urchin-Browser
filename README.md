@@ -2,7 +2,7 @@
 
 > AI 原生 + 开发者友好的桌面浏览器，基于 Electron / 完整 Chromium 内核。
 
-**当前阶段**：v0.1.0 里程碑（2026-07-29，MVP 最小闭环 + per-provider 强隔离架构）后持续迭代，当前 **dev.121（2026-10-26）**；v0.2.0 dev 线推进中，首个 GitHub stable 计划 v0.2.0。已交付 GenOffice 六编辑器融合、pi-web、网页翻译、本地文件查看/编辑、应用内自动更新、M15 DevTools 检视面板、M25 邮箱、多工作区（TP7）等能力，逐条记录见 [CHANGELOG.md](./CHANGELOG.md)。安装包见 [GitHub Releases](https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases)。
+**当前阶段**：v0.1.0 里程碑（2026-07-29，MVP 最小闭环 + per-provider 强隔离架构）后持续迭代；代码版本以 [CHANGELOG.md](./CHANGELOG.md) 表尾为准（本行更新于 2026-11-11，时点 v0.3.0-dev.184），v0.2.0 dev 线推进中，首个 GitHub stable 计划 v0.2.0。已交付 GenOffice 六编辑器融合、pi-web、网页翻译（M24）、网页剪藏（M26）、笔记/便利贴（M27）、本地文件查看/编辑、应用内自动更新、M15 DevTools 检视面板、M25 邮箱、多工作区（TP7）等能力，逐条记录见 [CHANGELOG.md](./CHANGELOG.md)。安装包见 [GitHub Releases](https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases)。
 
 ## 项目定位
 
@@ -85,22 +85,22 @@ pnpm package:win
 
 ## 开发命令
 
-| 命令                      | 说明                                                                  |
-| ------------------------- | --------------------------------------------------------------------- |
-| `pnpm dev`                | 开发模式（vite dev server）                                           |
-| `pnpm build`              | 构建 main / preload / renderer                                        |
-| `pnpm start`              | 生产模式启动已构建产物                                                |
-| `pnpm verify`             | typecheck + lint + 覆盖率门禁（`test:coverage`）一键验证              |
-| `pnpm typecheck`          | 全工作区 TypeScript 类型检查                                          |
-| `pnpm lint`               | ESLint 检查                                                           |
-| `pnpm test`               | 全工作区单元测试                                                      |
-| `pnpm test:coverage`      | 单元测试 + 覆盖率报告                                                 |
-| `pnpm e2e`                | Playwright E2E 全量（CI 入口；本地发布前/无法判定时用）               |
-| `pnpm e2e:select`         | **本地按需选择 E2E**（推荐表 + AI 会话内勾选；`--fallback` 回退全量） |
-| `pnpm check:e2e-manifest` | E2E manifest 与 spec 文件双向一致（G20）                              |
-| `pnpm genoffice:build`    | 重建 GenOffice 编辑器嵌入产物                                         |
-| `pnpm package:win`        | 打包 Windows 安装包                                                   |
-| `pnpm format`             | Prettier 格式化                                                       |
+| 命令                      | 说明                                                                    |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `pnpm dev`                | 开发模式（vite dev server）                                             |
+| `pnpm build`              | 构建 main / preload / renderer                                          |
+| `pnpm start`              | 生产模式启动已构建产物                                                  |
+| `pnpm verify`             | 全链质量门禁一键验证（组成真源：根 `package.json` 的 `scripts.verify`） |
+| `pnpm typecheck`          | 全工作区 TypeScript 类型检查                                            |
+| `pnpm lint`               | ESLint 检查                                                             |
+| `pnpm test`               | 全工作区单元测试                                                        |
+| `pnpm test:coverage`      | 单元测试 + 覆盖率报告                                                   |
+| `pnpm e2e`                | Playwright E2E 全量（CI 入口；本地发布前/无法判定时用）                 |
+| `pnpm e2e:select`         | **本地按需选择 E2E**（推荐表 + AI 会话内勾选；`--fallback` 回退全量）   |
+| `pnpm check:e2e-manifest` | E2E manifest 与 spec 文件双向一致（G20）                                |
+| `pnpm genoffice:build`    | 重建 GenOffice 编辑器嵌入产物                                           |
+| `pnpm package:win`        | 打包 Windows 安装包                                                     |
+| `pnpm format`             | Prettier 格式化                                                         |
 
 ## 性能与质量指标
 
@@ -132,9 +132,9 @@ pnpm package:win
 - 产品定位与决策记录（[01](./docs/01-愿景与定位.md)）
 - 架构与进程模型（[02](./docs/02-架构设计.md)）
 - 技术栈与覆盖率门槛（[03](./docs/03-技术栈.md)）
-- 模块全景与 v0.1 范围（M1-M26 + 非编号能力，[04](./docs/04-模块全景.md)）
+- 模块全景与 v0.1 范围（M1-M27 + 非编号能力，[04](./docs/04-模块全景.md)）
 - 11 份接口契约（[Provider API / IPC / Chrome 兼容 / Tab Manager 等 A-K](./docs/contracts/)）
-- 决策留痕：19 份 ADR + 决策索引（核心 62 项 + 契约内 68 项 = 130 项）（[decisions/](./docs/decisions/决策索引.md)）
+- 决策留痕：14 份 ADR（截至 2026-11-11）+ 全项目决策总索引（缺号说明与计数口径见 [决策索引](./docs/decisions/决策索引.md)）
 
 ## 开发规范
 

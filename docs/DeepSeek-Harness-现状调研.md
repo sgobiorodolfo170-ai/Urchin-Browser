@@ -144,7 +144,7 @@ Renderer handleOpenDeepSeekHarness
 - 代码注释与回退值仍停留在旧版本：`dsh 0.1.1-rc.2`（`dsh-client.ts` / `dsh-sessions.ts` 文件头），`runtime-root.mjs` 的 `FALLBACK_DSH_VERSION` 为 `0.2.1-rc.2`。
 - `apps/pi-web/src/host-bridge.ts:375-385` 固定上报 `engine: 'pi'`、`engines: []`；`packages/pi-web-host` 源码中没有 engine 概念。
 - [pi-web-host-对接实施清单](./pi-web-host-对接实施清单.md) §3-5 已明确标注「DSH 引擎桥接：后端缺失」。
-- AOCI 索引中没有 `apps/pi-web/server/dsh/*` 或 `packages/pi-web-host` 条目。
+- AOCI 索引中没有 `apps/pi-web/server/dsh/*` 或 `packages/pi-web-host` 条目。（历史注记：AOCI 已于 2026-11-10 整体移除，见 [事实登记表 F11](./事实登记表.md)）
 
 结论：这是从上游 pi-web-ui 继承、尚未接入 Urchin 阶段 2 的代码，与桌面启动器是两条互不相关的 DSH 路径。保留会造成「看起来已接入」的误导和维护负担。
 
@@ -219,7 +219,7 @@ Renderer handleOpenDeepSeekHarness
 
 ### 7.4 中：休眠代码与文档漂移
 
-- `apps/pi-web/server/dsh` 未构建、未类型检查、未接入 host，AOCI 未覆盖。
+- `apps/pi-web/server/dsh` 未构建、未类型检查、未接入 host，AOCI 未覆盖。（历史注记：AOCI 已于 2026-11-10 整体移除）
 - 旧版本契约（0.1.1-rc.2 / 0.2.1-rc.2）散落在注释与 FALLBACK 中。
 - 建议二选一：删除/归档该目录，或按《新模块接入约束声明》走 ADR 后正式桥接到 pi-web-host。中间状态最危险。
 

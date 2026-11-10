@@ -11,7 +11,7 @@ function makeManager(): BookmarkManager {
 }
 
 describe('importTreeIntoBookmarks', () => {
-  it('should create root folder + nested structure, count folders/bookmarks/skipped', () => {
+  it('should write top-level entries directly to the bookmark root (no 导入自 folder)', () => {
     const manager = makeManager();
     const tree: ImportTreeNode = {
       title: 'root',
@@ -29,16 +29,19 @@ describe('importTreeIntoBookmarks', () => {
       ],
     };
 
-    const summary = importTreeIntoBookmarks(manager, { sourceName: 'Test', root: tree });
+    const summary = importTreeIntoBookmarks(manager, { root: tree });
 
-    // root + Folder1 + NoUrl(文件夹) = 3 folders
-    expect(summary.folders).toBe(3);
+    // Folder1 + NoUrl = 2 folders（不再新建「导入自」根文件夹）
+    expect(summary.folders).toBe(2);
     expect(summary.bookmarks).toBe(2); // A, B
     expect(summary.skipped).toBe(2); // empty title + javascript
-    expect(summary.rootFolderTitle).toContain('导入自 Test (');
-    // 根文件夹在根级
-    const all = manager.list(null);
-    expect(all.some((b) => b.id === summary.rootFolderId && b.type === 'folder')).toBe(true);
+    // 顶层节点直接位于收藏夹根目录
+    const rootItems = manager.list(null);
+    expect(rootItems.some((b) => b.title === 'A' && b.type === 'bookmark')).toBe(true);
+    const folder = rootItems.find((b) => b.title === 'Folder1' && b.type === 'folder');
+    expect(folder?.parentId).toBeNull();
+    // 不再创建带「导入自」前缀的目录
+    expect(rootItems.some((b) => b.title.startsWith('导入自'))).toBe(false);
   });
 
   it('should preserve hierarchy via parentId chains', () => {
@@ -54,7 +57,7 @@ describe('importTreeIntoBookmarks', () => {
         },
       ],
     };
-    const summary = importTreeIntoBookmarks(manager, { sourceName: 'X', root: tree });
+    const summary = importTreeIntoBookmarks(manager, { root: tree });
     const all = manager.list();
     const outer = all.find((b) => b.title === 'Outer' && b.type === 'folder');
     const inner = all.find((b) => b.title === 'Inner' && b.type === 'folder');
@@ -75,7 +78,7 @@ describe('importTreeIntoBookmarks', () => {
         { title: 'Ok', url: 'https://ok.example.com/' },
       ],
     };
-    const summary = importTreeIntoBookmarks(manager, { sourceName: 'X', root: tree });
+    const summary = importTreeIntoBookmarks(manager, { root: tree });
     expect(summary.bookmarks).toBe(1);
     expect(summary.skipped).toBe(2);
   });

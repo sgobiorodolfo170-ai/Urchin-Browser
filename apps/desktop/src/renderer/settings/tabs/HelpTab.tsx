@@ -251,7 +251,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         title: '导入收藏夹与 Cookie',
-        body: '设置「数据」底部可从书签 HTML 文件导入，或检测本机 Chrome / Edge / Firefox 并导入收藏夹。导入的书签会放进收藏夹根目录下「导入自 <浏览器>」文件夹。勾选「同时导入 Cookie」会一并导入登录状态：Firefox 可完整导入；Chrome / Edge 若已启用应用级加密（ABE），只能导入旧版 Cookie，无法导入的部分会明确提示。导入前请关闭源浏览器；Cookie 导入不保证所有站点保持登录。',
+        body: '设置「数据」底部可从书签 HTML 文件导入，或检测本机 Chrome / Edge / Firefox 并导入收藏夹。导入的文件夹与书签会直接放入收藏夹根目录，完整保留原目录结构。勾选「同时导入 Cookie」会一并导入登录状态：Firefox 可完整导入；Chrome / Edge 若已启用应用级加密（ABE），只能导入旧版 Cookie，无法导入的部分会明确提示。导入前请关闭源浏览器；Cookie 导入不保证所有站点保持登录。',
       },
       {
         title: '检查更新',

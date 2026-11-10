@@ -29,11 +29,11 @@ export interface ImportTreeNode {
   readonly children?: readonly ImportTreeNode[];
 }
 
-/** 解析器产出：根节点 + 来源名（用于根文件夹标题「导入自 <来源> (<日期>)」）。 */
+/** 解析器产出：根节点 + 来源名（来源名用于日志/提示，不再作为根文件夹标题）。 */
 export interface ParsedBookmarks {
   /** 来源显示名（如 "Google Chrome" / "书签文件"） */
   readonly sourceName: string;
-  /** 解析后的树根（根节点本身是容器，其 children 为顶级书签/文件夹） */
+  /** 解析后的树根（根节点本身是容器，其 children 直接放入收藏夹根目录） */
   readonly root: ImportTreeNode;
 }
 

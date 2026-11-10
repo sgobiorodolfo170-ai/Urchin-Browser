@@ -95,15 +95,14 @@ describe('registerImportHandlers', () => {
 
     const result = (await ipcMain.invoke('import.bookmarksFromFile', {})) as {
       canceled: boolean;
-      summary: { folders: number; bookmarks: number; skipped: number; rootFolderId: string };
+      summary: { folders: number; bookmarks: number; skipped: number };
     };
 
     expect(result.canceled).toBe(false);
-    // 鏍规枃浠跺す + 1 涔︾
-    expect(create).toHaveBeenCalledTimes(2);
+    // 顶层书签直接入根（不再创建「导入自」文件夹）
+    expect(create).toHaveBeenCalledTimes(1);
     expect(result.summary.bookmarks).toBe(1);
-    expect(result.summary.folders).toBe(1);
-    expect(result.summary.rootFolderId).toMatch(/^id-/);
+    expect(result.summary.folders).toBe(0);
   });
 
   it('import.bookmarksFromFile should return canceled when dialog canceled', async () => {
@@ -156,14 +155,14 @@ describe('registerImportHandlers', () => {
       id: 'chrome:C:\\P',
     })) as {
       canceled: boolean;
-      summary: { rootFolderTitle: string; bookmarks: number };
+      summary: { folders: number; bookmarks: number };
     };
 
     expect(parseChromium).toHaveBeenCalledWith('C:\\P');
     expect(parseFirefox).not.toHaveBeenCalled();
     expect(result.canceled).toBe(false);
     expect(result.summary.bookmarks).toBe(1);
-    expect(result.summary.rootFolderTitle).toContain('Google Chrome');
+    expect(result.summary.folders).toBe(0);
   });
 
   it('import.bookmarksFromBrowser should throw when id not found', async () => {

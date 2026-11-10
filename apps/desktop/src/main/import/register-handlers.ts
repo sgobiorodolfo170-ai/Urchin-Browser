@@ -170,7 +170,6 @@ export function registerImportHandlers(deps: ImportHandlerDeps): void {
       const html = await readFileText(filePath);
       const tree = parseHtml(html);
       const summary = importTreeIntoBookmarks(bookmarkManager, {
-        sourceName: '书签文件',
         root: tree,
       });
       log.info('import.bookmarksFromFile done', {
@@ -203,7 +202,6 @@ export function registerImportHandlers(deps: ImportHandlerDeps): void {
           ? parseChromium(target.profileDir)
           : await parseFirefox(target.profileDir);
       const summary = importTreeIntoBookmarks(bookmarkManager, {
-        sourceName: target.displayName,
         root: tree,
       });
       // Cookie 导入（可选）：书签已成功落库，Cookie 失败只降级为摘要 note。

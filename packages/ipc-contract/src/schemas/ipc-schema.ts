@@ -977,16 +977,12 @@ export type ImportCookiesSummary = z.infer<typeof importCookiesSummarySchema>;
 
 /** 导入结果摘要（成功导入时返回；canceled=true 时 summary=null）。 */
 export const importSummarySchema = z.object({
-  /** 新建文件夹数（含根文件夹） */
+  /** 新建文件夹数（不含虚拟根；顶层目录直接挂收藏夹根目录） */
   folders: z.number().int().nonnegative(),
   /** 新建书签数 */
   bookmarks: z.number().int().nonnegative(),
   /** 跳过条目数（空标题/非法 url） */
   skipped: z.number().int().nonnegative(),
-  /** 在 Urchin 内创建的根文件夹 id（便于面板跳转定位） */
-  rootFolderId: z.string().min(1),
-  /** 根文件夹标题（如「导入自 Chrome (2026-10-25)」） */
-  rootFolderTitle: z.string().min(1),
 });
 export type ImportSummary = z.infer<typeof importSummarySchema>;
 

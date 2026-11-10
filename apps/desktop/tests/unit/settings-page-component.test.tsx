@@ -128,8 +128,6 @@ describe('SettingsPage', () => {
             folders: 1,
             bookmarks: 1,
             skipped: 0,
-            rootFolderId: 'r',
-            rootFolderTitle: 'r',
           },
           cookies: { imported: 2, skipped: 0, failed: 0, encryptedSkipped: 0 },
         });

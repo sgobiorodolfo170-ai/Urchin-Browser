@@ -1,14 +1,16 @@
 /**
  * Import 域 · 导入树写入 BookmarkManager
  *
- * 职责：把解析出的 ImportTreeNode 树写入 BookmarkManager，
- * 根目录建「导入自 <来源> (<YYYY-MM-DD>)」文件夹，完整保留原目录结构。
+ * 职责：把解析出的 ImportTreeNode 树写入 BookmarkManager。
+ *
+ * 2026-11-10 用户修订（IM1 变更）：不再新建「导入自 <来源> (日期)」根文件夹，
+ * 解析树的顶层节点直接放入收藏夹根目录，完整保留源目录层级（如 Chrome 的
+ * 「书签栏 / 其他书签」、Firefox 的「书签工具栏 / 书签菜单」）。
  *
  * 设计理由（AGENTS.md §七.2 + §六 Single Source of Truth）：
  * - 主进程是书签状态唯一权威源；导入直接调 BookmarkManager.create（持久化 + 广播）
- * - 独立文件夹保留结构（用户决策）：导入全部新建，不去重，可整夹删除回退
+ * - 不去重：与用户现有收藏夹同级共存；重复导入会产生同名目录（由用户自行整理）
  * - 跳过空标题书签与非法 url（url 必须含协议），计入 skipped 计数
- * - 不去重：重复执行导入会生成新根文件夹（标题含日期，自然区分）
  */
 import type { BookmarkManager } from '../bookmarks';
 import type { ImportSummary } from '@urchin/ipc-contract';
@@ -26,15 +28,6 @@ function isValidBookmarkUrl(url: string | undefined): url is string {
   return true;
 }
 
-/** 当前日期 YYYY-MM-DD（本地时区，根文件夹标题用）。 */
-function todayDateString(): string {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 /** 可变计数容器（递归写入期间累加）。 */
 interface ImportCounters {
   folders: number;
@@ -43,43 +36,34 @@ interface ImportCounters {
 }
 
 /**
- * 把导入树写入 BookmarkManager。
+ * 把导入树写入 BookmarkManager（顶层节点直接挂根目录）。
  *
  * @param manager BookmarkManager 实例（注入便于测试）
- * @param parsed 解析器输出（来源名 + 树根）
- * @returns 导入摘要（folders/bookmarks/skipped + 根文件夹 id/标题）
+ * @param parsed 解析器输出（树根；root.children 为源浏览器的顶层目录/书签）
+ * @returns 导入摘要（folders/bookmarks/skipped）
  */
 export function importTreeIntoBookmarks(
   manager: BookmarkManager,
-  parsed: { sourceName: string; root: ImportTreeNode },
+  parsed: { root: ImportTreeNode },
 ): ImportSummary {
-  const rootTitle = `导入自 ${parsed.sourceName} (${todayDateString()})`;
-  const rootFolder = manager.create({
-    title: rootTitle,
-    type: 'folder',
-    parentId: null,
-  });
-
-  const counters: ImportCounters = { folders: 1, bookmarks: 0, skipped: 0 };
+  const counters: ImportCounters = { folders: 0, bookmarks: 0, skipped: 0 };
 
   for (const child of parsed.root.children ?? []) {
-    walkNode(manager, child, rootFolder.id, counters);
+    walkNode(manager, child, null, counters);
   }
 
   return {
     folders: counters.folders,
     bookmarks: counters.bookmarks,
     skipped: counters.skipped,
-    rootFolderId: rootFolder.id,
-    rootFolderTitle: rootTitle,
   };
 }
 
-/** 递归写入单节点（书签 / 文件夹）。 */
+/** 递归写入单节点（书签 / 文件夹）；parentId=null 表示收藏夹根目录。 */
 function walkNode(
   manager: BookmarkManager,
   node: ImportTreeNode,
-  parentId: string,
+  parentId: string | null,
   counters: ImportCounters,
 ): void {
   if (node.url !== undefined) {

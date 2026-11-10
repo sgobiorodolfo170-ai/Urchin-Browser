@@ -27,8 +27,6 @@ interface ImportSummaryInfo {
   readonly folders: number;
   readonly bookmarks: number;
   readonly skipped: number;
-  readonly rootFolderId: string;
-  readonly rootFolderTitle: string;
 }
 
 /** Cookie 导入摘要（与 ipc-contract ImportCookiesSummary 对齐）。 */
@@ -142,9 +140,8 @@ export function ImportSection({ onToast }: ImportSectionProps) {
     <section className="mt-8">
       <h2 className="mb-2 text-lg font-semibold">从其他浏览器导入</h2>
       <p className="mb-4 text-sm text-text-secondary">
-        导入 Chrome / Edge / Firefox 的收藏夹，或从书签 HTML 文件导入。导入的书签会放入
-        收藏夹根目录下「导入自 &lt;浏览器&gt;
-        (&lt;日期&gt;)」文件夹，完整保留原目录结构，可整夹删除回退。
+        导入 Chrome / Edge / Firefox 的收藏夹，或从书签 HTML 文件导入。导入的文件夹与书签会直接放入
+        收藏夹根目录，完整保留原目录结构。
       </p>
 
       <label className="mb-4 flex cursor-pointer items-start gap-2 text-sm">

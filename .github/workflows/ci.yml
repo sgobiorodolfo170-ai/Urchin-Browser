@@ -72,18 +72,23 @@ jobs:
       # sidecar 冷编译，实测口径上必然超过 8 分钟，故缓存产物与 vendor 依赖（约 1.8 GB）。
       # 缓存命中时跳过构建，但必须再跑 --check-only —— 否则缓存损坏会让 9 个用例
       # 静默回到 skip，CI 仍绿而覆盖已丢。键只含 package-lock 与构建脚本：升级
-      # vendor/genoffice 上游时若只改源码未改 lock，需手动把 key 里的 v1 递增
-      # （见 docs/打包核查清单.md）。
+      # vendor/genoffice 上游时若只改源码未改 lock，需手动把 key 里的版本号递增
+      # （v1 → v2；见 docs/打包核查清单.md）。
+      #
+      # v2（2026-11-10）：补 `apps/*/node_modules` —— pdf 的 harfbuzzjs hb-subset.wasm
+      # 是嵌套安装（apps/pdf/node_modules），只缓存根 node_modules 会导致
+      # --check-only 报 MISS 而误红（run 42800787236 实测）。
       - name: Cache GenOffice build artifacts
         id: genoffice-cache
         uses: actions/cache@v4
         with:
           path: |
             vendor/genoffice/node_modules
+            vendor/genoffice/apps/*/node_modules
             vendor/genoffice/apps/*/out
             vendor/genoffice/apps/sheets/native/xlsx-engine/target
             vendor/genoffice/THIRD-PARTY-NOTICES.txt
-          key: genoffice-${{ runner.os }}-v1-${{ hashFiles('vendor/genoffice/package-lock.json', 'scripts/genoffice-build.mjs') }}
+          key: genoffice-${{ runner.os }}-v2-${{ hashFiles('vendor/genoffice/package-lock.json', 'scripts/genoffice-build.mjs') }}
 
       - name: Build GenOffice embed artifacts
         if: steps.genoffice-cache.outputs.cache-hit != 'true'

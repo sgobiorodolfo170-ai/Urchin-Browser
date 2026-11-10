@@ -37,6 +37,7 @@ const DEFAULTS: Record<string, unknown> = {
   'translate.engine': 'auto',
   'translate.autoTranslate': false,
   'startup.restoreTabs': true,
+  'ui.minimizeToTray': false,
   'clipper.defaultFormat': 'markdown',
   'clipper.cleanSnapshot': true,
   'clipper.selectionPriority': true,

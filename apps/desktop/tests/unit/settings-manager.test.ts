@@ -100,8 +100,9 @@ describe('SettingsManager', () => {
     //   clipper.* 剪藏默认格式/清洗/选中优先/懒加载/尾部信息栏剪除/模板/保存路径 8 项/
     //   notebook.state 笔记与便利贴整体状态 M27/
     //   mail.state 邮箱页三区栏宽 2026-11-10/
-    //   transit.items 中转区项目索引） + 自定义 1 项
-    expect(entries).toHaveLength(41);
+    //   transit.items 中转区项目索引/
+    //   ui.minimizeToTray 关闭窗口驻留托盘默认关闭 2026-11-10） + 自定义 1 项
+    expect(entries).toHaveLength(42);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');
@@ -128,6 +129,7 @@ describe('SettingsManager', () => {
     expect(keys).toContain('clipper.content');
     expect(keys).toContain('notebook.state');
     expect(keys).toContain('mail.state');
+    expect(keys).toContain('ui.minimizeToTray');
     expect(keys).toContain('customKey');
   });
 
@@ -136,6 +138,7 @@ describe('SettingsManager', () => {
 
     expect(mgr.get('ui.leftSidebarAutoExpand')).toBe(false);
     expect(mgr.get('ui.rightSidebarAutoExpand')).toBe(false);
+    expect(mgr.get('ui.minimizeToTray')).toBe(false);
     expect(mgr.get('ui.workspaceSwitcherMode')).toBe('cards');
   });
 

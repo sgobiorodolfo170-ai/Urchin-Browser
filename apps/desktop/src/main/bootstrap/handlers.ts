@@ -154,14 +154,21 @@ function installGenOfficeWindowCloseGuard(ctx: AppContext): void {
     let allowClose = false;
     win.on('close', (...args: unknown[]) => {
       if (allowClose) return;
+      const event = args[0] as
+        { preventDefault?: () => void; defaultPrevented?: boolean } | undefined;
       const dirty = ctx.tabManager
         .query({ windowId })
         .some((t) => t.viewKind === 'genoffice' && t.dirty);
       if (!dirty || !ctx.genofficeIntegration) {
         allowClose = true;
+        // 本次关闭仍可能被后续监听器阻止（托盘驻留 hide）。下一拍若已被
+        // preventDefault，撤销放行标记——否则窗口隐藏后 allowClose 永久为
+        // true，用户重新打开并编辑后再关窗会跳过脏文档保存确认。
+        setImmediate(() => {
+          if (event?.defaultPrevented) allowClose = false;
+        });
         return;
       }
-      const event = args[0] as { preventDefault?: () => void } | undefined;
       event?.preventDefault?.();
       void (async () => {
         const ok = await ctx.genofficeIntegration?.confirmWindowClose(windowId);

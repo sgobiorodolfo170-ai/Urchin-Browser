@@ -36,6 +36,7 @@ import type { PiWebHostLauncher } from '../pi-web-host';
 import type { StorageLayer } from '../storage';
 import type { MailContentStore } from '../mail';
 import type { TranslateManager } from '../translate/translate-manager';
+import type { TrayManager } from '../tray';
 
 /** 主进程全局状态：performCleanup / registerIpcHandlers 的闭包变量打包。 */
 export interface AppContext {
@@ -141,6 +142,13 @@ export interface AppContext {
 
   /** 划词翻译结果卡（独立透明子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
   selectionCardOverlay: SelectionCardOverlay | null;
+
+  /**
+   * 系统托盘驻留管理器（2026-11-10 用户需求）：设置 `ui.minimizeToTray`
+   * 开启时拦截窗口 close 改为隐藏，托盘菜单提供唤回与完全退出。
+   * 在窗口创建后初始化；退出清理时 dispose（销毁托盘 + 解绑监听）。
+   */
+  trayManager: TrayManager | null;
 
   /**
    * AI IPC handlers 的 dispose 句柄（由 registerAiHandlers 返回）。

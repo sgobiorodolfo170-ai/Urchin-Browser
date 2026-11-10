@@ -47,6 +47,12 @@ const GENERAL_FIELDS: readonly SettingField[] = [
     type: 'toggle',
   },
   {
+    key: 'ui.minimizeToTray',
+    label: '关闭窗口时最小化到系统托盘',
+    desc: '开启后点击窗口关闭按钮将隐藏窗口、继续在系统托盘运行（单击托盘图标可重新打开，右键菜单「完全退出」结束程序）；关闭则直接退出程序。默认关闭',
+    type: 'toggle',
+  },
+  {
     key: 'translate.targetLang',
     label: '网页翻译目标语言',
     desc: '整页翻译与划词翻译的目标语言（默认简体中文）',

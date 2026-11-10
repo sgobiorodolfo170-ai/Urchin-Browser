@@ -55,6 +55,8 @@ export interface BrowserWindowLike {
   getNormalBounds?(): { x: number; y: number; width: number; height: number };
   /** 是否最小化（窗口状态记忆用：最小化时 getBounds 在 Windows 返回 -32000 哨兵位） */
   isMinimized?(): boolean;
+  /** 窗口是否可见（托盘驻留判断「全部隐藏」时用；可选：旧测试替身无此方法） */
+  isVisible?(): boolean;
   /** 挂载 BrowserView 到窗口（传 null 移除） */
   setBrowserView(view: unknown): void;
   /**

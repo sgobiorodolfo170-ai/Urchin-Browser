@@ -60,6 +60,8 @@ import { BookmarkPanel } from './panel/bookmark-panel';
 import { StatusBarOverlay, type StatusBarHostWindow } from './status-bar/status-bar-overlay';
 import { StatusBarBall, type StatusBarBallHostWindow } from './status-bar/status-bar-ball';
 import { SelectionCardOverlay } from './translate/selection-card-overlay';
+import { TrayManager } from './tray';
+import { displayNameForLocale } from '../shared/brand';
 import {
   resolveDataLocation,
   setDataLocation,
@@ -286,6 +288,7 @@ const ctx: AppContext = {
   statusBarOverlay: null,
   statusBarBall: null,
   selectionCardOverlay: null,
+  trayManager: null,
   aiHandlersDispose: null,
   dshLauncher: null,
   unbindDshTabClose: null,
@@ -373,6 +376,33 @@ export function routeLocalFile(windowId: number, path: string): boolean {
 /** 打开本地文件（忽略受理结果；文件关联/命令行入口用）。 */
 function openLocalFile(windowId: number, path: string): void {
   routeLocalFile(windowId, path);
+}
+
+/**
+ * 托盘菜单「完全退出」（2026-11-10 用户需求）。
+ *
+ * 与窗口 X 一致：先对存在未保存内容的 GenOffice 编辑器逐窗口确认
+ * （保存 / 不保存 / 取消），任一取消则保持驻留、不退出；全部通过后
+ * app.quit() 走统一清理流程（before-quit → performCleanup）。
+ */
+async function requestQuitFromTray(): Promise<void> {
+  const dirtyWindows = ctx.windowManager
+    .getAllWindows()
+    .filter((managed) =>
+      ctx.tabManager
+        .query({ windowId: managed.id })
+        .some((tab) => tab.viewKind === 'genoffice' && tab.dirty),
+    );
+  if (dirtyWindows.length > 0 && ctx.genofficeIntegration) {
+    // 先唤回主窗口：脏文档确认对话框以窗口为 parent，窗口隐藏时对话框可能
+    // 不可见，用户会以为点击「完全退出」没反应。
+    ctx.trayManager?.showMainWindow();
+    for (const managed of dirtyWindows) {
+      const ok = await ctx.genofficeIntegration.confirmWindowClose(managed.id);
+      if (!ok) return;
+    }
+  }
+  app.quit();
 }
 
 /**
@@ -1110,6 +1140,31 @@ void app.whenReady().then(() => {
     // IPC 全量注册（原位置在主窗口创建之前，B3 下移：最大同步块）
     registerIpcHandlers(ctx);
 
+    // 系统托盘驻留（2026-11-10 用户需求）。必须在 registerIpcHandlers 之后
+    // 安装：GenOffice 脏文档守卫在自己的 window-created 回调里挂 close 监听，
+    // 本模块的监听排在其后，才能用 event.defaultPrevented 识别「保存确认已接管
+    // 本次关闭」，避免关窗时跳过保存直接隐藏。
+    ctx.trayManager = new TrayManager({
+      getSetting: (key) => ctx.settingsManager.get(key),
+      getWindows: () => windowManager.getAllWindows().map((w) => w.browserWindow),
+      quit: () => {
+        void requestQuitFromTray();
+      },
+      appName: displayNameForLocale(app.getLocale()),
+    });
+    // 设置页开关改动即时生效（无需重启）：开启建托盘，关闭销毁托盘。
+    ctx.settingsManager.on('changed', (key) => {
+      ctx.trayManager?.handleSettingChange(key);
+    });
+    for (const managed of windowManager.getAllWindows()) {
+      ctx.trayManager.attachWindow(managed.browserWindow);
+    }
+    windowManager.on('window-created', (windowId) => {
+      const managed = windowManager.getWindow(windowId);
+      if (managed) ctx.trayManager?.attachWindow(managed.browserWindow);
+    });
+    ctx.trayManager.syncWithSetting();
+
     // 扫描 Provider 注册表（W4：加载已安装的 AI Provider）
     // 先确保内置 OpenAI 兼容 Provider 已部署到 userData/providers 目录
     ensureBuiltinProviders(providersDir);
@@ -1401,12 +1456,15 @@ void app.whenReady().then(() => {
     }
   }
 
-  // macOS：点击 dock 图标时重新创建窗口
+  // macOS：点击 dock 图标时重新创建窗口；窗口已存在（含隐藏到托盘）时
+  // 优先唤回并聚焦，而不是再建一个空窗口。
   app.on('activate', () => {
-    if (windowManager.getCount() === 0) {
-      const win = windowManager.createWindow({});
-      tabManager.create({ windowId: win.id, url: 'urchin://newtab' });
+    if (windowManager.getCount() > 0) {
+      ctx.trayManager?.showMainWindow();
+      return;
     }
+    const win = windowManager.createWindow({});
+    tabManager.create({ windowId: win.id, url: 'urchin://newtab' });
   });
 });
 
@@ -1425,6 +1483,8 @@ app.on('window-all-closed', () => {
  * app.exit(0) 会再次触发 before-quit，此时 ctx.cleanupDone=true 直接放行，进程真正退出。
  */
 app.on('before-quit', (event) => {
+  // 托盘驻留：退出流程开始后所有窗口 close 一律放行（否则隐藏导致退不掉）
+  ctx.trayManager?.markQuitting();
   if (ctx.cleanupDone) return; // 清理已完成，让默认退出继续
   if (ctx.isCleaningUp) {
     // 清理进行中，阻止重复退出

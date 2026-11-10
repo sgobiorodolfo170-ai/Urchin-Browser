@@ -116,6 +116,12 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   // 标签持久化（TP4）：启动时恢复默认工作区上次打开的标签（默认 ON）。
   // 其他工作区的标签始终保存，切换到该工作区时懒恢复。
   ['startup.restoreTabs', true],
+  // 关闭窗口时最小化到系统托盘（2026-11-10 用户需求，默认 OFF）：
+  // 开启后点 X 隐藏窗口并驻留托盘，托盘菜单「完全退出」才结束进程；
+  // 关闭时维持原行为（最后一个窗口关闭即退出）。
+  // 默认 OFF 的理由：驻留进程会持续占用内存且用户可能不知道程序还在运行，
+  // 保持与既有安装版本行为一致，由用户显式选择开启。
+  ['ui.minimizeToTray', false],
   // 上次退出时的标签快照（TP4）：[{ url, title, workspaceId, active }]，
   // 由 lifecycle/cleanup.ts 在退出前写入。默认 [] = 首次运行无快照。
   // 该键必须登记在此处，SettingsManager 构造时才会从 SQLite 加载已保存状态；

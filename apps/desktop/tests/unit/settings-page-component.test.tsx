@@ -82,6 +82,7 @@ describe('SettingsPage', () => {
     // 通用选项卡字段
     expect(screen.getByText('界面语言')).toBeTruthy();
     expect(screen.getByText('搜索引擎')).toBeTruthy();
+    expect(screen.getByText('关闭窗口时最小化到系统托盘')).toBeTruthy();
     // 当前值回填（界面语言是通用选项卡第一个下拉，值应为 zh-CN）
     const langSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement;
     expect(langSelect.tagName).toBe('SELECT');

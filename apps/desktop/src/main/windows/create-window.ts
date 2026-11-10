@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { createLogger } from '@urchin/logger';
 import { currentThemeBackground } from '../theme';
 import { displayNameForLocale } from '../../shared/brand';
+import { resolveAppIconPath } from './app-icon';
 import {
   DEFAULT_WINDOW_WIDTH,
   DEFAULT_WINDOW_HEIGHT,
@@ -53,13 +54,10 @@ export function createBrowserWindow(opts: CreateWindowOptions): BrowserWindowLik
     incognito: opts.incognito ?? false,
   });
 
-  // 应用图标路径：
+  // 应用图标路径（窗口 / 系统托盘共用解析逻辑，见 app-icon.ts）：
   // - 打包后：extraResources 把图标复制到 resources 目录
   // - 开发模式：从 apps/desktop/build 引用
-  const iconName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
-  const iconPath = app.isPackaged
-    ? join(process.resourcesPath, iconName)
-    : join(app.getAppPath(), 'build', iconName);
+  const iconPath = resolveAppIconPath();
 
   // Windows 首版启用无边框窗口：原生标题栏由渲染层自绘标题栏替代，
   // 从而让 8px #F6F2F0 外框 + 圆角 shell 能包裹「整个窗口（含标题栏）」。

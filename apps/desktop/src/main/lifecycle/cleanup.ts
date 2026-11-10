@@ -212,6 +212,16 @@ export async function performCleanup(ctx: AppContext): Promise<void> {
       ctx.selectionCardOverlay = null;
     }
 
+    // 4.6.3 销毁系统托盘图标并解绑窗口 close 监听（托盘驻留功能，2026-11-10）
+    if (ctx.trayManager) {
+      try {
+        ctx.trayManager.dispose();
+      } catch (e) {
+        log.error('Failed to dispose tray manager on quit', { error: String(e) });
+      }
+      ctx.trayManager = null;
+    }
+
     // 4.9 网页翻译管理器清理（dev.79）：停 pending 轮询、移除 did-finish-load 钩子、清每 tab 状态
     if (ctx.disposeTranslateManager) {
       try {

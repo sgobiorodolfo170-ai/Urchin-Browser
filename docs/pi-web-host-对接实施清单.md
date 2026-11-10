@@ -353,6 +353,6 @@ pnpm start           # 启动应用实机验收
 
 1. **pi-web-ui server/ 包含在 tsconfig include**：`server/protocol.ts` 被前端 typecheck include（纯类型，无运行时副作用）。但 `server/approval-rules.ts` 和 `server/atomic-file.ts` 有 `node:fs` import——type-only import 被正确擦除，但如果新增非 type-only import 会引入 Node 依赖
 2. **8 个 @ts-nocheck 文件**：pi-web-ui 原有 strict 类型与本项目 tsconfig 不完全兼容
-3. **E2E flaky**：bookmark-panel-visibility.spec.ts 和 pi-web-launcher.spec.ts（已删除）有 flaky 行为
+3. **E2E 历史 flaky**：`bookmark-panel-visibility.spec.ts` 曾有 flaky 行为（已按就绪信号加固）；原 `pi-web-launcher.spec.ts` 已删除，启动/鉴权/WS 握手覆盖并入 `pi-web-host.spec.ts`
 4. **前端 bundle 大**：2622KB JS（gzip 826KB）——后续可做 code-splitting
 5. **host-bridge.ts readyState**：用 `Object.defineProperty` + `declare` 实现，TypeScript 不完全识别

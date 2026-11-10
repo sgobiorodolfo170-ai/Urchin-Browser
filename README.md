@@ -85,40 +85,43 @@ pnpm package:win
 
 ## 开发命令
 
-| 命令                   | 说明                                                     |
-| ---------------------- | -------------------------------------------------------- |
-| `pnpm dev`             | 开发模式（vite dev server）                              |
-| `pnpm build`           | 构建 main / preload / renderer                           |
-| `pnpm start`           | 生产模式启动已构建产物                                   |
-| `pnpm verify`          | typecheck + lint + 覆盖率门禁（`test:coverage`）一键验证 |
-| `pnpm typecheck`       | 全工作区 TypeScript 类型检查                             |
-| `pnpm lint`            | ESLint 检查                                              |
-| `pnpm test`            | 全工作区单元测试                                         |
-| `pnpm test:coverage`   | 单元测试 + 覆盖率报告                                    |
-| `pnpm e2e`             | Playwright E2E 测试（关键路径）                          |
-| `pnpm genoffice:build` | 重建 GenOffice 编辑器嵌入产物                            |
-| `pnpm package:win`     | 打包 Windows 安装包                                      |
-| `pnpm format`          | Prettier 格式化                                          |
+| 命令                      | 说明                                                       |
+| ------------------------- | ---------------------------------------------------------- |
+| `pnpm dev`                | 开发模式（vite dev server）                                |
+| `pnpm build`              | 构建 main / preload / renderer                             |
+| `pnpm start`              | 生产模式启动已构建产物                                     |
+| `pnpm verify`             | typecheck + lint + 覆盖率门禁（`test:coverage`）一键验证   |
+| `pnpm typecheck`          | 全工作区 TypeScript 类型检查                               |
+| `pnpm lint`               | ESLint 检查                                                |
+| `pnpm test`               | 全工作区单元测试                                           |
+| `pnpm test:coverage`      | 单元测试 + 覆盖率报告                                      |
+| `pnpm e2e`                | Playwright E2E 全量（CI 入口；本地发布前/无法判定时用）    |
+| `pnpm e2e:select`         | **本地按需选择 E2E**（推荐：推荐表 + 复选弹窗 + 勾选运行） |
+| `pnpm check:e2e-manifest` | E2E manifest 与 spec 文件双向一致（G20）                   |
+| `pnpm genoffice:build`    | 重建 GenOffice 编辑器嵌入产物                              |
+| `pnpm package:win`        | 打包 Windows 安装包                                        |
+| `pnpm format`             | Prettier 格式化                                            |
 
 ## 性能与质量指标
 
 **v0.1.0 首发验收**（2026-07-29，W7-W8 实测）：
 
-| 指标              | 阈值     | 实测         |
-| ----------------- | -------- | ------------ |
-| 冷启动时间（P95） | ≤ 3000ms | 1011ms ✓     |
-| 10 标签内存       | ≤ 500MB  | 358.3MB ✓    |
-| 单元测试          | 全过     | 457 passed ✓ |
-| 覆盖率（Stmts）   | ≥ 60%    | 68.05% ✓     |
-| E2E 关键路径      | 全过     | 4 passed ✓   |
+| 指标              | 阈值     | 实测                                   |
+| ----------------- | -------- | -------------------------------------- |
+| 冷启动时间（P95） | ≤ 3000ms | 1011ms ✓                               |
+| 10 标签内存       | ≤ 500MB  | 358.3MB ✓                              |
+| 单元测试          | 全过     | 457 passed ✓                           |
+| 覆盖率（Stmts）   | ≥ 60%    | 68.05% ✓                               |
+| E2E 关键路径      | 全过     | 全绿（当时基线：启动/导航/开关标签） ✓ |
 
 **当前（v0.2.0 stable，2026-10-27 实测）**：
 
-| 指标                                     | 阈值（v0.2 阶梯） | 实测                                     |
-| ---------------------------------------- | ----------------- | ---------------------------------------- |
-| 单元用例（无集成层，见 AGENTS.md §八.1） | 全过              | 1428 passed（120 文件）✓                 |
-| 覆盖率（Lines）                          | ≥ 65%             | 69.03% ✓（branch 79.57% / funcs 77.12%） |
-| E2E 关键路径                             | 全过              | 13 个 spec（启动/导航/开关标签等）✓      |
+| 指标                                     | 阈值（v0.2 阶梯）  | 实测                                                                                  |
+| ---------------------------------------- | ------------------ | ------------------------------------------------------------------------------------- |
+| 单元用例（无集成层，见 AGENTS.md §八.1） | 全过               | 1428 passed（120 文件）✓                                                              |
+| 覆盖率（Lines）                          | ≥ 65%              | 69.03% ✓（branch 79.57% / funcs 77.12%）                                              |
+| E2E 关键路径                             | 全过               | **23 个 spec / 38 例**（本地 36 passed + 2 skipped；CI A1 后 35 passed / 3 skipped）✓ |
+| 10 标签内存（perf.spec）                 | 目标 500MB（告警） | 本机 707.7~740.2MB（回归线 800）/ CI 567.4MB（回归线 750）                            |
 
 > 覆盖率门槛由 `apps/desktop/vitest.config.ts` 的 `coverage.thresholds` 强制（低于门槛 `pnpm verify` 失败），数值真源见 [docs/03-技术栈 §4](./docs/03-技术栈.md)。逐次验收数字见 [CHANGELOG.md](./CHANGELOG.md)。
 
@@ -131,7 +134,7 @@ pnpm package:win
 - 技术栈与覆盖率门槛（[03](./docs/03-技术栈.md)）
 - 模块全景与 v0.1 范围（M1-M26 + 非编号能力，[04](./docs/04-模块全景.md)）
 - 11 份接口契约（[Provider API / IPC / Chrome 兼容 / Tab Manager 等 A-K](./docs/contracts/)）
-- 决策留痕：7 份关键 ADR + 决策索引（核心 58 项 + 契约内 68 项 = 126 项）（[decisions/](./docs/decisions/决策索引.md)）
+- 决策留痕：19 份 ADR + 决策索引（核心 62 项 + 契约内 68 项 = 130 项）（[decisions/](./docs/decisions/决策索引.md)）
 
 ## 开发规范
 

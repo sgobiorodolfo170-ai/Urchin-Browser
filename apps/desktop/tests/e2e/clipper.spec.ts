@@ -12,11 +12,18 @@ import {
   type Page,
 } from '@playwright/test';
 import { createServer, type Server } from 'node:http';
-import { mkdtempSync, readFileSync, readdirSync, existsSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getStatusBarPage, waitForShellReady } from './helpers/status-bar';
+import {
+  readBytes,
+  readText,
+  waitForClipFile,
+  waitForClipperPanelReady,
+  waitForClipperSaveSettled,
+} from './helpers/clipper';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -87,38 +94,6 @@ async function launchApp(dataDir: string): Promise<{ app: ElectronApplication; w
   return { app, window };
 }
 
-async function waitForClipperPanel(app: ElectronApplication): Promise<Page> {
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline) {
-    const panel = app.windows().find((p) => {
-      try {
-        return new URL(p.url()).searchParams.get('view') === 'clipper';
-      } catch {
-        return false;
-      }
-    });
-    if (panel) {
-      await panel.waitForLoadState('domcontentloaded');
-      await expect(panel.getByText('剪藏（Clipper）')).toBeVisible({ timeout: 20_000 });
-      return panel;
-    }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error('clipper panel window not found');
-}
-
-async function waitForFile(dir: string, ext: string): Promise<string> {
-  const deadline = Date.now() + 20_000;
-  while (Date.now() < deadline) {
-    if (existsSync(dir)) {
-      const file = readdirSync(dir).find((name) => name.endsWith(ext));
-      if (file) return join(dir, file);
-    }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  throw new Error(`clip file ${ext} not found in ${dir}`);
-}
-
 test('剪藏面板保存 Markdown 到 documents/clipper', async () => {
   const { server, port } = await startServer();
   const dataDir = mkdtempSync(join(tmpdir(), 'urchin-clipper-e2e-'));
@@ -135,65 +110,56 @@ test('剪藏面板保存 Markdown 到 documents/clipper', async () => {
 
     await omnibox.getByRole('button', { name: '剪藏' }).click();
 
-    // 剪藏面板是独立 BrowserWindow；等待 view=clipper 窗口出现。
-    const panel = await waitForClipperPanel(app);
+    // 剪藏面板是独立 BrowserWindow；等到内容区首次渲染完成（标题可见 + 保存可用）。
+    const panel = await waitForClipperPanelReady(app);
 
     await panel.getByRole('button', { name: '保存' }).click();
 
     const clipDir = join(dataDir, 'data', 'documents', 'clipper');
-    const fileDeadline = Date.now() + 15_000;
-    while (Date.now() < fileDeadline && !existsSync(clipDir)) {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    expect(existsSync(clipDir)).toBeTruthy();
-    const files = readdirSync(clipDir).filter((name) => name.endsWith('.md'));
-    expect(files.length).toBeGreaterThan(0);
-    const content = readFileSync(join(clipDir, files[0]!), 'utf-8');
+    // 文件存在 ≠ 内容写完：等到正文真正落盘（见 helpers/clipper.ts 顶部取证）。
+    const mdFile = await waitForClipFile(clipDir, '.md', (path) =>
+      readText(path).includes('剪藏测试文章'),
+    );
+    const content = readText(mdFile);
     expect(content).toContain('剪藏测试文章');
     expect(content).toContain('正文段落');
     expect(content).toContain('source: "http://127.0.0.1');
     expect(content).toContain('闭 Shadow DOM 正文');
     expect(content).toContain('img.svg');
+    await waitForClipperSaveSettled(app);
 
     // 再剪一次为 MHTML，验证 Chromium 原生快照落盘。
-    await new Promise((r) => setTimeout(r, 1_500));
     await omnibox.getByRole('button', { name: '剪藏' }).click();
-    const mhtmlPanel = await waitForClipperPanel(app);
+    const mhtmlPanel = await waitForClipperPanelReady(app);
     await mhtmlPanel.getByLabel('保存格式').selectOption('mhtml');
     await mhtmlPanel.getByRole('button', { name: '保存' }).click();
 
-    const mhtmlDeadline = Date.now() + 20_000;
-    let mhtmlFiles: string[] = [];
-    while (Date.now() < mhtmlDeadline) {
-      if (existsSync(clipDir)) {
-        mhtmlFiles = readdirSync(clipDir).filter((name) => name.endsWith('.mhtml'));
-        if (mhtmlFiles.length > 0) break;
-      }
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    expect(mhtmlFiles.length).toBeGreaterThan(0);
-    const mhtml = readFileSync(join(clipDir, mhtmlFiles[0]!), 'utf-8');
+    // MHTML 由 savePage 先建文件再写内容，必须等 MIME 头出现再断言整体内容。
+    const mhtmlFile = await waitForClipFile(clipDir, '.mhtml', (path) =>
+      readText(path).includes('MIME-Version'),
+    );
+    const mhtml = readText(mhtmlFile);
     expect(mhtml).toContain('MIME-Version');
     expect(mhtml).toContain('multipart/related');
     expect(mhtml).toMatch(/Content-Type: image\/svg\+xml/i);
+    await waitForClipperSaveSettled(app);
 
     // PDF 快照
-    await new Promise((r) => setTimeout(r, 1_500));
     await omnibox.getByRole('button', { name: '剪藏' }).click();
-    const pdfPanel = await waitForClipperPanel(app);
+    const pdfPanel = await waitForClipperPanelReady(app);
     await pdfPanel.getByLabel('保存格式').selectOption('pdf');
     await pdfPanel.getByRole('button', { name: '保存' }).click();
-    const pdfFile = await waitForFile(clipDir, '.pdf');
-    expect(readFileSync(pdfFile).byteLength).toBeGreaterThan(500);
+    const pdfFile = await waitForClipFile(clipDir, '.pdf', (path) => readBytes(path) > 500);
+    expect(readBytes(pdfFile)).toBeGreaterThan(500);
+    await waitForClipperSaveSettled(app);
 
     // 整页截图
-    await new Promise((r) => setTimeout(r, 1_500));
     await omnibox.getByRole('button', { name: '剪藏' }).click();
-    const shotPanel = await waitForClipperPanel(app);
+    const shotPanel = await waitForClipperPanelReady(app);
     await shotPanel.getByLabel('保存格式').selectOption('screenshot');
     await shotPanel.getByRole('button', { name: '保存' }).click();
-    const shotFile = await waitForFile(clipDir, '.png');
-    expect(readFileSync(shotFile).byteLength).toBeGreaterThan(100);
+    const shotFile = await waitForClipFile(clipDir, '.png', (path) => readBytes(path) > 100);
+    expect(readBytes(shotFile)).toBeGreaterThan(100);
   } finally {
     await app.close().catch(() => undefined);
     await new Promise<void>((done) => server.close(() => done()));

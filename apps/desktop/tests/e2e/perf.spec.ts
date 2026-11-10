@@ -1,6 +1,11 @@
 /**
  * W7 性能验收：10 标签内存测量
  * 依据：ADR-008 v0.1 验收标准 - 内存 ≤500MB（10 标签场景，P95）
+ *
+ * 2026-11-10 策略调整（ADR-018 / 用户确认方案 a「环境分线」）：
+ * 500MB 是 **目标线**（仅告警）；**回归线**按环境分线 = CI 750MB / 本机 800MB。
+ * 原因：本机实测 707.7~715.9MB、CI 实测 567.4MB，环境差（~150MB）已超过单线
+ * 750MB 的余量，用单线会把环境噪声判成代码回归。重校目标线仍属产品决策。
  */
 import { test, expect, _electron as electron } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
@@ -11,7 +16,7 @@ import { tmpdir } from 'node:os';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-test('内存：10 标签场景 ≤500MB', async () => {
+test('内存：10 标签场景 ≤ 回归线（CI 750MB / 本机 800MB）', async () => {
   const appPath = resolve(__dirname, '..', '..');
   const userDataDir = mkdtempSync(join(tmpdir(), 'urchin-perf-10tab-'));
 
@@ -84,14 +89,21 @@ test('内存：10 标签场景 ≤500MB', async () => {
       console.log(`  ${p.type} (pid=${p.pid}): ${(p.workingSetKB / 1024).toFixed(1)} MB`);
     }
 
-    // 双线预算（2026-10-27 校准）：
+    // 双线预算（2026-10-27 定双线；2026-11-10 回归线按环境分线，ADR-018）：
     // - 目标线 500MB：ADR-008 的 v0.1 验收值（当时实测 358MB）。此后新增 GenOffice
-    //   六编辑器、邮箱、DevTools 面板、工作区、pi-web、dsh 等能力，实测已达 ~698MB，
+    //   六编辑器、邮箱、DevTools 面板、工作区、pi-web、dsh 等能力，实测已达 ~708MB，
     //   目标线已事实性失守 → 超出只告警，不静默放宽也不假装达标。
-    // - 回归线 750MB：防止继续恶化。超出即失败。
+    // - 回归线：CI 750MB / 本机 800MB。超出即失败（防继续恶化）。
+    //   本机（707.7~715.9MB）与 CI（567.4MB）环境差 ~150MB，已超过单线余量；
+    //   单线会把环境噪声判成代码回归。显式设置 URCHIN_PERF_BUDGET_MB 可覆盖。
     // 注：重新校准目标线属产品决策（需改 ADR-008 验收标准），本用例不代替该决策。
     const TARGET_MB = 500;
-    const REGRESSION_MB = Number(process.env.URCHIN_PERF_BUDGET_MB ?? 750);
+    const DEFAULT_REGRESSION_MB = process.env.CI ? 750 : 800;
+    const REGRESSION_MB = Number(process.env.URCHIN_PERF_BUDGET_MB ?? DEFAULT_REGRESSION_MB);
+    console.log(
+      `\n[perf] 回归线 ${REGRESSION_MB}MB（${process.env.CI ? 'CI 环境线' : '本机环境线'}）` +
+        `；目标线 ${TARGET_MB}MB 仅告警`,
+    );
     if (memInfo.totalMB > TARGET_MB) {
       console.warn(
         `\n[perf] ⚠ 超出 ADR-008 v0.1 目标线 ${TARGET_MB}MB（实测 ${memInfo.totalMB.toFixed(1)}MB）。` +

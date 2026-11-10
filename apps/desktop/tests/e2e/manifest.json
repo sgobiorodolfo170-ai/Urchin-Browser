@@ -1,0 +1,367 @@
+{
+  "version": 1,
+  "updated": "2026-11-10",
+  "note": "E2E 按需选择单一真源：每个 spec 一条。durationSec 为本机 2026-11-10 全量实测（JSON reporter 单 spec 合计，含 Electron 启动开销）；pi-agent 两条因缺 OPENCODE_API_KEY 全量时 skip，durationSec 为真实 agent 场景的保守估计（timeout 900s）。ciRuns = CI 上会真实执行（false 表示当前 CI 环境缺依赖而 skip）。规则见 docs/E2E用例选择表.md。",
+  "specs": [
+    {
+      "spec": "bookmark-folder-delete.spec.ts",
+      "area": "收藏夹面板",
+      "tests": 2,
+      "durationSec": 6,
+      "triggers": [
+        "apps/desktop/src/main/bookmarks/**",
+        "apps/desktop/src/main/panel/**",
+        "apps/desktop/src/renderer/panel/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "面板内删除确认（替代原生 confirm）与 bookmark.list 主进程同步"
+    },
+    {
+      "spec": "bookmark-panel-visibility.spec.ts",
+      "area": "收藏夹面板",
+      "tests": 1,
+      "durationSec": 6,
+      "triggers": [
+        "apps/desktop/src/main/bookmarks/**",
+        "apps/desktop/src/main/panel/**",
+        "apps/desktop/src/renderer/panel/**",
+        "apps/desktop/src/main/status-bar/**",
+        "apps/desktop/src/renderer/status-bar/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "悬浮面板窗口尺寸 / 置顶 / 主窗口 BrowserView 不被挤压"
+    },
+    {
+      "spec": "clipper-mhtml-viewer.spec.ts",
+      "area": "剪藏",
+      "tests": 1,
+      "durationSec": 5,
+      "triggers": [
+        "apps/desktop/src/main/clipper/**",
+        "apps/desktop/src/main/files/**",
+        "apps/desktop/src/main/protocol/**",
+        "apps/desktop/src/renderer/files/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "MHTML 经 routeLocalFile 交给宿主只读查看器并解析标题"
+    },
+    {
+      "spec": "clipper.spec.ts",
+      "area": "剪藏",
+      "tests": 1,
+      "durationSec": 6,
+      "triggers": [
+        "apps/desktop/src/main/clipper/**",
+        "apps/desktop/src/renderer/clipper/**",
+        "apps/desktop/src/main/status-bar/**",
+        "apps/desktop/src/renderer/status-bar/**",
+        "apps/desktop/src/renderer/omnibox/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "地址栏剪藏 → 面板抽取 → Markdown/MHTML/PDF/截图四种落盘（2026-11-10 修文件未写完竞态）"
+    },
+    {
+      "spec": "devtools-panel.spec.ts",
+      "area": "DevTools",
+      "tests": 3,
+      "durationSec": 10,
+      "triggers": ["apps/desktop/src/main/devtools/**", "apps/desktop/src/renderer/devtools/**"],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "devtools.status/attach/evaluate/consoleAPICalled（F12 UI 由人工验收）"
+    },
+    {
+      "spec": "dsh-lifecycle.spec.ts",
+      "area": "DeepSeek Harness",
+      "tests": 1,
+      "durationSec": 9,
+      "triggers": [
+        "apps/desktop/src/main/deepseek-harness/**",
+        "apps/desktop/src/renderer/sidebar/**",
+        "apps/desktop/src/main/tabs/**",
+        "scripts/fetch-dsh.mjs",
+        "scripts/fetch-node.mjs"
+      ],
+      "deps": "vendor-dsh",
+      "ciRuns": false,
+      "alwaysRecommend": false,
+      "note": "需 vendor/deepseek-harness + 便携 node.exe（均不入版本控制，CI 整组 skip；本地先 pnpm sync:dsh）"
+    },
+    {
+      "spec": "genoffice-editors.spec.ts",
+      "area": "GenOffice",
+      "tests": 5,
+      "durationSec": 15,
+      "triggers": [
+        "apps/desktop/src/main/genoffice/**",
+        "apps/desktop/src/main/files/**",
+        "apps/desktop/src/main/protocol/**",
+        "apps/desktop/src/renderer/files/**",
+        "scripts/genoffice-build.mjs"
+      ],
+      "deps": "genoffice-artifact",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "HTML/PDF/Docs/Slides/Sheets 五编辑器渲染；需先 pnpm genoffice:build（CI 由 A1 步骤补齐）"
+    },
+    {
+      "spec": "genoffice-markdown.spec.ts",
+      "area": "GenOffice",
+      "tests": 4,
+      "durationSec": 20,
+      "triggers": [
+        "apps/desktop/src/main/genoffice/**",
+        "apps/desktop/src/main/files/**",
+        "apps/desktop/src/main/protocol/**",
+        "apps/desktop/src/renderer/files/**",
+        "scripts/genoffice-build.mjs"
+      ],
+      "deps": "genoffice-artifact",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "Markdown 编辑/保存/脏标记 + Home shell + 降级开关；需 genoffice 产物"
+    },
+    {
+      "spec": "homepage-memory-measure.spec.ts",
+      "area": "标签与启动",
+      "tests": 1,
+      "durationSec": 17,
+      "triggers": [
+        "apps/desktop/src/renderer/home/**",
+        "apps/desktop/src/main/tabs/**",
+        "apps/desktop/src/renderer/sidebar/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "主页标签内存增量测量（只采集，不做门槛判定）"
+    },
+    {
+      "spec": "launch.spec.ts",
+      "area": "标签与启动",
+      "tests": 4,
+      "durationSec": 10,
+      "triggers": [
+        "apps/desktop/src/main/bootstrap/**",
+        "apps/desktop/src/main/lifecycle/**",
+        "apps/desktop/src/main/windows/**",
+        "apps/desktop/src/main/tabs/**",
+        "apps/desktop/src/main/status-bar/**",
+        "apps/desktop/src/renderer/App.tsx",
+        "apps/desktop/src/renderer/main.tsx",
+        "apps/desktop/src/renderer/status-bar/**",
+        "apps/desktop/src/renderer/omnibox/**",
+        "apps/desktop/src/renderer/components/**",
+        "apps/desktop/src/preload/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": true,
+      "note": "启动 / 新建标签 / 导航 / 关闭标签——任何改动的基线冒烟"
+    },
+    {
+      "spec": "notebook-layout-check.spec.ts",
+      "area": "笔记",
+      "tests": 1,
+      "durationSec": 4,
+      "triggers": ["apps/desktop/src/renderer/notebook/**"],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "笔记页三区布局铺满"
+    },
+    {
+      "spec": "notebook-middle-drag.spec.ts",
+      "area": "笔记",
+      "tests": 1,
+      "durationSec": 3,
+      "triggers": ["apps/desktop/src/renderer/notebook/**"],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "便利贴中键拖拽"
+    },
+    {
+      "spec": "notebook.spec.ts",
+      "area": "笔记",
+      "tests": 1,
+      "durationSec": 3,
+      "triggers": [
+        "apps/desktop/src/renderer/notebook/**",
+        "apps/desktop/src/renderer/sidebar/**",
+        "apps/desktop/src/main/settings/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "入口 → 三区渲染 → 笔记/任务/便利贴，持久化 settings.notebook.state"
+    },
+    {
+      "spec": "perf.spec.ts",
+      "area": "性能",
+      "tests": 1,
+      "durationSec": 12,
+      "triggers": [
+        "apps/desktop/src/main/tabs/**",
+        "apps/desktop/src/renderer/home/**",
+        "apps/desktop/src/renderer/sidebar/**",
+        "apps/desktop/src/renderer/components/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "10 标签内存回归线：CI 750MB / 本机 800MB（500MB 目标线仅告警，ADR-018）"
+    },
+    {
+      "spec": "pi-agent-build.spec.ts",
+      "area": "pi agent",
+      "tests": 1,
+      "durationSec": 300,
+      "triggers": [
+        "packages/pi-web-host/src/pi-server/**",
+        "apps/desktop/src/main/pi-web-host/**",
+        "apps/desktop/tests/e2e/helpers/pi-agent-driver.ts",
+        "apps/pi-web/**"
+      ],
+      "deps": "api-key",
+      "ciRuns": false,
+      "alwaysRecommend": false,
+      "note": "真实 agent 开发 todo-cli；需 OPENCODE_API_KEY（无 key 自动 skip），耗时按保守估计"
+    },
+    {
+      "spec": "pi-agent-tetris.spec.ts",
+      "area": "pi agent",
+      "tests": 1,
+      "durationSec": 300,
+      "triggers": [
+        "packages/pi-web-host/src/pi-server/**",
+        "apps/desktop/src/main/pi-web-host/**",
+        "apps/desktop/tests/e2e/helpers/pi-agent-driver.ts",
+        "apps/pi-web/**"
+      ],
+      "deps": "api-key",
+      "ciRuns": false,
+      "alwaysRecommend": false,
+      "note": "真实 agent 开发俄罗斯方块 + 修复闭环；需 OPENCODE_API_KEY（无 key 自动 skip），耗时按保守估计"
+    },
+    {
+      "spec": "pi-web-host.spec.ts",
+      "area": "pi 托管",
+      "tests": 2,
+      "durationSec": 9,
+      "triggers": [
+        "apps/desktop/src/main/pi-web-host/**",
+        "packages/pi-web-host/**",
+        "apps/pi-web/**",
+        "apps/desktop/src/renderer/sidebar/**",
+        "scripts/build-pi-web.mjs"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "launch → 鉴权 URL → 前端加载 + WS 握手 → 退出杀进程"
+    },
+    {
+      "spec": "session-restore.spec.ts",
+      "area": "标签与启动",
+      "tests": 1,
+      "durationSec": 5,
+      "triggers": [
+        "apps/desktop/src/main/tabs/**",
+        "apps/desktop/src/main/workspaces/**",
+        "apps/desktop/src/main/lifecycle/**",
+        "apps/desktop/src/main/bootstrap/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "重启后恢复工作区与标签"
+    },
+    {
+      "spec": "settings-page.spec.ts",
+      "area": "设置",
+      "tests": 1,
+      "durationSec": 4,
+      "triggers": [
+        "apps/desktop/src/main/settings/**",
+        "apps/desktop/src/renderer/settings/**",
+        "apps/desktop/src/renderer/components/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "设置页选项卡切换与开关自动保存"
+    },
+    {
+      "spec": "tab-close-activation.spec.ts",
+      "area": "标签与启动",
+      "tests": 1,
+      "durationSec": 3,
+      "triggers": [
+        "apps/desktop/src/main/tabs/**",
+        "apps/desktop/src/renderer/tabs/**",
+        "apps/desktop/src/renderer/sidebar/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "关闭激活标签后激活相邻标签而非列表最底部"
+    },
+    {
+      "spec": "tab-order-repro.spec.ts",
+      "area": "标签与启动",
+      "tests": 1,
+      "durationSec": 8,
+      "triggers": [
+        "apps/desktop/src/main/tabs/**",
+        "apps/desktop/src/renderer/tabs/**",
+        "apps/desktop/src/renderer/sidebar/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "新建标签后旧标签状态不变、新标签置顶"
+    },
+    {
+      "spec": "translate.spec.ts",
+      "area": "翻译",
+      "tests": 1,
+      "durationSec": 3,
+      "triggers": [
+        "apps/desktop/src/main/translate/**",
+        "apps/desktop/src/renderer/translate/**",
+        "apps/desktop/src/main/status-bar/**",
+        "apps/desktop/src/renderer/status-bar/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "地址栏翻译按钮 → 整页替换 → 恢复原文（本地 HTTP 页，不依赖外网）"
+    },
+    {
+      "spec": "workspaces.spec.ts",
+      "area": "工作区",
+      "tests": 2,
+      "durationSec": 12,
+      "triggers": [
+        "apps/desktop/src/main/workspaces/**",
+        "apps/desktop/src/renderer/workspaces/**",
+        "apps/desktop/src/renderer/sidebar/**",
+        "apps/desktop/src/main/tabs/**"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "工作区会话 cookie 隔离 + 切换恢复 + 总览页卡片模式"
+    }
+  ]
+}

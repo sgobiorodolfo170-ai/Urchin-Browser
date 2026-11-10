@@ -14,18 +14,21 @@
  * - 隐私：导入路径仅记 basename + 计数，不记 URL 内容（与 files 域隐私约定一致）
  */
 import type { IpcMain, BrowserWindow, WebContents } from 'electron';
-import { dialog, BrowserWindow as ElectronBrowserWindow } from 'electron';
+import { dialog, session, BrowserWindow as ElectronBrowserWindow } from 'electron';
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { registerHandler, IpcError, IpcErrorCode } from '@urchin/ipc-contract';
-import type { ImportedBrowser } from '@urchin/ipc-contract';
+import type { ImportCookiesSummary, ImportedBrowser } from '@urchin/ipc-contract';
 import { createLogger } from '@urchin/logger';
 import type { BookmarkManager } from '../bookmarks';
-import type { ImportTreeNode } from './types';
+import type { CookieReadResult, ImportCookie, ImportTreeNode } from './types';
 import { parseNetscapeBookmarksHtml } from './parse-bookmarks-html';
 import { detectChromiumBrowsers, parseChromiumBookmarksFromProfile } from './chromium-profiles';
 import { detectFirefoxBrowsers, parseFirefoxPlacesFromProfile } from './firefox-profiles';
 import { importTreeIntoBookmarks } from './import-bookmarks';
+import { readFirefoxCookies } from './firefox-cookies';
+import { readChromiumCookies } from './chromium-cookies';
+import { importCookiesToSession, type CookieImportSummary } from './cookie-importer';
 
 const log = createLogger('import-ipc');
 
@@ -51,6 +54,10 @@ export interface ImportHandlerDeps {
   readonly parseChromiumBookmarks?: (profileDir: string) => ImportTreeNode;
   /** 解析 Firefox profile places.sqlite（默认复制临时文件只读打开；better-sqlite3 按需加载故为异步）。 */
   readonly parseFirefoxPlaces?: (profileDir: string) => ImportTreeNode | Promise<ImportTreeNode>;
+  /** 读取指定 profile 的 Cookie（默认按 bookmarksSource 分流 Firefox 明文 / Chromium 解密）。 */
+  readonly readCookiesForBrowser?: (browser: ImportedBrowser) => Promise<CookieReadResult>;
+  /** 把 Cookie 写入默认会话（默认 session.defaultSession；单测注入 mock）。 */
+  readonly saveCookies?: (cookies: readonly ImportCookie[]) => Promise<CookieImportSummary>;
   /** 从 IPC sender 反查宿主窗口（默认 BrowserWindow.fromWebContents）。 */
   readonly getWindowFromSender?: (sender: unknown) => BrowserWindow | undefined;
 }
@@ -58,6 +65,65 @@ export interface ImportHandlerDeps {
 /** 默认 detectBrowsers：合并 chromium + firefox 检测结果。 */
 function defaultDetectBrowsers(): ImportedBrowser[] {
   return [...detectChromiumBrowsers(), ...detectFirefoxBrowsers()];
+}
+
+/** 默认 Cookie 读取：Firefox 明文 SQLite / Chromium 解密（v10/v11，v20 跳过）。 */
+function defaultReadCookies(browser: ImportedBrowser): Promise<CookieReadResult> {
+  return browser.bookmarksSource === 'firefox-places'
+    ? readFirefoxCookies(browser.profileDir)
+    : readChromiumCookies(browser.profileDir);
+}
+
+/** 默认 Cookie 写入目标：默认工作区会话（自定义工作区分区不在本次范围）。 */
+function defaultSaveCookies(cookies: readonly ImportCookie[]): Promise<CookieImportSummary> {
+  return importCookiesToSession(cookies, session.defaultSession);
+}
+
+/**
+ * 执行 Cookie 导入并合并摘要。
+ *
+ * 失败不抛出：书签导入已成功，Cookie 失败只作为摘要中的 note 返回（UI 提示），
+ * 避免「Cookie 不可用导致书签也白导」。
+ */
+async function importBrowserCookies(
+  target: ImportedBrowser,
+  read: (browser: ImportedBrowser) => Promise<CookieReadResult>,
+  save: (cookies: readonly ImportCookie[]) => Promise<CookieImportSummary>,
+): Promise<ImportCookiesSummary> {
+  if (target.cookiesSupport === 'none') {
+    return {
+      imported: 0,
+      skipped: 0,
+      failed: 0,
+      encryptedSkipped: 0,
+      note: target.cookiesNote ?? '当前浏览器 Cookie 不可导入',
+    };
+  }
+  try {
+    const readResult = await read(target);
+    const written = await save(readResult.cookies);
+    const notes = [readResult.note, target.cookiesNote].filter(
+      (n): n is string => typeof n === 'string' && n !== '',
+    );
+    return {
+      imported: written.imported,
+      skipped: written.skipped + readResult.skipped,
+      failed: written.failed,
+      encryptedSkipped: readResult.encryptedSkipped,
+      ...(notes.length > 0 ? { note: notes.join('；') } : {}),
+    };
+  } catch (e) {
+    // 只透出短消息：底层异常可能带命令行/路径（不得进 UI 或日志）。
+    const raw = e instanceof Error ? e.message : '';
+    const safe = raw && raw.length <= 80 ? raw : '内部错误（详见运行日志）';
+    return {
+      imported: 0,
+      skipped: 0,
+      failed: 0,
+      encryptedSkipped: 0,
+      note: `Cookie 导入失败：${safe}`,
+    };
+  }
 }
 
 /**
@@ -75,6 +141,8 @@ export function registerImportHandlers(deps: ImportHandlerDeps): void {
   const getWindow =
     deps.getWindowFromSender ??
     ((sender) => ElectronBrowserWindow.fromWebContents(sender as WebContents) ?? undefined);
+  const readCookies = deps.readCookiesForBrowser ?? defaultReadCookies;
+  const saveCookies = deps.saveCookies ?? defaultSaveCookies;
 
   // import.detectBrowsers：扫描本机 Chrome/Edge/Firefox，返回可导入 profile 列表
   registerHandler(ipcMain, 'import.detectBrowsers', () => {
@@ -121,7 +189,7 @@ export function registerImportHandlers(deps: ImportHandlerDeps): void {
   // import.bookmarksFromBrowser：按 detect 返回的 id 导入指定浏览器 profile
   // （async：Firefox 分支的 better-sqlite3 按需加载为异步，见 firefox-profiles.ts）
   registerHandler(ipcMain, 'import.bookmarksFromBrowser', async (req) => {
-    log.info('import.bookmarksFromBrowser', { id: req.id });
+    log.info('import.bookmarksFromBrowser', { id: req.id, includeCookies: req.includeCookies });
     const browsers = detect();
     const target = browsers.find((b) => b.id === req.id);
     if (!target) {
@@ -138,14 +206,27 @@ export function registerImportHandlers(deps: ImportHandlerDeps): void {
         sourceName: target.displayName,
         root: tree,
       });
+      // Cookie 导入（可选）：书签已成功落库，Cookie 失败只降级为摘要 note。
+      const cookies =
+        req.includeCookies === true
+          ? await importBrowserCookies(target, readCookies, saveCookies)
+          : null;
       log.info('import.bookmarksFromBrowser done', {
         browser: target.displayName,
         profile: target.profileName,
         folders: summary.folders,
         bookmarks: summary.bookmarks,
         skipped: summary.skipped,
+        cookies: cookies
+          ? {
+              imported: cookies.imported,
+              skipped: cookies.skipped,
+              failed: cookies.failed,
+              encryptedSkipped: cookies.encryptedSkipped,
+            }
+          : null,
       });
-      return { canceled: false as const, summary };
+      return { canceled: false as const, summary, cookies };
     } catch (e) {
       throw new IpcError(IpcErrorCode.INTERNAL, `导入书签失败: ${String(e)}`, {
         channel: 'import.bookmarksFromBrowser',

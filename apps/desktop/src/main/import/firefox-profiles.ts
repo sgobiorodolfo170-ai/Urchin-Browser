@@ -26,6 +26,13 @@ import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import type { ImportedBrowser } from '@urchin/ipc-contract';
 import type { ImportTreeNode } from './types';
+import { detectFirefoxCookieSupport } from './firefox-cookies';
+import {
+  defaultReadonlyFactory as createDefaultReadonlyFactory,
+  type SqliteReadonlyFactory,
+} from './sqlite-readonly';
+
+export type { SqliteReadonlyDatabase, SqliteReadonlyFactory } from './sqlite-readonly';
 
 /** tags 根的 guid（跳过其子树，避免导入标签集合）。 */
 const TAGS_ROOT_GUID = 'tags________';
@@ -39,12 +46,6 @@ export interface FirefoxFsDeps {
   readonly copyFileSync?: typeof copyFileSync;
   readonly rmSync?: typeof rmSync;
 }
-
-/** better-sqlite3 工厂注入（生产用 better-sqlite3，单测注入 mock 或跳过 DB 测试）。 */
-export type SqliteReadonlyFactory = (path: string) => {
-  prepare(sql: string): { all(...params: readonly unknown[]): unknown[] };
-  close(): void;
-};
 
 /** moz_bookmarks 行。 */
 export interface MozBookmarkRow {
@@ -93,6 +94,7 @@ export function detectFirefoxBrowsers(deps: FirefoxFsDeps = {}): ImportedBrowser
   for (const p of profiles) {
     const profileDir = p.isRelative ? join(firefoxDir, p.path) : p.path;
     if (!exists(join(profileDir, 'places.sqlite'))) continue;
+    const hasCookies = detectFirefoxCookieSupport(profileDir, { existsSync: exists });
     results.push({
       id: `firefox:${profileDir}`,
       kind: 'firefox',
@@ -100,6 +102,8 @@ export function detectFirefoxBrowsers(deps: FirefoxFsDeps = {}): ImportedBrowser
       profileName: p.name || p.path,
       profileDir,
       bookmarksSource: 'firefox-places',
+      cookiesSupport: hasCookies ? 'full' : 'none',
+      ...(hasCookies ? {} : { cookiesNote: '未找到 cookies.sqlite' }),
     });
   }
   return results;
@@ -243,7 +247,7 @@ export async function parseFirefoxPlacesFromProfile(
   const tmpPath = join(tmpdir(), `urchin-places-${randomUUID()}.sqlite`);
   copyFile(placesPath, tmpPath);
   try {
-    const factory = dbFactory ?? (await defaultReadonlyFactory());
+    const factory = dbFactory ?? (await createDefaultReadonlyFactory());
     const db = factory(tmpPath);
     try {
       const bookmarkRows = db
@@ -257,30 +261,4 @@ export async function parseFirefoxPlacesFromProfile(
   } finally {
     rm(tmpPath, { force: true });
   }
-}
-
-/**
- * 生产默认 better-sqlite3 只读工厂——**按需加载原生模块**。
- *
- * 为什么惰性（2026-11-10 dev.176 事故，AGENTS.md §七.2 记录设计理由）：
- * 原先 `import Database from 'better-sqlite3'` 是静态导入，vite 会把它在主进程
- * 共享 chunk 顶层生成 `require('better-sqlite3')`——整个主进程启动即强依赖该
- * 原生模块。安装未完成（NSIS 就地解压期间应用被手动启动）或杀软瞬时锁文件时，
- * 启动即抛 `Cannot find module 'better-sqlite3'`（uncaughtException 弹窗，且
- * 发生在 logger 初始化之前、无日志留痕）。改为按需 import 后，故障面从
- * 「全应用启动失败」收敛到「仅 Firefox 书签导入单功能」；错误在首次使用时
- * 才抛出，由导入流程的错误提示承载。
- */
-async function defaultReadonlyFactory(): Promise<SqliteReadonlyFactory> {
-  const { default: SqliteCtor } = await import('better-sqlite3');
-  return (path: string) => {
-    const db = new SqliteCtor(path, { readonly: true });
-    return {
-      prepare(sql: string) {
-        const stmt = db.prepare(sql);
-        return { all: (...params: readonly unknown[]) => stmt.all(...params) };
-      },
-      close: () => db.close(),
-    };
-  };
 }

@@ -54,6 +54,7 @@ describe('registerImportHandlers', () => {
         profileName: 'Default',
         profileDir: 'C:\\Chrome',
         bookmarksSource: 'chromium-json' as const,
+        cookiesSupport: 'none' as const,
       },
     ];
     registerImportHandlers({
@@ -144,6 +145,7 @@ describe('registerImportHandlers', () => {
           profileName: 'Default',
           profileDir: 'C:\\P',
           bookmarksSource: 'chromium-json' as const,
+          cookiesSupport: 'full' as const,
         },
       ],
       parseChromiumBookmarks: parseChromium,
@@ -175,5 +177,141 @@ describe('registerImportHandlers', () => {
     await expect(
       ipcMain.invoke('import.bookmarksFromBrowser', { id: 'missing' }),
     ).rejects.toThrow();
+  });
+
+  it('should import cookies when includeCookies=true and merge read/write counters', async () => {
+    const ipcMain = createMockIpcMain();
+    const create = vi
+      .fn()
+      .mockImplementation((opts: { title: string }) => ({ id: `id-${opts.title}` }));
+    const readCookies = vi.fn().mockResolvedValue({
+      cookies: [
+        {
+          host: '.example.com',
+          path: '/',
+          name: 'sid',
+          value: 'v',
+          secure: true,
+          httpOnly: true,
+          sameSite: 'lax' as const,
+        },
+      ],
+      skipped: 2,
+      encryptedSkipped: 3,
+    });
+    const saveCookies = vi.fn().mockResolvedValue({
+      imported: 1,
+      skipped: 0,
+      failed: 0,
+      encryptedSkipped: 0,
+    });
+    registerImportHandlers({
+      ipcMain: ipcMain as never,
+      bookmarkManager: { create } as never,
+      detectBrowsers: () => [
+        {
+          id: 'firefox:C:\\F',
+          kind: 'firefox' as const,
+          displayName: 'Mozilla Firefox',
+          profileName: 'default',
+          profileDir: 'C:\\F',
+          bookmarksSource: 'firefox-places' as const,
+          cookiesSupport: 'full' as const,
+        },
+      ],
+      parseChromiumBookmarks: vi.fn(),
+      parseFirefoxPlaces: vi.fn().mockResolvedValue({
+        title: 'root',
+        children: [{ title: 'X', url: 'https://x.example/' }],
+      }),
+      readCookiesForBrowser: readCookies,
+      saveCookies,
+    });
+
+    const result = (await ipcMain.invoke('import.bookmarksFromBrowser', {
+      id: 'firefox:C:\\F',
+      includeCookies: true,
+    })) as {
+      summary: { bookmarks: number };
+      cookies: { imported: number; skipped: number; encryptedSkipped: number } | null;
+    };
+
+    expect(result.summary.bookmarks).toBe(1);
+    expect(readCookies).toHaveBeenCalledTimes(1);
+    expect(saveCookies).toHaveBeenCalledTimes(1);
+    expect(result.cookies).toMatchObject({ imported: 1, skipped: 2, encryptedSkipped: 3 });
+  });
+
+  it('should skip cookie read when capability is none and return explanatory note', async () => {
+    const ipcMain = createMockIpcMain();
+    const readCookies = vi.fn();
+    registerImportHandlers({
+      ipcMain: ipcMain as never,
+      bookmarkManager: { create: vi.fn(() => ({ id: 'x', title: 'x' })) } as never,
+      detectBrowsers: () => [
+        {
+          id: 'chrome:C:\\C',
+          kind: 'chrome' as const,
+          displayName: 'Google Chrome',
+          profileName: 'Default',
+          profileDir: 'C:\\C',
+          bookmarksSource: 'chromium-json' as const,
+          cookiesSupport: 'none' as const,
+          cookiesNote: '已启用应用级加密（ABE）',
+        },
+      ],
+      parseChromiumBookmarks: vi.fn().mockReturnValue({
+        title: 'root',
+        children: [{ title: 'X', url: 'https://x.example/' }],
+      }),
+      readCookiesForBrowser: readCookies,
+    });
+
+    const result = (await ipcMain.invoke('import.bookmarksFromBrowser', {
+      id: 'chrome:C:\\C',
+      includeCookies: true,
+    })) as {
+      cookies: { imported: number; note?: string } | null;
+    };
+
+    expect(readCookies).not.toHaveBeenCalled();
+    expect(result.cookies?.imported).toBe(0);
+    expect(result.cookies?.note).toContain('ABE');
+  });
+
+  it('should keep bookmark import successful when cookie reading throws', async () => {
+    const ipcMain = createMockIpcMain();
+    registerImportHandlers({
+      ipcMain: ipcMain as never,
+      bookmarkManager: { create: vi.fn(() => ({ id: 'x', title: 'x' })) } as never,
+      detectBrowsers: () => [
+        {
+          id: 'chrome:C:\\C',
+          kind: 'chrome' as const,
+          displayName: 'Google Chrome',
+          profileName: 'Default',
+          profileDir: 'C:\\C',
+          bookmarksSource: 'chromium-json' as const,
+          cookiesSupport: 'full' as const,
+        },
+      ],
+      parseChromiumBookmarks: vi.fn().mockReturnValue({
+        title: 'root',
+        children: [{ title: 'X', url: 'https://x.example/' }],
+      }),
+      readCookiesForBrowser: vi.fn().mockRejectedValue(new Error('dpapi blocked')),
+    });
+
+    const result = (await ipcMain.invoke('import.bookmarksFromBrowser', {
+      id: 'chrome:C:\\C',
+      includeCookies: true,
+    })) as {
+      summary: { bookmarks: number };
+      cookies: { imported: number; note?: string } | null;
+    };
+
+    expect(result.summary.bookmarks).toBe(1);
+    expect(result.cookies?.imported).toBe(0);
+    expect(result.cookies?.note).toContain('Cookie 导入失败');
   });
 });

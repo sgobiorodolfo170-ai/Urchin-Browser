@@ -135,13 +135,13 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
       {/* 右侧内容区 */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-8 py-6 pb-16">
-          {activeTab === 'general' && (
-            <GeneralSection entries={entries} onChange={updateField} onToast={showToast} />
-          )}
+          {activeTab === 'general' && <GeneralSection entries={entries} onChange={updateField} />}
           {activeTab === 'clipper' && <ClipperSection entries={entries} onChange={updateField} />}
           {activeTab === 'ops' && <OpsTab entries={entries} onChange={updateField} />}
           {activeTab === 'ai' && <AiSection />}
-          {activeTab === 'data' && <DataSection entries={entries} onChange={updateField} />}
+          {activeTab === 'data' && (
+            <DataSection entries={entries} onChange={updateField} onToast={showToast} />
+          )}
           {activeTab === 'privacy' && <PrivacySection entries={entries} onChange={updateField} />}
           {activeTab === 'files' && <FilesTab onToast={showToast} />}
           {activeTab === 'help' && <HelpTab />}

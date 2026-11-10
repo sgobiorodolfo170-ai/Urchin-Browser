@@ -947,8 +947,33 @@ export const importedBrowserSchema = z.object({
   profileDir: z.string().min(1),
   /** 收藏夹数据来源格式（决定解析路径） */
   bookmarksSource: z.enum(['chromium-json', 'firefox-places']),
+  /**
+   * Cookie 导入能力（2026-11-10 用户需求）：
+   * - full：可完整导入（Firefox 明文 / Chromium 无 App-Bound Encryption）；
+   * - partial：仅部分可解（Chromium 启用 ABE 后仅旧版 v10/v11 可解）；
+   * - none：不可用（Chrome 127+ ABE、Cookie 库缺失、主密钥不可解等）。
+   */
+  cookiesSupport: z.enum(['full', 'partial', 'none']).default('none'),
+  /** Cookie 能力说明（UI 展示原因；不含 Cookie 内容） */
+  cookiesNote: z.string().optional(),
 });
 export type ImportedBrowser = z.infer<typeof importedBrowserSchema>;
+
+/**
+ * Cookie 导入摘要。
+ *
+ * 计数口径：imported = 成功写入；skipped = 解析期过滤（容器/分区/非法组合/已过期）；
+ * failed = session.cookies.set 抛错；encryptedSkipped = 加密无法解密而跳过（如 ABE v20）。
+ */
+export const importCookiesSummarySchema = z.object({
+  imported: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  encryptedSkipped: z.number().int().nonnegative(),
+  /** 面向用户的说明（如「Chrome 已启用应用级加密，仅导入旧版 Cookie」） */
+  note: z.string().optional(),
+});
+export type ImportCookiesSummary = z.infer<typeof importCookiesSummarySchema>;
 
 /** 导入结果摘要（成功导入时返回；canceled=true 时 summary=null）。 */
 export const importSummarySchema = z.object({
@@ -988,12 +1013,16 @@ export type ImportBookmarksFromFileRes = z.infer<typeof importBookmarksFromFileR
 // import.bookmarksFromBrowser：按 detect 返回的 id 导入指定浏览器 profile 的收藏夹
 export const importBookmarksFromBrowserReqSchema = z.object({
   id: z.string().min(1),
+  /** 是否同时导入该 profile 的 Cookie（默认 false；能力见 ImportedBrowser.cookiesSupport） */
+  includeCookies: z.boolean().default(false),
 });
 export type ImportBookmarksFromBrowserReq = z.infer<typeof importBookmarksFromBrowserReqSchema>;
 
 export const importBookmarksFromBrowserResSchema = z.object({
   canceled: z.boolean().default(false),
   summary: importSummarySchema.nullable(),
+  /** Cookie 导入摘要（未请求 includeCookies 时为 null） */
+  cookies: importCookiesSummarySchema.nullable().default(null),
 });
 export type ImportBookmarksFromBrowserRes = z.infer<typeof importBookmarksFromBrowserResSchema>;
 

@@ -15,6 +15,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ImportedBrowser } from '@urchin/ipc-contract';
 import type { ImportTreeNode } from './types';
+import { detectChromiumCookieSupport } from './chromium-cookies';
 
 /** 候选浏览器（vendor 目录名 + 显示名）。 */
 interface ChromiumCandidate {
@@ -82,6 +83,9 @@ export function detectChromiumBrowsers(deps: ChromiumFsDeps = {}): ImportedBrows
       const profileDir = join(userDataDir, p.dir);
       const bookmarksPath = join(profileDir, 'Bookmarks');
       if (!exists(bookmarksPath)) continue;
+      // Cookie 能力检测（2026-11-10）：ABE 存在时仅旧版 v10/v11 可解。
+      // 注意此处只读 Local State / 探测文件存在，不解密、不读 Cookie 内容。
+      const cookieSupport = detectChromiumCookieSupport(profileDir, { existsSync: exists });
       results.push({
         id: `${c.kind}:${profileDir}`,
         kind: c.kind,
@@ -89,6 +93,8 @@ export function detectChromiumBrowsers(deps: ChromiumFsDeps = {}): ImportedBrows
         profileName: p.name,
         profileDir,
         bookmarksSource: 'chromium-json',
+        cookiesSupport: cookieSupport.support,
+        ...(cookieSupport.note ? { cookiesNote: cookieSupport.note } : {}),
       });
     }
   }

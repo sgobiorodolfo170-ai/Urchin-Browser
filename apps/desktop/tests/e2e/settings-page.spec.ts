@@ -55,10 +55,15 @@ test.describe('设置页', () => {
     });
     await expect(window.getByText('界面语言')).toBeVisible();
 
-    // 选项卡切换：剪藏（含固定保存位置说明）/ 隐私与安全
+    // 选项卡切换：剪藏（含固定保存位置说明）/ 数据（含浏览器导入与 Cookie 开关）/ 隐私与安全
     await window.getByRole('button', { name: '剪藏', exact: true }).click();
     await expect(window.getByRole('heading', { name: '剪藏' })).toBeVisible();
     await expect(window.getByText('默认保存格式')).toBeVisible();
+
+    await window.getByRole('button', { name: '数据', exact: true }).click();
+    await expect(window.getByRole('heading', { name: '数据' })).toBeVisible();
+    await expect(window.getByText('从其他浏览器导入')).toBeVisible();
+    await expect(window.getByText('同时导入 Cookie（登录状态）')).toBeVisible();
 
     await window.getByRole('button', { name: '隐私与安全', exact: true }).click();
     await expect(window.getByRole('heading', { name: '隐私与安全' })).toBeVisible();

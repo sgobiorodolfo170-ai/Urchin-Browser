@@ -91,6 +91,69 @@ describe('SettingsPage', () => {
     expect(screen.getByText('重置默认')).toBeTruthy();
   });
 
+  it('should render browser import block under data tab instead of general', async () => {
+    mockLoadSuccess();
+    render(<SettingsPage />);
+    await waitFor(() => expect(screen.getAllByText('通用').length).toBeGreaterThan(0));
+
+    // 通用 tab 不再出现导入区块
+    expect(screen.queryByText('从其他浏览器导入')).toBeNull();
+
+    clickTab('数据');
+    expect(screen.getByText('从其他浏览器导入')).toBeTruthy();
+    expect(screen.getByText('同时导入 Cookie（登录状态）')).toBeTruthy();
+    expect(screen.getByText('检测本机浏览器')).toBeTruthy();
+  });
+
+  it('should pass includeCookies=true when the cookie checkbox is checked', async () => {
+    mockLoadSuccess();
+    const browser = {
+      id: 'firefox:C:\\FF',
+      kind: 'firefox' as const,
+      displayName: 'Mozilla Firefox',
+      profileName: 'default',
+      profileDir: 'C:\\FF',
+      bookmarksSource: 'firefox-places' as const,
+      cookiesSupport: 'full' as const,
+    };
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'settings.getAll') {
+        return Promise.resolve({ entries: [{ key: 'language', value: 'zh-CN' }] });
+      }
+      if (channel === 'import.detectBrowsers') return Promise.resolve({ browsers: [browser] });
+      if (channel === 'import.bookmarksFromBrowser') {
+        return Promise.resolve({
+          canceled: false,
+          summary: {
+            folders: 1,
+            bookmarks: 1,
+            skipped: 0,
+            rootFolderId: 'r',
+            rootFolderTitle: 'r',
+          },
+          cookies: { imported: 2, skipped: 0, failed: 0, encryptedSkipped: 0 },
+        });
+      }
+      return Promise.resolve({ ok: true });
+    });
+    render(<SettingsPage />);
+    await waitFor(() => expect(screen.getAllByText('通用').length).toBeGreaterThan(0));
+
+    clickTab('数据');
+    fireEvent.click(screen.getByText('检测本机浏览器'));
+    await waitFor(() => expect(screen.getByText('Mozilla Firefox')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByText('导入收藏夹'));
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith('import.bookmarksFromBrowser', {
+        id: 'firefox:C:\\FF',
+        includeCookies: true,
+      }),
+    );
+  });
+
   it('should switch tabs and render AI / privacy / about / ops content', async () => {
     mockLoadSuccess();
     render(<SettingsPage />);

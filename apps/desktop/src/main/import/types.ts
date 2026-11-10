@@ -36,3 +36,31 @@ export interface ParsedBookmarks {
   /** 解析后的树根（根节点本身是容器，其 children 为顶级书签/文件夹） */
   readonly root: ImportTreeNode;
 }
+
+/**
+ * 待写入 Urchin 的 Cookie（与 Electron CookiesSetDetails 的语义对齐，去除
+ * Electron 依赖以便单测）。
+ */
+export interface ImportCookie {
+  /** Cookie 域（域名 Cookie 以 '.' 开头；host-only 不带点） */
+  readonly host: string;
+  readonly path: string;
+  readonly name: string;
+  readonly value: string;
+  /** 过期时间（Unix 秒）；undefined = 会话 Cookie */
+  readonly expiresSec?: number;
+  readonly secure: boolean;
+  readonly httpOnly: boolean;
+  readonly sameSite: 'unspecified' | 'no_restriction' | 'lax' | 'strict';
+}
+
+/** Cookie 读取结果（解析期过滤 + 加密跳过计数，供 IPC 摘要合并）。 */
+export interface CookieReadResult {
+  readonly cookies: readonly ImportCookie[];
+  /** 解析期跳过的 Cookie 数（容器/分区/非法/已过期） */
+  readonly skipped: number;
+  /** 因加密无法解密而跳过的 Cookie 数（如 Chrome ABE v20） */
+  readonly encryptedSkipped: number;
+  /** 面向用户的说明（可空） */
+  readonly note?: string;
+}

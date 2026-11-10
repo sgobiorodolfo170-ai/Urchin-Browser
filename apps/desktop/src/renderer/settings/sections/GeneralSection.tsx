@@ -1,12 +1,9 @@
 /**
  * 「通用」选项卡（refactor-plan-p2 §3.3 步骤 2，代码自 SettingsPage.tsx 原样迁出）
  *
- * 组成：通用设置字段（GENERAL_FIELDS 经共享 SettingsSection 渲染）+
- * 从其他浏览器导入书签区块（ImportBookmarksBlock，含检测/导入逻辑与
- * IPC 契约对齐类型）。
+ * 组成：通用设置字段（GENERAL_FIELDS 经共享 SettingsSection 渲染）。
+ * 「从其他浏览器导入」区块已于 2026-11-10 迁至「数据」页（ImportSection）。
  */
-import { useCallback, useState } from 'react';
-import { Button } from '../../components/ui/button';
 import { SettingsSection, type SettingField } from '../settings-form';
 
 const GENERAL_FIELDS: readonly SettingField[] = [
@@ -89,169 +86,13 @@ const GENERAL_FIELDS: readonly SettingField[] = [
   },
 ];
 
-/** 已检测浏览器 profile 的最小结构（与 ipc-contract ImportedBrowser 对齐）。 */
-interface ImportedBrowserInfo {
-  readonly id: string;
-  readonly kind: 'chrome' | 'edge' | 'firefox';
-  readonly displayName: string;
-  readonly profileName: string;
-  readonly profileDir: string;
-  readonly bookmarksSource: 'chromium-json' | 'firefox-places';
-}
-
-/** 导入结果摘要（与 ipc-contract ImportSummary 对齐）。 */
-interface ImportSummaryInfo {
-  readonly folders: number;
-  readonly bookmarks: number;
-  readonly skipped: number;
-  readonly rootFolderId: string;
-  readonly rootFolderTitle: string;
-}
-
-/** 摘要 → toast 文案。 */
-function summaryToast(s: ImportSummaryInfo): string {
-  return `已导入 ${s.bookmarks} 个书签、${s.folders} 个文件夹${s.skipped > 0 ? `（跳过 ${s.skipped}）` : ''}`;
-}
-
-/**
- * 「从其他浏览器导入」区块（通用 tab 底部）。
- *
- * 导入的书签放入收藏夹根目录下「导入自 <浏览器> (YYYY-MM-DD)」文件夹，
- * 完整保留原目录结构，可整夹删除回退（详见 docs/数据导入评估.md）。
- */
-function ImportBookmarksBlock({ onToast }: { readonly onToast: (msg: string) => void }) {
-  const [browsers, setBrowsers] = useState<ImportedBrowserInfo[]>([]);
-  const [detecting, setDetecting] = useState(false);
-  const [importing, setImporting] = useState<string | null>(null);
-  const [fileImporting, setFileImporting] = useState(false);
-
-  const handleDetect = useCallback(async () => {
-    setDetecting(true);
-    try {
-      const res = (await window.urchin.invoke('import.detectBrowsers', {})) as {
-        browsers: ImportedBrowserInfo[];
-      };
-      setBrowsers(res.browsers ?? []);
-      if ((res.browsers ?? []).length === 0) {
-        onToast('未检测到可导入的浏览器');
-      }
-    } catch (e) {
-      onToast('检测失败：' + String(e));
-    } finally {
-      setDetecting(false);
-    }
-  }, [onToast]);
-
-  const handleFromFile = useCallback(async () => {
-    setFileImporting(true);
-    try {
-      const res = (await window.urchin.invoke('import.bookmarksFromFile', {})) as {
-        canceled: boolean;
-        summary: ImportSummaryInfo | null;
-      };
-      if (res.canceled || !res.summary) {
-        onToast('已取消');
-        return;
-      }
-      onToast(summaryToast(res.summary));
-    } catch (e) {
-      onToast('导入失败：' + String(e));
-    } finally {
-      setFileImporting(false);
-    }
-  }, [onToast]);
-
-  const handleFromBrowser = useCallback(
-    async (id: string) => {
-      setImporting(id);
-      try {
-        const res = (await window.urchin.invoke('import.bookmarksFromBrowser', { id })) as {
-          canceled: boolean;
-          summary: ImportSummaryInfo | null;
-        };
-        if (res.canceled || !res.summary) {
-          onToast('已取消');
-          return;
-        }
-        onToast(summaryToast(res.summary));
-      } catch (e) {
-        onToast('导入失败：' + String(e));
-      } finally {
-        setImporting(null);
-      }
-    },
-    [onToast],
-  );
-
-  return (
-    <section className="mt-8">
-      <h2 className="mb-2 text-lg font-semibold">从其他浏览器导入</h2>
-      <p className="mb-4 text-sm text-text-secondary">
-        导入 Chrome / Edge / Firefox 的收藏夹，或从书签 HTML 文件导入。导入的书签会放入
-        收藏夹根目录下「导入自 &lt;浏览器&gt;
-        (&lt;日期&gt;)」文件夹，完整保留原目录结构，可整夹删除回退。
-      </p>
-
-      <div className="flex flex-wrap gap-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={fileImporting}
-          onClick={() => void handleFromFile()}
-        >
-          {fileImporting ? '导入中…' : '从书签 HTML 文件导入…'}
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={detecting}
-          onClick={() => void handleDetect()}
-        >
-          {detecting ? '检测中…' : '检测本机浏览器'}
-        </Button>
-      </div>
-
-      {browsers.length > 0 && (
-        <div className="mt-4 space-y-2">
-          {browsers.map((b) => {
-            const key = b.id;
-            return (
-              <div
-                key={key}
-                className="flex items-center justify-between rounded-md border border-border bg-surface-secondary px-4 py-2.5"
-              >
-                <div className="min-w-0">
-                  <div className="font-medium">{b.displayName}</div>
-                  <div className="mt-0.5 text-xs text-text-secondary">{b.profileName}</div>
-                </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={importing === b.id}
-                  onClick={() => void handleFromBrowser(b.id)}
-                >
-                  {importing === b.id ? '导入中…' : '导入收藏夹'}
-                </Button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
-
 export interface GeneralSectionProps {
   readonly entries: Record<string, unknown>;
   readonly onChange: (key: string, value: unknown) => void;
-  readonly onToast: (msg: string) => void;
 }
 
-export function GeneralSection({ entries, onChange, onToast }: GeneralSectionProps) {
+export function GeneralSection({ entries, onChange }: GeneralSectionProps) {
   return (
-    <>
-      <SettingsSection title="通用" fields={GENERAL_FIELDS} entries={entries} onChange={onChange} />
-      <ImportBookmarksBlock onToast={onToast} />
-    </>
+    <SettingsSection title="通用" fields={GENERAL_FIELDS} entries={entries} onChange={onChange} />
   );
 }

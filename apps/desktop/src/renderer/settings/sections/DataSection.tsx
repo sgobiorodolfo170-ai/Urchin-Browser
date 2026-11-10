@@ -2,9 +2,11 @@
  * 「数据」选项卡（refactor-plan-p2 §3.3 步骤 5，代码自 SettingsPage.tsx 原样迁出）
  *
  * 组成：数据存储字段（DATA_FIELDS 经共享 SettingsSection 渲染，
- * directory 类型控件弹原生目录选择器）。
+ * directory 类型控件弹原生目录选择器）+ 从其他浏览器导入区块
+ * （2026-11-10 自「通用」页迁入）。
  */
 import { SettingsSection, type SettingField } from '../settings-form';
+import { ImportSection } from './ImportSection';
 
 const DATA_FIELDS: readonly SettingField[] = [
   {
@@ -30,10 +32,14 @@ const DATA_FIELDS: readonly SettingField[] = [
 export interface DataSectionProps {
   readonly entries: Record<string, unknown>;
   readonly onChange: (key: string, value: unknown) => void;
+  readonly onToast: (msg: string) => void;
 }
 
-export function DataSection({ entries, onChange }: DataSectionProps) {
+export function DataSection({ entries, onChange, onToast }: DataSectionProps) {
   return (
-    <SettingsSection title="数据" fields={DATA_FIELDS} entries={entries} onChange={onChange} />
+    <>
+      <SettingsSection title="数据" fields={DATA_FIELDS} entries={entries} onChange={onChange} />
+      <ImportSection onToast={onToast} />
+    </>
   );
 }

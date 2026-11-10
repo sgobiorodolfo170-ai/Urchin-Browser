@@ -388,4 +388,21 @@ export class Orchestrator {
   get size(): number {
     return this.hosts.size;
   }
+
+  /**
+   * 当前仍存活的 Provider 子进程 PID（退出兜底回收用，2026-11-10）。
+   *
+   * 必须在 disposeAll 之前调用：disposeHost 会 kill 进程并删除 host 记录，
+   * 之后无法再取到 PID。已 disposed / crashed 的 host 不计入（其进程已由
+   * markCrashed / disposeHost 处理，重复强杀没有意义）。
+   */
+  listActiveProviderPids(): number[] {
+    const pids: number[] = [];
+    for (const host of this.hosts.values()) {
+      if (host.state === 'disposed' || host.state === 'crashed') continue;
+      const pid = host.process.pid;
+      if (typeof pid === 'number' && Number.isInteger(pid) && pid > 0) pids.push(pid);
+    }
+    return pids;
+  }
 }

@@ -7,9 +7,48 @@
  */
 import { createLogger } from '@urchin/logger';
 import type { AppContext } from '../bootstrap/app-context';
+import { collectChildPids, terminateChildProcesses, type ChildPidSource } from './child-processes';
 
 // 与 index.ts 保持同一 module 名，日志输出与拆分前完全一致。
 const log = createLogger('main');
+
+/**
+ * 清理硬超时（2026-11-10 用户指令：关闭必须彻底退出、不得残留/挂死）。
+ *
+ * 正常清理通常 < 300ms；10s 只是异常兜底——任一子进程 kill 或 SQLite close
+ * 挂死时，到点仍强制 app.exit(0)，杜绝「窗口没了但进程还在」。
+ */
+export const CLEANUP_TIMEOUT_MS = 10_000;
+
+/**
+ * 在进入任何 dispose 之前快照子进程 PID（2026-11-10）。
+ *
+ * 为什么必须先快照：disposeHost / killChild 会先清空启动器内部引用再执行
+ * taskkill，之后 status().pid 已为空；若在 dispose 之后取，就再也拿不到
+ * 「该被回收但没死」的 PID。快照失败（启动早期清理、字段未初始化）按空处理，
+ * 不得让兜底逻辑本身打断退出流程。
+ */
+function snapshotChildPids(ctx: AppContext): number[] {
+  const sources: ChildPidSource[] = [];
+  try {
+    sources.push({ label: 'dsh', pid: ctx.dshLauncher?.status().pid });
+  } catch {
+    /* 启动早期未初始化：忽略 */
+  }
+  try {
+    sources.push({ label: 'pi-web-host', pid: ctx.piWebHostLauncher?.status().pid });
+  } catch {
+    /* 同上 */
+  }
+  try {
+    for (const pid of ctx.orchestrator?.listActiveProviderPids() ?? []) {
+      sources.push({ label: 'ai-provider', pid });
+    }
+  } catch {
+    /* 同上 */
+  }
+  return collectChildPids(sources);
+}
 
 /**
  * 退出清理流程：在进程退出前释放所有原生资源。
@@ -30,6 +69,8 @@ const log = createLogger('main');
 export async function performCleanup(ctx: AppContext): Promise<void> {
   if (ctx.isCleaningUp) return;
   ctx.isCleaningUp = true;
+  // 0.01 快照子进程 PID：dispose 会清空引用，必须在任何 dispose 之前取（见 snapshotChildPids）。
+  const childPids = snapshotChildPids(ctx);
   try {
     // 0. abort 所有活跃 AI 流（chat + agent）
     //    必须在 ctx.orchestrator.disposeAll 之前调用：先 abort 流间接触发 stream.ts / pi-event-bridge.ts
@@ -236,6 +277,26 @@ export async function performCleanup(ctx: AppContext): Promise<void> {
     //    等待 150ms 让子进程完成退出，避免主进程先退导致子进程残留
     await new Promise<void>((resolve) => setTimeout(resolve, 150));
 
+    // 5.1 兜底强杀：优雅 dispose 是「尽力而为」，此处按启动时快照的 PID
+    //     逐棵进程树强杀并复核。覆盖三类真实残留场景——
+    //     ① dispose 抛错/被 catch 后流程继续；② kill 信号异步未生效；
+    //     ③ dsh 的 node.exe 派生出孙进程。幸存者只记日志，不阻塞退出。
+    if (childPids.length > 0) {
+      try {
+        const reaped = await terminateChildProcesses(childPids);
+        log.info('child process reaping finished', {
+          pids: childPids,
+          killed: reaped.killed,
+          failed: reaped.failed,
+        });
+        if (reaped.survivors.length > 0) {
+          log.error('child processes survived termination', { pids: reaped.survivors });
+        }
+      } catch (e) {
+        log.error('child process reaping failed', { error: String(e) });
+      }
+    }
+
     // 6. 关闭 SQLite 数据库连接（释放 better-sqlite3 原生线程，触发 WAL checkpoint）
     if (ctx.storageLayer) {
       try {
@@ -252,4 +313,62 @@ export async function performCleanup(ctx: AppContext): Promise<void> {
     log.error('Unexpected error during cleanup', { error: String(e) });
     ctx.cleanupDone = true;
   }
+}
+
+/** runCleanupAndExit 的可注入依赖（单测用）。 */
+export interface CleanupAndExitDeps {
+  /** 真正退出的动作（主进程传 app.exit） */
+  readonly exit: (code: number) => void;
+  /** 清理实现（默认 performCleanup；单测注入假实现） */
+  readonly cleanup?: (ctx: AppContext) => Promise<void>;
+  /** 硬超时（默认 CLEANUP_TIMEOUT_MS） */
+  readonly timeoutMs?: number;
+  readonly setTimer?: (handler: () => void, ms: number) => ReturnType<typeof setTimeout>;
+  readonly clearTimer?: (handle: ReturnType<typeof setTimeout>) => void;
+}
+
+/**
+ * 执行清理并在完成后退出；超时或清理异常也必须退出（2026-11-10）。
+ *
+ * 为什么需要本函数：调用方原先直接 `performCleanup(ctx).then(() => app.exit(0))`，
+ * 一旦清理内部出现未决 await（如 taskkill 不回调、SQLite close 挂起），进程
+ * 就永远停在「窗口已关、进程还在」的状态。这里把「完成 / 抛错 / 超时」三条
+ * 路径统一收敛到一次 exit，且用 settled 保证只退出一次。
+ */
+/** 安全转字符串：unknown 可能是对象（避免 no-base-to-string 的 [object Object]）。 */
+function errorText(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return typeof error === 'string' ? error : 'unknown error';
+}
+
+export function runCleanupAndExit(ctx: AppContext, deps: CleanupAndExitDeps): void {
+  const cleanup = deps.cleanup ?? performCleanup;
+  const timeoutMs = deps.timeoutMs ?? CLEANUP_TIMEOUT_MS;
+  const setTimer = deps.setTimer ?? setTimeout;
+  const clearTimer = deps.clearTimer ?? clearTimeout;
+
+  let settled = false;
+  const timerRef: { handle?: ReturnType<typeof setTimeout> } = {};
+
+  const finish = (timedOut: boolean, error?: unknown): void => {
+    if (settled) return;
+    settled = true;
+    if (timerRef.handle !== undefined) clearTimer(timerRef.handle);
+    if (timedOut) {
+      // 超时后不再等待清理收尾——但标记 cleanupDone，使 before-quit 重入时放行。
+      log.error('cleanup timed out — forcing exit', { timeoutMs });
+      ctx.cleanupDone = true;
+    } else if (error !== undefined) {
+      log.error('cleanup failed — forcing exit', { error: errorText(error) });
+    }
+    deps.exit(0);
+  };
+
+  timerRef.handle = setTimer(() => finish(true), timeoutMs);
+  // 不让兜底定时器单独撑住事件循环（进程能因其它原因自然退出时不必等满 10s）
+  (timerRef.handle as { unref?: () => void }).unref?.();
+
+  void cleanup(ctx)
+    .then(() => finish(false))
+    .catch((e: unknown) => finish(false, e));
 }

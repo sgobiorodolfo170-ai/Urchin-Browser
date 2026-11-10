@@ -521,6 +521,36 @@ describe('Orchestrator', () => {
       expect(orchestrator.size).toBe(0);
       expect(timers.activeCount).toBe(0);
     });
+
+    it('listActiveProviderPids 返回存活 PID，dispose 后为空', async () => {
+      const orchestrator = new Orchestrator({
+        registry,
+        processFactory: mockFactory.factory,
+        timers,
+      });
+
+      await orchestrator.ensureProviderLoaded('test-provider');
+      expect(orchestrator.listActiveProviderPids()).toEqual([12345]);
+
+      await orchestrator.disposeAll();
+      expect(orchestrator.listActiveProviderPids()).toEqual([]);
+    });
+
+    it('listActiveProviderPids 跳过 crashed 的 Provider', async () => {
+      const orchestrator = new Orchestrator({
+        registry,
+        processFactory: mockFactory.factory,
+        timers,
+        heartbeatTimeoutMs: 10,
+      });
+
+      const host = await orchestrator.ensureProviderLoaded('test-provider');
+      host.lastHeartbeat = Date.now() - 1_000;
+      timers.tickInterval();
+
+      expect(host.state).toBe('crashed');
+      expect(orchestrator.listActiveProviderPids()).toEqual([]);
+    });
   });
 
   describe('限流（OR4）', () => {

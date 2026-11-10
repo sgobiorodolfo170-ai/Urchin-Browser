@@ -245,8 +245,8 @@ describe('TrayManager', () => {
     expect(electronMocks.trayInstances).toHaveLength(1);
   });
 
-  it('should hide the window and prevent the default close when enabled', () => {
-    const { manager, windows } = makeManager({ setting: true });
+  it('should hide the window and keep the app alive (not quit) when enabled', () => {
+    const { manager, windows, quit } = makeManager({ setting: true });
     const win = windows[0]!;
     manager.attachWindow(asWindow(win));
 
@@ -255,6 +255,8 @@ describe('TrayManager', () => {
     expect(event.preventDefault).toHaveBeenCalledTimes(1);
     expect(win.hide).toHaveBeenCalledTimes(1);
     expect(win.visible).toBe(false);
+    // 托盘模式 = 仅隐藏界面、进程与子进程继续运行：不得触发完全退出
+    expect(quit).not.toHaveBeenCalled();
   });
 
   it('should let the window close normally when the setting is disabled', () => {

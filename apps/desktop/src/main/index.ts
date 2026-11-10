@@ -83,7 +83,7 @@ import { resolvePortableUserData } from './portable';
 import { installDevtoolsShortcuts } from './devtools';
 import type { AppContext } from './bootstrap/app-context';
 import { installEventLoopWatchdog } from './bootstrap/watchdog';
-import { performCleanup } from './lifecycle/cleanup';
+import { runCleanupAndExit } from './lifecycle/cleanup';
 import { registerIpcHandlers } from './bootstrap/handlers';
 import { installSignalHandlers } from './lifecycle/signals';
 import { initLogFile } from './logs';
@@ -1488,7 +1488,12 @@ void app.whenReady().then(() => {
 });
 
 // 所有窗口关闭时退出（Windows/Linux）
-// macOS 不退出（保留 dock 常驻），清理流程由 before-quit 接管
+// macOS 不退出（保留 dock 常驻），清理流程由 before-quit 接管。
+//
+// 托盘模式（ui.minimizeToTray）不会走到这里：TrayManager 在 close 里
+// preventDefault + hide，窗口仍是「存在但不可见」，closed / window-all-closed
+// 都不会触发，pi/dsh/GenOffice 子进程继续运行。若本事件真的触发，说明窗口是被
+// 真正销毁（而非隐藏），此时退出并走完整清理是正确语义。
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
@@ -1498,8 +1503,10 @@ app.on('window-all-closed', () => {
 /**
  * before-quit：Electron 退出流程的最后机会，覆盖所有平台（含 macOS Cmd+Q）。
  *
- * 第一次进入：preventDefault 阻止默认退出 → 异步执行 performCleanup → 完成后 app.exit(0)。
- * app.exit(0) 会再次触发 before-quit，此时 ctx.cleanupDone=true 直接放行，进程真正退出。
+ * 第一次进入：preventDefault 阻止默认退出 → runCleanupAndExit 异步执行
+ * performCleanup（含子进程兜底强杀）→ 完成后或硬超时后 app.exit(0)。
+ * app.exit(0) 会再次触发 before-quit，此时 ctx.cleanupDone=true 直接放行，
+ * 进程真正退出。
  */
 app.on('before-quit', (event) => {
   // 托盘驻留：退出流程开始后所有窗口 close 一律放行（否则隐藏导致退不掉）
@@ -1511,9 +1518,7 @@ app.on('before-quit', (event) => {
     return;
   }
   event.preventDefault();
-  void performCleanup(ctx).then(() => {
-    app.exit(0);
-  });
+  runCleanupAndExit(ctx, { exit: (code) => app.exit(code) });
 });
 
 // 信号处理（SIGINT/SIGTERM → 统一清理，实现见 lifecycle/signals.ts）

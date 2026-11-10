@@ -2,7 +2,7 @@
  * E2E 按需选择核心逻辑单测（scripts/lib/e2e-select-core.mjs）
  *
  * 覆盖本机制唯一需要「判断」的部分：改动路径 → 推荐 spec、文档改动 → 0 条、
- * 无命中 → 全量、manifest 双向一致性。弹窗与子进程属 IO，由人工验收与
+ * 无命中 → 全量、manifest 双向一致性。git 采集与子进程属 IO，由 CLI 验收与
  * `--dry-run` 覆盖（见 docs/E2E用例选择表.md）。
  *
  * 测试方式：直接 import 真实 core 模块 + 读真实 manifest / spec 目录，

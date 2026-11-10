@@ -85,22 +85,22 @@ pnpm package:win
 
 ## 开发命令
 
-| 命令                      | 说明                                                       |
-| ------------------------- | ---------------------------------------------------------- |
-| `pnpm dev`                | 开发模式（vite dev server）                                |
-| `pnpm build`              | 构建 main / preload / renderer                             |
-| `pnpm start`              | 生产模式启动已构建产物                                     |
-| `pnpm verify`             | typecheck + lint + 覆盖率门禁（`test:coverage`）一键验证   |
-| `pnpm typecheck`          | 全工作区 TypeScript 类型检查                               |
-| `pnpm lint`               | ESLint 检查                                                |
-| `pnpm test`               | 全工作区单元测试                                           |
-| `pnpm test:coverage`      | 单元测试 + 覆盖率报告                                      |
-| `pnpm e2e`                | Playwright E2E 全量（CI 入口；本地发布前/无法判定时用）    |
-| `pnpm e2e:select`         | **本地按需选择 E2E**（推荐：推荐表 + 复选弹窗 + 勾选运行） |
-| `pnpm check:e2e-manifest` | E2E manifest 与 spec 文件双向一致（G20）                   |
-| `pnpm genoffice:build`    | 重建 GenOffice 编辑器嵌入产物                              |
-| `pnpm package:win`        | 打包 Windows 安装包                                        |
-| `pnpm format`             | Prettier 格式化                                            |
+| 命令                      | 说明                                                                  |
+| ------------------------- | --------------------------------------------------------------------- |
+| `pnpm dev`                | 开发模式（vite dev server）                                           |
+| `pnpm build`              | 构建 main / preload / renderer                                        |
+| `pnpm start`              | 生产模式启动已构建产物                                                |
+| `pnpm verify`             | typecheck + lint + 覆盖率门禁（`test:coverage`）一键验证              |
+| `pnpm typecheck`          | 全工作区 TypeScript 类型检查                                          |
+| `pnpm lint`               | ESLint 检查                                                           |
+| `pnpm test`               | 全工作区单元测试                                                      |
+| `pnpm test:coverage`      | 单元测试 + 覆盖率报告                                                 |
+| `pnpm e2e`                | Playwright E2E 全量（CI 入口；本地发布前/无法判定时用）               |
+| `pnpm e2e:select`         | **本地按需选择 E2E**（推荐表 + AI 会话内勾选；`--fallback` 回退全量） |
+| `pnpm check:e2e-manifest` | E2E manifest 与 spec 文件双向一致（G20）                              |
+| `pnpm genoffice:build`    | 重建 GenOffice 编辑器嵌入产物                                         |
+| `pnpm package:win`        | 打包 Windows 安装包                                                   |
+| `pnpm format`             | Prettier 格式化                                                       |
 
 ## 性能与质量指标
 

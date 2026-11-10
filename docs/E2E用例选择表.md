@@ -5,40 +5,81 @@
 
 ---
 
-## 1. 运行规则（MUST）
+## 1. 一句话规则
 
-1. **AI 不得默认全量跑 E2E。** 任何改动完成后，必须先运行 `pnpm e2e:select`：出推荐表 → 给出建议与依赖警告 → **由用户勾选决定跑哪些**。
-2. **全量仅限三种情况**：
-   - 发布前收口；
-   - 选择器无法判定（无改动 / 无匹配 / 改动涉及 IPC 契约等全局面）；
-   - 用户明确要求全量。
-3. **非交互环境不允许静默弹窗、也不允许静默全量**：无 TTY / CI 时只打印推荐表并以退出码 3 结束，必须显式 `--all` 或 `--specs=...`。
-4. **CI 仍全量**：CI 永远执行 `pnpm e2e`（23 spec / 38 例），不读 manifest、不弹窗。manifest 只服务本地选择与预估。
-5. **选择器判定不了就诚实全量**：宁可多跑，不接受「因为没匹配所以算了」。
+- **本地**：先算「这次改动建议跑哪些」→ AI 在**会话里**问你选哪些 → 只跑你选的。
+- **全量只在这三种时候**：发布前收口、选择器算不出来、你明确要求全量。
+- **CI 永远全量**：CI 里不允许有任何交互。
+- **项目里不弹任何软件窗口**：选择发生在 AI 会话内（agent 的复选/问答工具），项目代码只负责算推荐和执行。
 
-## 2. 本地 / CI 分工
+## 2. 谁负责什么
 
-| 环境 | 入口 | 范围 | 弹窗 |
+| 角色 | 负责 | 不负责 |
+| --- | --- | --- |
+| `scripts/e2e-select.mjs` | 读 git 改动、按 manifest 算推荐、打印表格 / 输出 JSON、执行指定 spec | **不弹窗**、不替用户做选择、不静默全量 |
+| AI（agent） | 运行 `--dry-run --json`，把结果整理成会话内复选项，问用户，按选择执行 | 不自建 GUI 窗口、不默认全量 |
+| 用户 | 勾选这次要跑的 spec（或选择全量 / 不跑） | — |
+| CI | 永远 `pnpm e2e` 全量 | 不读 manifest、不弹窗、不询问 |
+
+## 3. 标准流程（AI 必须按此执行）
+
+1. **出推荐**：`pnpm e2e:select -- --dry-run --json`
+2. **展示**：把推荐表给用户看，至少包含 `spec / 能力域 / 例数 / 耗时 / 依赖 / 为什么推荐`。
+3. **会话内选择**（两步，用 agent 自己的复选/问答工具）：
+   - 第一步问：`仅推荐（N 个 spec / M 例 / 约 X）` / `全量 23 spec / 38 例` / `自定义` / `这次不跑 E2E`
+   - 只有选「自定义」时才进入第二步：逐条多选 spec。
+4. **执行**：`pnpm e2e:select -- --specs=launch.spec.ts,clipper.spec.ts`
+5. **收尾**：把「本次跑了哪些 spec、为什么」写进回复；失败就按常规排查。
+
+> 会话内提问模板（可直接照抄）：
+> 「这次改动推荐 8 个 spec / 12 例，预估 1m16s。要跑哪些？」
+> 选项：仅推荐 / 全量 38 例 / 自定义 / 不跑。依赖警告（如缺 `OPENCODE_API_KEY`、缺 GenOffice 产物）必须一起说明。
+
+## 4. 回退机制（方案失效时回到原方式）
+
+**回退 = 直接跑全量，不需要改代码、不需要回滚提交。** 命令任选其一：
+
+```bash
+pnpm e2e                              # 原本的测试方式（CI 同款）
+pnpm e2e:select -- --fallback         # 同上，带“回退”提示
+```
+
+以下任一情况**必须回退全量**，不要在“按需”上继续猜：
+
+| 情况 | 处理 |
+| --- | --- |
+| 选择器脚本报错 / manifest 非法 / `check:e2e-manifest` 失败 | 直接 `pnpm e2e`；先修 manifest 再恢复按需 |
+| 无改动、无匹配、改动涉及 IPC 契约等全局面 | 先问用户；用户不选或不确定 → `--fallback` |
+| AI 会话内没有可用的选择工具 / 用户不在场 | `--fallback`（不允许静默挑几条就跑） |
+| 发现推荐集合明显漏了相关 spec | `--fallback`，并把漏掉的触发路径补进 manifest |
+| 用户明确要求“全部跑一遍” | `pnpm e2e` 或 `--fallback` |
+
+> 回退不是失败：它只是“这次不用按需”。在回复里写清回退原因即可；如果是因为 manifest 漏项，顺手补上并跑 `pnpm check:e2e-manifest`。
+
+## 5. 本地 / CI 分工与命令
+
+| 环境 | 入口 | 范围 | 交互 |
 | --- | --- | --- | --- |
-| 本地（默认） | `pnpm e2e:select` | 推荐集合，用户勾选 | 有（WinForms 复选清单） |
-| 本地（dry-run） | `pnpm e2e:select -- --dry-run` | 只打印 | 无 |
-| 本地（明确要求） | `pnpm e2e` 或 `pnpm e2e:select -- --all` | 全量 23 spec / 38 例 | 无 |
-| CI | `pnpm e2e` | 全量 23 spec / 38 例 | **绝不弹窗** |
+| 本地（推荐） | `pnpm e2e:select -- --dry-run --json` → 会话内选择 → `--specs=...` | 推荐集合 | 会话内复选，无软件窗口 |
+| 本地（只看） | `pnpm e2e:select -- --dry-run` | 只打印 | 无 |
+| 本地（明确要求） | `pnpm e2e` 或 `pnpm e2e:select -- --fallback` | 全量 23 spec / 38 例 | 无 |
+| CI | `pnpm e2e` | 全量 23 spec / 38 例 | **绝不交互** |
 
 命令示例：
 
 ```bash
-pnpm e2e:select                                             # 采集改动 → 弹窗勾选 → 运行
+pnpm e2e:select -- --dry-run --json                          # 给 AI 组装选择项
 pnpm e2e:select -- --dry-run --changed=apps/desktop/src/main/tabs/tab-manager.ts
-pnpm e2e:select -- --specs=launch.spec.ts,clipper.spec.ts
-pnpm e2e:select -- --list                                   # 列出 23 条
-pnpm e2e:select -- --interactive                            # 无 TTY 时强制弹窗（人工验收）
-pnpm check:e2e-manifest                                     # G20：manifest ↔ spec 双向一致
+pnpm e2e:select -- --specs=launch.spec.ts,clipper.spec.ts    # 执行用户勾选
+pnpm e2e:select -- --list                                    # 列出 23 条
+pnpm e2e:select -- --fallback                                # 回退：全量
+pnpm check:e2e-manifest                                      # G20：manifest ↔ spec 双向一致
 ```
 
-> PowerShell 直接调用 pnpm 时不要加 `--` 之外的壳参数；`--` 之后的参数会原样传给 `node scripts/e2e-select.mjs`。
+> `--json` 会输出 `{ mode, note, files, recommended, all, totalDurationSec, fallbackCommand }`，AI 直接把 `all` 映射成复选项即可。
+> 直接运行 `pnpm e2e:select`（不带参数）只会打印推荐表并以退出码 3 结束，**不会弹窗、不会执行**——这是防止“静默挑几条就跑”的保护。
 
-## 3. 2026-11-10 本机基线
+## 6. 2026-11-10 本机基线
 
 | 项 | 值 |
 | --- | --- |
@@ -51,7 +92,7 @@ pnpm check:e2e-manifest                                     # G20：manifest ↔
 
 耗时口径：单 spec 用例时长之和（含 Electron 启动开销），来自 `playwright test --reporter=json`；用于「预估」，不作为性能门槛。
 
-## 4. 用例表
+## 7. 用例表
 
 | spec | 能力域 | 例数 | 耗时 | 依赖 | CI 真实执行 | 建议级别 | 触发改动路径（manifest triggers） |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -81,7 +122,7 @@ pnpm check:e2e-manifest                                     # G20：manifest ↔
 
 > 路径前缀省略了 `apps/desktop/src/`；完整 glob 以 manifest 为准。`CI 真实执行 = 否` 表示该 spec 在 CI 会 **skip**（依赖不入版本控制或缺 key），而不是「CI 不运行它」。
 
-## 5. 依赖与跳过说明
+## 8. 依赖与跳过说明
 
 | 依赖 | 缺失时的行为 | 补齐方式 |
 | --- | --- | --- |
@@ -90,7 +131,7 @@ pnpm check:e2e-manifest                                     # G20：manifest ↔
 | `api-key` | `pi-agent-*.spec.ts` 自动 skip（不耗额度） | 运行时注入 `OPENCODE_API_KEY`，绝不落盘 |
 | `none` | 无 | — |
 
-## 6. 相关修复与策略（2026-11-10）
+## 9. 相关修复与策略（2026-11-10）
 
 **A3 · clipper flake 根因与修法**
 
@@ -115,9 +156,10 @@ pnpm check:e2e-manifest                                     # G20：manifest ↔
 
 本机实测 707.7 / 711.0 / 715.9 / 740.2MB；CI 567.4MB。环境差约 150MB，已超过单线余量，故分线；**重校 500MB 目标线仍属产品决策**（ADR-019）。
 
-## 7. 维护约定
+## 10. 维护约定
 
 1. 新增 / 删除 / 改名 spec → 同步改 `manifest.json`；`pnpm check:e2e-manifest` 会拦。
 2. 调整触发路径 → 只改 manifest；本文表格随之更新（本表是投影，规则以 manifest 为准）。
 3. 改耗时 → 重跑全量 JSON reporter 后更新 `durationSec` 与本表。
 4. 升级 vendor/genoffice 且未改 `package-lock.json` → CI 缓存需手动递增 key 版本（见 `ci.yml` 注释与打包核查清单）。
+5. 若按需方案整体失效（脚本长期不可用 / 团队决定停用）→ 回退到 `pnpm e2e` 全量即可；manifest 与 `check:e2e-manifest` 可保留（不参与测试执行），不会阻塞原方式。

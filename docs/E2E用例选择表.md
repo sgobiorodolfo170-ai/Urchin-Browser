@@ -44,9 +44,10 @@ pnpm check:e2e-manifest                                     # G20：manifest ↔
 | --- | --- |
 | spec 文件 / 用例 | **23 / 38** |
 | 本机全量（2026-11-10，JSON reporter 合计） | **36 passed / 2 skipped / 3.4 min**（另一次 2.8 min） |
-| CI 最近真实执行（run 42770786468，dev.177 / 66a4fb7） | 26 passed / 12 skipped / 1.8 min |
-| CI 12 skip 构成 | GenOffice 9（缺嵌入产物）+ pi-agent 2（缺 key）+ dsh 1（缺 vendor/便携 node） |
-| A1 补齐 GenOffice 后 CI 目标 | **35 passed / 3 skipped**（仅剩 pi-agent×2 + dsh×1） |
+| CI 最新真实执行（run 42803495499，2026-11-10，cd7178de） | **35 passed / 3 skipped / 2.0 min，0 failed / 0 flaky** |
+| CI 历史（run 42770786468，dev.177 / 66a4fb7） | 26 passed / 12 skipped / 1.8 min |
+| CI 12 skip 构成（A1 前） | GenOffice 9（缺嵌入产物）+ pi-agent 2（缺 key）+ dsh 1（缺 vendor/便携 node） |
+| A1 补齐后 CI 构成 | **35 passed / 3 skipped**（仅剩 pi-agent×2 + dsh×1） |
 
 耗时口径：单 spec 用例时长之和（含 Electron 启动开销），来自 `playwright test --reporter=json`；用于「预估」，不作为性能门槛。
 

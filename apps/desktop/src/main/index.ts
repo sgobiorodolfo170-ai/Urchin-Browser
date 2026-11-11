@@ -51,7 +51,13 @@ import { classifyFileKind } from './files';
 import { Orchestrator } from './orchestrator/orchestrator';
 import { ProviderRegistry } from './orchestrator/provider-registry';
 import { electronProcessFactory } from './orchestrator/electron-factory';
-import { StorageLayer, createSqliteDatabase, ElectronSafeStorage } from './storage';
+import {
+  StorageLayer,
+  loadSqliteFactory,
+  ElectronSafeStorage,
+  type DatabaseFactory,
+} from './storage';
+import { abortOnSqliteLoadFailure } from './bootstrap/native-module-guard';
 import { registerUrchinSchemePrivileged, registerUrchinProtocol } from './protocol';
 import { FaviconService } from './favicons/favicon-service';
 import { getGenOfficeSchemePrivileges } from './genoffice/loader';
@@ -612,8 +618,24 @@ if (process.platform === 'win32') app.setAppUserModelId('com.urchin.browser');
 // 模块顶层初始化完成（scheme/lock/data-dir 均就绪；等待 app ready）
 markStartup('main:module-top-done');
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   markStartup('main:ready');
+
+  // dev.185 启动守卫：better-sqlite3 按需加载（见 storage/sqlite-factory.ts）。
+  // 安装树残缺时（自动更新中途中断 → app.asar 已换新而 asar.unpacked 缺失）
+  // 这里能捕获加载失败并给出「重新运行安装包」的可操作提示，而不是让共享
+  // chunk 顶层 require 抛裸 JS 错误框（dev.184 事故：日志无痕、用户无从判断）。
+  let sqliteFactory: DatabaseFactory;
+  try {
+    sqliteFactory = await loadSqliteFactory();
+  } catch (error) {
+    markStartup('main:fatal-sqlite-missing');
+    log.error('better-sqlite3 unavailable, aborting startup', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    abortOnSqliteLoadFailure(error);
+    return;
+  }
 
   // 注册 urchin:// 协议处理器（必须在 app ready 之后）。
   // onZoom：页面注入脚本 Ctrl+滚轮时 fetch urchin://zoom 触发——
@@ -656,7 +678,7 @@ void app.whenReady().then(() => {
 
   const dataDir = ctx.currentDataDir;
   const piDir = join(userDataPath, PI_DIR_NAME);
-  const sl = new StorageLayer(dataDir, piDir, new ElectronSafeStorage(), createSqliteDatabase);
+  const sl = new StorageLayer(dataDir, piDir, new ElectronSafeStorage(), sqliteFactory);
   ctx.storageLayer = sl;
   // 图标缓存随数据目录迁移；目录在服务内异步创建，不阻塞启动关键路径。
   ctx.faviconService = new FaviconService(dataDir);

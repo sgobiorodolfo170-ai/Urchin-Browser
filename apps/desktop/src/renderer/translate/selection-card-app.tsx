@@ -74,9 +74,13 @@ export function SelectionCardRoot() {
   if (!data) return null;
 
   return (
-    /* 外层占满窗口：四周 SHADOW_PAD 透明边距供 3D 阴影/圆角透出网页 */
+    /* 外层占满窗口：四周 SHADOW_PAD 透明边距（窗口坐标补偿沿用，当前无阴影可透出） */
     <div className="h-screen w-screen overflow-hidden" style={{ padding: SHADOW_PAD }}>
-      <div className="flex h-full flex-col rounded-lg border border-border bg-surface p-3 shadow-dropdown">
+      {/* 2026-11-11 用户指令（临时目测试验）：去掉结果卡的矩形背景 / 描边 / 圆角 /
+          阴影，只保留文本区，用于目测「背景矩形与文本框形状是否匹配」。
+          内边距 p-3 保留（= CARD_PAD / 2），文本区尺寸仍等于主进程按选区算出的内框，
+          尺寸口径不因去背景而改变；后续按目测结果决定恢复、替换为其它样式或彻底删除。 */}
+      <div className="flex h-full flex-col p-3">
         {/* 结果区：仅显示译文（翻译失败时显示错误信息）；窗口已按实测尺寸设定，
             超高度上限时由主进程夹边、此处内部滚动兜底 */}
         <div className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-text">

@@ -15,7 +15,9 @@
  *
  * 算法：从应用生产依赖出发，沿 dependencies ∪ optionalDependencies ∪ peerDependencies
  * 用 Node 解析规则遍历（可穿透 pnpm 的 realpath 与 peer 变体目录），把打包产物
- * 里缺失的包按 realpath 平铺复制。@types/* 属纯类型包，跳过。
+ * 里缺失的包按 realpath 平铺复制。@types/* 属纯类型包跳过；renderer-only
+ * 有意排除清单（INTENTIONALLY_EXCLUDED，与 yml files B1 规则同口径）同样跳过，
+ * 防止「漏打检测」把 files 有意排除的包复制回来（dev.192）。
  */
 const { existsSync, readFileSync, readdirSync, realpathSync, cpSync } = require('node:fs');
 const { dirname, join, resolve, basename } = require('node:path');
@@ -98,6 +100,29 @@ exports.default = async function afterPack(context) {
 
   const packaged = listPackaged(unpackedModules);
   const copied = [];
+  // B1 有意排除清单（2026-11-12 dev.192）：与 electron-builder.yml files 的
+  // renderer-only 排除规则同口径。这些包 vite 已打进 asar（dist 产物无
+  // require/import 字面量，dsh 依赖闭包实测不含），files 排除后产物缺失属
+  // 预期，不得被下方「闭包内有、产物内没有 = 漏打」检测复制回来——dev.192
+  // 首打实测：缺少本清单时 lucide-react / react / react-dom / marked /
+  // turndown / csstype 共 6 包 2,255 文件被补回，B1 收益被抵消殆尽。
+  // csstype 为纯类型包（仅 .d.ts/.flow/LICENSE，运行时无 .js），一并排除。
+  const INTENTIONALLY_EXCLUDED = new Set([
+    'react',
+    'react-dom',
+    'lucide-react',
+    'marked',
+    'turndown',
+    'clsx',
+    'tailwind-merge',
+    'defuddle',
+    'csstype',
+  ]);
+  const EXCLUDED_SCOPES = ['@radix-ui'];
+  const isIntentionallyExcluded = (name) =>
+    INTENTIONALLY_EXCLUDED.has(name) ||
+    EXCLUDED_SCOPES.some((scope) => name === scope || name.startsWith(`${scope}/`));
+  const skippedByExclusion = [];
   // 与 electron-builder.yml 的 files 排除规则保持同口径（2026-11-11 dev.191）：
   // 本钩子的 cpSync 是文件级复制，不经过 files 过滤，若不过滤会把 peer-only
   // 包内的类型声明 / TS 源码 / .md 文档一并带进产物（dev.190 基线实测 25 个
@@ -108,6 +133,10 @@ exports.default = async function afterPack(context) {
   let filteredFiles = 0;
   for (const [name, dir] of resolved) {
     if (packaged.has(name) || name.startsWith('@types/')) continue;
+    if (isIntentionallyExcluded(name)) {
+      skippedByExclusion.push(name);
+      continue;
+    }
     const target = join(unpackedModules, name);
     try {
       cpSync(dir, target, {
@@ -131,9 +160,13 @@ exports.default = async function afterPack(context) {
   console.log(
     `[after-pack] 生产依赖闭包 ${resolved.size} 个，产物已含 ${packaged.size} 个，` +
       `补齐 peer-only 依赖 ${copied.length} 个，` +
+      `有意排除 ${skippedByExclusion.length} 个（B1 renderer-only），` +
       `过滤非运行时文件 ${filteredFiles} 个`,
   );
   for (const name of copied.sort()) console.log(`[after-pack]   + ${name}`);
+  for (const name of skippedByExclusion.sort()) {
+    console.log(`[after-pack]   ⊘ ${name}`);
+  }
 
   pruneLongPaths(appDir);
 };

@@ -53,6 +53,22 @@ files:
   - '!**/node_modules/**/*.cts'
   - '!**/node_modules/**/*.mts'
   - '!**/node_modules/**/*.md'
+  # 安装耗时整改第二批（2026-11-12 dev.192 B1）：renderer-only 包实体副本不进包。
+  # vite 已把 react 系全部打进 asar bundle（dev.191 dist 产物 grep 无 require/import
+  # 字面量，主进程 external 仅 better-sqlite3）；dsh 依赖闭包（@deepseek-ai/*/
+  # package.json 逐包实测）不含下列任何包——运行时没有任何进程会从 node_modules
+  # 读它们，实体副本纯属 traversal 收集器沿生产依赖建图时顺带落盘（dev.191 实测
+  # 9 项 2,344 文件，lucide-react 图标库 2,180 个 ESM 文件为大头）。zod /
+  # postal-mime 保留不动：主进程源码有 import，且 zod 疑似被 dsh 闭包向上解析。
+  - '!**/node_modules/react/**'
+  - '!**/node_modules/react-dom/**'
+  - '!**/node_modules/lucide-react/**'
+  - '!**/node_modules/@radix-ui/**'
+  - '!**/node_modules/clsx/**'
+  - '!**/node_modules/tailwind-merge/**'
+  - '!**/node_modules/marked/**'
+  - '!**/node_modules/turndown/**'
+  - '!**/node_modules/defuddle/**'
 
 # 额外资源：图标文件复制到 resources 目录（运行时窗口图标用）
 extraResources:
@@ -181,6 +197,15 @@ npmRebuild: false
 # asar 外的实体文件；better-sqlite3 等原生模块同样受益（.node 本就无法从 asar 加载）。
 asarUnpack:
   - '**/node_modules/**'
+
+# 安装耗时整改（2026-11-12 dev.192 B2）：Electron 运行时 locales 只留实际语言。
+# 默认随包 55 个 .pak（47MB）；应用界面本身按 locale 显示中英文名（brand.ts 只区分
+# zh* 与其余），Chromium 对缺失语言回退 en-US，故裁剪为 zh-CN / zh-TW / en-US
+# 三项运行时安全（约 -52 文件 / -43MB）。
+electronLanguages:
+  - zh-CN
+  - zh-TW
+  - en-US
 
 # v0.1 暂无代码签名（CON-07：v0.1 不引入签名基础设施依赖）
 # v0.4+ 引入代码签名

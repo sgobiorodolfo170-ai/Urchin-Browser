@@ -34,6 +34,21 @@
  *   stable → latest/release（latest.yml）。
  * - 打包后强校验 yml 文件名、app-update.yml 的 channel/releaseType、exe/blockmap
  *   文件名，任一不符直接失败——避免「通道配错但安装包看似成功」的静默事故。
+ *
+ * dev.192 安装耗时实验开关（A3，opt-in `--nsis-zip`）：
+ * - 追加 --config.nsis.differentialPackage=false --config.nsis.useZip=true，
+ *   NSIS 载荷改用 zip 并关闭差分包——目标是省掉安装期「先解压整棵树到
+ *   %TEMP%\ns*.tmp\7z-out 再 CopyFiles 到安装目录」的第二遍全树复制
+ *   （dev.191 实测整装 329.4s / 28,908 文件，写放大 ×2 仍是主导）。
+ * - **实测结论（2026-11-12，dev.192 同版 A/B）——证伪，保持默认关闭**：
+ *   zip 载荷 exe 376.27 MB（7z 模式 295.20 MB，+27%）；静默安装（/S）在
+ *   文件全部落盘（26,507 个）后弹出可见安装向导等待交互，1278.3s 仍未退出
+ *   （exit -1 强杀，连卸载注册表键都未写入），而 7z 模式同版全程静默 203.5s
+ *   完成。useZip 模板未正确处理静默模式，且「省一遍 CopyFiles」的前提未
+ *   兑现——三重不利益（更大/更慢/破坏无人值守安装），勿再盲试；若上游
+ *   修复 useZip 静默行为可用本开关复测。
+ * - validateArtifacts 按开关切换 blockmap 期望：zip 模式断言 blockmap 不存在
+ *   （反向防呆，防止配置只改了一半）。
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -62,7 +77,7 @@ function readYamlScalar(text, key) {
 }
 
 /** 打包后校验：通道、清单、产物名必须与 build info 一致。 */
-function validateArtifacts(info) {
+function validateArtifacts(info, { expectBlockmap = true } = {}) {
   const releaseDirs = readdirSync(desktopDir)
     .filter((name) => name.startsWith('release-'))
     .map((name) => resolve(desktopDir, name))
@@ -76,10 +91,17 @@ function validateArtifacts(info) {
 
   const expectedYml = `${info.channel}.yml`;
   const otherYml = info.channel === 'dev' ? 'latest.yml' : 'dev.yml';
-  for (const file of [exeName, `${exeName}.blockmap`, expectedYml]) {
+  const expectedFiles = [exeName, expectedYml];
+  if (expectBlockmap) expectedFiles.push(`${exeName}.blockmap`);
+  for (const file of expectedFiles) {
     if (!existsSync(join(releaseDir, file))) {
       throw new Error(`[package-win] 缺少预期产物: ${join(releaseDir, file)}`);
     }
+  }
+  if (!expectBlockmap && existsSync(join(releaseDir, `${exeName}.blockmap`))) {
+    throw new Error(
+      '[package-win] zip 载荷模式下不应生成 blockmap（differentialPackage 已关闭，配置可能只改了一半）',
+    );
   }
   if (existsSync(join(releaseDir, otherYml))) {
     throw new Error(`[package-win] 通道产物冲突: ${otherYml} 不应出现在 ${info.channel} 构建中`);
@@ -176,9 +198,13 @@ function validateArtifacts(info) {
 
   console.log(
     `[package-win] validated: version=${info.version} channel=${info.channel} ` +
-      `releaseType=${info.releaseType} manifest=${expectedYml}`,
+      `releaseType=${info.releaseType} manifest=${expectedYml} ` +
+      `payload=${expectBlockmap ? '7z+differential' : 'zip (differential off)'}`,
   );
 }
+
+// A3 实验开关（opt-in，见文件头注释）：--nsis-zip 改用 zip 载荷并关闭差分包
+const nsisZip = process.argv.includes('--nsis-zip');
 
 // shell: true —— Windows 下经 cmd 解析 node_modules/.bin 中的 electron-builder.cmd
 // （PATH 已由 pnpm 脚本环境注入）；stdio: inherit 保持日志直通。
@@ -186,6 +212,9 @@ const info = resolveBuildInfo();
 console.log(
   `[package-win] build version: ${info.version} ` +
     `(channel=${info.channel}, releaseType=${info.releaseType})`,
+);
+console.log(
+  `[package-win] payload: ${nsisZip ? 'zip (A3 experiment, differential off)' : '7z (default, differential on)'}`,
 );
 
 // cwd / preflight 防御（2026-10-27 stable v0.2.0 发布复盘留痕）：
@@ -204,31 +233,32 @@ if (!existsSync(join(desktopDir, 'electron-builder.yml'))) {
   );
 }
 
-const result = spawnSync(
-  'electron-builder',
-  [
-    '--win',
-    '--x64',
-    '--publish',
-    'never',
-    `--config.extraMetadata.version=${info.version}`,
-    `--config.publish.channel=${info.channel}`,
-    `--config.publish.releaseType=${info.releaseType}`,
-  ],
-  {
-    cwd: desktopDir,
-    stdio: 'inherit',
-    env,
-    shell: true,
-  },
-);
+const builderArgs = [
+  '--win',
+  '--x64',
+  '--publish',
+  'never',
+  `--config.extraMetadata.version=${info.version}`,
+  `--config.publish.channel=${info.channel}`,
+  `--config.publish.releaseType=${info.releaseType}`,
+];
+if (nsisZip) {
+  builderArgs.push('--config.nsis.differentialPackage=false', '--config.nsis.useZip=true');
+}
+
+const result = spawnSync('electron-builder', builderArgs, {
+  cwd: desktopDir,
+  stdio: 'inherit',
+  env,
+  shell: true,
+});
 
 if ((result.status ?? 1) !== 0) {
   process.exit(result.status ?? 1);
 }
 
 try {
-  validateArtifacts(info);
+  validateArtifacts(info, { expectBlockmap: !nsisZip });
 } catch (error) {
   console.error(`[package-win] artifact validation failed: ${error.message}`);
   process.exit(1);

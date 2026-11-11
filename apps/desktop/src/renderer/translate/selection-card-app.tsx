@@ -20,8 +20,8 @@ const log = createLogger('selection-card');
 
 /** 卡片四周透明阴影边距（px），与主进程 SHADOW_PAD 一致 */
 const SHADOW_PAD = 8;
-/** 文本测量上限（px），与主进程 CARD_WIDTH - CARD_PAD（448-24）一致 */
-const MAX_TEXT_WIDTH = 424;
+/** 文本测量上限（px），与主进程 CARD_WIDTH - CARD_PAD（448-16）一致 */
+const MAX_TEXT_WIDTH = 432;
 
 export function SelectionCardRoot() {
   const [data, setData] = useState<TranslateSelectionResultEvent | null>(null);
@@ -81,9 +81,11 @@ export function SelectionCardRoot() {
           形状不一致的观感。
           注意：跨窗口的 backdrop-filter 在独立透明 BrowserWindow 上**不生效**（无法
           采样本窗口之外的内容），因此这里不用 backdrop-blur，只做 alpha 混色。
-          内边距 p-3 保留（= CARD_PAD / 2），文本区尺寸仍等于主进程按选区几何算出的内框。 */}
+          内边距 p-2（= CARD_PAD / 2 = 8px）与主进程 CARD_PAD 成对维护：用户目测反馈
+          「底板边界与文字之间距离过大」，故由 12px 收紧到 8px；圆角同步放大到
+          rounded-2xl（16px），接近聊天气泡的观感（小卡片近乎胶囊，排版区不被切角）。 */}
       <div
-        className="flex h-full flex-col rounded-lg p-3"
+        className="flex h-full flex-col rounded-2xl p-2"
         style={{
           backgroundColor: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
         }}

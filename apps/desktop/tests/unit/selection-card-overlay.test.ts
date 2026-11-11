@@ -141,7 +141,7 @@ describe('estimateCardSize', () => {
   });
 
   it('should wrap at max text width for long text', () => {
-    // 100 个窄字符 = 800px > MAX_TEXT_WIDTH(424) → 定宽 424、折 2 行
+    // 100 个窄字符 = 800px > MAX_TEXT_WIDTH(432) → 定宽 432、折 2 行
     const size = estimateCardSize('a'.repeat(100));
     expect(size.width).toBe(MAX_TEXT_WIDTH);
     expect(size.height).toBe(2 * 23);
@@ -341,7 +341,7 @@ describe('SelectionCardOverlay.applyMeasuredSize', () => {
 
     overlay.applyMeasuredSize(1, MAX_TEXT_WIDTH, 23);
     const measuredHeight = boundsHistory.at(-1)?.height ?? 0;
-    // 单行实测 23+24=47 < 高度下限 48 → 抬到 MIN_CARD_HEIGHT
+    // 单行实测 23+16=39 < 高度下限 40 → 抬到 MIN_CARD_HEIGHT
     expect(measuredHeight).toBe(MIN_CARD_HEIGHT + SHADOW_PAD * 2);
   });
 

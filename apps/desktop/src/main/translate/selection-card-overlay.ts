@@ -39,12 +39,15 @@ const log = createLogger('selection-card-overlay');
 export const CARD_WIDTH = 448;
 /** 卡片最小宽度（px）：超短译文（单词/短语）避免卡片缩成一条 */
 export const MIN_CARD_WIDTH = 96;
-/** 卡片内边距（px），与渲染层 p-3（12px × 2）一致 */
-export const CARD_PAD = 24;
+/** 卡片内边距（px），与渲染层 p-2（8px × 2）一致；2026-11-11 由 24 收紧到 16 */
+export const CARD_PAD = 16;
 /** 卡片四周透明阴影边距（px），用于 3D 阴影与圆角透出网页（与状态栏同值） */
 export const SHADOW_PAD = 8;
-/** 卡片高度下限：单行结果 + 内边距 */
-export const MIN_CARD_HEIGHT = 48;
+/**
+ * 卡片高度下限：单行结果 + 内边距（23 行高 + 16 内边距 ≈ 39，取 40 留 1px 余量），
+ * 使单行小卡的上下留白与左右内边距一致，不再被固定的 48 撑出额外空白。
+ */
+export const MIN_CARD_HEIGHT = 40;
 /** 卡片高度默认上限（px）：短结果不超过此高，超出部分由结果区内部滚动承接 */
 export const MAX_CARD_HEIGHT = 264;
 /**

@@ -86,8 +86,8 @@ Renderer handleOpenDeepSeekHarness
 
 同步历史：
 
-- dev.118：`0.2.0-rc.2 -> 0.2.1-rc.2`，整树替换 + 依赖安装 + 完整构建（`CHANGELOG.md:129`）。
-- dev.123：`0.2.1-rc.2 -> 0.2.1-rc.3`，整树替换 + 构建 + 根依赖/lockfile 更新（`CHANGELOG.md:137`）。
+- dev.118：`0.2.0-rc.2 -> 0.2.1-rc.2`，整树替换 + 依赖安装 + 完整构建（[CHANGELOG](../CHANGELOG.md) `dev.118`）。
+- dev.123：`0.2.1-rc.2 -> 0.2.1-rc.3`，整树替换 + 构建 + 根依赖/lockfile 更新（[CHANGELOG](../CHANGELOG.md) `dev.123`）。
 - dev.123 当时记录「rc.4 已发布但 GitHub 尚无 tag，无法干净同步」；该结论在 2026-10-30 已不成立，rc.4/rc.5 tag 均可拉取。
 
 同步成本：

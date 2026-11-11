@@ -98,11 +98,30 @@ exports.default = async function afterPack(context) {
 
   const packaged = listPackaged(unpackedModules);
   const copied = [];
+  // 与 electron-builder.yml 的 files 排除规则保持同口径（2026-11-11 dev.191）：
+  // 本钩子的 cpSync 是文件级复制，不经过 files 过滤，若不过滤会把 peer-only
+  // 包内的类型声明 / TS 源码 / .md 文档一并带进产物（dev.190 基线实测 25 个
+  // 包共 148 个）。asar 在 afterPack 之前已生成，这些包只被外部 Node 直读、
+  // 不在 asar 索引里，剪掉不会留下「目录可见、打开报 ENOENT」的幽灵条目；
+  // 与 files 排除的区别仅在于作用阶段（组装期 vs 补齐期）。
+  const NON_RUNTIME_RE = /\.(?:ts|cts|mts|md|map)$/i;
+  let filteredFiles = 0;
   for (const [name, dir] of resolved) {
     if (packaged.has(name) || name.startsWith('@types/')) continue;
     const target = join(unpackedModules, name);
     try {
-      cpSync(dir, target, { recursive: true, dereference: true, force: true });
+      cpSync(dir, target, {
+        recursive: true,
+        dereference: true,
+        force: true,
+        filter: (src) => {
+          if (NON_RUNTIME_RE.test(src)) {
+            filteredFiles++;
+            return false;
+          }
+          return true;
+        },
+      });
       copied.push(name);
     } catch (error) {
       throw new Error(`[after-pack] 复制 ${name} 失败（${dir} → ${target}）: ${error.message}`);
@@ -111,7 +130,8 @@ exports.default = async function afterPack(context) {
 
   console.log(
     `[after-pack] 生产依赖闭包 ${resolved.size} 个，产物已含 ${packaged.size} 个，` +
-      `补齐 peer-only 依赖 ${copied.length} 个`,
+      `补齐 peer-only 依赖 ${copied.length} 个，` +
+      `过滤非运行时文件 ${filteredFiles} 个`,
   );
   for (const name of copied.sort()) console.log(`[after-pack]   + ${name}`);
 

@@ -31,6 +31,28 @@ files:
   # 排除工作区包内被 symlink 带入的测试产物（gitignore 已忽略，避免 asar 打包报错）
   - '!**/coverage/**'
   - '!**/*.tsbuildinfo'
+  # 安装耗时整改（2026-11-11 dev.191）：node_modules 里的非运行时文件不进包。
+  # dev.190 实测 app.asar.unpacked/node_modules 有 53,463 个实体文件（占全树
+  # 97.9%），其中 26,388 个是类型声明（.d.ts/.d.cts/.d.mts）、npm 包附带的
+  # TS 源码、.md 文档与 .map（合计 171 MB），运行时从不加载。NSIS 会把整棵树
+  # 先解压到 %TEMP%\ns*.tmp\7z-out 再 CopyFiles 到安装目录，文件数直接决定
+  # 安装耗时（F14 实测拷贝 54k 文件约 10 分钟）。
+  # ⚠ 必须用 files 排除（组装期不收），不要在 afterPack 里剪除实体：app.asar
+  # 内保留着同一批文件的索引条目（dev.190 实测 57,964 条 node_modules 条目），
+  # 只删 app.asar.unpacked 的文件会留下「目录可见、打开报 ENOENT」的幽灵条目。
+  # 排除项会同时进入 electron-builder 的 nodeModuleFilePatterns（见
+  # builder-debug.yml），asar 索引与实体文件同步减少；afterPack 的 MAX_PATH
+  # 剪除器保持原样，继续兜底超长路径（§8 F12）。
+  # 合规：LICENSE / NOTICE / THIRD-PARTY-NOTICES.txt 一律保留（Apache-2.0
+  # 传播要求），故不排除 License 类文件。
+  # 运行时核查：1,347 个 package.json 中仅 66 个（@deepseek-ai/* 内嵌的
+  # zod 4.4.3 副本）有非 types 条件指向 .ts，条件名均为 @zod/source（打包器
+  # 专用，纯 Node 走 import/require 的 .js/.cjs），剪 src/*.ts 不影响 dsh
+  # 启动；每次打包仍须按 §7.3 跑 dsh 冒烟复核。
+  - '!**/node_modules/**/*.ts'
+  - '!**/node_modules/**/*.cts'
+  - '!**/node_modules/**/*.mts'
+  - '!**/node_modules/**/*.md'
 
 # 额外资源：图标文件复制到 resources 目录（运行时窗口图标用）
 extraResources:

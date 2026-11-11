@@ -76,11 +76,18 @@ export function SelectionCardRoot() {
   return (
     /* 外层占满窗口：四周 SHADOW_PAD 透明边距（窗口坐标补偿沿用，当前无阴影可透出） */
     <div className="h-screen w-screen overflow-hidden" style={{ padding: SHADOW_PAD }}>
-      {/* 2026-11-11 用户指令（临时目测试验）：去掉结果卡的矩形背景 / 描边 / 圆角 /
-          阴影，只保留文本区，用于目测「背景矩形与文本框形状是否匹配」。
-          内边距 p-3 保留（= CARD_PAD / 2），文本区尺寸仍等于主进程按选区算出的内框，
-          尺寸口径不因去背景而改变；后续按目测结果决定恢复、替换为其它样式或彻底删除。 */}
-      <div className="flex h-full flex-col p-3">
+      {/* 2026-11-11 用户目测方案 B（轻量样式）：无描边、无投影、无 backdrop-blur，
+          只用「半透明面板 + 圆角」，让网页内容透出来但压低对比，避免硬边矩形与文本区
+          形状不一致的观感。
+          注意：跨窗口的 backdrop-filter 在独立透明 BrowserWindow 上**不生效**（无法
+          采样本窗口之外的内容），因此这里不用 backdrop-blur，只做 alpha 混色。
+          内边距 p-3 保留（= CARD_PAD / 2），文本区尺寸仍等于主进程按选区几何算出的内框。 */}
+      <div
+        className="flex h-full flex-col rounded-lg p-3"
+        style={{
+          backgroundColor: 'color-mix(in srgb, var(--color-surface) 80%, transparent)',
+        }}
+      >
         {/* 结果区：仅显示译文（翻译失败时显示错误信息）；窗口已按实测尺寸设定，
             超高度上限时由主进程夹边、此处内部滚动兜底 */}
         <div className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-text">

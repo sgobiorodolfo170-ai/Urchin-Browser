@@ -91,6 +91,10 @@ export function createBrowserWindow(opts: CreateWindowOptions): BrowserWindowLik
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: true,
+      // Chromium 内置 PDF 查看器受 plugins 开关控制：关着时 file:// / 自定义协议
+      // 的 PDF 会直接触发下载而不是内联渲染。只开这一个已知安全的内置插件
+      // （Flash/PPAPI 已从 Chromium 移除，不存在被它带动加载第三方插件的路径）。
+      plugins: true,
     },
   });
 

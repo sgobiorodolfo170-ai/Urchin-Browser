@@ -458,6 +458,84 @@ describe('FileViewer · 文件查看', () => {
   });
 });
 
+// ── 组件测试 · 兜底出口（解码失败 / 不支持预览 → 用系统程序打开） ──
+
+describe('FileViewer · 兜底出口', () => {
+  /** 只处理 stat/dir/openExternal 的最小 mock。 */
+  function mockMinimal(kind: string, name: string, openExternalResult: unknown): void {
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'file.stat') {
+        return Promise.resolve({
+          name,
+          size: 10,
+          ext: name.split('.').pop() ?? '',
+          kind,
+          isDir: false,
+        });
+      }
+      if (channel === 'file.dir') return Promise.resolve({ entries: [] });
+      if (channel === 'file.openExternal') return Promise.resolve(openExternalResult);
+      return Promise.reject(new Error(`unexpected channel ${channel}`));
+    });
+  }
+
+  it('should show fallback and open externally when video fails to decode', async () => {
+    mockMinimal('video', 'a.mkv', { ok: true });
+    render(<FileViewer url="urchin://file-viewer/?path=C%3A%5Cvids%5Ca.mkv" />);
+
+    await waitFor(() => expect(document.querySelector('video')).not.toBeNull());
+    fireEvent.error(document.querySelector('video')!);
+
+    await waitFor(() => {
+      expect(screen.getByText(/改用系统默认程序打开/)).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole('button', { name: '用系统程序打开' }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('file.openExternal', { path: 'C:\\vids\\a.mkv' });
+    });
+  });
+
+  it('should show fallback when image fails to load', async () => {
+    mockMinimal('image', 'a.png', { ok: true });
+    render(<FileViewer url="urchin://file-viewer/?path=C%3A%5Cpics%5Ca.png" />);
+
+    await waitFor(() => expect(document.querySelector('img')).not.toBeNull());
+    fireEvent.error(document.querySelector('img')!);
+
+    await waitFor(() => {
+      expect(document.querySelector('img')).toBeNull();
+      expect(screen.getByText(/无法在浏览器内显示此图片/)).toBeDefined();
+    });
+  });
+
+  it('should offer external open for binary files instead of a dead end', async () => {
+    mockMinimal('binary', 'setup.exe', { ok: true });
+    render(<FileViewer url="urchin://file-viewer/?path=C%3A%5Csetup.exe" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('此文件类型不支持在浏览器内预览')).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole('button', { name: '用系统程序打开' }));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('file.openExternal', { path: 'C:\\setup.exe' });
+    });
+  });
+
+  it('should toast the OS error when external open fails', async () => {
+    mockMinimal('binary', 'setup.exe', { ok: false, error: '没有关联的应用' });
+    const onToast = vi.fn();
+    render(<FileViewer url="urchin://file-viewer/?path=C%3A%5Csetup.exe" onToast={onToast} />);
+
+    await waitFor(() => expect(screen.getByText('此文件类型不支持在浏览器内预览')).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: '用系统程序打开' }));
+
+    await waitFor(() => {
+      expect(onToast).toHaveBeenCalledWith('无法用系统程序打开：没有关联的应用');
+    });
+  });
+});
+
 // ── 组件测试 · 编辑模式 ──
 
 /** 可编辑文件 mock：md 全量加载 + file.write/草稿清理通道。 */

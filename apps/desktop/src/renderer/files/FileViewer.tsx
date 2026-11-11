@@ -192,6 +192,30 @@ export function formatJsonContent(content: string): string {
 
 // ───────────────── 组件 ─────────────────
 
+/**
+ * 无法内联渲染时的兜底块：说明原因 + 「用系统程序打开」出口。
+ *
+ * 场景：媒体解码失败、binary/html 类型、图片损坏。没有这个出口时用户只能
+ * 关掉标签页，且不知道文件本身没问题、只是浏览器不解码。
+ */
+function ExternalOpenFallback({
+  message,
+  onOpen,
+}: {
+  readonly message: string;
+  readonly onOpen: () => void;
+}) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-text-secondary">
+      <p className="text-text">{message}</p>
+      <p className="text-sm">可以改用系统默认程序打开</p>
+      <Button size="sm" variant="secondary" className="mt-1" onClick={onOpen}>
+        用系统程序打开
+      </Button>
+    </div>
+  );
+}
+
 interface FileViewerProps {
   /** 当前激活标签的 URL（urchin://file-viewer/?path=... 或 ?dir=...）。 */
   readonly url: string;
@@ -260,6 +284,10 @@ function FileViewerInner({
   const [volume, setVolume] = useState(1);
   const [volumeVisible, setVolumeVisible] = useState(false);
   const volumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 媒体/图片解码失败（编解码不支持、文件损坏、协议读取被拒）：显示兜底出口。
+  // 没有它时 <img>/<video> 失败只留一片空白，用户会以为「本浏览器打不开这种格式」，
+  // 也无从知道可以改用系统默认程序。
+  const [mediaError, setMediaError] = useState(false);
 
   // 编辑会话（阅读/编辑互切、脏状态、草稿、保存/放弃、离开确认）
   const noopToast = useRef((msg: string): void => {
@@ -286,6 +314,26 @@ function FileViewerInner({
     volumeTimerRef.current = setTimeout(() => setVolumeVisible(false), 1500);
   }, []);
 
+  /**
+   * 用系统默认程序打开当前文件（解码失败 / 不支持预览时的兜底出口）。
+   *
+   * 走主进程 shell.openPath：渲染层沙箱内无法直接启动外部程序；失败时
+   * 主进程回传具体原因（如「没有关联的应用」），这里转成 toast 提示。
+   */
+  const handleOpenExternal = useCallback(async (): Promise<void> => {
+    if (!path) return;
+    const toast = onToast ?? noopToast.current;
+    try {
+      const res = (await window.urchin.invoke('file.openExternal', { path })) as {
+        ok: boolean;
+        error?: string;
+      };
+      if (!res.ok) toast(`无法用系统程序打开：${res.error ?? '未知原因'}`);
+    } catch (e) {
+      toast('无法用系统程序打开：' + String(e));
+    }
+  }, [onToast, path]);
+
   useEffect(() => {
     if (!path) {
       setState({ status: 'error', message: '无效的文件地址（缺少 path 参数）' });
@@ -293,6 +341,7 @@ function FileViewerInner({
     }
     let cancelled = false;
     setPreviewNote(null);
+    setMediaError(false);
     void (async () => {
       try {
         const statRes = (await window.urchin.invoke('file.stat', { path })) as FileStatResult;
@@ -581,17 +630,24 @@ function FileViewerInner({
             onChange={session.setValue}
           />
         )}
-        {session.mode === 'read' && kind === 'image' && (
+        {session.mode === 'read' && kind === 'image' && !mediaError && (
           // 容器铺满网页（无内边距），图片按比例 contain 居中自适应
           <div className="flex h-full w-full items-center justify-center bg-surface-secondary/50">
             <img
               src={resource}
               alt={meta?.name ?? '图片'}
               className="max-h-full max-w-full object-contain"
+              onError={() => setMediaError(true)}
             />
           </div>
         )}
-        {session.mode === 'read' && kind === 'video' && (
+        {session.mode === 'read' && kind === 'image' && mediaError && (
+          <ExternalOpenFallback
+            message="无法在浏览器内显示此图片（格式不支持或文件损坏）"
+            onOpen={() => void handleOpenExternal()}
+          />
+        )}
+        {session.mode === 'read' && kind === 'video' && !mediaError && (
           // 容器铺满网页（无内边距/宽度限制），视频按比例 contain 铺满
           <div className="relative flex h-full w-full items-center justify-center">
             {/* 内嵌视频播放：file-resource 协议流式加载（主进程 Range 支持拖动 seek）；
@@ -601,6 +657,7 @@ function FileViewerInner({
               controls
               src={resource}
               className="h-full w-full object-contain"
+              onError={() => setMediaError(true)}
             />
             {/* 精简音量浮层：按 ↑/↓ 调音量时短暂弹出（竖条 + 内部百分比），
              * 位于视频右侧中部，1.5s 自动消失。填充从下往上（absolute bottom-0）。 */}
@@ -621,10 +678,27 @@ function FileViewerInner({
             )}
           </div>
         )}
-        {session.mode === 'read' && kind === 'audio' && (
+        {session.mode === 'read' && kind === 'video' && mediaError && (
+          <ExternalOpenFallback
+            message="无法在浏览器内播放此视频（编解码不受支持或文件损坏）"
+            onOpen={() => void handleOpenExternal()}
+          />
+        )}
+        {session.mode === 'read' && kind === 'audio' && !mediaError && (
           <div className="flex h-full w-full items-center justify-center">
-            <audio controls src={resource} className="w-full max-w-2xl" />
+            <audio
+              controls
+              src={resource}
+              className="w-full max-w-2xl"
+              onError={() => setMediaError(true)}
+            />
           </div>
+        )}
+        {session.mode === 'read' && kind === 'audio' && mediaError && (
+          <ExternalOpenFallback
+            message="无法在浏览器内播放此音频（编解码不受支持或文件损坏）"
+            onOpen={() => void handleOpenExternal()}
+          />
         )}
         {session.mode === 'read' && kind === 'pdf' && (
           <div className="h-full">
@@ -650,10 +724,10 @@ function FileViewerInner({
           </pre>
         )}
         {session.mode === 'read' && (kind === 'binary' || kind === 'html') && (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-text-secondary">
-            <p className="text-text">此文件类型不支持在浏览器内预览</p>
-            <p className="text-sm">请用外部程序打开</p>
-          </div>
+          <ExternalOpenFallback
+            message="此文件类型不支持在浏览器内预览"
+            onOpen={() => void handleOpenExternal()}
+          />
         )}
       </div>
 

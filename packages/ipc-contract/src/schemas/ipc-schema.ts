@@ -1182,6 +1182,31 @@ export const fileOpenResSchema = z.object({
 });
 export type FileOpenRes = z.infer<typeof fileOpenResSchema>;
 
+/**
+ * 统一打开本地路径（目录 → 浏览页；文件 → 外部入口路由）。
+ *
+ * 供渲染层 Ctrl+O / 侧栏「打开文件」/ 拖放入口使用：渲染层不再自己判类型、
+ * 不拼标签 URL，路由只在主进程实现一份（ADR-021 FA5）。
+ */
+export const fileOpenPathReqSchema = z.object({
+  path: filePathSchema,
+  /** 目标窗口（渲染层经 getCurrentWindowId 取得）。 */
+  windowId: z.number().int().positive(),
+  /**
+   * 打开来源：external = 外部入口（浏览器通道，Office 例外）；
+   * genoffice = GenOffice 主页入口（能力表驱动，打不开的转交浏览器）。
+   * 省略按 external（兼容旧调用）。
+   */
+  origin: z.enum(['external', 'genoffice']).optional(),
+});
+export type FileOpenPathReq = z.infer<typeof fileOpenPathReqSchema>;
+
+export const fileOpenPathResSchema = z.object({
+  /** false = 路径不存在或路由异常（主进程已记日志）。 */
+  ok: z.boolean(),
+});
+export type FileOpenPathRes = z.infer<typeof fileOpenPathResSchema>;
+
 /** 目录条目：目录恒为 kind='binary'（占位，UI 以 isDir 分支渲染文件夹）。 */
 export const fileDirEntrySchema = z.object({
   name: z.string(),
@@ -1251,8 +1276,62 @@ export type FileAssociationGetStatusReq = z.infer<typeof fileAssociationGetStatu
 export const fileAssociationGetStatusResSchema = z.object({
   /** key = 分组 id（media / documents / images）。 */
   groups: z.record(associationGroupIdSchema, associationGroupStatusSchema),
+  /** 本次登记使用的可执行文件（开发模式为 node_modules 里的 electron 副本）。 */
+  exePath: z.string(),
+  /** 是否开发模式（登记项指向开发可执行文件，仅供测试）。 */
+  devMode: z.boolean(),
+  /** 应用级登记（Applications\<exe>）是否存在。 */
+  appRegistered: z.boolean(),
+  /** 应用级登记是否指向当前 exe（false = 指向旧位置，需要重新登记）。 */
+  exeMatches: z.boolean(),
 });
 export type FileAssociationGetStatusRes = z.infer<typeof fileAssociationGetStatusResSchema>;
+
+/**
+ * 清除本应用登记（幂等）。
+ *
+ * - scope=extensions：清扩展名相关项（默认）；group 指定分组，否则清全部
+ * - scope=app：清应用级项（Applications\<exe> / 默认浏览器能力）
+ * - scope=all：两者都清
+ */
+export const fileAssociationUnregisterReqSchema = z.object({
+  scope: z.enum(['extensions', 'app', 'all']).optional(),
+  group: associationGroupIdSchema.optional(),
+  extensions: z.array(z.string().min(1).max(32)).max(200).optional(),
+});
+export type FileAssociationUnregisterReq = z.infer<typeof fileAssociationUnregisterReqSchema>;
+
+export const fileAssociationUnregisterResSchema = z.object({
+  ok: z.literal(true),
+  /** reg.exe 成功删除的目标数。 */
+  removed: z.number().int().nonnegative(),
+  /** 发起删除的目标数（含本就不存在的键/值）。 */
+  attempted: z.number().int().nonnegative(),
+});
+export type FileAssociationUnregisterRes = z.infer<typeof fileAssociationUnregisterResSchema>;
+
+/** 仅打开系统「默认应用」设置页（不写入注册表）。 */
+export const fileAssociationOpenSettingsReqSchema = z.object({});
+export type FileAssociationOpenSettingsReq = z.infer<typeof fileAssociationOpenSettingsReqSchema>;
+
+export const fileAssociationOpenSettingsResSchema = z.object({
+  /** 是否成功唤起系统设置页。 */
+  ok: z.boolean(),
+});
+export type FileAssociationOpenSettingsRes = z.infer<typeof fileAssociationOpenSettingsResSchema>;
+
+/** 用系统默认程序打开本地文件（查看器「此格式不支持」兜底出口）。 */
+export const fileOpenExternalReqSchema = z.object({
+  path: filePathSchema,
+});
+export type FileOpenExternalReq = z.infer<typeof fileOpenExternalReqSchema>;
+
+export const fileOpenExternalResSchema = z.object({
+  ok: z.boolean(),
+  /** 打开失败时的系统错误信息（ok=false 时有值）。 */
+  error: z.string().optional(),
+});
+export type FileOpenExternalRes = z.infer<typeof fileOpenExternalResSchema>;
 
 // ============================================================================
 // AI 域（W4：M13 Side Panel + M11 Orchestrator UI 接线）
@@ -2865,6 +2944,8 @@ export const ipcSchema = {
   'file.write': { req: fileWriteReqSchema, res: fileWriteResSchema },
   'file.saveAs': { req: fileSaveAsReqSchema, res: fileSaveAsResSchema },
   'file.open': { req: fileOpenReqSchema, res: fileOpenResSchema },
+  'file.openPath': { req: fileOpenPathReqSchema, res: fileOpenPathResSchema },
+  'file.openExternal': { req: fileOpenExternalReqSchema, res: fileOpenExternalResSchema },
   'file.dir': { req: fileDirReqSchema, res: fileDirResSchema },
   'editor.saveDraft': { req: editorSaveDraftReqSchema, res: editorSaveDraftResSchema },
   'editor.cleanupDraft': { req: editorCleanupDraftReqSchema, res: editorCleanupDraftResSchema },
@@ -2875,6 +2956,14 @@ export const ipcSchema = {
   'file-association.getStatus': {
     req: fileAssociationGetStatusReqSchema,
     res: fileAssociationGetStatusResSchema,
+  },
+  'file-association.unregister': {
+    req: fileAssociationUnregisterReqSchema,
+    res: fileAssociationUnregisterResSchema,
+  },
+  'file-association.openSettings': {
+    req: fileAssociationOpenSettingsReqSchema,
+    res: fileAssociationOpenSettingsResSchema,
   },
   'file-association.setDefaultBrowser': {
     req: fileAssociationSetDefaultBrowserReqSchema,

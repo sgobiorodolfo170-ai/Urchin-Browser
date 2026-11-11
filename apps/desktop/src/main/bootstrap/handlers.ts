@@ -83,6 +83,8 @@ import { applyTheme } from './theme-apply';
 // 运行时惰性使用的 index.ts 共享符号（循环引用安全性见文件头注释）
 import {
   routeLocalFile,
+  openInGenOffice,
+  openLocalEntry,
   sendToMainWindow,
   sendBallConfig,
   scrollActivePage,
@@ -251,9 +253,15 @@ export function registerIpcHandlers(ctx: AppContext): void {
         /* 读/写失败：编辑器回落到 <Documents>/GenOffice，不影响 Home 侧 */
       }
     }
+    // 最近/收藏存储单例：与 index.ts 的 routeLocalFile 共享（ADR-021 FA8，
+    // 浏览器通道打开文档类文件也记入同一份 genoffice-home.json 最近列表）。
+    const genofficeHomeStore = new GenOfficeHomeStore(
+      join(ctx.currentDataDir, 'genoffice-home.json'),
+    );
+    ctx.genofficeHomeStore = genofficeHomeStore;
     registerGenOfficeHomeHandlers({
       ipcMain,
-      store: new GenOfficeHomeStore(join(ctx.currentDataDir, 'genoffice-home.json')),
+      store: genofficeHomeStore,
       documentsRoot: join(ctx.currentDataDir, 'documents'),
       getTheme: () => nativeTheme.themeSource,
       setTheme: (theme) => {
@@ -261,7 +269,8 @@ export function registerIpcHandlers(ctx: AppContext): void {
       },
       getVersion: () => app.getVersion(),
       aiPanelPrefs: genofficeAiPanelPrefs,
-      openLocalPath: (path) => routeLocalFile(defaultWindowId(ctx), path),
+      // GenOffice 主页入口 → GenOffice 通道（能力表驱动）；打不开的格式转交浏览器
+      openLocalPath: (path) => openInGenOffice(defaultWindowId(ctx), path),
       openBlankDocument: (kind) => {
         const view = genofficeEmbed?.createGenOfficeBlankView?.(kind);
         if (!view) return false;
@@ -669,9 +678,14 @@ export function registerIpcHandlers(ctx: AppContext): void {
   // M14 page context 域 handler（page.extract）
   registerPageContextHandlers(ipcMain, ctx.tabManager);
 
-  // 本地文件域 handler（file.stat / file.read / file.write / file.saveAs / file.open / file.dir）
+  // 本地文件域 handler（file.stat / file.read / file.write / file.saveAs / file.open /
+  // file.openPath / file.openExternal / file.dir）
   // 支撑「以网页形式打开本地文件」：音视频/PDF/图片原生渲染，文本类文档查看器渲染
-  registerFileHandlers({ ipcMain });
+  registerFileHandlers({
+    ipcMain,
+    // 统一打开入口：目录 → 浏览页；文件 → 按 origin 路由（external / genoffice，ADR-021）
+    routeFilePath: (windowId, path, origin) => openLocalEntry(windowId, path, origin),
+  });
 
   // 编辑器草稿域（editor.*，会话内自动临时保存）：
   // 启动清扫上一会话残留草稿后注册（目录已由 ensureDataDir 预创建）

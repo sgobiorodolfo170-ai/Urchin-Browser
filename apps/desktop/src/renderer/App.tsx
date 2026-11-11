@@ -160,66 +160,47 @@ export function App() {
     useState<WorkspaceSwitcherMode>('cards');
 
   /**
-   * 打开本地路径（文件夹/文件统一入口）：
-   * - 目录（isDir）→ urchin://file-viewer/?dir= 目录浏览页（选择文件夹就打开文件夹）
-   * - GenOffice 接管类型（阶段 4：md/pdf/html/docx）→ urchin://genoffice 伪地址，
-   *   主进程创建对应编辑器视图；产物缺失时由主进程回落（html → file:// 直开，
-   *   其余 → 文件查看器）
-   * - 其余全部（音视频/图片/JSON/文本/其他）→ urchin://file-viewer/?path=
-   *   查看器（媒体/图片内嵌渲染 + 同类型连续切换）
-   * 供左侧栏按钮 / Ctrl+O / 文件拖放 / 文件关联启动共用。
+   * 打开本地路径（文件夹/文件统一入口）——只把路径交给主进程，路由不在渲染层。
+   *
+   * 为什么不在渲染层分流：分界线是**入口**（ADR-021 FA4），外部入口（Ctrl+O /
+   * 侧栏按钮 / 拖放）统一走浏览器通道，唯一例外是 Office 三类直进 GenOffice；
+   * 这套规则与文件关联/命令行共用一份实现（主进程 `openLocalEntry`），
+   * 渲染层自己再判一次类型就会出现两份映射漂移。
+   *
+   * 主进程侧：目录 → 目录浏览页；文件 → 查看器 / GenOffice / file:// / MHTML 只读。
    */
-  const handleOpenFilePath = useCallback((path: string) => {
-    void (async () => {
-      try {
-        const statRes = (await window.urchin.invoke('file.stat', { path })) as {
-          kind: string;
-          isDir?: boolean;
-        };
-        // kind → GenOffice 编辑器 app（与主进程 genoffice/paths.ts 的
-        // GENOFFICE_KINDS 对应；docx 类文档统一由 docs 编辑器承载）
-        const genofficeAppByKind: Readonly<Record<string, string>> = {
-          markdown: 'markdown',
-          pdf: 'pdf',
-          html: 'html',
-          docx: 'docs',
-          pptx: 'slides',
-          xlsx: 'sheets',
-        };
-        // MHTML：文件选择器/拖放入口统一交给主进程只读查看器（禁用 JS、无 preload），
-        // 不再直接 tab.create(file://...)，避免普通 BrowserView 启用 MHTML 内脚本。
-        if (statRes.kind === 'mhtml') {
-          await window.urchin.invoke('clipper.openMhtmlFile', { path });
-          return;
+  const handleOpenFilePath = useCallback(
+    (path: string, origin: 'external' | 'genoffice' = 'external') => {
+      void (async () => {
+        try {
+          await window.urchin.invoke('file.openPath', {
+            path,
+            windowId: await getCurrentWindowId(),
+            origin,
+          });
+        } catch (e) {
+          log.error('Failed to open local file:', e);
         }
-        const genofficeApp = genofficeAppByKind[statRes.kind];
-        const url = statRes.isDir
-          ? `urchin://file-viewer/?dir=${encodeURIComponent(path)}`
-          : genofficeApp
-            ? `urchin://genoffice/?kind=${encodeURIComponent(genofficeApp)}&path=${encodeURIComponent(path)}`
-            : `urchin://file-viewer/?path=${encodeURIComponent(path)}`;
-        await window.urchin.invoke('tab.create', {
-          windowId: await getCurrentWindowId(),
-          url,
-          active: true,
-        });
-      } catch (e) {
-        log.error('Failed to open local file:', e);
-      }
-    })();
-  }, []);
+      })();
+    },
+    [],
+  );
 
-  /** 打开文件选择器（左侧栏「打开文件」按钮 / Ctrl+O）：
-   *  openFile 对话框 → handleOpenFilePath 统一分流（文件→查看器，
-   *  自动捕获所在目录，同目录文件可自由切换）。 */
-  const handleOpenFilePicker = useCallback(async () => {
-    try {
-      const res = (await window.urchin.invoke('file.open', {})) as { path: string | null };
-      if (res.path) handleOpenFilePath(res.path);
-    } catch (e) {
-      log.error('Failed to open file picker:', e);
-    }
-  }, [handleOpenFilePath]);
+  /** 打开文件选择器：
+   *  - 外部入口（当前仅 Ctrl+O；侧栏按钮已收敛为 GenOffice 主页入口）→ 浏览器通道
+   *  - GenOffice 主页保底页的「打开文件」→ 编辑器通道（origin='genoffice'）
+   * 选中路径统一交给主进程 `file.openPath` 路由。 */
+  const handleOpenFilePicker = useCallback(
+    async (origin: 'external' | 'genoffice' = 'external') => {
+      try {
+        const res = (await window.urchin.invoke('file.open', {})) as { path: string | null };
+        if (res.path) handleOpenFilePath(res.path, origin);
+      } catch (e) {
+        log.error('Failed to open file picker:', e);
+      }
+    },
+    [handleOpenFilePath],
+  );
 
   // Ctrl+O 快捷键：打开文件（主进程已 Menu.setApplicationMenu(null) 移除全局菜单，
   // 快捷键需渲染层监听）。仅 Ctrl+O（不含 Shift/Ctrl+P 等组合），防误触。
@@ -1464,7 +1445,7 @@ export function App() {
             activeTabId={activeTabId}
             tabCount={tabs.length}
             onNavigate={(url) => void handleNavigate(url)}
-            onOpenFilePicker={() => void handleOpenFilePicker()}
+            onOpenFileInGenOffice={() => void handleOpenFilePicker('genoffice')}
             onFileViewerToast={showEditorToast}
             workspaceOverviewItems={workspaceOverviewItems}
             currentWorkspaceId={currentWorkspaceId}

@@ -6,6 +6,11 @@
  * 该地址不会被任何视图导航（编辑器页面由 genoffice-app:// 协议加载），
  * 仅用于标签快照的可序列化标识与路由判定（与 urchin://file-viewer 同思路）。
  */
+import { pathToFileURL } from 'node:url';
+import {
+  buildFileViewerUrl as buildFileViewerUrlShared,
+  buildGenOfficeUrl as buildGenOfficeUrlShared,
+} from '../../shared/file-routing';
 
 /** 伪地址前缀（协议 + host）。 */
 export const GENOFFICE_URL_PREFIX = 'urchin://genoffice';
@@ -16,9 +21,14 @@ export interface GenOfficeTarget {
   readonly path: string;
 }
 
-/** 构造 GenOffice 编辑器标签伪地址。 */
+/**
+ * 构造 GenOffice 编辑器标签伪地址。
+ *
+ * 实际拼接在 `shared/file-routing.ts`（路由单一真源，渲染层也用它），
+ * 此处仅保留既有导出名，避免调用点与单测大范围改名。
+ */
 export function buildGenOfficeUrl(kind: string, filePath: string): string {
-  return `${GENOFFICE_URL_PREFIX}/?kind=${encodeURIComponent(kind)}&path=${encodeURIComponent(filePath)}`;
+  return buildGenOfficeUrlShared(kind, filePath);
 }
 
 /** 解析伪地址；非 GenOffice 地址或参数缺失返回 null（不抛异常）。 */
@@ -37,15 +47,18 @@ export function parseGenOfficeUrl(url: string): GenOfficeTarget | null {
 
 /** GenOffice 产物缺失时的保底地址：Urchin 内置文件查看器（用户既定策略）。 */
 export function buildFileViewerUrl(filePath: string): string {
-  return `urchin://file-viewer/?path=${encodeURIComponent(filePath)}`;
+  return buildFileViewerUrlShared(filePath);
 }
 
 /**
  * HTML 保底地址：file:// 直开（与融合前的既有行为一致；HTML 经查看器内嵌
  * iframe 相对资源解析有问题，故不进查看器）。
+ *
+ * 用 pathToFileURL 而非 encodeURI 手工拼接：encodeURI 不转义 `#` / `?`，
+ * 文件名含这两个字符时 URL 会被截断（Chromium 打开错误路径）。
  */
 export function buildFileUrl(filePath: string): string {
-  return `file:///${encodeURI(filePath.replace(/\\/g, '/'))}`;
+  return pathToFileURL(filePath).toString();
 }
 
 /**

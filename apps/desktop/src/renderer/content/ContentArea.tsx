@@ -36,8 +36,8 @@ export interface ContentAreaProps {
   readonly tabCount: number;
   /** 同标签导航（主页 / 文件查看器上/下一个、进入子目录） */
   readonly onNavigate: (url: string) => void;
-  /** 打开本地文件选择器（GenOffice 主页保底页入口） */
-  readonly onOpenFilePicker: () => void;
+  /** 打开本地文件选择器（GenOffice 主页保底页入口 → 编辑器通道） */
+  readonly onOpenFileInGenOffice: () => void;
   /** 文件查看器轻提示（保存失败等） */
   readonly onFileViewerToast: (msg: string) => void;
   /** 工作区总览页卡片数据（App 由 workspaces + 整窗快照 useMemo 组装） */
@@ -59,7 +59,7 @@ export function ContentArea({
   activeTabId,
   tabCount,
   onNavigate,
-  onOpenFilePicker,
+  onOpenFileInGenOffice,
   onFileViewerToast,
   workspaceOverviewItems,
   currentWorkspaceId,
@@ -171,7 +171,7 @@ export function ContentArea({
               /* GenOffice 文档主页保底（阶段 4.6）：正常情况下主进程以
                *  GenOffice shell Home 视图承载（viewKind=genoffice，React 留空）；
                *  仅当 shell 产物缺失时回落本 React 页面（浏览器标签） */
-              <GenOfficeHome onOpenFile={onOpenFilePicker} />
+              <GenOfficeHome onOpenFile={onOpenFileInGenOffice} />
             ) : isNewTab || tabCount === 0 ? (
               /* 主页：React 组件渲染（内嵌，无法自由更换）。
                * 关闭最后一个标签后 activeTab 为空，此时同样回落到主页 */

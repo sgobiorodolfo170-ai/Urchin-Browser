@@ -107,6 +107,34 @@ describe('App (Browser Shell)', () => {
     });
   });
 
+  it('should hand local file opening to the main-process router (Ctrl+O → file.openPath)', async () => {
+    // ADR-021 FA4/FA5：外部入口（Ctrl+O / 侧栏 / 拖放）统一交给主进程路由，
+    // 渲染层不再自己 file.stat 判类型、也不拼 urchin:// 标签 URL。
+    const tab = makeTab();
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'file.open') return Promise.resolve({ path: 'C:\\docs\\note.md' });
+      if (channel === 'file.openPath') return Promise.resolve({ ok: true });
+      return Promise.resolve({ tabs: [tab] });
+    });
+
+    renderApp();
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 });
+    });
+
+    fireEvent.keyDown(window, { key: 'o', ctrlKey: true });
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('file.openPath', {
+        path: 'C:\\docs\\note.md',
+        windowId: 1,
+        origin: 'external',
+      });
+    });
+    expect(mockInvoke).not.toHaveBeenCalledWith('file.stat', expect.anything());
+    expect(mockInvoke).not.toHaveBeenCalledWith('tab.create', expect.anything());
+  });
+
   it('should render right sidebar with tabs and new tab button', async () => {
     const tab = makeTab({ id: 1, title: 'Urchin 首页', url: 'https://urchin.dev' });
     mockInvoke.mockResolvedValue({ tabs: [tab] });

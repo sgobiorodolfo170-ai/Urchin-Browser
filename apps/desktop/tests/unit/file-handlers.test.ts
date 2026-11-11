@@ -304,3 +304,125 @@ describe('file.dir', () => {
     expect(res).toMatchObject({ code: 'NOT_FOUND' });
   });
 });
+
+describe('file.openPath', () => {
+  /** 注入 routeFilePath 的 handler 注册（渲染层统一打开入口）。 */
+  function captureWithRoute(
+    route: (windowId: number, path: string) => boolean | Promise<boolean>,
+  ): Map<string, (event: unknown, req: unknown) => Promise<unknown>> {
+    const handlers = new Map<string, (event: unknown, req: unknown) => Promise<unknown>>();
+    const ipcMain = {
+      handle: (channel: string, fn: (event: unknown, req: unknown) => Promise<unknown>) => {
+        handlers.set(channel, fn);
+      },
+      removeHandler: () => undefined,
+    };
+    registerFileHandlers({ ipcMain: ipcMain as never, routeFilePath: route });
+    return handlers;
+  }
+
+  it('should delegate to the main-process router with window id and origin', async () => {
+    const route = vi.fn(() => true);
+    const handlers = captureWithRoute(route);
+
+    const res = await callHandler(handlers, 'file.openPath', {
+      path: 'C:\\a\\note.md',
+      windowId: 3,
+    });
+
+    expect(res).toEqual({ ok: true });
+    // origin 缺省按 external（外部入口：浏览器通道）
+    expect(route).toHaveBeenCalledWith(3, 'C:\\a\\note.md', 'external');
+  });
+
+  it('should pass the genoffice origin through (GenOffice 主页入口)', async () => {
+    const route = vi.fn(() => true);
+    const handlers = captureWithRoute(route);
+
+    await callHandler(handlers, 'file.openPath', {
+      path: 'C:\\a\\note.md',
+      windowId: 2,
+      origin: 'genoffice',
+    });
+
+    expect(route).toHaveBeenCalledWith(2, 'C:\\a\\note.md', 'genoffice');
+  });
+
+  it('should report ok:false when the router rejects the path', async () => {
+    const handlers = captureWithRoute(() => false);
+
+    const res = await callHandler(handlers, 'file.openPath', {
+      path: 'C:\\missing\\a.md',
+      windowId: 1,
+    });
+
+    expect(res).toEqual({ ok: false });
+  });
+
+  it('should swallow router exceptions into ok:false', async () => {
+    const handlers = captureWithRoute(() => Promise.reject(new Error('boom')));
+
+    const res = await callHandler(handlers, 'file.openPath', {
+      path: 'C:\\a\\b.md',
+      windowId: 1,
+    });
+
+    expect(res).toEqual({ ok: false });
+  });
+
+  it('should return ok:false when the dependency is not injected', async () => {
+    const handlers = captureHandlers();
+
+    const res = await callHandler(handlers, 'file.openPath', {
+      path: 'C:\\a\\b.md',
+      windowId: 1,
+    });
+
+    expect(res).toEqual({ ok: false });
+  });
+});
+
+describe('file.openExternal', () => {
+  /** 带注入 openPath 的 handler 注册（默认实现走 electron shell）。 */
+  function captureWithOpenPath(
+    openPath: (path: string) => Promise<string>,
+  ): Map<string, (event: unknown, req: unknown) => Promise<unknown>> {
+    const handlers = new Map<string, (event: unknown, req: unknown) => Promise<unknown>>();
+    const ipcMain = {
+      handle: (channel: string, fn: (event: unknown, req: unknown) => Promise<unknown>) => {
+        handlers.set(channel, fn);
+      },
+      removeHandler: () => undefined,
+    };
+    registerFileHandlers({ ipcMain: ipcMain as never, openPath });
+    return handlers;
+  }
+
+  it('should return ok:true when the OS opens the file', async () => {
+    const openPath = vi.fn(() => Promise.resolve(''));
+    const handlers = captureWithOpenPath(openPath);
+
+    const res = await callHandler(handlers, 'file.openExternal', { path: 'C:\\a.mkv' });
+
+    expect(res).toEqual({ ok: true });
+    expect(openPath).toHaveBeenCalledWith('C:\\a.mkv');
+  });
+
+  it('should pass the OS error message through instead of throwing', async () => {
+    // shell.openPath 用返回字符串表达失败（非异常）：没有关联应用时不能抛，
+    // 渲染层要展示具体原因。
+    const handlers = captureWithOpenPath(() => Promise.resolve('没有关联的应用'));
+
+    const res = await callHandler(handlers, 'file.openExternal', { path: 'C:\\a.xyz' });
+
+    expect(res).toEqual({ ok: false, error: '没有关联的应用' });
+  });
+
+  it('should catch thrown errors', async () => {
+    const handlers = captureWithOpenPath(() => Promise.reject(new Error('boom')));
+
+    const res = await callHandler(handlers, 'file.openExternal', { path: 'C:\\a.xyz' });
+
+    expect(res).toEqual({ ok: false, error: 'boom' });
+  });
+});

@@ -14,9 +14,10 @@
 // Polyfill 必须在所有其他模块之前加载：undici 顶层 require node:worker_threads
 // 并解构 markAsUncloneable（Node 22.3+ 才有），Electron 32/Node 20 缺失会导致启动崩溃。
 import './polyfills/worker-threads-polyfill';
-import { app, nativeTheme, screen, session } from 'electron';
+import { app, nativeTheme, screen, session, dialog } from 'electron';
 import { join, basename } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { createLogger } from '@urchin/logger';
 
@@ -46,8 +47,15 @@ import { initStartupLog, markStartup } from './startup-log';
 import { SettingsManager } from './settings';
 import { DownloadManager } from './downloads';
 import type { ProviderConfigStore } from './ai';
-import { parseFileArg, parseUrlArg } from './file-association';
+import { parseOpenArgs } from './file-association';
 import { classifyFileKind } from './files';
+import {
+  buildDirViewerUrl,
+  buildFileViewerUrl,
+  buildGenOfficeUrl,
+  isGenOfficeEditable,
+  resolveOpenTarget,
+} from '../shared/file-routing';
 import { Orchestrator } from './orchestrator/orchestrator';
 import { ProviderRegistry } from './orchestrator/provider-registry';
 import { electronProcessFactory } from './orchestrator/electron-factory';
@@ -290,6 +298,7 @@ const ctx: AppContext = {
   disposeDevtoolsManager: null,
   disposeDevtoolsShortcuts: null,
   genofficeIntegration: null,
+  genofficeHomeStore: null,
   bookmarkPanel: null,
   bookmarkPickerContext: null,
   statusBarOverlay: null,
@@ -307,24 +316,49 @@ const ctx: AppContext = {
 };
 
 /**
+ * 记录「最近打开」（GenOffice Home 的最近列表，单一存储 genoffice-home.json）。
+ *
+ * 范围：只有 GenOffice 能编辑的扩展名才记（`isGenOfficeEditable`，ADR-021 FA6/FA8）——
+ * 脚本/配置类（.js/.sh/.ps1/.css…）虽然能在 GenOffice 源码视图里打开，但不进
+ * 「最近」，否则列表会被临时脚本塞满。GenOffice 将来支持图片/音视频编辑器时，
+ * 只需在能力表追加扩展名，这里自动跟随。
+ *
+ * 失败不阻塞打开（recents 属辅助信息）。
+ */
+function recordRecentIfEditable(path: string): void {
+  if (!isGenOfficeEditable(path)) return;
+  const store = ctx.genofficeHomeStore;
+  if (!store) return;
+  void store.recordRecent(path).catch(() => undefined);
+}
+
+/**
  * 打开本地文件（Windows 文件关联 / 命令行启动 / GenOffice Home 打开动作）。
  *
- * 阶段 4：GenOffice 接管类型（md/pdf/html/docx）先经集成层解析为编辑器
- * WebContentsView（产物缺失自动回落：html → file:// 直开，其余 → 内置查看器）；
- * 其余类型维持原路由（音视频/图片 → file:// 原生渲染，文本类 → 查看器）。
+ * 路由口径见 [ADR-021](../../docs/decisions/ADR-021-打开文件职责划分.md) FA4：
+ * **分界线是入口不是格式**——
+ * - 外部入口（文件关联 / 命令行 / Ctrl+O / 拖放）：浏览器通道；
+ *   唯一例外是 Office 三类（docx/pptx/xlsx）直进 GenOffice 编辑器；
+ * - GenOffice 主页入口走 `openInGenOffice`（能力表驱动）。
+ *
+ * 通道：mhtml → 只读视图；html → file:// 网页标签；genoffice → 编辑器视图
+ * （产物缺失自动回落 viewer）；其余 → 内置查看器（媒体/图片也在查看器内联
+ * 渲染，file-resource 协议流式 + Range，可上/下一个切换、失败有外部打开出口）。
  *
  * @returns true = 已受理（含回落路径）；false = 路由异常（已记日志）
  */
 export function routeLocalFile(windowId: number, path: string): boolean {
   try {
-    const kind = classifyFileKind(basename(path));
-    // MHTML：只读查看器（禁用 JS、无 preload），不进入 GenOffice 文本编辑器。
-    // 从 GenOffice Home / 文件关联 / 文件选择器打开都会走这里。
-    if (kind === 'mhtml') {
+    const name = basename(path);
+    const kind = classifyFileKind(name);
+    const target = resolveOpenTarget(kind, name, 'external');
+
+    if (target.channel === 'mhtml') {
+      // MHTML：只读查看器（禁用 JS、无 preload），不进入 GenOffice 文本编辑器。
       const view = createMhtmlView(path, {
-        openUrl: (target) => {
-          if (/^https?:\/\//i.test(target)) {
-            tabManager.create({ windowId, url: target, active: true });
+        openUrl: (targetUrl) => {
+          if (/^https?:\/\//i.test(targetUrl)) {
+            tabManager.create({ windowId, url: targetUrl, active: true });
           }
         },
         backgroundColor: currentThemeBackground(),
@@ -341,18 +375,10 @@ export function routeLocalFile(windowId: number, path: string): boolean {
       log.info('open local mhtml (reader)', { path });
       return true;
     }
-    const genofficeAppByKind: Readonly<Record<string, string>> = {
-      markdown: 'markdown',
-      pdf: 'pdf',
-      html: 'html',
-      docx: 'docs',
-      pptx: 'slides',
-      xlsx: 'sheets',
-    };
-    const genofficeApp = genofficeAppByKind[kind];
-    if (genofficeApp && ctx.genofficeIntegration) {
+
+    if (target.channel === 'genoffice' && ctx.genofficeIntegration) {
       const resolved = ctx.genofficeIntegration.resolveTabCreate(
-        `urchin://genoffice/?kind=${encodeURIComponent(genofficeApp)}&path=${encodeURIComponent(path)}`,
+        buildGenOfficeUrl(target.app, path),
       );
       tabManager.create({
         windowId,
@@ -363,16 +389,26 @@ export function routeLocalFile(windowId: number, path: string): boolean {
           : {}),
         ...(resolved.viewKind === 'genoffice' ? { genofficeKind: resolved.genofficeKind } : {}),
       });
-      log.info('open local file from association (genoffice)', { kind, path });
+      // resolveTabCreate 在产物缺失/创建失败时已回落到 viewer/file 地址——
+      // 仍算「GenOffice 能编辑的格式」，recents 照记（用户预期的文档列表）。
+      recordRecentIfEditable(path);
+      log.info('open local file (genoffice)', { kind, path });
       return true;
     }
-    const nativeKinds = ['audio', 'video', 'image'];
-    const url = nativeKinds.includes(kind)
-      ? // 路径可能含中文/空格，须 encodeURI 才能被 Chromium 解析为 file:// URL
-        `file:///${encodeURI(path.replace(/\\/g, '/'))}`
-      : `urchin://file-viewer/?path=${encodeURIComponent(path)}`;
-    tabManager.create({ windowId, url, active: true });
-    log.info('open local file from association', { kind, path });
+
+    if (target.channel === 'browser') {
+      // html：作为普通网页在标签里直开（浏览器的本职），不进查看器内嵌 iframe
+      // （相对资源解析有问题）。用 pathToFileURL 编码，文件名含 # / ? 不会被截断。
+      tabManager.create({ windowId, url: pathToFileURL(path).toString(), active: true });
+      recordRecentIfEditable(path);
+      log.info('open local html as web page', { kind, path });
+      return true;
+    }
+
+    // viewer（含 GenOffice 集成缺失时的回落）
+    tabManager.create({ windowId, url: buildFileViewerUrl(path), active: true });
+    recordRecentIfEditable(path);
+    log.info('open local file (viewer)', { kind, path });
     return true;
   } catch (err) {
     log.warn('failed to open local file', { path, error: String(err) });
@@ -380,9 +416,118 @@ export function routeLocalFile(windowId: number, path: string): boolean {
   }
 }
 
-/** 打开本地文件（忽略受理结果；文件关联/命令行入口用）。 */
-function openLocalFile(windowId: number, path: string): void {
-  routeLocalFile(windowId, path);
+/**
+ * 统一打开入口（渲染层 Ctrl+O / 侧栏按钮 / 拖放 → `file.openPath`）。
+ *
+ * 与 `routeLocalFile` 的分工：本函数先判目录（目录 → 目录浏览页），再交给
+ * 文件路由；渲染层因此不需要自己 `file.stat` 判类型、也不需要拼标签 URL——
+ * 路由只有主进程一份实现（ADR-021 FA5）。
+ *
+ * @returns true = 已受理；false = 路径不存在或路由异常
+ */
+export async function openLocalEntry(
+  windowId: number,
+  path: string,
+  origin: 'external' | 'genoffice' = 'external',
+): Promise<boolean> {
+  try {
+    const info = await stat(path);
+    if (!info.isFile()) {
+      tabManager.create({ windowId, url: buildDirViewerUrl(path), active: true });
+      log.info('open local directory', { path });
+      return true;
+    }
+  } catch {
+    // stat 失败（不存在/无权限）：交给路由走既有失败路径（记日志 + 返回 false）
+  }
+  return origin === 'genoffice' ? openInGenOffice(windowId, path) : routeLocalFile(windowId, path);
+}
+
+/**
+ * 在 GenOffice 中打开（GenOffice 主页：文档目录 / 最近 / 收藏 / 「打开本地文件」）。
+ *
+ * 与 `routeLocalFile` 的差别是**能力表驱动**（ADR-021 FA5/FA7）：只要 GenOffice
+ * 能编辑（md/pdf/html/txt/json/csv/docx/pptx/xlsx…）就进编辑器；其余
+ * （图片/音视频/二进制/脚本）转交浏览器通道，做到「不拒绝、不静默」。
+ *
+ * @returns true = 已受理（含转交浏览器通道）
+ */
+export function openInGenOffice(windowId: number, path: string): boolean {
+  try {
+    const name = basename(path);
+    const kind = classifyFileKind(name);
+    const target = resolveOpenTarget(kind, name, 'genoffice');
+    if (target.channel === 'genoffice' && ctx.genofficeIntegration) {
+      const resolved = ctx.genofficeIntegration.resolveTabCreate(
+        buildGenOfficeUrl(target.app, path),
+      );
+      if (resolved.viewKind === 'genoffice') {
+        tabManager.create({
+          windowId,
+          url: resolved.url,
+          active: true,
+          ...(resolved.view ? { view: resolved.view as BrowserViewLike } : {}),
+          viewKind: 'genoffice',
+          ...(resolved.genofficeKind ? { genofficeKind: resolved.genofficeKind } : {}),
+        });
+        recordRecentIfEditable(path);
+        log.info('open local file in genoffice (home)', { kind, path });
+        return true;
+      }
+    }
+    // GenOffice 打不开 / 产物缺失 / 未启用 → 浏览器通道（同一套外部路由）
+    log.info('genoffice cannot open — handing over to browser channel', { kind, path });
+    return routeLocalFile(windowId, path);
+  } catch (err) {
+    log.warn('failed to open local file in genoffice', { path, error: String(err) });
+    return false;
+  }
+}
+
+/**
+ * 处理命令行打开请求（Windows 文件关联 / 默认浏览器启动，首启与第二实例共用）。
+ *
+ * - URL：首条复用当前激活标签（保持「热启动」语义），其余新开标签
+ * - 文件：逐个 routeLocalFile（资源管理器多选文件一次启动 → 多标签）
+ * - 失败：routeLocalFile 返回 false 时弹系统错误框——文件关联场景下用户
+ *   没有浏览器窗口上下文，静默失败会表现为「双击没反应」
+ *
+ * appPath 必须传 `app.getAppPath()`：开发/生产模式由 `electron <appDir>` 启动，
+ * argv[1] 是应用目录而不是用户文件（见 parseOpenArgs 注释）。
+ *
+ * @returns 已受理的请求数（0 = 命令行里没有可打开的内容）
+ */
+function openFromCommandLine(windowId: number, argv: readonly string[]): number {
+  const { urls, files } = parseOpenArgs(argv, app.getAppPath());
+  let opened = 0;
+
+  urls.forEach((url, index) => {
+    if (index === 0) {
+      const active = tabManager.query({ windowId }).find((tab) => tab.active);
+      if (active) {
+        tabManager.loadUrl(active.id, url);
+        opened += 1;
+        return;
+      }
+    }
+    tabManager.create({ windowId, url, active: true });
+    opened += 1;
+  });
+
+  for (const file of files) {
+    if (routeLocalFile(windowId, file)) {
+      opened += 1;
+    } else {
+      // 失败可见化：文件关联启动时窗口可能刚创建，静默失败无法排查
+      try {
+        dialog.showErrorBox('无法打开文件', `无法用本浏览器打开该文件：\n${file}`);
+      } catch {
+        /* 对话框不可用时保持静默（已写日志） */
+      }
+    }
+  }
+
+  return opened;
 }
 
 /**
@@ -1482,20 +1627,8 @@ void app.whenReady().then(async () => {
 
   // Windows 文件关联 / 默认浏览器启动：命令行带 URL 或文件路径时打开对应内容。
   // 须在主窗口与初始 tab 创建后执行，否则 windowId 尚未建立。
-  const urlArg = parseUrlArg(process.argv);
-  if (urlArg) {
-    const active = tabManager.query({ windowId: mainWindow.id }).find((tab) => tab.active);
-    if (active) {
-      tabManager.loadUrl(active.id, urlArg);
-    } else {
-      tabManager.create({ windowId: mainWindow.id, url: urlArg, active: true });
-    }
-  } else {
-    const fileArg = parseFileArg(process.argv);
-    if (fileArg) {
-      openLocalFile(mainWindow.id, fileArg);
-    }
-  }
+  // parseOpenArgs 会跳过开发模式的 app 目录参数，避免把应用目录当文件打开。
+  openFromCommandLine(mainWindow.id, process.argv);
 
   // macOS：点击 dock 图标时重新创建窗口；窗口已存在（含隐藏到托盘）时
   // 优先唤回并聚焦，而不是再建一个空窗口。
@@ -1555,15 +1688,8 @@ app.on('second-instance', (_event, commandLine) => {
     const win = windows[0]!;
     win.browserWindow.show();
     win.browserWindow.restore();
-    const urlArg = parseUrlArg(commandLine);
-    if (urlArg) {
-      tabManager.create({ windowId: win.id, url: urlArg, active: true });
-    } else {
-      const fileArg = parseFileArg(commandLine);
-      if (fileArg) {
-        openLocalFile(win.id, fileArg);
-      }
-    }
+    // 与首启同一套解析：跳过 app 目录参数，URL / 多个文件都能正确处理
+    openFromCommandLine(win.id, commandLine);
   }
 });
 

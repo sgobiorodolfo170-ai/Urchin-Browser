@@ -26,7 +26,7 @@
  * 与 settings-manager 注入 mock 持久层的测试约定一致。
  */
 import type { IpcMain } from 'electron';
-import { BrowserWindow, dialog } from 'electron';
+import { BrowserWindow, dialog, shell } from 'electron';
 import { open, stat, readdir, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { IpcError, IpcErrorCode, registerHandler } from '@urchin/ipc-contract';
@@ -80,6 +80,18 @@ export interface FileHandlersDeps {
   readonly writeFile?: typeof writeFile;
   /** 另存对话框实现（默认 electron dialog.showSaveDialog）。 */
   readonly showSaveDialog?: typeof dialog.showSaveDialog;
+  /** 用系统默认程序打开路径（默认 electron shell.openPath，file.openExternal 用）。 */
+  readonly openPath?: typeof shell.openPath;
+  /**
+   * 统一打开本地路径（file.openPath 用）：由 index.ts 注入 `openLocalEntry`
+   * （目录 → 浏览页；文件 → 按 origin 路由）。注入而非直接 import，避免
+   * files 模块反向依赖主进程入口（循环引用）。
+   */
+  readonly routeFilePath?: (
+    windowId: number,
+    path: string,
+    origin: 'external' | 'genoffice',
+  ) => boolean | Promise<boolean>;
 }
 
 /**
@@ -259,6 +271,45 @@ export function registerFileHandlers(deps: FileHandlersDeps): void {
       return { path: null };
     }
     return { path: result.filePaths[0]! };
+  });
+
+  // file.openExternal：用系统默认程序打开该文件（查看器「此格式/编解码不支持」
+  // 的兜底出口）。shell.openPath 成功返回空字符串、失败返回错误描述，故用
+  // { ok, error } 结构回传——不用 IpcError 是因为「打不开」属于可预期结果，
+  // 渲染层要展示具体原因（如「没有关联的应用」）。
+  registerHandler(ipcMain, 'file.openExternal', async (req) => {
+    // shell.openPath 是 electron 模块的方法：直接赋给局部变量会丢失 this，
+    // 用箭头包一层（同时保留 DI 覆盖点）。
+    const openPath = deps.openPath ?? ((p: string) => shell.openPath(p));
+    try {
+      const error = await openPath(req.path);
+      if (error) {
+        log.warn('file.openExternal failed', { path: req.path, error });
+        return { ok: false, error };
+      }
+      log.info('file opened externally', { path: req.path });
+      return { ok: true };
+    } catch (err) {
+      log.warn('file.openExternal threw', { path: req.path, error: String(err) });
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // file.openPath：统一打开本地路径（目录 → 浏览页；文件 → 外部入口路由）。
+  // 渲染层只传路径，路由/URL 拼接都在主进程（ADR-021 FA5，避免双份映射漂移）。
+  registerHandler(ipcMain, 'file.openPath', async (req) => {
+    const route = deps.routeFilePath;
+    if (!route) {
+      log.warn('file.openPath unavailable: routeFilePath not injected');
+      return { ok: false };
+    }
+    try {
+      const ok = await route(req.windowId, req.path, req.origin ?? 'external');
+      return { ok };
+    } catch (err) {
+      log.warn('file.openPath failed', { path: req.path, error: String(err) });
+      return { ok: false };
+    }
   });
 
   // file.dir：列目录（子目录在前 + 文件按名排序）

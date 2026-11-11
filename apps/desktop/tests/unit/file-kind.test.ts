@@ -9,7 +9,13 @@
  * 5. inferMimeType：已知映射 + 未知回退 application/octet-stream
  */
 import { describe, it, expect } from 'vitest';
-import { classifyFileKind, getExt, inferMimeType } from '../../src/main/files/file-kind';
+import {
+  ASSOCIABLE_EXTENSIONS,
+  classifyFileKind,
+  getExt,
+  inferMimeType,
+  isAssociableExtension,
+} from '../../src/main/files/file-kind';
 
 describe('getExt', () => {
   it('should return lowercase extension', () => {
@@ -131,9 +137,44 @@ describe('classifyFileKind · 点文件（dotfile）整文件名', () => {
   });
 });
 
+describe('ASSOCIABLE_EXTENSIONS / isAssociableExtension', () => {
+  it('should expose media, office, text and image formats', () => {
+    for (const ext of ['mp3', 'mp4', 'webm', 'pdf', 'docx', 'pptx', 'xlsx', 'md', 'txt', 'json']) {
+      expect(isAssociableExtension(ext), ext).toBe(true);
+    }
+    for (const ext of ['png', 'jpg', 'svg', 'webp']) {
+      expect(isAssociableExtension(ext), ext).toBe(true);
+    }
+  });
+
+  it('should reject code / script / config extensions', () => {
+    // 浏览器不得宣称能作为这些格式的默认打开方式（旧模型曾把它们全量登记）
+    for (const ext of ['js', 'ts', 'tsx', 'bat', 'cmd', 'ps1', 'sh', 'py', 'css', 'sql', 'ini']) {
+      expect(isAssociableExtension(ext), ext).toBe(false);
+    }
+  });
+
+  it('should reject containers Chromium build cannot decode', () => {
+    for (const ext of ['wma', 'mid', 'avi', 'mpeg', '3gp']) {
+      expect(isAssociableExtension(ext), ext).toBe(false);
+    }
+  });
+
+  it('should be case-insensitive and tolerate a leading dot', () => {
+    expect(isAssociableExtension('MP3')).toBe(true);
+    expect(isAssociableExtension('.PNG')).toBe(true);
+    expect(isAssociableExtension('.txt')).toBe(true);
+  });
+
+  it('should keep the whitelist a subset of the classification table', () => {
+    for (const ext of ASSOCIABLE_EXTENSIONS) {
+      expect(classifyFileKind(`x.${ext}`), ext).not.toBe('binary');
+    }
+  });
+});
+
 describe('inferMimeType', () => {
   it('should return mapped mime type', () => {
-    expect(inferMimeType('a.mp3')).toBe('audio/mpeg');
     expect(inferMimeType('b.mp4')).toBe('video/mp4');
     expect(inferMimeType('c.pdf')).toBe('application/pdf');
     expect(inferMimeType('d.png')).toBe('image/png');

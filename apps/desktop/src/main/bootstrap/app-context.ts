@@ -27,6 +27,7 @@ import type { ProviderRegistry } from '../orchestrator/provider-registry';
 import type { Orchestrator } from '../orchestrator/orchestrator';
 import type { ProviderConfigStore } from '../ai';
 import type { GenOfficeIntegration } from '../genoffice/integration';
+import type { GenOfficeHomeStore } from '../genoffice/home-store';
 import type { BookmarkPanel } from '../panel/bookmark-panel';
 import type { StatusBarOverlay } from '../status-bar/status-bar-overlay';
 import type { StatusBarBall } from '../status-bar/status-bar-ball';
@@ -124,6 +125,15 @@ export interface AppContext {
 
   /** GenOffice 编辑器集成（阶段 2）：tab.create 分流 / tab.close 与窗口关闭守卫。 */
   genofficeIntegration: GenOfficeIntegration | null;
+
+  /**
+   * GenOffice Home 的「最近 / 收藏」存储（`<数据目录>/genoffice-home.json`）。
+   *
+   * 2026-11-11（ADR-021 FA8）打通：浏览器通道打开文档类文件时也记入同一份
+   * 最近列表（`routeLocalFile` 调 recordRecent），故需要与 Home handler 共享
+   * 同一实例，不能各自 new 一个。
+   */
+  genofficeHomeStore: GenOfficeHomeStore | null;
 
   /** 收藏夹悬浮面板（独立子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
   bookmarkPanel: BookmarkPanel | null;

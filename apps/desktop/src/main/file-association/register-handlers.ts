@@ -2,13 +2,16 @@
  * 文件关联域 IPC Handler 注册（file-association.*）
  *
  * 职责：
- * 1. file-association.getStatus：查询三个分组（音视频/文档/图片）各自
- *    已注册的扩展名数量（供设置页「默认应用」显示状态）
- * 2. file-association.register：把某分组的扩展名写入 HKCU 注册表，
- *    使浏览器出现在 Windows「打开方式」列表
+ * 1. file-association.getStatus：查询三组（音视频/文档/图片）已登记扩展名数、
+ *    当前 exe 路径、是否指向旧位置（供设置页「默认应用」显示状态）
+ * 2. file-association.register：把某分组（或勾选的）扩展名写入 HKCU 注册表，
+ *    使浏览器出现在 Windows「打开方式」与「默认应用」候选列表
+ * 3. file-association.unregister：清除本应用写过的关联项（幂等修复入口）
+ * 4. file-association.setDefaultBrowser：登记默认浏览器能力并打开系统默认应用页
  *
- * 安全：入参/出参 zod 校验；注册表写入目标固定为 HKCU\Software\Classes，
- * 扩展名经白名单校验（必须是已分类扩展名，防注入任意注册表键）。
+ * 安全：入参/出参 zod 校验；注册表写入目标固定为 HKCU\Software\Classes 与
+ * 本应用的 StartMenuInternet 客户端键，扩展名经白名单校验（必须是已分类且
+ * ASSOCIABLE_EXTENSIONS 命中的扩展名，防注入任意注册表键）。
  */
 import { shell, type IpcMain } from 'electron';
 import { IpcError, IpcErrorCode, registerHandler } from '@urchin/ipc-contract';
@@ -19,13 +22,13 @@ import {
   buildDefaultAppsSettingsUri,
   buildDefaultBrowserRegistryEntries,
   getExtensionsForGroup,
-  getExtensionsByGroup,
   type AssociationGroupId,
 } from './associations';
 import {
-  getRegisteredExtensions,
+  getRegistrationState,
   registerAssociations,
   registerRegistryEntries,
+  unregisterAssociations,
   type AssociationDeps,
 } from './register';
 
@@ -43,7 +46,18 @@ function resolveExtensions(groupId: AssociationGroupId): readonly string[] {
   return getExtensionsForGroup(group).filter(isKnownExtension);
 }
 
-/** 按前端勾选过滤扩展名；未传 extensions 时保持整组注册。 */
+/** 全部三组的扩展名并集（清理入口用）。 */
+function resolveAllExtensions(): readonly string[] {
+  const set = new Set<string>();
+  for (const group of ASSOCIATION_GROUPS) {
+    for (const ext of getExtensionsForGroup(group)) {
+      if (isKnownExtension(ext)) set.add(ext);
+    }
+  }
+  return [...set];
+}
+
+/** 按前端勾选过滤扩展名；未传 extensions 时保持整组。 */
 function resolveSelectedExtensions(
   groupId: AssociationGroupId,
   requested: readonly string[] | undefined,
@@ -69,21 +83,29 @@ export interface FileAssociationHandlersDeps extends AssociationDeps {
 export function registerFileAssociationHandlers(deps: FileAssociationHandlersDeps): void {
   const { ipcMain, exePath, regExec, launchArgs } = deps;
   const regDeps: AssociationDeps = regExec ? { regExec } : {};
+  // 开发模式（`electron <appDir>`）登记的命令会带应用目录参数，指向 node_modules
+  // 里的开发可执行文件——设置页据此显示警示，避免用户误以为已装好默认应用。
+  const devMode = (launchArgs?.length ?? 0) > 0;
 
-  // file-association.getStatus：各分组已注册扩展名数 + 清单
+  // file-association.getStatus：各分组已登记扩展名数 + 应用级登记状态
   registerHandler(ipcMain, 'file-association.getStatus', async () => {
-    const byGroup = getExtensionsByGroup();
-    const result: Record<string, { registered: number; total: number; extensions: string[] }> = {};
+    const state = await getRegistrationState(exePath, regDeps);
+    const groups: Record<string, { registered: number; total: number; extensions: string[] }> = {};
     for (const group of ASSOCIATION_GROUPS) {
-      const exts = byGroup[group.id];
-      const registered = await getRegisteredExtensions(exts, regDeps);
-      result[group.id] = {
-        registered: exts.filter((e) => registered.has(e)).length,
+      const exts = getExtensionsForGroup(group).filter(isKnownExtension);
+      groups[group.id] = {
+        registered: exts.filter((ext) => state.registered.has(ext)).length,
         total: exts.length,
         extensions: [...exts],
       };
     }
-    return { groups: result };
+    return {
+      groups,
+      exePath,
+      devMode,
+      appRegistered: state.appRegistered,
+      exeMatches: state.exeMatches,
+    };
   });
 
   // file-association.register：注册某分组（可只注册勾选的扩展名）
@@ -106,6 +128,39 @@ export function registerFileAssociationHandlers(deps: FileAssociationHandlersDep
         { channel: 'file-association.register' },
       );
     }
+  });
+
+  // file-association.unregister：清除本应用关联（幂等修复入口）
+  registerHandler(ipcMain, 'file-association.unregister', async (req) => {
+    const scope = req.scope ?? 'extensions';
+    let exts: readonly string[] = [];
+    if (scope !== 'app') {
+      exts = req.group
+        ? resolveSelectedExtensions(req.group, req.extensions)
+        : (req.extensions ?? resolveAllExtensions()).filter(isKnownExtension);
+    }
+    if (scope !== 'app' && exts.length === 0) {
+      throw new IpcError(IpcErrorCode.VALIDATION, 'No extensions selected to unregister', {
+        channel: 'file-association.unregister',
+      });
+    }
+    log.info('file-association.unregister', { scope, count: exts.length });
+    const result = await unregisterAssociations({ exts, exePath, scope }, regDeps);
+    return { ok: true as const, removed: result.removed, attempted: result.attempted };
+  });
+
+  // file-association.openSettings：只打开系统「默认应用」页（不写注册表），
+  // 供设置页「打开系统默认应用」按钮与清理关联后的引导使用。
+  registerHandler(ipcMain, 'file-association.openSettings', async () => {
+    for (const uri of [buildDefaultAppsSettingsUri(), 'ms-settings:defaultapps']) {
+      try {
+        await shell.openExternal(uri);
+        return { ok: true as const };
+      } catch (err) {
+        log.warn('open default apps settings failed', { uri, error: String(err) });
+      }
+    }
+    return { ok: false as const };
   });
 
   // file-association.setDefaultBrowser：登记默认浏览器能力并打开系统默认应用页

@@ -196,6 +196,75 @@ export function inferMimeType(name: string): string {
 }
 
 /**
+ * 可注册为「系统文件关联」的扩展名白名单（单一真源）。
+ *
+ * 为什么需要白名单，而不是把 EXT_KIND 全量注册：
+ * - 旧实现把「文档」组按 kind 全量注册（含 .js/.ts/.bat/.cmd/.ps1/.sh/.py/
+ *   .css/.sql 等 42 个 text 扩展），并**直接改写** `HKCU\...\Classes\.ext`
+ *   的默认值 → 双击 .bat 不再执行、.js 被浏览器抢走，属于改坏系统。
+ * - 只登记「本浏览器确实能渲染」的格式：媒体（Chromium 可解码）、Office/
+ *   文本/数据（GenOffice 或内置查看器）、图片（Chromium 原生）。
+ * - 用户仍可通过应用内「打开文件 / 拖放」打开白名单外的类型（classifyFileKind
+ *   的完整分类表不受影响），只是不向系统宣称可作默认打开方式。
+ */
+export const ASSOCIABLE_EXTENSIONS: ReadonlySet<string> = new Set([
+  // 音频（Chromium/Electron 官方构建可解码；wma / mid 等不在此列）
+  'mp3',
+  'wav',
+  'ogg',
+  'oga',
+  'm4a',
+  'flac',
+  'aac',
+  'opus',
+  // 视频（mkv/mov 视编解码而定：失败时查看器给出外部打开出口，故保留）
+  'mp4',
+  'm4v',
+  'webm',
+  'ogv',
+  'mov',
+  'mkv',
+  // 文档（GenOffice 编辑器 / 内置查看器）
+  'pdf',
+  'docx',
+  'pptx',
+  'xlsx',
+  'md',
+  'markdown',
+  'mdx',
+  'txt',
+  'log',
+  'csv',
+  'tsv',
+  'json',
+  'jsonc',
+  'xml',
+  'yaml',
+  'yml',
+  'toml',
+  // 图片（Chromium 原生渲染）
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'svg',
+  'bmp',
+  'ico',
+  'avif',
+  'apng',
+]);
+
+/**
+ * 判断扩展名是否可注册为系统文件关联。
+ *
+ * @param ext 扩展名（可带点、大小写不敏感）
+ */
+export function isAssociableExtension(ext: string): boolean {
+  return ASSOCIABLE_EXTENSIONS.has(ext.toLowerCase().replace(/^\./, ''));
+}
+
+/**
  * 反查某 kind 的扩展名清单（按字母序）。
  *
  * 供「默认应用」关联功能使用：把 EXT_KIND 分类表作为扩展名单一真源，

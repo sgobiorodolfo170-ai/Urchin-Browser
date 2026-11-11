@@ -12,9 +12,22 @@
 import { app } from 'electron';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import type { GenOfficeAppKind } from '../../shared/file-routing';
 
-/** 当前支持的编辑器类型（阶段 4：md / pdf / html / docs(docx)；阶段 5：slides(pptx) / sheets(xlsx)）。 */
-export const GENOFFICE_KINDS = ['markdown', 'pdf', 'html', 'docs', 'slides', 'sheets'] as const;
+/**
+ * 当前支持的编辑器类型（阶段 4：md / pdf / html / docs(docx)；阶段 5：slides(pptx) / sheets(xlsx)）。
+ *
+ * `satisfies` 把这张表钉到 shared/file-routing.ts 的 GenOfficeAppKind 上：
+ * 新增编辑器时两处不同步会直接编译失败（防「路由能选中、产物解析不认识」）。
+ */
+export const GENOFFICE_KINDS = [
+  'markdown',
+  'pdf',
+  'html',
+  'docs',
+  'slides',
+  'sheets',
+] as const satisfies readonly GenOfficeAppKind[];
 export type GenOfficeKind = (typeof GENOFFICE_KINDS)[number];
 
 /** GenOffice Home 伪地址（侧栏文档入口目标；主进程决定用 shell Home 视图还是 React 保底页）。 */

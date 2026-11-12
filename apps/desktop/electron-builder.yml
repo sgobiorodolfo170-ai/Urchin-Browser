@@ -26,6 +26,13 @@ files:
   - dist/renderer/**/*
   # 阶段 2 自研前端（pi-web-host 的 wwwDir；打包态从 asar 内读取，utilityProcess 可读 asar）
   - dist/pi-web/**/*
+  # 内置 Provider 子进程代码（2026-11-12 dev.193 修复）：build:provider 用 esbuild
+  # 把 src/main/orchestrator/providers/openai-compatible.ts 编译为
+  # dist/providers/openai-compatible.js，主进程首启从 asar 内该路径复制部署到
+  # userData（src/main/index.ts 首启部署逻辑）。此前 files 从未包含
+  # dist/providers/**，安装版首启报 built-in provider not found in dist、AI
+  # 不可用（核查清单 §10 #13 登记的既有缺陷）。
+  - dist/providers/**/*
   - package.json
   - '!**/*.map'
   # 排除工作区包内被 symlink 带入的测试产物（gitignore 已忽略，避免 asar 打包报错）

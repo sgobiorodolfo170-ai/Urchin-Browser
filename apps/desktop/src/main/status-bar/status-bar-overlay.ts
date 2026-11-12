@@ -407,15 +407,9 @@ export class StatusBarOverlay {
       // 卡片中心在窗口内的偏移：overlayHeight - 下阴影边距 - 卡片半高
       const cardCenterOffset = bounds.height - SHADOW_PAD - CARD_HEIGHT / 2;
       bounds.y = Math.round(ballCenterY - cardCenterOffset);
-      // 球可拖出主窗口：地址栏不追出父窗口内容区（球拖到窗外时地址栏停在窗内边缘）
-      const parent = this.options.getParentWindow();
-      if (parent) {
-        const cb = parent.getContentBounds();
-        const frame = WINDOW_FRAME_WIDTH;
-        const minY = cb.y + frame;
-        const maxY = cb.y + cb.height - frame - bounds.height;
-        bounds.y = Math.round(Math.max(minY, Math.min(maxY, bounds.y)));
-      }
+      // Y 不夹取在父窗口内容区内（2026-11-13 用户指令）：球可把地址栏随意
+      // 推进/拖出窗口——地址栏是 owned 子窗口，跟随球 Y 定位到窗外仍可交互；
+      // X 方向仍锚定窗口布局（不随球横移），水平避让逻辑不变。
     }
     // 兜底：地址栏即将落到与球重叠的位置（球在地址栏折叠期间被拖进该区域、
     // 窗口缩放后几何变化等）——把球移出地址栏区域，球侧回调会再触发一次

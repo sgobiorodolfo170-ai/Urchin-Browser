@@ -74,24 +74,37 @@ export function rectsOverlapHorizontally(
 }
 
 /**
- * 计算把球移出地址栏区域的落点（上方优先、下方兜底；均放不下返回 null 放弃）。
+ * 计算把球移出地址栏区域的落点（上方优先、下方兜底；均不可见返回 null 放弃）。
+ *
+ * 可见性判定用**屏幕工作区**而非父窗口内容区：地址栏可随球拖出窗口（2026-11-13
+ * 用户指令），窗外结算若仍按窗内判定会上下都「放不下」→ 球被留在原地被地址栏
+ * 盖住（违禁复发）。屏幕判定下球至少部分可见，且球/地址栏受光标物理边界限制
+ * 最多出屏约一个球身，不存在双分支都不可见的死锁。
  * 导出供单测验证几何。
  */
 export function computeBallNudge(params: {
   ball: Rect;
   bar: Rect;
-  /** 父窗口内容区，球移出后不得越出可视范围；null 不夹取 */
-  contentBounds: Rect | null;
+  /** 屏幕工作区（可见性判定；null 不限制） */
+  visibleBounds: Rect | null;
 }): { x: number; y: number } | null {
-  const { ball, bar, contentBounds } = params;
+  const { ball, bar, visibleBounds } = params;
   if (!rectsIntersect(ball, bar)) return null;
-  const fitsContent = (y: number): boolean =>
-    !contentBounds ||
-    (y >= contentBounds.y && y + ball.height <= contentBounds.y + contentBounds.height);
-  const above = bar.y - ball.height - NUDGE_GAP;
-  if (fitsContent(above)) return { x: ball.x, y: above };
-  const below = bar.y + bar.height + NUDGE_GAP;
-  if (fitsContent(below)) return { x: ball.x, y: below };
+  const visible = (r: Rect): boolean => !visibleBounds || rectsIntersect(r, visibleBounds);
+  const above: Rect = {
+    x: ball.x,
+    y: bar.y - ball.height - NUDGE_GAP,
+    width: ball.width,
+    height: ball.height,
+  };
+  if (visible(above)) return { x: above.x, y: above.y };
+  const below: Rect = {
+    x: ball.x,
+    y: bar.y + bar.height + NUDGE_GAP,
+    width: ball.width,
+    height: ball.height,
+  };
+  if (visible(below)) return { x: below.x, y: below.y };
   return null;
 }
 
@@ -234,16 +247,19 @@ export class StatusBarBall {
     return { x: pos[0] ?? 0, y: pos[1] ?? 0, width: size, height: size };
   }
 
-  /** 地址栏即将落位且与球重叠时把球移出（上方优先、下方兜底；均放不下则放弃） */
+  /** 地址栏即将落位且与球重叠时把球移出（上方优先、下方兜底；按屏幕工作区判可见性） */
   ensureClearOfRect(barRect: Rect): void {
     const win = this.win;
     if (!win || win.isDestroyed()) return;
     const pos = win.getPosition();
     const size = BALL_SIZE + BALL_PAD * 2;
     const ball: Rect = { x: pos[0] ?? 0, y: pos[1] ?? 0, width: size, height: size };
-    const parent = this.options.getParentWindow();
-    const contentBounds = parent?.getContentBounds() ?? null;
-    const nudge = computeBallNudge({ ball, bar: barRect, contentBounds });
+    // 可见性按屏幕工作区判定（地址栏可随球出窗，父窗口内容区判定会在窗外死锁）
+    const display = screen.getDisplayNearestPoint({
+      x: Math.round(ball.x + size / 2),
+      y: Math.round(ball.y + size / 2),
+    });
+    const nudge = computeBallNudge({ ball, bar: barRect, visibleBounds: display.workArea });
     if (!nudge) return;
     log.info('ball nudged out of status bar area', { from: ball, to: nudge });
     win.setPosition(nudge.x, nudge.y);

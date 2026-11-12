@@ -66,13 +66,13 @@ describe('rectsOverlapHorizontally', () => {
   });
 });
 
-describe('computeBallNudge（松手结算 / 地址栏落位兜底）', () => {
+describe('computeBallNudge（松手结算 / 地址栏落位兜底；按屏幕工作区判可见性）', () => {
   it('should return null when ball does not overlap the bar', () => {
     expect(
       computeBallNudge({
         ball: { x: 600, y: 100, width: BALL_SIZE, height: BALL_SIZE },
         bar: BAR,
-        contentBounds: null,
+        visibleBounds: null,
       }),
     ).toBeNull();
   });
@@ -81,28 +81,39 @@ describe('computeBallNudge（松手结算 / 地址栏落位兜底）', () => {
     const next = computeBallNudge({
       ball: { x: 300, y: 520, width: BALL_SIZE, height: BALL_SIZE },
       bar: BAR,
-      contentBounds: null,
+      visibleBounds: null,
     });
     // 上方：bar.y - 球高 - 间隙 = 500 - 52 - 4
     expect(next).toEqual({ x: 300, y: 444 });
   });
 
-  it('should fall back to below the bar when above is outside the content area', () => {
+  it('should fall back to below the bar when above is fully off-screen (bar dragged above screen edge)', () => {
     const next = computeBallNudge({
       ball: { x: 300, y: 520, width: BALL_SIZE, height: BALL_SIZE },
       bar: BAR,
-      // 内容区顶部在 480：上方落点 444 越界 → 下方 560
-      contentBounds: { x: 0, y: 480, width: 1280, height: 200 },
+      // 工作区顶部在 600：上方落点 444..496 完全在屏外 → 下方 560..612 部分可见 → 用下方
+      visibleBounds: { x: 0, y: 600, width: 1280, height: 200 },
     });
     expect(next).toEqual({ x: 300, y: 560 });
   });
 
-  it('should give up when neither side fits (degenerate tiny window)', () => {
+  it('should accept a partially visible above spot (ball at screen top, bar following out of window)', () => {
+    // 地址栏被球拖到屏幕顶（bar 窗 -54..2），球与其重叠（-52..0）：
+    // 上方落点 -108..-56 完全不可见 → 下方 4..56 部分可见 → 用下方
+    const next = computeBallNudge({
+      ball: { x: 300, y: -52, width: BALL_SIZE, height: BALL_SIZE },
+      bar: { x: 100, y: -54, width: 400, height: 56 },
+      visibleBounds: { x: 0, y: 0, width: 1280, height: 1040 },
+    });
+    expect(next).toEqual({ x: 300, y: 6 });
+  });
+
+  it('should give up when neither side is visible (ball and bar both far off-screen)', () => {
     const next = computeBallNudge({
       ball: { x: 300, y: 520, width: BALL_SIZE, height: BALL_SIZE },
       bar: BAR,
-      // 内容区 0..470：上方 444+52 越下界、下方 560 越下界
-      contentBounds: { x: 0, y: 0, width: 1280, height: 470 },
+      // 工作区 900..1000：上方 444..496、下方 560..612 均不可见
+      visibleBounds: { x: 0, y: 900, width: 1280, height: 100 },
     });
     expect(next).toBeNull();
   });

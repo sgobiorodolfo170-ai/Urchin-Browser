@@ -245,15 +245,18 @@ function StatusBarBallRoot() {
         style={ballStyle}
       >
         <img
-          src="urchin://app-icon"
+          src="./ball-icon.png"
           alt=""
           draggable={false}
           onContextMenu={(e) => e.preventDefault()}
           onError={(e) => {
+            // 兜底链：ball-icon（玻璃球本体严格裁剪版，无光晕白边）→ app-icon（原版，
+            // 含光晕）→ browser-icon。裁剪版由 build/icon.png 像素级测量裁出
+            // （cx=255.5, cy=237, r=227.5 外接框），球本体铺满整个悬浮球。
             const img = e.currentTarget;
             if (img.dataset.fallback) return;
             img.dataset.fallback = '1';
-            img.src = './browser-icon.png';
+            img.src = 'urchin://app-icon';
           }}
           style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
         />

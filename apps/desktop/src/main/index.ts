@@ -1492,6 +1492,7 @@ void app.whenReady().then(async () => {
       },
       getBallBounds: () => ctx.statusBarBall?.getBounds() ?? null,
       onBallOverlap: (barBounds) => ctx.statusBarBall?.ensureClearOfRect(barBounds),
+      isBallDragging: () => ctx.statusBarBall?.isDragging ?? false,
     });
     // 悬浮层懒创建：在主渲染同步状态 visible=true（外部网页）时由 applyVisibility 创建。
 

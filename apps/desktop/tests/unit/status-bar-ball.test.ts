@@ -1,22 +1,23 @@
 /**
- * 悬浮球拖动几何单元测试（2026-11-13 拖动引擎重写回归）
+ * 悬浮球拖动几何单元测试（2026-11-13 拖动引擎重写回归，同日二次修订）
  *
- * 背景：右键拖动由渲染层增量 dx/dy IPC 改为主进程光标轮询 + 防重叠滑移后，
- * 三条用户实测故障（焦点脱离 / 偶发卡住 / 拖入地址栏被覆盖）的几何约束必须
- * 有确定性测试守护：
+ * 背景：右键拖动由渲染层增量 dx/dy IPC 改为主进程光标轮询；与地址栏的重叠
+ * 约束为「拖动期自由置顶 + 松手结算」。四条用户实测故障（焦点脱离 / 偶发
+ * 卡住 / 拖入地址栏被覆盖 / 左右无法咬住）的几何约束必须有确定性测试守护：
  * 1. rectsIntersect / rectsOverlapHorizontally：边缘相切不算重叠——默认布局
- *    球左缘与地址栏窗口右缘可能恰好相切，「同行跟随」与「防重叠」都依赖此语义。
- * 2. resolveBallDragTarget：自由放行 / 轴向滑移 / 原地贴边 / 被困后大步距跳出。
- * 3. computeBallNudge：上方优先 / 下方兜底 / 均放不下放弃。
- * 4. 默认布局：地址栏与球不相交（守护 STATUS_BALL_RESERVED_WIDTH 一致性，
+ *    球左缘与地址栏窗口右缘可能恰好相切，「同行跟随」前提与结算判定都依赖此语义。
+ * 2. computeBallNudge（松手结算 / 地址栏落位兜底共用）：上方优先 / 下方兜底 /
+ *    均放不下放弃。
+ * 3. 默认布局：地址栏与球不相交（守护 STATUS_BALL_RESERVED_WIDTH 一致性，
  *    防止几何常量改动后球默认就被地址栏压住或触发移球）。
+ * 拖动期自由移动无需防重叠纯函数：dragTick 直落 target，重叠约束由置顶
+ * （拖动中球永不被盖）与松手结算（ensureClearOfRect）承担。
  */
 import { describe, it, expect } from 'vitest';
 import {
   computeBallBounds,
   rectsIntersect,
   rectsOverlapHorizontally,
-  resolveBallDragTarget,
   computeBallNudge,
   STATUS_BALL_RESERVED_WIDTH,
   type Rect,
@@ -65,73 +66,7 @@ describe('rectsOverlapHorizontally', () => {
   });
 });
 
-describe('resolveBallDragTarget', () => {
-  it('should pass through freely when no bar bounds (bar hidden/collapsed)', () => {
-    const next = resolveBallDragTarget({
-      target: { x: 999, y: 999 },
-      current: { x: 0, y: 0 },
-      ballSize: BALL_SIZE,
-      barBounds: null,
-    });
-    expect(next).toEqual({ x: 999, y: 999, clamped: false });
-  });
-
-  it('should pass through when target does not intersect the bar', () => {
-    const next = resolveBallDragTarget({
-      target: { x: 600, y: 300 },
-      current: { x: 590, y: 300 },
-      ballSize: BALL_SIZE,
-      barBounds: BAR,
-    });
-    expect(next).toEqual({ x: 600, y: 300, clamped: false });
-  });
-
-  it('should slide horizontally when vertical motion is blocked (approach bar from above)', () => {
-    // 球在地址栏上方（y 300 不相交），目标斜向进入地址栏 → 保留 y 沿边缘滑移
-    const next = resolveBallDragTarget({
-      target: { x: 200, y: 520 },
-      current: { x: 120, y: 300 },
-      ballSize: BALL_SIZE,
-      barBounds: BAR,
-    });
-    expect(next).toEqual({ x: 200, y: 300, clamped: true });
-  });
-
-  it('should stay left of the bar when moving into it on the same row', () => {
-    // 球在地址栏左侧同行（x 40..92 < 100 相切安全），右移进入地址栏 → 横向被挡原地贴边
-    const next = resolveBallDragTarget({
-      target: { x: 150, y: 520 },
-      current: { x: 40, y: 520 },
-      ballSize: BALL_SIZE,
-      barBounds: BAR,
-    });
-    expect(next).toEqual({ x: 40, y: 520, clamped: true });
-  });
-
-  it('should stay in place when both axes are blocked (diagonal into the corner)', () => {
-    // 球在地址栏左上角斜邻位，目标斜向压入角落：两轴单独保留均相交 → 原地
-    const next = resolveBallDragTarget({
-      target: { x: 150, y: 470 },
-      current: { x: 40, y: 470 },
-      ballSize: BALL_SIZE,
-      barBounds: BAR,
-    });
-    expect(next).toEqual({ x: 40, y: 470, clamped: true });
-  });
-
-  it('should allow a large jump to escape a trapped position (legacy overlap recovery)', () => {
-    // 历史遗留：球已被地址栏盖住（重叠位置），一次大步距拖动可直接跳出禁区
-    const next = resolveBallDragTarget({
-      target: { x: 150, y: 100 },
-      current: { x: 150, y: 520 },
-      ballSize: BALL_SIZE,
-      barBounds: BAR,
-    });
-    expect(next).toEqual({ x: 150, y: 100, clamped: false });
-  });
-});
-
-describe('computeBallNudge', () => {
+describe('computeBallNudge（松手结算 / 地址栏落位兜底）', () => {
   it('should return null when ball does not overlap the bar', () => {
     expect(
       computeBallNudge({

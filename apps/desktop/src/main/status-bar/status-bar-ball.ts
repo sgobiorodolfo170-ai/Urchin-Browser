@@ -9,12 +9,18 @@
  *
  * 悬浮球为独立 BrowserWindow，避免与地址栏窗口的透明区域互相影响点击穿透。
  *
- * 右键拖动引擎（2026-11-13 重写）：渲染层只上报 dragStart/dragEnd，移动由主进程
- * 以 screen.getCursorScreenPoint() 轮询 + 抓取偏移绝对定位驱动。此前的渲染层
- * 增量 dx/dy IPC 有两类实测故障：① 52px 透明小窗口在 setPosition 下 capture
- * 不可靠，事件断流后球冻结（「偶发卡住」）；② 增量无自纠错，丢一帧即永久落后
- * （「焦点脱离悬浮球」）。绝对定位按「光标 − 抓取偏移」每帧重算，光标始终锁定
- * 在按住的位置，且不依赖渲染层事件流。
+ * 右键拖动引擎（2026-11-13 重写，同日二次修订）：渲染层只上报 dragStart/dragEnd，
+ * 移动由主进程以 screen.getCursorScreenPoint() 轮询 + 抓取偏移绝对定位驱动。
+ * 此前的渲染层增量 dx/dy IPC 有两类实测故障：① 52px 透明小窗口在 setPosition
+ * 下 capture 不可靠，事件断流后球冻结（「偶发卡住」）；② 增量无自纠错，丢一帧
+ * 即永久落后（「焦点脱离悬浮球」）。绝对定位按「光标 + 抓取偏移」每帧重算，
+ * 光标始终锁定在按住的位置，且不依赖渲染层事件流。
+ *
+ * 与地址栏的重叠约束改为「拖动期自由 + 松手结算」：地址栏横跨整个中区宽度，
+ * 若拖动期防重叠，球在地址栏右侧同行时水平拖动必被挡死（实测「左右无法咬住
+ * 光标」）——故拖动期间球临时置顶（modal-panel）自由移动，四向咬住且永不
+ * 被地址栏覆盖；松手时若球停在地址栏区域内则移出（ensureClearOfRect），
+ * 稳态球与地址栏不重叠。
  */
 import { BrowserWindow, screen } from 'electron';
 import { createLogger } from '@urchin/logger';
@@ -40,6 +46,11 @@ const DRAG_POLL_INTERVAL = 16;
 const DRAG_IDLE_TIMEOUT = 1000;
 /** 移球让位时与地址栏的间隙（px） */
 const NUDGE_GAP = 4;
+/**
+ * 拖动期间球的临时置顶层级（modal-panel 高于普通 owned 兄弟窗口）：
+ * 允许球自由穿过地址栏上方的同时保证球不被地址栏盖住；拖动结束恢复 normal。
+ */
+const DRAG_ALWAYS_ON_TOP_LEVEL: 'floating' | 'modal-panel' = 'modal-panel';
 
 /** 屏幕坐标矩形（DIP） */
 export interface Rect {
@@ -60,36 +71,6 @@ export function rectsOverlapHorizontally(
   b: Pick<Rect, 'x' | 'width'>,
 ): boolean {
   return a.x < b.x + b.width && a.x + a.width > b.x;
-}
-
-/**
- * 计算拖动目标位置的落点：防重叠（球不得进入地址栏区域）+ 轴向滑移。
- *
- * - 目标位置不与地址栏相交 → 原样放行；
- * - 相交但单轴保留后不相交 → 沿地址栏边缘滑移（保留未入禁区的轴）；
- * - 双轴均相交 → 原地贴边。clamped=true 时调用方需重锚抓取偏移，
- *   使光标离开禁区后球从贴边处无缝跟随而非瞬移。
- * 导出供单测验证几何。
- */
-export function resolveBallDragTarget(params: {
-  target: { x: number; y: number };
-  current: { x: number; y: number };
-  ballSize: number;
-  barBounds: Rect | null;
-}): { x: number; y: number; clamped: boolean } {
-  const { target, current, ballSize, barBounds } = params;
-  if (!barBounds) return { x: target.x, y: target.y, clamped: false };
-  const ballAt = (x: number, y: number): Rect => ({ x, y, width: ballSize, height: ballSize });
-  if (!rectsIntersect(ballAt(target.x, target.y), barBounds)) {
-    return { x: target.x, y: target.y, clamped: false };
-  }
-  if (!rectsIntersect(ballAt(target.x, current.y), barBounds)) {
-    return { x: target.x, y: current.y, clamped: true };
-  }
-  if (!rectsIntersect(ballAt(current.x, target.y), barBounds)) {
-    return { x: current.x, y: target.y, clamped: true };
-  }
-  return { x: current.x, y: current.y, clamped: true };
 }
 
 /**
@@ -196,6 +177,11 @@ export class StatusBarBall {
     return this.win !== null && !this.win.isDestroyed();
   }
 
+  /** 是否正在右键拖动（overlay 据此跳过「移球让位」兜底，避免与拖动轮询打架） */
+  get isDragging(): boolean {
+    return this.dragTimer !== null;
+  }
+
   /** 设置可见性（球在所有页面常驻；仅全屏/最小化时隐藏） */
   setVisible(visible: boolean): void {
     this.visible = visible;
@@ -210,6 +196,9 @@ export class StatusBarBall {
     const win = this.win;
     if (!win || win.isDestroyed()) return;
     this.stopDrag();
+    // 拖动期间球临时置顶：允许球自由穿过地址栏上方（四向都咬住光标），
+    // 同时保证球永不被地址栏盖住；松手 stopDrag 恢复层级并结算重叠。
+    win.setAlwaysOnTop(true, DRAG_ALWAYS_ON_TOP_LEVEL);
     const cursor = screen.getCursorScreenPoint();
     const pos = win.getPosition();
     this.dragOffset = { x: (pos[0] ?? 0) - cursor.x, y: (pos[1] ?? 0) - cursor.y };
@@ -219,15 +208,21 @@ export class StatusBarBall {
     this.dragTick();
   }
 
-  /** 右键拖动结束（渲染层上报 / 看门狗 / 球隐藏三路兜底，幂等） */
+  /** 右键拖动结束（渲染层上报 / 看门狗 / 球隐藏三路兜底，幂等）：恢复层级 + 结算重叠 */
   stopDrag(): void {
-    if (this.dragTimer) {
-      clearInterval(this.dragTimer);
-      this.dragTimer = null;
-    }
+    if (!this.dragTimer) return; // 幂等守卫：未在拖动时重复上报只处理一次
+    clearInterval(this.dragTimer);
+    this.dragTimer = null;
     this.dragOffset = { x: 0, y: 0 };
     this.dragLastCursor = null;
     this.dragLastMoveAt = 0;
+    const win = this.win;
+    if (!win || win.isDestroyed()) return;
+    win.setAlwaysOnTop(false);
+    // 松手结算：球若停在地址栏区域内则移出（上方优先、下方兜底），
+    // 随后 onPositionChanged 触发地址栏刷新收敛——稳态球与地址栏不重叠。
+    const barBounds = this.options.getBarBounds?.() ?? null;
+    if (barBounds) this.ensureClearOfRect(barBounds);
   }
 
   /** 当前球窗口 bounds（屏幕坐标，含四周阴影边距；供地址栏避让计算；null = 球不可用） */
@@ -255,7 +250,7 @@ export class StatusBarBall {
     this.options.onPositionChanged?.();
   }
 
-  /** 拖动轮询：光标 → 目标位置，防重叠滑移后移动窗口并重锚抓取偏移 */
+  /** 拖动轮询：光标 + 抓取偏移 → 直接落位（拖动期自由移动，四向咬住；重叠在松手时结算） */
   private dragTick(): void {
     const win = this.win;
     if (!win || win.isDestroyed() || !win.isVisible()) {
@@ -275,21 +270,9 @@ export class StatusBarBall {
     const target = { x: cursor.x + this.dragOffset.x, y: cursor.y + this.dragOffset.y };
     const pos = win.getPosition();
     const current = { x: pos[0] ?? 0, y: pos[1] ?? 0 };
-    const next = resolveBallDragTarget({
-      target,
-      current,
-      ballSize: BALL_SIZE + BALL_PAD * 2,
-      barBounds: this.options.getBarBounds?.() ?? null,
-    });
-    const moved = next.x !== current.x || next.y !== current.y;
-    // 贴边/滑移后重锚抓取偏移：光标离开禁区时球从贴边处无缝跟随，不瞬移
-    if (moved || next.clamped) {
-      this.dragOffset = { x: next.x - cursor.x, y: next.y - cursor.y };
-    }
-    if (moved) {
-      win.setPosition(next.x, next.y);
-      this.options.onPositionChanged?.();
-    }
+    if (target.x === current.x && target.y === current.y) return;
+    win.setPosition(target.x, target.y);
+    this.options.onPositionChanged?.();
   }
 
   /** 布局变化后刷新位置 */

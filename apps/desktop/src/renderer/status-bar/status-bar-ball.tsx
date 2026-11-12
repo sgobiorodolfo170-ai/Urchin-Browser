@@ -8,6 +8,8 @@
  * - 右键按住拖动：移动悬浮球位置（可拖出主窗口到桌面任意位置），地址栏随之保持同一行。
  *   移动由主进程光标轮询驱动（dragStart/dragEnd 起止上报），渲染层不逐事件发 IPC——
  *   52px 小窗口在自身移动时事件流不可靠，增量上报会焦点脱离/卡死（2026-11-13 重写）。
+ *   拖动期间球临时置顶、四向自由咬住光标（允许穿过地址栏上方）；松手时若停在
+ *   地址栏区域内由主进程结算移出，球不会被地址栏覆盖。
  * - 按下/长按时增强 3D 按压效果。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -140,7 +142,8 @@ function StatusBarBallRoot() {
     }
     if (e.button === 2) {
       // 右键拖动：主进程按「光标 − 球位置」记录抓取偏移并启动轮询，此后移动
-      // 不经过渲染层（事件流不可靠）；dragEnd 由松手兜底网统一上报
+      // 不经过渲染层（事件流不可靠），四向自由咬住光标；dragEnd 由松手兜底网
+      // 统一上报，主进程恢复层级并结算与地址栏的重叠
       void window.urchin.invoke('ui.statusbar.ball.dragStart', {}).catch((err) => {
         log.error('ball dragStart failed:', err);
       });

@@ -103,6 +103,8 @@ export interface StatusBarOverlayOptions {
   getBallBounds?: () => Rect | null;
   /** 地址栏即将落位且与球重叠时回调（球负责把自己移出地址栏区域，随后再触发一次刷新收敛） */
   onBallOverlap?: (barBounds: Rect) => void;
+  /** 球是否正在右键拖动（拖动期球置顶自由移动，重叠在松手时结算，兜底须跳过防打架） */
+  isBallDragging?: () => boolean;
   /** BrowserWindow 工厂（测试注入 mock，生产默认 new BrowserWindow） */
   createWindow?: (opts: Electron.BrowserWindowConstructorOptions) => BrowserWindow;
 }
@@ -418,7 +420,13 @@ export class StatusBarOverlay {
     // 兜底：地址栏即将落到与球重叠的位置（球在地址栏折叠期间被拖进该区域、
     // 窗口缩放后几何变化等）——把球移出地址栏区域，球侧回调会再触发一次
     // refresh 收敛。resolvingOverlap 护栏防退化场景（上下都放不下球）死循环。
-    if (!this.resolvingOverlap && ball && rectsIntersect(ball, bounds)) {
+    // 球拖动期间跳过：球置顶自由移动（允许穿过地址栏上方），重叠在松手时结算。
+    if (
+      !this.resolvingOverlap &&
+      !(this.options.isBallDragging?.() ?? false) &&
+      ball &&
+      rectsIntersect(ball, bounds)
+    ) {
       this.resolvingOverlap = true;
       try {
         this.options.onBallOverlap?.(bounds);

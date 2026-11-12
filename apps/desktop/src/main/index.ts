@@ -164,9 +164,14 @@ markStartup('main:boot');
 // 重复双击时第二实例在完成这些重活前即退出，避免慢盘上再重走一遍完整冷启动。
 // 必须在便携版 userData 重定向之后（单例锁按 userData 身份建立），且不依赖任何后续初始化。
 // E2E 测试环境（PLAYWRIGHT）跳过单实例锁，避免与 Playwright loader 冲突
+// dev.193 整改 R5：锁丢失时仅 app.quit() 不够——顶层同步代码与 whenReady 回调
+// 仍会继续跑（startup.log 实测 7 次 lock-lost 的批次照样 window-created），
+// 造成多实例争用同一 DSH_HOME / 随机端口。这里记录标志，并在 whenReady 入口二次拦截。
+let singleInstanceLockAcquired = true;
 if (!process.env.PLAYWRIGHT) {
   const gotLock = app.requestSingleInstanceLock();
   if (!gotLock) {
+    singleInstanceLockAcquired = false;
     markStartup('main:lock-lost');
     app.quit();
   } else {
@@ -764,6 +769,9 @@ if (process.platform === 'win32') app.setAppUserModelId('com.urchin.browser');
 markStartup('main:module-top-done');
 
 void app.whenReady().then(async () => {
+  // dev.193 整改 R5：第二实例 app.quit() 已请求退出，但 ready 事件仍可能触发；
+  // 必须提前返回，否则会重复初始化 SQLite / IPC / 窗口 / dsh。
+  if (!singleInstanceLockAcquired) return;
   markStartup('main:ready');
 
   // dev.185 启动守卫：better-sqlite3 按需加载（见 storage/sqlite-factory.ts）。
@@ -1482,7 +1490,8 @@ void app.whenReady().then(async () => {
         // 此回调保留为扩展点，当前无需额外处理。
         void action;
       },
-      getBallY: () => ctx.statusBarBall?.getY() ?? null,
+      getBallBounds: () => ctx.statusBarBall?.getBounds() ?? null,
+      onBallOverlap: (barBounds) => ctx.statusBarBall?.ensureClearOfRect(barBounds),
     });
     // 悬浮层懒创建：在主渲染同步状态 visible=true（外部网页）时由 applyVisibility 创建。
 

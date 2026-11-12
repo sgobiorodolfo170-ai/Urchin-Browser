@@ -4,11 +4,19 @@
  * 2026-10-24：状态栏折叠后地址栏隐藏，悬浮球始终显示于网页区右下角。
  * - 点击悬浮球：展开/折叠地址栏（由 StatusBarOverlay 管理）。
  * - 按住悬浮球拖动：上下/左右滚动网页（经主进程转发到活跃 tab webContents）。
+ * - 右键按住拖动：移动球位置（可拖出主窗口到桌面任意位置；不可拖入地址栏区域）。
  * - 拖动时球体轻微位移配合，反方向残影阴影辅助视觉识别。
  *
  * 悬浮球为独立 BrowserWindow，避免与地址栏窗口的透明区域互相影响点击穿透。
+ *
+ * 右键拖动引擎（2026-11-13 重写）：渲染层只上报 dragStart/dragEnd，移动由主进程
+ * 以 screen.getCursorScreenPoint() 轮询 + 抓取偏移绝对定位驱动。此前的渲染层
+ * 增量 dx/dy IPC 有两类实测故障：① 52px 透明小窗口在 setPosition 下 capture
+ * 不可靠，事件断流后球冻结（「偶发卡住」）；② 增量无自纠错，丢一帧即永久落后
+ * （「焦点脱离悬浮球」）。绝对定位按「光标 − 抓取偏移」每帧重算，光标始终锁定
+ * 在按住的位置，且不依赖渲染层事件流。
  */
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, screen } from 'electron';
 import { createLogger } from '@urchin/logger';
 import { WINDOW_FRAME_WIDTH } from '../tabs/view-integration';
 
@@ -22,6 +30,89 @@ const BALL_PAD = 6;
 const SCROLLBAR_WIDTH = 17;
 /** 球与滚动条之间的间隙（px） */
 const BALL_GAP = 8;
+/** 拖动轮询间隔（ms）：16ms ≈ 60fps，窗口拖动足够顺滑 */
+const DRAG_POLL_INTERVAL = 16;
+/**
+ * 拖动看门狗：光标静止超过该时长视为拖动已中断。
+ * pointerup 在 capture 丢失时可能永远不到（拖出窗口外松手），无兜底则球会
+ * 无限跟随光标；渲染层 dragEnd 与本看门狗双保险，均幂等。
+ */
+const DRAG_IDLE_TIMEOUT = 1000;
+/** 移球让位时与地址栏的间隙（px） */
+const NUDGE_GAP = 4;
+
+/** 屏幕坐标矩形（DIP） */
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** 两矩形是否相交（严格重叠；边缘相切不算——默认布局球左缘与地址栏窗口右缘恰好相切） */
+export function rectsIntersect(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+/** 两矩形水平区间是否重叠（只看 x 轴；相切不算，供地址栏「同行跟随」的前提判断） */
+export function rectsOverlapHorizontally(
+  a: Pick<Rect, 'x' | 'width'>,
+  b: Pick<Rect, 'x' | 'width'>,
+): boolean {
+  return a.x < b.x + b.width && a.x + a.width > b.x;
+}
+
+/**
+ * 计算拖动目标位置的落点：防重叠（球不得进入地址栏区域）+ 轴向滑移。
+ *
+ * - 目标位置不与地址栏相交 → 原样放行；
+ * - 相交但单轴保留后不相交 → 沿地址栏边缘滑移（保留未入禁区的轴）；
+ * - 双轴均相交 → 原地贴边。clamped=true 时调用方需重锚抓取偏移，
+ *   使光标离开禁区后球从贴边处无缝跟随而非瞬移。
+ * 导出供单测验证几何。
+ */
+export function resolveBallDragTarget(params: {
+  target: { x: number; y: number };
+  current: { x: number; y: number };
+  ballSize: number;
+  barBounds: Rect | null;
+}): { x: number; y: number; clamped: boolean } {
+  const { target, current, ballSize, barBounds } = params;
+  if (!barBounds) return { x: target.x, y: target.y, clamped: false };
+  const ballAt = (x: number, y: number): Rect => ({ x, y, width: ballSize, height: ballSize });
+  if (!rectsIntersect(ballAt(target.x, target.y), barBounds)) {
+    return { x: target.x, y: target.y, clamped: false };
+  }
+  if (!rectsIntersect(ballAt(target.x, current.y), barBounds)) {
+    return { x: target.x, y: current.y, clamped: true };
+  }
+  if (!rectsIntersect(ballAt(current.x, target.y), barBounds)) {
+    return { x: current.x, y: target.y, clamped: true };
+  }
+  return { x: current.x, y: current.y, clamped: true };
+}
+
+/**
+ * 计算把球移出地址栏区域的落点（上方优先、下方兜底；均放不下返回 null 放弃）。
+ * 导出供单测验证几何。
+ */
+export function computeBallNudge(params: {
+  ball: Rect;
+  bar: Rect;
+  /** 父窗口内容区，球移出后不得越出可视范围；null 不夹取 */
+  contentBounds: Rect | null;
+}): { x: number; y: number } | null {
+  const { ball, bar, contentBounds } = params;
+  if (!rectsIntersect(ball, bar)) return null;
+  const fitsContent = (y: number): boolean =>
+    !contentBounds ||
+    (y >= contentBounds.y && y + ball.height <= contentBounds.y + contentBounds.height);
+  const above = bar.y - ball.height - NUDGE_GAP;
+  if (fitsContent(above)) return { x: ball.x, y: above };
+  const below = bar.y + bar.height + NUDGE_GAP;
+  if (fitsContent(below)) return { x: ball.x, y: below };
+  return null;
+}
 
 export interface StatusBarBallHostWindow {
   getContentBounds(): { x: number; y: number; width: number; height: number };
@@ -81,6 +172,14 @@ export class StatusBarBall {
   private visible = false;
   private parentClosing = false;
   private parentListenersAttached = false;
+  /** 拖动轮询定时器（null = 未在拖动） */
+  private dragTimer: ReturnType<typeof setInterval> | null = null;
+  /** 抓取偏移：球位置 = 光标位置 + 偏移（贴边/滑移后重锚） */
+  private dragOffset: { x: number; y: number } = { x: 0, y: 0 };
+  /** 上一次轮询到的光标位置（看门狗判静止用） */
+  private dragLastCursor: { x: number; y: number } | null = null;
+  /** 光标最后一次移动的时间戳（ms） */
+  private dragLastMoveAt = 0;
   /** 待下发的球配置（页面加载完成后补发，避免启动期丢失） */
   private pendingConfig: {
     theme: 'light' | 'dark';
@@ -106,37 +205,91 @@ export class StatusBarBall {
     this.applyVisibility();
   }
 
-  /** 右键拖动移动球位置（可拖出主窗口到桌面任意位置；不可拖入地址栏区域） */
-  moveBy(dx: number, dy: number): void {
+  /** 右键拖动开始：按「光标 − 球位置」记录抓取偏移并启动光标轮询（幂等，重复调用先结束上一轮） */
+  startDrag(): void {
     const win = this.win;
     if (!win || win.isDestroyed()) return;
-    if (dx === 0 && dy === 0) return;
+    this.stopDrag();
+    const cursor = screen.getCursorScreenPoint();
     const pos = win.getPosition();
-    const x = pos[0] ?? 0;
-    const y = pos[1] ?? 0;
-    const newX = x + Math.round(dx);
-    const newY = y + Math.round(dy);
-    // 防重叠：若新位置与地址栏窗口相交，则不允许移动
-    const barBounds = this.options.getBarBounds?.();
-    if (barBounds) {
-      const ballSize = BALL_SIZE + BALL_PAD * 2;
-      const intersects =
-        newX < barBounds.x + barBounds.width &&
-        newX + ballSize > barBounds.x &&
-        newY < barBounds.y + barBounds.height &&
-        newY + ballSize > barBounds.y;
-      if (intersects) return; // 拖入地址栏区域，拒绝移动
-    }
-    win.setPosition(newX, newY);
-    this.options.onPositionChanged?.();
+    this.dragOffset = { x: (pos[0] ?? 0) - cursor.x, y: (pos[1] ?? 0) - cursor.y };
+    this.dragLastCursor = cursor;
+    this.dragLastMoveAt = Date.now();
+    this.dragTimer = setInterval(() => this.dragTick(), DRAG_POLL_INTERVAL);
+    this.dragTick();
   }
 
-  /** 当前球窗口 Y（供地址栏对齐同一行） */
-  getY(): number | null {
+  /** 右键拖动结束（渲染层上报 / 看门狗 / 球隐藏三路兜底，幂等） */
+  stopDrag(): void {
+    if (this.dragTimer) {
+      clearInterval(this.dragTimer);
+      this.dragTimer = null;
+    }
+    this.dragOffset = { x: 0, y: 0 };
+    this.dragLastCursor = null;
+    this.dragLastMoveAt = 0;
+  }
+
+  /** 当前球窗口 bounds（屏幕坐标，含四周阴影边距；供地址栏避让计算；null = 球不可用） */
+  getBounds(): Rect | null {
     const win = this.win;
     if (!win || win.isDestroyed()) return null;
     const pos = win.getPosition();
-    return pos[1] ?? null;
+    const size = BALL_SIZE + BALL_PAD * 2;
+    return { x: pos[0] ?? 0, y: pos[1] ?? 0, width: size, height: size };
+  }
+
+  /** 地址栏即将落位且与球重叠时把球移出（上方优先、下方兜底；均放不下则放弃） */
+  ensureClearOfRect(barRect: Rect): void {
+    const win = this.win;
+    if (!win || win.isDestroyed()) return;
+    const pos = win.getPosition();
+    const size = BALL_SIZE + BALL_PAD * 2;
+    const ball: Rect = { x: pos[0] ?? 0, y: pos[1] ?? 0, width: size, height: size };
+    const parent = this.options.getParentWindow();
+    const contentBounds = parent?.getContentBounds() ?? null;
+    const nudge = computeBallNudge({ ball, bar: barRect, contentBounds });
+    if (!nudge) return;
+    log.info('ball nudged out of status bar area', { from: ball, to: nudge });
+    win.setPosition(nudge.x, nudge.y);
+    this.options.onPositionChanged?.();
+  }
+
+  /** 拖动轮询：光标 → 目标位置，防重叠滑移后移动窗口并重锚抓取偏移 */
+  private dragTick(): void {
+    const win = this.win;
+    if (!win || win.isDestroyed() || !win.isVisible()) {
+      this.stopDrag();
+      return;
+    }
+    const cursor = screen.getCursorScreenPoint();
+    const last = this.dragLastCursor;
+    if (last?.x !== cursor.x || last?.y !== cursor.y) {
+      this.dragLastCursor = cursor;
+      this.dragLastMoveAt = Date.now();
+    } else if (Date.now() - this.dragLastMoveAt > DRAG_IDLE_TIMEOUT) {
+      // pointerup 丢失兜底：光标静止超时即结束，防球无限跟随光标
+      this.stopDrag();
+      return;
+    }
+    const target = { x: cursor.x + this.dragOffset.x, y: cursor.y + this.dragOffset.y };
+    const pos = win.getPosition();
+    const current = { x: pos[0] ?? 0, y: pos[1] ?? 0 };
+    const next = resolveBallDragTarget({
+      target,
+      current,
+      ballSize: BALL_SIZE + BALL_PAD * 2,
+      barBounds: this.options.getBarBounds?.() ?? null,
+    });
+    const moved = next.x !== current.x || next.y !== current.y;
+    // 贴边/滑移后重锚抓取偏移：光标离开禁区时球从贴边处无缝跟随，不瞬移
+    if (moved || next.clamped) {
+      this.dragOffset = { x: next.x - cursor.x, y: next.y - cursor.y };
+    }
+    if (moved) {
+      win.setPosition(next.x, next.y);
+      this.options.onPositionChanged?.();
+    }
   }
 
   /** 布局变化后刷新位置 */
@@ -250,6 +403,7 @@ export class StatusBarBall {
   }
 
   destroy(): void {
+    this.stopDrag();
     this.parentClosing = true;
     this.detachParentListeners();
     if (this.win && !this.win.isDestroyed()) {

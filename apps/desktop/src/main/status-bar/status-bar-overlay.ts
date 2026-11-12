@@ -18,7 +18,12 @@
 import { BrowserWindow, Menu } from 'electron';
 import { createLogger } from '@urchin/logger';
 import { WINDOW_FRAME_WIDTH } from '../tabs/view-integration';
-import { STATUS_BALL_RESERVED_WIDTH } from './status-bar-ball';
+import {
+  STATUS_BALL_RESERVED_WIDTH,
+  rectsIntersect,
+  rectsOverlapHorizontally,
+  type Rect,
+} from './status-bar-ball';
 import type { StatusBarState, StatusBarToast, UiStatusBarActionReq } from '@urchin/ipc-contract';
 
 const log = createLogger('status-bar-overlay');
@@ -94,8 +99,10 @@ export interface StatusBarOverlayOptions {
   onLoad: (win: BrowserWindow) => Promise<void>;
   /** 悬浮层用户动作转发（主进程转发给主渲染进程并处理焦点等） */
   onAction: (action: StatusBarAction) => void;
-  /** 读取悬浮球当前 Y（供地址栏与球保持同一行；null 则用默认底部对齐） */
-  getBallY?: () => number | null;
+  /** 读取悬浮球当前 bounds（屏幕坐标含边距；供同行跟随与防重叠判断；null 则用默认底部对齐） */
+  getBallBounds?: () => Rect | null;
+  /** 地址栏即将落位且与球重叠时回调（球负责把自己移出地址栏区域，随后再触发一次刷新收敛） */
+  onBallOverlap?: (barBounds: Rect) => void;
   /** BrowserWindow 工厂（测试注入 mock，生产默认 new BrowserWindow） */
   createWindow?: (opts: Electron.BrowserWindowConstructorOptions) => BrowserWindow;
 }
@@ -164,6 +171,8 @@ export class StatusBarOverlay {
   private parentClosing = false;
   private parentListenersAttached = false;
   private shouldShow = false;
+  /** 正在把球移出地址栏区域（防 onBallOverlap → refreshPosition 再入死循环） */
+  private resolvingOverlap = false;
   private readonly options: StatusBarOverlayOptions;
 
   constructor(options: StatusBarOverlayOptions) {
@@ -385,14 +394,37 @@ export class StatusBarOverlay {
       // 与悬浮球共用网页区底部同一行：右缘必须为球让位
       reserveRight: STATUS_BALL_RESERVED_WIDTH,
     });
-    // 若悬浮球位置改变，地址栏与球保持同一行：以球中心对齐卡片中心。
-    const ballY = this.options.getBallY?.() ?? null;
-    if (ballY !== null) {
+    // 与悬浮球同行跟随（2026-11-13 加防重叠前提）：仅当球的水平区间与地址栏
+    // 不相交（球在地址栏右侧）才把卡片对齐到球的行。此前无条件跟随——球位于
+    // 地址栏跨度内时，每次垂直拖动地址栏都"扫"到球的行上把球盖住（用户实测
+    // 「拖入地址栏被覆盖」）；球在跨度内时地址栏回默认底部行，不再跟随。
+    const ball = this.options.getBallBounds?.() ?? null;
+    if (ball && !rectsOverlapHorizontally(ball, bounds)) {
       const BALL_SIZE = 40 + 6 * 2; // BALL_SIZE + BALL_PAD
-      const ballCenterY = ballY + BALL_SIZE / 2;
+      const ballCenterY = ball.y + BALL_SIZE / 2;
       // 卡片中心在窗口内的偏移：overlayHeight - 下阴影边距 - 卡片半高
       const cardCenterOffset = bounds.height - SHADOW_PAD - CARD_HEIGHT / 2;
       bounds.y = Math.round(ballCenterY - cardCenterOffset);
+      // 球可拖出主窗口：地址栏不追出父窗口内容区（球拖到窗外时地址栏停在窗内边缘）
+      const parent = this.options.getParentWindow();
+      if (parent) {
+        const cb = parent.getContentBounds();
+        const frame = WINDOW_FRAME_WIDTH;
+        const minY = cb.y + frame;
+        const maxY = cb.y + cb.height - frame - bounds.height;
+        bounds.y = Math.round(Math.max(minY, Math.min(maxY, bounds.y)));
+      }
+    }
+    // 兜底：地址栏即将落到与球重叠的位置（球在地址栏折叠期间被拖进该区域、
+    // 窗口缩放后几何变化等）——把球移出地址栏区域，球侧回调会再触发一次
+    // refresh 收敛。resolvingOverlap 护栏防退化场景（上下都放不下球）死循环。
+    if (!this.resolvingOverlap && ball && rectsIntersect(ball, bounds)) {
+      this.resolvingOverlap = true;
+      try {
+        this.options.onBallOverlap?.(bounds);
+      } finally {
+        this.resolvingOverlap = false;
+      }
     }
     win.setBounds(bounds);
   }

@@ -6,9 +6,11 @@
  * - 左键按住拖动：上下/左右滚动网页（摇杆模式），球体轻微位移配合，反方向残影辅助识别；
  *   拖到限位后继续按住，网页仍持续滚动直到松手。灵敏度由设置控制（上下/左右独立）。
  * - 右键按住拖动：移动悬浮球位置（可拖出主窗口到桌面任意位置），地址栏随之保持同一行。
+ *   移动由主进程光标轮询驱动（dragStart/dragEnd 起止上报），渲染层不逐事件发 IPC——
+ *   52px 小窗口在自身移动时事件流不可靠，增量上报会焦点脱离/卡死（2026-11-13 重写）。
  * - 按下/长按时增强 3D 按压效果。
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../styles/globals.css';
 import { createLogger } from '../lib/logger';
@@ -66,14 +68,60 @@ function StatusBarBallRoot() {
     return off;
   }, []);
 
-  const stopScroll = (): void => {
+  const stopScroll = useCallback((): void => {
     if (scrollTimerRef.current) {
       clearInterval(scrollTimerRef.current);
       scrollTimerRef.current = null;
     }
     joystickRef.current = { x: 0, y: 0 };
     setOffset({ x: 0, y: 0 });
-  };
+  }, []);
+
+  /** 结束拖动并清理状态（幂等；按钮处理器与 window 层兜底共用，先到先得） */
+  const finishDrag = useCallback(
+    (e?: { screenX: number; screenY: number }): void => {
+      const st = dragRef.current;
+      if (!st) return;
+      dragRef.current = null;
+      setPressed(false);
+      if (st.mode === 'move') {
+        // 右键拖动：通知主进程停止光标轮询
+        void window.urchin.invoke('ui.statusbar.ball.dragEnd', {}).catch((err) => {
+          log.error('ball dragEnd failed:', err);
+        });
+        return;
+      }
+      if (
+        !st.moved ||
+        (e && Math.hypot(e.screenX - st.startX, e.screenY - st.startY) < CLICK_THRESHOLD)
+      ) {
+        // 左键单击：切换地址栏显示/隐藏
+        void window.urchin.invoke('ui.statusbar.ball.click', {}).catch((err) => {
+          log.error('ball click failed:', err);
+        });
+      }
+      stopScroll();
+    },
+    [stopScroll],
+  );
+
+  // 兜底清理（同 use-window-drag 的教训）：右键拖动时窗口在光标下移动，capture
+  // 可能静默丢失，pointerup 落在球窗口内但不在按钮上（或完全丢失）。window 层
+  // 监听保证任何位置松手都结束拖动并上报 dragEnd；正常路径已清空 dragRef 时为 no-op。
+  useEffect(() => {
+    const onWindowPointerEnd = (e: PointerEvent): void => finishDrag(e);
+    const onLostCapture = (): void => finishDrag();
+    window.addEventListener('pointerup', onWindowPointerEnd);
+    window.addEventListener('pointercancel', onWindowPointerEnd);
+    window.addEventListener('lostpointercapture', onLostCapture);
+    window.addEventListener('blur', onLostCapture);
+    return () => {
+      window.removeEventListener('pointerup', onWindowPointerEnd);
+      window.removeEventListener('pointercancel', onWindowPointerEnd);
+      window.removeEventListener('lostpointercapture', onLostCapture);
+      window.removeEventListener('blur', onLostCapture);
+    };
+  }, [finishDrag]);
 
   const handlePointerDown = (e: React.PointerEvent): void => {
     setPressed(true);
@@ -85,26 +133,30 @@ function StatusBarBallRoot() {
       lastY: e.screenY,
       moved: false,
     };
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      /* 指针已被捕获（如上一轮状态未清），忽略，仍可拖动 */
+    }
+    if (e.button === 2) {
+      // 右键拖动：主进程按「光标 − 球位置」记录抓取偏移并启动轮询，此后移动
+      // 不经过渲染层（事件流不可靠）；dragEnd 由松手兜底网统一上报
+      void window.urchin.invoke('ui.statusbar.ball.dragStart', {}).catch((err) => {
+        log.error('ball dragStart failed:', err);
+      });
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent): void => {
     const st = dragRef.current;
     if (!st) return;
+    if (st.mode === 'move') return; // 移动由主进程光标轮询驱动
     const dx = e.screenX - st.lastX;
     const dy = e.screenY - st.lastY;
     if (dx === 0 && dy === 0) return;
     st.moved = true;
     st.lastX = e.screenX;
     st.lastY = e.screenY;
-
-    if (st.mode === 'move') {
-      // 右键拖动：移动球位置
-      void window.urchin.invoke('ui.statusbar.ball.move', { dx, dy }).catch((err) => {
-        log.error('ball move failed:', err);
-      });
-      return;
-    }
 
     // 左键拖动：摇杆模式
     const totalDx = e.screenX - st.startX;
@@ -133,20 +185,12 @@ function StatusBarBallRoot() {
   };
 
   const handlePointerUp = (e: React.PointerEvent): void => {
-    const st = dragRef.current;
-    dragRef.current = null;
-    setPressed(false);
-    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-    if (
-      st?.mode === 'scroll' &&
-      (!st.moved || Math.hypot(e.screenX - st.startX, e.screenY - st.startY) < CLICK_THRESHOLD)
-    ) {
-      // 左键单击：切换地址栏显示/隐藏
-      void window.urchin.invoke('ui.statusbar.ball.click', {}).catch((err) => {
-        log.error('ball click failed:', err);
-      });
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    } catch {
+      /* 指针未捕获/已释放，忽略 */
     }
-    stopScroll();
+    finishDrag(e);
   };
 
   // 反方向残影：阴影偏移与拖动方向相反
@@ -190,7 +234,11 @@ function StatusBarBallRoot() {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        onContextMenu={(e) => e.preventDefault()}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          // contextmenu 作为拖动结束的补充信号：capture 丢失时 pointerup 可能收不到
+          finishDrag();
+        }}
         style={ballStyle}
       >
         <img

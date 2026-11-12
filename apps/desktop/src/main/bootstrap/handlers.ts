@@ -865,9 +865,15 @@ export function registerIpcHandlers(ctx: AppContext): void {
     return { ok: true as const };
   });
 
-  // UI 域 handler：悬浮球右键拖动改变位置
-  registerHandler(ipcMain, 'ui.statusbar.ball.move', (req) => {
-    ctx.statusBarBall?.moveBy(req.dx, req.dy);
+  // UI 域 handler：悬浮球右键拖动开始（移动由主进程光标轮询驱动，渲染层只上报起止）
+  registerHandler(ipcMain, 'ui.statusbar.ball.dragStart', () => {
+    ctx.statusBarBall?.startDrag();
+    return { ok: true as const };
+  });
+
+  // UI 域 handler：悬浮球右键拖动结束
+  registerHandler(ipcMain, 'ui.statusbar.ball.dragEnd', () => {
+    ctx.statusBarBall?.stopDrag();
     return { ok: true as const };
   });
 

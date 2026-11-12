@@ -749,17 +749,28 @@ export const uiStatusBarBallScrollResSchema = z.object({ ok: z.literal(true) });
 export type UiStatusBarBallScrollRes = z.infer<typeof uiStatusBarBallScrollResSchema>;
 
 /**
- * ui.statusbar.ball.move：悬浮球右键拖动改变位置（悬浮球 → 主进程移动窗口）。
+ * ui.statusbar.ball.dragStart：悬浮球右键按下开始拖动（悬浮球 → 主进程）。
+ *
+ * 2026-11-13 拖动引擎从渲染层增量 IPC 改为主进程光标轮询：渲染层只上报
+ * 「开始/结束」，主进程以 screen.getCursorScreenPoint() 轮询 + 抓取偏移
+ * 绝对定位驱动窗口移动——不依赖渲染层事件流（52px 透明小窗口在 setPosition
+ * 下 capture 不可靠，增量 dx/dy 丢一帧即永久落后，表现为焦点脱离/卡死）。
+ * 抓取偏移由主进程按「光标位置 − 球位置」自行计算，无需渲染层传参。
  */
-export const uiStatusBarBallMoveReqSchema = z.object({
-  /** X 位移（px，正值向右） */
-  dx: z.number(),
-  /** Y 位移（px，正值向下） */
-  dy: z.number(),
-});
-export type UiStatusBarBallMoveReq = z.infer<typeof uiStatusBarBallMoveReqSchema>;
-export const uiStatusBarBallMoveResSchema = z.object({ ok: z.literal(true) });
-export type UiStatusBarBallMoveRes = z.infer<typeof uiStatusBarBallMoveResSchema>;
+export const uiStatusBarBallDragStartReqSchema = z.object({}).default({});
+export type UiStatusBarBallDragStartReq = z.infer<typeof uiStatusBarBallDragStartReqSchema>;
+export const uiStatusBarBallDragStartResSchema = z.object({ ok: z.literal(true) });
+export type UiStatusBarBallDragStartRes = z.infer<typeof uiStatusBarBallDragStartResSchema>;
+
+/**
+ * ui.statusbar.ball.dragEnd：悬浮球拖动结束（悬浮球 → 主进程）。
+ * 渲染层 pointerup / pointercancel / lostpointercapture / contextmenu 任一到达即发送；
+ * 主进程另有静止看门狗与球隐藏兜底，二者幂等。
+ */
+export const uiStatusBarBallDragEndReqSchema = z.object({}).default({});
+export type UiStatusBarBallDragEndReq = z.infer<typeof uiStatusBarBallDragEndReqSchema>;
+export const uiStatusBarBallDragEndResSchema = z.object({ ok: z.literal(true) });
+export type UiStatusBarBallDragEndRes = z.infer<typeof uiStatusBarBallDragEndResSchema>;
 
 /**
  * ui.statusbar.ball.click：悬浮球点击（切换折叠/展开）。主进程根据当前折叠态切换。
@@ -2909,9 +2920,13 @@ export const ipcSchema = {
     req: uiStatusBarBallClickReqSchema,
     res: uiStatusBarBallClickResSchema,
   },
-  'ui.statusbar.ball.move': {
-    req: uiStatusBarBallMoveReqSchema,
-    res: uiStatusBarBallMoveResSchema,
+  'ui.statusbar.ball.dragStart': {
+    req: uiStatusBarBallDragStartReqSchema,
+    res: uiStatusBarBallDragStartResSchema,
+  },
+  'ui.statusbar.ball.dragEnd': {
+    req: uiStatusBarBallDragEndReqSchema,
+    res: uiStatusBarBallDragEndResSchema,
   },
   'download.list': { req: downloadListReqSchema, res: downloadListResSchema },
   'download.cancel': { req: downloadCancelReqSchema, res: downloadCancelResSchema },

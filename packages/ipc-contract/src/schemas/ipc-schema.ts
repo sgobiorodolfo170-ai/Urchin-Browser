@@ -206,6 +206,29 @@ export const tabCaptureThumbnailResSchema = z.object({
 });
 export type TabCaptureThumbnailRes = z.infer<typeof tabCaptureThumbnailResSchema>;
 
+// 标签拖出窗口拖拽看护（2026-11-13 拖出可拖回）。渲染层在指针越过窗口边界时
+// 调用 start 一次，此后 detach 决策移交主进程光标轮询：
+// - 光标回到源窗口内（REENTER_MARGIN 内侧）→ 回发 `tab.detachDrag.reentered`
+//   事件（拖回成立，渲染层恢复常规拖拽，窗内松手即无动作）；
+// - 光标在窗外静止超时（视为松手）→ 主进程提交：开新窗口并关闭原标签，
+//   回发 `tab.detachDrag.committed` 事件。
+// 仅 http/https 标签可拖（渲染层已过滤）。
+export const tabDetachDragStartReqSchema = z.object({
+  tabId: tabIdSchema,
+  url: urlSchema,
+  /** 拖出标签携带的来源工作区（新窗口沿用，未传则默认工作区）。 */
+  workspaceId: workspaceIdSchema.optional(),
+});
+export type TabDetachDragStartReq = z.infer<typeof tabDetachDragStartReqSchema>;
+export const tabDetachDragStartResSchema = z.object({ ok: z.literal(true) });
+export type TabDetachDragStartRes = z.infer<typeof tabDetachDragStartResSchema>;
+
+/** 渲染层窗内松手时的明确取消（幂等：未在拖拽期为 no-op）。 */
+export const tabDetachDragCancelReqSchema = z.object({}).default({});
+export type TabDetachDragCancelReq = z.infer<typeof tabDetachDragCancelReqSchema>;
+export const tabDetachDragCancelResSchema = z.object({ ok: z.literal(true) });
+export type TabDetachDragCancelRes = z.infer<typeof tabDetachDragCancelResSchema>;
+
 // ============================================================================
 // Window 域
 // ============================================================================
@@ -2853,6 +2876,14 @@ export const ipcSchema = {
   'tab.captureThumbnail': {
     req: tabCaptureThumbnailReqSchema,
     res: tabCaptureThumbnailResSchema,
+  },
+  'tab.detachDrag.start': {
+    req: tabDetachDragStartReqSchema,
+    res: tabDetachDragStartResSchema,
+  },
+  'tab.detachDrag.cancel': {
+    req: tabDetachDragCancelReqSchema,
+    res: tabDetachDragCancelResSchema,
   },
   'window.create': { req: windowCreateReqSchema, res: windowCreateResSchema },
   'window.close': { req: windowCloseReqSchema, res: windowCloseResSchema },

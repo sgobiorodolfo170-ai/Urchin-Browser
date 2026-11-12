@@ -200,6 +200,62 @@ describe('App (Browser Shell)', () => {
     });
   });
 
+  it('should call tab.create when collapsed-state top plus button clicked', async () => {
+    const tab = makeTab();
+    mockInvoke.mockResolvedValue({ tabs: [tab] });
+
+    renderApp();
+
+    // 2026-11-13 用户指令：折叠态顶部（工作区图标下方）新增「+」新建标签按钮，
+    // 功能与展开态「+ 新建标签」完全一致（默认即为折叠态）
+    const plusButton = await screen.findByLabelText('新建标签');
+    expect(plusButton.tagName).toBe('BUTTON');
+
+    mockInvoke.mockClear();
+    fireEvent.click(plusButton);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
+        windowId: 1,
+        url: 'urchin://newtab',
+        active: true,
+        workspaceId: 'default',
+      });
+    });
+  });
+
+  it('should render workspace initial inside workspace color block (expanded bar)', async () => {
+    const tab = makeTab();
+    mockInvoke.mockImplementation((channel: string) => {
+      if (channel === 'workspace.list') {
+        return Promise.resolve({
+          workspaces: [
+            {
+              id: 'default',
+              name: '日常冲浪',
+              color: 'blue',
+              isDefault: true,
+              createdAt: 0,
+            },
+          ],
+        });
+      }
+      return Promise.resolve({ tabs: [tab] });
+    });
+
+    // jsdom 未实现 scrollIntoView：WorkspaceBar 活动块滚到鼠标处的布局副作用需要桩
+    Element.prototype.scrollIntoView = vi.fn();
+
+    renderApp();
+    await expandRightSidebar();
+
+    // 2026-11-13 用户指令：工作区全色块内叠加名称首字标识（与折叠态 Switcher 同惯例）
+    await waitFor(() => {
+      expect(screen.getByText('日')).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText('日常冲浪')).toBeInTheDocument();
+  });
+
   it('should call tab.close when close button clicked', async () => {
     const tab = makeTab({ id: 5, title: '关闭我' });
     mockInvoke.mockResolvedValue({ tabs: [tab] });
@@ -273,58 +329,128 @@ describe('App (Browser Shell)', () => {
     });
   });
 
-  describe('标签拖出窗口（自定义拖拽 → 新窗口打开 + 移动语义）', () => {
-    it('should open tab url in new window at drop position and close original tab', async () => {
+  describe('标签拖出窗口（出界挂起 → 主进程光标看护 → 拖回取消 / 松手提交）', () => {
+    /**
+     * 取 useTabDrag 注册的主进程事件监听（用于模拟主进程看护裁决回发：
+     * reentered = 拖回取消 / committed = 松手提交，2026-11-13 重写）。
+     */
+    function getDetachDragHandler(channel: string): (payload: unknown) => void {
+      const call = [...mockOn.mock.calls].reverse().find((c) => c[0] === channel);
+      const handler = call?.[1] as ((payload: unknown) => void) | undefined;
+      if (!handler) throw new Error(`${channel} handler not registered`);
+      return handler;
+    }
+
+    /** 挂载 App（展开右栏、含一个 http 标签）并返回标签卡片元素 */
+    async function setupHttpTabCard(): Promise<Element> {
       const tab = makeTab({ id: 1, url: 'https://example.com', title: '示例' });
       mockInvoke.mockResolvedValue({ tabs: [tab] });
-
       renderApp();
       await expandRightSidebar();
       await waitFor(() => expect(screen.getByText('示例')).toBeInTheDocument());
-
       const card = screen.getByText('示例').closest('[data-tab-card]');
       expect(card).not.toBeNull();
       // 内部页恒 draggable=false：拖拽走自定义指针事件，不走系统拖放
       expect(card).toHaveAttribute('draggable', 'false');
+      return card!;
+    }
+
+    it('should report tab.detachDrag.start on leaving bounds instead of opening a window at once', async () => {
+      const card = await setupHttpTabCard();
 
       mockInvoke.mockClear();
-      fireEvent.pointerDown(card!, { pointerId: 1, clientX: 200, clientY: 300 });
-      // 指针移出窗口边界（clientX<0）→ 新窗口打开（定位到出界屏幕坐标）+ 关闭原标签
-      fireEvent.pointerMove(card!, {
-        pointerId: 1,
-        clientX: -10,
-        clientY: 300,
-        screenX: 500,
-        screenY: 260,
-      });
+      fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 300 });
+      // 指针移出窗口边界（clientX<0）→ 挂起并移交主进程看护，不再立即开窗（拖回支持）
+      fireEvent.pointerMove(card, { pointerId: 1, clientX: -10, clientY: 300 });
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith('window.createWithUrl', {
+        expect(mockInvoke).toHaveBeenCalledWith('tab.detachDrag.start', {
+          tabId: 1,
           url: 'https://example.com',
-          x: 500,
-          y: 260,
           workspaceId: 'default',
         });
       });
+      // 开窗 + 关标签由主进程看护松手提交时完成，渲染层不再直接调用
+      expect(mockInvoke).not.toHaveBeenCalledWith('window.createWithUrl', expect.anything());
+      expect(mockInvoke).not.toHaveBeenCalledWith('tab.close', expect.anything());
+    });
+
+    it('should clear drag state on committed event (main opened window and closed tab)', async () => {
+      const card = await setupHttpTabCard();
+
+      mockInvoke.mockClear();
+      fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 300 });
+      fireEvent.pointerMove(card, { pointerId: 1, clientX: -10, clientY: 300 });
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith('tab.close', { tabId: 1 });
+        expect(mockInvoke).toHaveBeenCalledWith('tab.detachDrag.start', expect.anything());
+      });
+
+      // 主进程窗外静止看门狗判定松手 → 提交并回发 committed
+      act(() => getDetachDragHandler('tab.detachDrag.committed')({ tabId: 1 }));
+
+      // 会话已由主进程终结：此后窗内松手不再补发 cancel（无活动拖拽）
+      fireEvent.pointerUp(card, { pointerId: 1, clientX: 210, clientY: 300 });
+      expect(mockInvoke).not.toHaveBeenCalledWith('tab.detachDrag.cancel', expect.anything());
+    });
+
+    it('should resume normal drag after reentered and re-report start on next exit', async () => {
+      const card = await setupHttpTabCard();
+
+      mockInvoke.mockClear();
+      fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 300 });
+      fireEvent.pointerMove(card, { pointerId: 1, clientX: -10, clientY: 300 });
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith('tab.detachDrag.start', expect.anything());
+      });
+
+      // 光标拖回窗内：主进程判定拖回成立
+      act(() => getDetachDragHandler('tab.detachDrag.reentered')({ tabId: 1 }));
+
+      // 拖回后窗内移动/松手无任何 detach 动作（标签保留）
+      fireEvent.pointerMove(card, { pointerId: 1, clientX: 220, clientY: 300 });
+      fireEvent.pointerUp(card, { pointerId: 1, clientX: 220, clientY: 300 });
+      expect(mockInvoke).not.toHaveBeenCalledWith('tab.detachDrag.cancel', expect.anything());
+
+      // 再次出界 → 重新上报 start（支持反复拖出拖回）
+      fireEvent.pointerDown(card, { pointerId: 2, clientX: 200, clientY: 300 });
+      fireEvent.pointerMove(card, { pointerId: 2, clientX: 200, clientY: -5 });
+      await waitFor(() => {
+        // 按通道过滤计数：避免其它通道的调用数参与断言（高负载并行下更稳）
+        const startCalls = mockInvoke.mock.calls.filter(([c]) => c === 'tab.detachDrag.start');
+        expect(startCalls).toHaveLength(2);
+        expect(startCalls[1]?.[1]).toEqual({
+          tabId: 1,
+          url: 'https://example.com',
+          workspaceId: 'default',
+        });
       });
     });
 
+    it('should invoke tab.detachDrag.cancel when released inside window before supervision decides', async () => {
+      const card = await setupHttpTabCard();
+
+      mockInvoke.mockClear();
+      fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 300 });
+      fireEvent.pointerMove(card, { pointerId: 1, clientX: -10, clientY: 300 });
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith('tab.detachDrag.start', expect.anything());
+      });
+
+      // 拖回窗内并在主进程 reentered 判定前松手（竞态兜底）：明确取消看护
+      fireEvent.pointerUp(card, { pointerId: 1, clientX: 210, clientY: 300 });
+      expect(mockInvoke).toHaveBeenCalledWith('tab.detachDrag.cancel', {});
+    });
+
     it('should not open new window when pointer stays inside window', async () => {
-      const tab = makeTab({ id: 1, url: 'https://example.com', title: '示例' });
-      mockInvoke.mockResolvedValue({ tabs: [tab] });
+      const card = await setupHttpTabCard();
 
-      renderApp();
-      await expandRightSidebar();
-      await waitFor(() => expect(screen.getByText('示例')).toBeInTheDocument());
-
-      const card = screen.getByText('示例').closest('[data-tab-card]')!;
       mockInvoke.mockClear();
       fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 300 });
       fireEvent.pointerMove(card, { pointerId: 1, clientX: 210, clientY: 300 });
       fireEvent.pointerUp(card, { pointerId: 1, clientX: 210, clientY: 300 });
 
+      expect(mockInvoke).not.toHaveBeenCalledWith('tab.detachDrag.start', expect.anything());
+      expect(mockInvoke).not.toHaveBeenCalledWith('tab.detachDrag.cancel', expect.anything());
       expect(mockInvoke).not.toHaveBeenCalledWith('window.createWithUrl', expect.anything());
       expect(mockInvoke).not.toHaveBeenCalledWith('tab.close', expect.anything());
     });
@@ -340,15 +466,10 @@ describe('App (Browser Shell)', () => {
       const card = screen.getByText('新标签页').closest('[data-tab-card]')!;
       mockInvoke.mockClear();
       fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 300 });
-      fireEvent.pointerMove(card, {
-        pointerId: 1,
-        clientX: -10,
-        clientY: 300,
-        screenX: 500,
-        screenY: 260,
-      });
+      fireEvent.pointerMove(card, { pointerId: 1, clientX: -10, clientY: 300 });
       fireEvent.pointerUp(card, { pointerId: 1, clientX: -10, clientY: 300 });
 
+      expect(mockInvoke).not.toHaveBeenCalledWith('tab.detachDrag.start', expect.anything());
       expect(mockInvoke).not.toHaveBeenCalledWith('window.createWithUrl', expect.anything());
       expect(mockInvoke).not.toHaveBeenCalledWith('tab.close', expect.anything());
     });

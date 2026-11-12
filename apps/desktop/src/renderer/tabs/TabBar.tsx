@@ -1,27 +1,27 @@
 /**
- * 标签列表（右侧栏展开态卡片 / 折叠态图标 + 新建标签按钮）
+ * 标签列表（右侧栏展开态卡片 / 折叠态图标）
  *
  * 仅负责标签列表渲染与列表内滚动平移；标签数据、激活态、开关动作均由 App
  * 通过 props 注入（状态单一真源仍在 App，避免列表组件持有可失同步的副本）。
+ * 新建标签按钮不在本组件：展开态/折叠态均由 RightSidebar 渲染（2026-11-13
+ * 用户指令，展开态从底部移到顶部工作区条下方、折叠态顶部加「+」）。
  */
-import { Plus, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { BOTTOM_HEIGHT } from '../lib/layout-constants';
 import { useDragScroll } from '../lib/use-drag-scroll';
 import { TabFavicon } from './TabFavicon';
 import type { TabSnapshot } from './types';
 
 export interface TabBarProps {
-  /** true = 展开态卡片列表（含新建按钮）；false = 折叠态图标列表 */
+  /** true = 展开态卡片列表；false = 折叠态图标列表 */
   readonly expanded: boolean;
   readonly tabs: readonly TabSnapshot[];
   readonly activeTabId: number | null;
   readonly onSelectTab: (tabId: number) => void;
   readonly onCloseTab: (tabId: number) => void;
-  readonly onNewTab: () => void;
   readonly onTabPointerDown: (e: React.PointerEvent, tab: TabSnapshot) => void;
   readonly onTabPointerMove: (e: React.PointerEvent) => void;
-  readonly onTabPointerEnd: () => void;
+  readonly onTabPointerEnd: (e: React.PointerEvent) => void;
   readonly onTabContextMenu: (e: React.MouseEvent, tab: TabSnapshot) => void;
 }
 
@@ -31,7 +31,6 @@ export function TabBar({
   activeTabId,
   onSelectTab,
   onCloseTab,
-  onNewTab,
   onTabPointerDown,
   onTabPointerMove,
   onTabPointerEnd,
@@ -65,7 +64,9 @@ export function TabBar({
               className={cn(
                 // 凸起悬浮感：圆角卡片 + 投影 + 细边框 + 顶部高光线；
                 // 激活态更亮（主色投影 + 高对比文字）
-                'group relative mb-1.5 flex cursor-default items-center gap-2 rounded-lg border px-2.5 py-2 text-sm shadow-sm',
+                // 卡片高度 ≈48px（2026-11-13 用户指令较原 54px 收窄约 10%：
+                // py-2 → py-[5px]，图标 36px 不变仍铺满标签高度）
+                'group relative mb-1.5 flex cursor-default items-center gap-2 rounded-lg border px-2.5 py-[5px] text-sm shadow-sm',
                 'border-border/60 bg-surface',
                 'before:pointer-events-none before:absolute before:inset-x-2 before:top-0 before:h-px before:rounded-full before:bg-white/70',
                 tab.id === activeTabId
@@ -75,8 +76,8 @@ export function TabBar({
               onClick={() => onSelectTab(tab.id)}
               onDoubleClick={() => onCloseTab(tab.id)}
             >
-              {/* 图标铺满标签高度：36px 与折叠态一致，卡片高度随内容撑开约 52px，
-               *  items-center 垂直居中，object-contain 保持比例不变形 */}
+              {/* 图标铺满标签高度：36px 与折叠态一致，items-center 垂直居中，
+               *  object-contain 保持比例不变形 */}
               <TabFavicon tab={tab} className="h-9 w-9" />
               <span className="flex-1 truncate">{tab.title || tab.url || '新标签页'}</span>
               {/* GenOffice 编辑器未保存修改标记（阶段 2） */}
@@ -99,20 +100,6 @@ export function TabBar({
               </button>
             </div>
           ))}
-        </div>
-        {/* 新建标签：高度与底部地址栏一致（BOTTOM_HEIGHT=48），底边对齐 */}
-        <div
-          className="flex shrink-0 items-center border-t border-border px-2"
-          style={{ height: BOTTOM_HEIGHT }}
-        >
-          <button
-            className="flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-sm text-text-secondary hover:bg-surface hover:text-text"
-            onClick={onNewTab}
-            aria-label="新建标签"
-          >
-            <Plus className="h-4 w-4" />
-            新建标签
-          </button>
         </div>
       </div>
     );

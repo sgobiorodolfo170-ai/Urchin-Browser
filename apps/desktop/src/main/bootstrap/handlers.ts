@@ -33,6 +33,7 @@ import { createLogger } from '@urchin/logger';
 import { registerHandler, DEVTOOLS_EVENT_CHANNEL } from '@urchin/ipc-contract';
 import { registerWindowHandlers } from '../windows';
 import { registerTabHandlers, getLayoutState, setLayoutState, type BrowserViewLike } from '../tabs';
+import { TabDetachDragSupervisor } from '../tabs/tab-detach-drag';
 import { registerHistoryHandlers } from '../history';
 import { registerBookmarkHandlers } from '../bookmarks';
 import { registerSettingsHandlers } from '../settings';
@@ -203,11 +204,52 @@ function focusActivePage(ctx: AppContext): void {
     log.warn('focus active page failed', { error: String(err) });
   }
 }
+
+/**
+ * 新浏览器窗口打开 URL 并按屏幕坐标定位（单一真源）。
+ *
+ * 调用方：window.createWithUrl handler（书签/标签拖出窗口）与标签拖出看护的
+ * 松手提交（tab.detachDrag，2026-11-13「拖出可拖回」）。
+ *
+ * 新窗口默认打开新标签页，随后把目标 URL 导航到活跃标签（tab.loadUrl）——
+ * 直接给 createWindow 传 url 不会导航（create-window.ts 仅用 url 参数决定加载源）。
+ * v0.1 单窗口化：ctx.windowManager.createWindow 恒分配 windowId=2（原窗口为 1）。
+ * x/y（拖出瞬间屏幕坐标）：窗口左上角定位到拖拽位置，避免新窗口重叠在原窗口上；
+ * clamp 到主屏工作区（至少留 120px 窗口主体可见），测试环境无 screen 时跳过定位。
+ */
+function createWindowWithUrlAt(
+  ctx: AppContext,
+  params: { url: string; x?: number; y?: number; workspaceId?: string },
+): number {
+  const managed = ctx.windowManager.createWindow({});
+  ctx.tabManager.create({
+    windowId: managed.id,
+    url: params.url,
+    active: true,
+    workspaceId: params.workspaceId,
+  });
+  if (params.x !== undefined && params.y !== undefined) {
+    try {
+      const wa = screen.getPrimaryDisplay().workArea;
+      const px = Math.min(Math.max(params.x, wa.x), wa.x + Math.max(0, wa.width - 120));
+      const py = Math.min(Math.max(params.y, wa.y), wa.y + Math.max(0, wa.height - 120));
+      managed.browserWindow.setPosition?.(px, py);
+    } catch (err) {
+      log.warn('failed to position new window', { error: String(err) });
+    }
+  }
+  return managed.id;
+}
+
 /**
  * 注册 IPC handlers。
  * W1-D3：tab 域完整实现 + window 域完整实现。
  */
 export function registerIpcHandlers(ctx: AppContext): void {
+  // 标签拖出窗口拖拽看护器（2026-11-13「拖出可拖回」；单实例：一台机器同时
+  // 只有根拖拽指针，二次 start 幂等终止上一会话）。闭包内持有，遵守本文件
+  // 「不持有可变模块级状态」约定；会话回调经 ctx 访问 windowManager / tabManager。
+  const tabDetachDrag = new TabDetachDragSupervisor();
   // M1 window 域 handler
   registerWindowHandlers(ipcMain, ctx.windowManager);
 
@@ -910,11 +952,7 @@ export function registerIpcHandlers(ctx: AppContext): void {
   });
 
   // Window 域 handler：新浏览器窗口打开 URL（侧边栏标签/书签拖出窗口触发）。
-  // 新窗口默认打开新标签页，随后把目标 URL 导航到活跃标签（tab.loadUrl）——
-  // 直接给 createWindow 传 url 不会导航（create-window.ts 仅用 url 参数决定加载源）。
-  // v0.1 单窗口化：ctx.windowManager.createWindow 恒分配 windowId=2（原窗口为 1）。
-  // x/y（拖出瞬间屏幕坐标）：窗口左上角定位到拖拽位置，避免新窗口重叠在原窗口上；
-  // clamp 到主屏工作区（至少留 120px 窗口主体可见），测试环境无 screen 时跳过定位。
+  // 实现收敛在 createWindowWithUrlAt（标签拖出看护的松手提交共用同一逻辑，单一真源）。
   registerHandler(ipcMain, 'window.createWithUrl', (req) => {
     log.info('window.createWithUrl', {
       url: req.url,
@@ -922,24 +960,56 @@ export function registerIpcHandlers(ctx: AppContext): void {
       y: req.y,
       workspaceId: req.workspaceId,
     });
-    const managed = ctx.windowManager.createWindow({});
-    ctx.tabManager.create({
-      windowId: managed.id,
+    const windowId = createWindowWithUrlAt(ctx, req);
+    return { windowId };
+  });
+
+  // Tab 域 handler：标签拖出窗口拖拽看护（2026-11-13「拖出可拖回」用户指令）。
+  // 渲染层指针越过窗口边界时 start 一次；detach 决策移交主进程光标轮询：
+  // 拖回窗内 → reentered 事件（取消）；窗外静止 1s（视为松手）→ 提交开新窗口
+  // 并关闭原标签。见 main/tabs/tab-detach-drag.ts 模块注释。
+  registerHandler(ipcMain, 'tab.detachDrag.start', (req, callCtx) => {
+    log.info('tab.detachDrag.start', {
+      tabId: req.tabId,
       url: req.url,
-      active: true,
       workspaceId: req.workspaceId,
     });
-    if (req.x !== undefined && req.y !== undefined) {
-      try {
-        const wa = screen.getPrimaryDisplay().workArea;
-        const px = Math.min(Math.max(req.x, wa.x), wa.x + Math.max(0, wa.width - 120));
-        const py = Math.min(Math.max(req.y, wa.y), wa.y + Math.max(0, wa.height - 120));
-        managed.browserWindow.setPosition?.(px, py);
-      } catch (err) {
-        log.warn('failed to position new window', { error: String(err) });
-      }
+    const managed = ctx.windowManager.getWindowByWebContents(callCtx.event.sender);
+    if (!managed) {
+      log.warn('tab.detachDrag.start: sender window not managed, supervision skipped');
+      return { ok: true as const };
     }
-    return { windowId: managed.id };
+    const win = managed.browserWindow;
+    tabDetachDrag.start({
+      bounds: () => {
+        // isVisible/isMinimized 在 BrowserWindowLike 为可选（旧测试替身无此方法）：
+        // 缺失视为「正常可见」，仅显式 false/true 时才中止看护
+        if (win.isDestroyed() || win.isVisible?.() === false || win.isMinimized?.()) return null;
+        return win.getContentBounds();
+      },
+      onReentered: () => {
+        if (!win.isDestroyed()) {
+          win.webContents.send('tab.detachDrag.reentered', { tabId: req.tabId });
+        }
+      },
+      onCommit: (x, y) => {
+        log.info('tab.detachDrag.commit', { tabId: req.tabId, x, y });
+        // 与 window.createWithUrl 同一逻辑（单一真源），随后关闭原标签（移动语义）
+        createWindowWithUrlAt(ctx, { url: req.url, x, y, workspaceId: req.workspaceId });
+        ctx.tabManager.remove(req.tabId);
+        if (!win.isDestroyed()) {
+          win.webContents.send('tab.detachDrag.committed', { tabId: req.tabId });
+        }
+      },
+    });
+    return { ok: true as const };
+  });
+
+  // Tab 域 handler：渲染层窗内松手时明确取消看护（幂等；拖回常规路径由
+  // reentered 判定承担，本通道兜底「松手时窗内但轮询尚未判定」的竞态）。
+  registerHandler(ipcMain, 'tab.detachDrag.cancel', () => {
+    tabDetachDrag.cancel();
+    return { ok: true as const };
   });
 
   log.info('ipc handlers registered');

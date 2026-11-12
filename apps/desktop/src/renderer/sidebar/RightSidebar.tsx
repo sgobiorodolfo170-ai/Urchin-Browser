@@ -1,13 +1,15 @@
 /**
  * 右侧边栏
  *
- * 结构：宽度拖拽手柄（展开态）+ 展开态（工作区选项卡条 + 标签卡片列表）/
- * 折叠态（工作区图标 + 当前工作区标签图标列）。
+ * 结构：宽度拖拽手柄（展开态）+ 展开态（工作区选项卡条 + 新建标签行 + 标签卡片列表）/
+ * 折叠态（工作区图标 + 新建标签「+」+ 当前工作区标签图标列）。
+ * 新建标签入口在两态均位于顶部（2026-11-13 用户指令，原底部按钮移除）。
  *
  * 与 LeftSidebar 同一模式：尺寸与悬停展开状态由 App 持有（rightWidth 同时
  * 驱动主进程 BrowserView bounds），本组件只消费状态并通过回调上抛动作，
  * 避免布局真源分裂。（refactor-plan-p2 §2.3 步骤 3，JSX 自 App.tsx 原样迁出）
  */
+import { Plus } from 'lucide-react';
 import { TabBar } from '../tabs/TabBar';
 import type { TabSnapshot } from '../tabs/types';
 import { WorkspaceBar } from '../workspaces/WorkspaceBar';
@@ -46,10 +48,12 @@ export interface RightSidebarProps {
   readonly activeTabId: number | null;
   readonly onSelectTab: (tabId: number) => void;
   readonly onCloseTab: (tabId: number) => void;
+  /** 新建标签（展开态顶部行 / 折叠态顶部「+」共用，2026-11-13 从底部移到顶部） */
   readonly onNewTab: () => void;
   readonly onTabPointerDown: (e: React.PointerEvent, tab: TabSnapshot) => void;
   readonly onTabPointerMove: (e: React.PointerEvent) => void;
-  readonly onTabPointerEnd: () => void;
+  /** 指针松手/取消（拖出看护需读取松手坐标判定窗内拖回取消） */
+  readonly onTabPointerEnd: (e: React.PointerEvent) => void;
   readonly onTabContextMenu: (e: React.MouseEvent, tab: TabSnapshot) => void;
   // WorkspaceSwitcher（折叠态图标）
   readonly switcherMode: WorkspaceSwitcherMode;
@@ -118,7 +122,7 @@ export function RightSidebar({
        *  鼠标移入手柄区域变横向调节光标，按住左右拖动调宽 */}
       {effectiveExpanded && (
         <div
-          className="absolute top-0 bottom-12 left-0 z-10 w-1.5 cursor-col-resize"
+          className="absolute top-0 bottom-0 left-0 z-10 w-1.5 cursor-col-resize"
           onPointerDown={onResizeStart}
           onPointerMove={onResizeMove}
           onPointerUp={onResizeEnd}
@@ -139,6 +143,18 @@ export function RightSidebar({
             onContextMenu={onWorkspaceContextMenu}
           />
 
+          {/* 新建标签（2026-11-13 用户指令）：从底部移到顶部，紧贴工作区图标条下方 */}
+          <div className="shrink-0 px-2 pb-1 pt-1.5">
+            <button
+              className="flex w-full items-center justify-center gap-1.5 rounded-md py-1.5 text-sm text-text-secondary hover:bg-surface hover:text-text"
+              onClick={onNewTab}
+              aria-label="新建标签"
+            >
+              <Plus className="h-4 w-4" />
+              新建标签
+            </button>
+          </div>
+
           {/* 标签列表：凸起悬浮感（卡片浮于底色之上，带阴影 + 微光边框 + 顶部高光） */}
           <TabBar
             expanded
@@ -146,7 +162,6 @@ export function RightSidebar({
             activeTabId={activeTabId}
             onSelectTab={onSelectTab}
             onCloseTab={onCloseTab}
-            onNewTab={onNewTab}
             onTabPointerDown={onTabPointerDown}
             onTabPointerMove={onTabPointerMove}
             onTabPointerEnd={onTabPointerEnd}
@@ -154,7 +169,7 @@ export function RightSidebar({
           />
         </>
       ) : (
-        // 折叠状态：顶部单工作区图标（滚轮切换）+ 当前工作区的标签图标。
+        // 折叠状态：顶部单工作区图标（滚轮切换）+ 新建标签「+」+ 当前工作区的标签图标。
         // 悬停工作区图标时抑制侧栏自动展开，滚轮切换不被打断。
         <div className="flex flex-1 flex-col items-center overflow-hidden pb-2">
           {/* 工作区图标固定在最顶部（无上方留白，用户指令 2026-10-23） */}
@@ -166,13 +181,22 @@ export function RightSidebar({
             onPointerEnter={onSwitcherPointerEnter}
             onPointerLeave={onSwitcherPointerLeave}
           />
+          {/* 新建标签「+」（2026-11-13 用户指令）：置于工作区图标下方、标签图标列上方，
+           *  功能与展开态「+ 新建标签」完全一致。虚线边框区别于实底标签图标。 */}
+          <button
+            className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-dashed border-border/70 text-text-secondary hover:bg-surface-secondary hover:text-text"
+            onClick={onNewTab}
+            aria-label="新建标签"
+            title="新建标签"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
           <TabBar
             expanded={false}
             tabs={tabs}
             activeTabId={activeTabId}
             onSelectTab={onSelectTab}
             onCloseTab={onCloseTab}
-            onNewTab={onNewTab}
             onTabPointerDown={onTabPointerDown}
             onTabPointerMove={onTabPointerMove}
             onTabPointerEnd={onTabPointerEnd}

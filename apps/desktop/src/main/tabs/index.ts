@@ -6,6 +6,7 @@
 export { TabManager } from './tab-manager';
 export { createBrowserView } from './create-browser-view';
 export { registerTabHandlers } from './register-handlers';
+export { TabDetachDragSupervisor } from './tab-detach-drag';
 export {
   installTabViewIntegration,
   getLayoutState,

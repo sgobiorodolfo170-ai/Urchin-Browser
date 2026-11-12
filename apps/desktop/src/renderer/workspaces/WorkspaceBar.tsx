@@ -1,12 +1,14 @@
 /**
  * 工作区选项卡条（TP7）：右侧栏展开态标题位。
- * 每个选项卡 = 纯色方形色块（不显示文字/首字，仅以颜色区分）；右键弹出管理工作区菜单；末尾「+」快速创建。
+ * 每个选项卡 = 工作区主题色色块 + 名称首字/首字母（2026-11-13 用户指令：
+ * 原纯色块仅以颜色区分，多工作区同色系时不可辨，叠加首字标识）；
+ * 右键弹出管理工作区菜单；末尾「+」快速创建。
  */
 import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { Plus, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import type { Workspace, WorkspaceColor } from './types';
-import { WORKSPACE_COLORS, WORKSPACE_COLOR_KEYS } from './workspace-colors';
+import { WORKSPACE_COLORS, WORKSPACE_COLOR_KEYS, workspaceInitial } from './workspace-colors';
 
 export interface WorkspaceBarProps {
   readonly workspaces: readonly Workspace[];
@@ -116,11 +118,22 @@ export function WorkspaceBar({
               }}
               onClick={() => onSelect(ws.id)}
               className={cn(
-                'shrink-0 rounded-none transition-all',
+                'flex shrink-0 items-center justify-center rounded-none transition-all',
                 active ? 'h-9 w-9 z-10 shadow-lg' : 'h-7 w-7 opacity-70 hover:opacity-100',
                 colorInfo.avatar,
               )}
-            />
+            >
+              {/* 首字/首字母标识（白字压色块，与折叠态 WorkspaceSwitcher 同一惯例）：
+               *  激活 36px 用 text-sm，非激活 28px 用 text-xs */}
+              <span
+                className={cn(
+                  'select-none font-semibold text-white',
+                  active ? 'text-sm' : 'text-xs',
+                )}
+              >
+                {workspaceInitial(ws.name)}
+              </span>
+            </button>
           );
         })}
       </div>

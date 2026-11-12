@@ -295,6 +295,14 @@ test.describe('工作区（TP7）', () => {
       const overviewBg = await overviewPage.evaluate((el) => getComputedStyle(el).backgroundColor);
       expect(overviewBg).toBe('rgba(0, 0, 0, 0)');
 
+      // ── 单页 9 卡布局（2026-11-13）：卡片未超屏（2 工作区 + 新建卡 = 3 卡）时网格不可滚动 ──
+      const overviewGrid = window.locator('[data-workspace-grid="true"]');
+      const scrollState = await overviewGrid.evaluate((el) => ({
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      }));
+      expect(scrollState.scrollHeight).toBe(scrollState.clientHeight);
+
       // ── 3D 悬浮：内层视觉层随指针倾斜，移开后复位（命中区不抖动） ──
       const workACard = overview.filter({ hasText: '工作A' });
       const cardVisual = workACard.locator('[data-workspace-card-visual="true"]');
@@ -340,6 +348,91 @@ test.describe('工作区（TP7）', () => {
     } finally {
       await electronApp.close();
       await new Promise<void>((resolvePromise) => server.close(() => resolvePromise()));
+    }
+  });
+
+  test('should cap the overview at 9 cards per screen with the add card pinned 9th and scroll the rest', async () => {
+    const { electronApp, window } = await launchApp();
+
+    // 判定每张卡片是否完全落在滚动视口内（首屏 9 卡断言用）。
+    const cardVisibility = (): Promise<{ title: string; visible: boolean }[]> =>
+      window.locator('[data-workspace-grid="true"]').evaluate((el) => {
+        const gridRect = el.getBoundingClientRect();
+        return Array.from(el.querySelectorAll('button')).map((btn) => {
+          const r = btn.getBoundingClientRect();
+          return {
+            title: btn.getAttribute('title') ?? '',
+            visible: r.height > 0 && r.top >= gridRect.top - 1 && r.bottom <= gridRect.bottom + 1,
+          };
+        });
+      });
+
+    try {
+      // ── cards 模式（设置直写，与既有用例同一机制）──
+      await window.evaluate(async () => {
+        const urchin = (
+          window as unknown as {
+            urchin: { invoke: (c: string, r: unknown) => Promise<unknown> };
+          }
+        ).urchin;
+        await urchin.invoke('settings.set', { key: 'ui.workspaceSwitcherMode', value: 'cards' });
+        (window as unknown as Window).dispatchEvent(
+          new CustomEvent('urchin:settings-changed', {
+            detail: { keys: ['ui.workspaceSwitcherMode'] },
+          }),
+        );
+      });
+
+      // ── 展开侧栏，经选项卡条连续创建 8 个工作区（默认 + 8 = 9 个）──
+      await expandRightSidebar(window);
+      for (const name of ['工作A', '工作B', '工作C', '工作D', '工作E', '工作F', '工作G', '工作H']) {
+        await window.getByRole('button', { name: '新建工作区' }).click();
+        const nameInput = window.getByPlaceholder('工作区名称');
+        await nameInput.fill(name);
+        await nameInput.press('Enter');
+        await expect(window.getByRole('button', { name: new RegExp(name) }).first()).toBeVisible({
+          timeout: 15_000,
+        });
+      }
+
+      // ── 折叠侧栏 → 点击顶部工作区图标打开总览页 ──
+      await toggleRightSidebar(window);
+      const overviewPage = window.locator('[aria-label="工作区总览"]');
+      const grid = window.locator('[data-workspace-grid="true"]');
+      await window
+        .getByRole('button', { name: /^切换工作区/ })
+        .first()
+        .click();
+      await expect(overviewPage).toBeVisible({ timeout: 15_000 });
+
+      // ── 卡片总数 = 9 个工作区 + 「新建」卡 = 10 > 9 → 网格可滚动 ──
+      const wsCards = window.locator('button[title^="切换到工作区"]');
+      await expect(wsCards).toHaveCount(9);
+      await expect(grid.evaluate((el) => el.scrollHeight > el.clientHeight)).resolves.toBe(true);
+
+      // ── 首屏恰好 9 卡完全可见：8 个工作区 + 第 9 卡「新建」（固定末位）；第 9 个工作区折下 ──
+      let cards = await cardVisibility();
+      expect(cards.filter((c) => c.visible)).toHaveLength(9);
+      // 「新建」卡无 title（仅 aria-label=新建工作区），必须落在首屏第 9 卡位
+      expect(cards.find((c) => c.title === '')?.visible).toBe(true);
+      // 第 9 个工作区（工作H）不在首屏，需滚动查看
+      expect(cards.find((c) => c.title.endsWith('工作H'))?.visible).toBe(false);
+
+      // ── 滚到底 → 最后一个工作区卡完全可见（滑块滚动查看超出部分） ──
+      await grid.evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+      });
+      await expect
+        .poll(
+          async () => {
+            cards = await cardVisibility();
+            return cards.find((c) => c.title.endsWith('工作H'))?.visible ?? false;
+          },
+          { timeout: 5_000 },
+        )
+        .toBe(true);
+    } finally {
+      await electronApp.close();
     }
   });
 });

@@ -124,7 +124,7 @@ pnpm check:e2e-manifest                                      # G20：manifest �
 | `tab-close-activation.spec.ts` | 标签与启动 | 1 | 3s | 无 | 是 | 命中即跑 | `main/tabs/**` · `renderer/tabs/**` · `renderer/sidebar/**` |
 | `tab-order-repro.spec.ts` | 标签与启动 | 1 | 8s | 无 | 是 | 命中即跑 | 同上 |
 | `translate.spec.ts` | 翻译 | 1 | 3s | 无 | 是 | 命中即跑 | `main/translate/**` · `renderer/translate/**` · `main/status-bar/**` · `renderer/status-bar/**` |
-| `workspaces.spec.ts` | 工作区 | 2 | 12s | 无 | 是 | 命中即跑 | `main/workspaces/**` · `renderer/workspaces/**` · `renderer/sidebar/**` · `main/tabs/**` |
+| `workspaces.spec.ts` | 工作区 | 3 | 35s | 无 | 是 | 命中即跑 | `main/workspaces/**` · `renderer/workspaces/**` · `renderer/sidebar/**` · `main/tabs/**` |
 
 > 路径前缀省略了 `apps/desktop/src/`；完整 glob 以 manifest 为准。`CI 真实执行 = 否` 表示该 spec 在 CI 会 **skip**（依赖不入版本控制或缺 key），而不是「CI 不运行它」。
 

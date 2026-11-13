@@ -178,7 +178,7 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
     gesture.current = null;
     setDrag(null);
     if (!source.ready) return;
-    suppressClick.current = true;
+    suppressClick.current = source.moved;
     const hit = document.elementFromPoint(x, y);
     const zone = hit?.closest<HTMLElement>('[data-site-zone]')?.dataset.siteZone;
     if (saving.current || !source.moved) return;
@@ -244,7 +244,6 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
       await window.urchin.invoke('settings.set', { key, value: next });
       ordersRef.current = { ...ordersRef.current, [key]: next };
       setOrders(ordersRef.current);
-      if (source.recent && !targetRecent) setNotice('已收藏到常用网站');
     } catch {
       setNotice('保存失败，请重试');
       await refreshRef.current();
@@ -280,9 +279,8 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
             startY: e.clientY,
             timer: setTimeout(() => {
               source.ready = true;
-              suppressClick.current = true;
               setDrag({ site, recent: isRecent, x: source.x, y: source.y });
-            }, 60),
+            }, 120),
           };
           gesture.current = source;
           e.currentTarget.setPointerCapture(e.pointerId);

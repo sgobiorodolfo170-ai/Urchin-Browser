@@ -104,12 +104,17 @@ it('长按拖入常用网站会创建最近浏览文件夹并收藏，重排顺�
   Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => zone });
   fireEvent.pointerDown(source, { button: 0, clientX: 20, clientY: 200 });
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 150));
   });
   fireEvent.pointerMove(source, { clientX: 20, clientY: 80 });
   fireEvent.pointerUp(source, { clientX: 20, clientY: 80 });
   fireEvent.click(source);
-  expect(await screen.findByText('已收藏到常用网站')).toBeInTheDocument();
+  await waitFor(() =>
+    expect(
+      within(screen.getByTestId('frequent-sites')).getByTitle('recent.test'),
+    ).toBeInTheDocument(),
+  );
+  expect(screen.queryByText('已收藏到常用网站')).not.toBeInTheDocument();
   expect(navigate).not.toHaveBeenCalled();
   expect(invoke).toHaveBeenCalledWith('bookmark.create', {
     type: 'folder',
@@ -128,7 +133,7 @@ it('长按拖入常用网站会创建最近浏览文件夹并收藏，重排顺�
   const again = within(recentZone).getByTitle('recent.test');
   fireEvent.pointerDown(again, { button: 0 });
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 150));
   });
   fireEvent.pointerUp(again, { clientX: 20, clientY: 80 });
   await waitFor(() =>
@@ -174,7 +179,7 @@ it('保存的常用图标顺序优先，长按重排保存新顺序且不打开�
   Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target });
   fireEvent.pointerDown(source, { button: 0 });
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 150));
   });
   fireEvent.pointerUp(source, { clientX: 20, clientY: 20 });
   fireEvent.click(source);
@@ -193,7 +198,7 @@ it('保存的常用图标顺序优先，长按重排保存新顺序且不打开�
   vi.unstubAllGlobals();
 });
 
-it('60ms 后图标锁定光标，拖出常用区删除该站所有收藏，保留文件夹和其他网站', async () => {
+it('120ms 后图标锁定光标，拖出常用区删除该站所有收藏，保留文件夹和其他网站', async () => {
   let bookmarks = [
     { id: 'folder', type: 'folder', title: '最近浏览', parentId: null, createdAt: 0 },
     {
@@ -260,7 +265,7 @@ it('60ms 后图标锁定光标，拖出常用区删除该站所有收藏，保�
   // 等待前的轻微移动也必须保留抓取，并使用最新坐标。
   fireEvent.pointerMove(source, { clientX: 120, clientY: 130 });
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 150));
   });
   expect(screen.getByTestId('dragged-site-icon')).toHaveStyle({ left: '100px', top: '110px' });
   expect(source).toHaveStyle({ opacity: '0' });
@@ -271,5 +276,39 @@ it('60ms 后图标锁定光标，拖出常用区删除该站所有收藏，保�
   expect(bookmarks.map((b) => b.id)).toEqual(['folder', 'b']);
   expect(screen.queryByTitle('a.test')).not.toBeInTheDocument();
   expect(screen.getByTitle('b.test')).toBeInTheDocument();
+  vi.unstubAllGlobals();
+});
+
+it('长按超过120ms但未移动仍可点击打开网页', async () => {
+  const invoke = vi.fn((channel: string) =>
+    Promise.resolve(
+      channel === 'bookmark.list'
+        ? {
+            bookmarks: [
+              { type: 'bookmark', url: 'https://single.test/path', title: '单页', createdAt: 1 },
+            ],
+          }
+        : channel === 'settings.get'
+          ? { value: [] }
+          : { entries: [], total: 0 },
+    ),
+  );
+  Object.defineProperty(window, 'urchin', {
+    configurable: true,
+    value: { invoke, on: () => vi.fn() },
+  });
+  vi.stubGlobal('PointerEvent', MouseEvent);
+  const navigate = vi.fn();
+  render(<NewTabPage onNavigate={navigate} />);
+  const source = await screen.findByTitle('single.test');
+  Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => source });
+  fireEvent.pointerDown(source, { button: 0, clientX: 100, clientY: 100 });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 160));
+  });
+  fireEvent.pointerUp(source, { clientX: 100, clientY: 100 });
+  fireEvent.click(source);
+  expect(navigate).toHaveBeenCalledWith('https://single.test/path');
+  expect(invoke).not.toHaveBeenCalledWith('bookmark.delete', expect.anything());
   vi.unstubAllGlobals();
 });

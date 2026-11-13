@@ -84,6 +84,9 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   ['ui.workspaceSwitcherMode', 'cards'],
   // 主页常用网站（用户手动添加/拖拽排序，持久化于 settings；仅存根网址）
   ['home.frequentSites', []],
+  // 主页图标排序独立于收藏夹层级与网页时间排序。
+  ['home.frequentSiteOrder', []],
+  ['home.recentSiteOrder', []],
   // 用户数据目录（DD1 决策）：书签/历史/普通设置/截图/下载/网页保存的根目录。
   // 留空 = userData/data；填写后写 data-location 指针，重启后迁移生效。
   // pi 数据（pi.* / pi 库 / 密钥）固定 userData/pi，不随此目录变动。

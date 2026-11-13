@@ -1,6 +1,6 @@
 /** 主页：收藏夹与最近浏览按网站归集，保留完整网页地址。 */
 import { useEffect, useRef, useState } from 'react';
-import type { BookmarkListRes, HistoryListRes } from '@urchin/ipc-contract';
+import type { BookmarkCreateRes, BookmarkListRes, HistoryListRes } from '@urchin/ipc-contract';
 import { Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { displayNameForLocale } from '../../shared/brand';
@@ -51,6 +51,28 @@ function siteDisplayName(url: string, fallbackTitle: string): string {
 export function NewTabPage({ onNavigate }: NewTabPageProps) {
   const [frequent, setFrequent] = useState<SiteGroup[]>([]);
   const [recent, setRecent] = useState<SiteGroup[]>([]);
+  const [orders, setOrders] = useState<Record<string, string[]>>({});
+  const ordersRef = useRef<Record<string, string[]>>({});
+  const refreshRef = useRef<() => Promise<void>>(async () => {
+    await Promise.resolve();
+  });
+  const saving = useRef(false);
+  const [drag, setDrag] = useState<{
+    site: SiteGroup;
+    recent: boolean;
+    x: number;
+    y: number;
+  } | null>(null);
+  const gesture = useRef<{
+    site: SiteGroup;
+    recent: boolean;
+    x: number;
+    y: number;
+    ready: boolean;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+  const suppressClick = useRef(false);
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState<{ key: string; recent: boolean } | null>(null);
@@ -97,6 +119,26 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
         if (!cancelled && current === generation) setLoading(false);
       }
     };
+    refreshRef.current = refresh;
+    void (async () => {
+      const values = await Promise.all(
+        ['home.frequentSiteOrder', 'home.recentSiteOrder'].map(async (key) => {
+          const res = (await window.urchin.invoke('settings.get', { key })) as { value: unknown };
+          return [
+            key,
+            Array.isArray(res.value)
+              ? res.value.filter((v): v is string => typeof v === 'string')
+              : [],
+          ] as const;
+        }),
+      );
+      if (!cancelled) {
+        ordersRef.current = Object.fromEntries(values);
+        setOrders(ordersRef.current);
+      }
+    })().catch(() => {
+      if (!cancelled) setNotice('图标顺序加载失败');
+    });
     void refresh();
     const unsubscribe = window.urchin.on('bookmark:changed', () => {
       void refresh();
@@ -107,6 +149,7 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
     window.addEventListener('focus', onFocus);
     return () => {
       cancelled = true;
+      if (gesture.current) clearTimeout(gesture.current.timer);
       unsubscribe();
       window.removeEventListener('focus', onFocus);
     };
@@ -117,15 +160,129 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
     else dialog.current?.close();
   }, [active]);
 
+  const ordered = (sites: SiteGroup[], isRecent: boolean) => {
+    const order = orders[isRecent ? 'home.recentSiteOrder' : 'home.frequentSiteOrder'] ?? [];
+    const ranks = new Map(order.map((key, index) => [key, index]));
+    return [...sites].sort(
+      (a, b) => (ranks.get(a.key) ?? Infinity) - (ranks.get(b.key) ?? Infinity),
+    );
+  };
+
+  const finishDrag = async (x: number, y: number) => {
+    const source = gesture.current;
+    if (!source) return;
+    clearTimeout(source.timer);
+    gesture.current = null;
+    setDrag(null);
+    if (!source.ready) return;
+    suppressClick.current = true;
+    const hit = document.elementFromPoint(x, y);
+    const zone = hit?.closest<HTMLElement>('[data-site-zone]')?.dataset.siteZone;
+    if (!zone || saving.current) return;
+    const targetRecent = zone === 'recent';
+    if (!source.recent && targetRecent) return;
+    saving.current = true;
+    setNotice('');
+    try {
+      if (source.recent && !targetRecent) {
+        const res = (await window.urchin.invoke('bookmark.list', {})) as BookmarkListRes;
+        const saved = new Set(res.bookmarks.map((b) => b.url));
+        const missing = source.site.pages.filter((page) => !saved.has(page.url));
+        if (missing.length) {
+          let folder = res.bookmarks.find(
+            (b) => b.type === 'folder' && b.parentId === null && b.title === '最近浏览',
+          );
+          folder ??= (
+            (await window.urchin.invoke('bookmark.create', {
+              type: 'folder',
+              parentId: null,
+              title: '最近浏览',
+            })) as BookmarkCreateRes
+          ).bookmark;
+          // 从旧到新保存，使收藏列表仍保持最新网页在上。
+          for (const page of [...missing].reverse()) {
+            await window.urchin.invoke('bookmark.create', {
+              type: 'bookmark',
+              parentId: folder.id,
+              url: page.url,
+              title: page.title || page.url,
+            });
+          }
+        }
+        await refreshRef.current();
+      }
+      const key = targetRecent ? 'home.recentSiteOrder' : 'home.frequentSiteOrder';
+      const sites = ordered(targetRecent ? recent : frequent, targetRecent);
+      const next = sites.map((site) => site.key).filter((site) => site !== source.site.key);
+      const target = hit?.closest<HTMLElement>('[data-site-key]')?.dataset.siteKey;
+      if (target === source.site.key && source.recent === targetRecent) return;
+      const index = target ? next.indexOf(target) : -1;
+      next.splice(index < 0 ? next.length : index, 0, source.site.key);
+      await window.urchin.invoke('settings.set', { key, value: next });
+      ordersRef.current = { ...ordersRef.current, [key]: next };
+      setOrders(ordersRef.current);
+      if (source.recent && !targetRecent) setNotice('已收藏到常用网站');
+    } catch {
+      setNotice('保存失败，请重试；已收藏的网页会保留');
+      await refreshRef.current();
+    } finally {
+      saving.current = false;
+    }
+  };
+
   const renderSites = (sites: SiteGroup[], isRecent: boolean) =>
-    sites.map((site) => (
+    ordered(sites, isRecent).map((site) => (
       <button
         key={site.key}
+        data-site-key={site.key}
+        style={{ touchAction: 'none' }}
+        onContextMenu={(e) => e.preventDefault()}
+        onPointerDown={(e) => {
+          if (e.button !== 0 || saving.current) return;
+          suppressClick.current = false;
+          if (gesture.current) clearTimeout(gesture.current.timer);
+          const source = {
+            site,
+            recent: isRecent,
+            x: e.clientX,
+            y: e.clientY,
+            ready: false,
+            timer: setTimeout(() => {
+              source.ready = true;
+              suppressClick.current = true;
+              setDrag({ site, recent: isRecent, x: source.x, y: source.y });
+            }, 350),
+          };
+          gesture.current = source;
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          const source = gesture.current;
+          if (!source) return;
+          if (!source.ready && Math.hypot(e.clientX - source.x, e.clientY - source.y) > 8) {
+            clearTimeout(source.timer);
+            gesture.current = null;
+            return;
+          }
+          if (source.ready) setDrag({ site, recent: isRecent, x: e.clientX, y: e.clientY });
+        }}
+        onPointerUp={(e) => {
+          void finishDrag(e.clientX, e.clientY);
+        }}
+        onPointerCancel={() => {
+          if (gesture.current) clearTimeout(gesture.current.timer);
+          gesture.current = null;
+          setDrag(null);
+        }}
         onClick={() => {
+          if (suppressClick.current) {
+            suppressClick.current = false;
+            return;
+          }
           if (!isRecent && site.pages.length === 1 && site.pages[0]) onNavigate(site.pages[0].url);
           else setSelected({ key: site.key, recent: isRecent });
         }}
-        className="group flex min-w-0 flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
+        className="group flex min-w-0 cursor-grab select-none flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
         title={siteDisplayName(site.url, site.title)}
         aria-haspopup={isRecent || site.pages.length > 1 ? 'dialog' : undefined}
       >
@@ -153,7 +310,20 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
           加载失败，请重新打开主页重试
         </p>
       )}
-      <section className="mt-8 w-4/5" aria-label="常用网站">
+      {notice && (
+        <p role="status" className="mt-3 text-sm text-text-secondary">
+          {notice}
+        </p>
+      )}
+      {drag && (
+        <div
+          className="pointer-events-none fixed z-50 rounded-lg bg-surface p-2 shadow-xl"
+          style={{ left: drag.x + 12, top: drag.y + 12 }}
+        >
+          <SiteFavicon url={drag.site.url} favicon={drag.site.favicon} className="h-10 w-10" />
+        </div>
+      )}
+      <section className="mt-8 w-4/5" aria-label="常用网站" data-site-zone="frequent">
         <h2 className="text-xs font-medium text-text-secondary">常用网站</h2>
         <div
           data-testid="frequent-sites"
@@ -168,7 +338,7 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
         </div>
       </section>
       <div className="mt-6 h-0.5 w-4/5 shrink-0 rounded-full bg-gradient-to-r from-blue-500 via-teal-400 to-green-500" />
-      <section className="mt-8 w-4/5" aria-label="最近浏览">
+      <section className="mt-8 w-4/5" aria-label="最近浏览" data-site-zone="recent">
         <h2 className="text-xs font-medium text-text-secondary">最近浏览</h2>
         <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-x-4 gap-y-6">
           {renderSites(recent, true)}

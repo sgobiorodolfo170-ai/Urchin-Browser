@@ -91,7 +91,7 @@ describe('SettingsManager', () => {
     //   pi.model/pi.apiKey/pi.providerId/pi.baseUrl/
     //   debug.sidebarHoverDelay/ui.rightSidebarAutoExpand/ui.rightSidebarWidth 侧栏宽度/
     //   ui.statusBall.sensitivityVertical/ui.statusBall.sensitivityHorizontal 悬浮球灵敏度/
-    //   theme 悬浮球主题/home.frequentSites/
+    //   theme 悬浮球主题/home.frequentSites/home.frequentSiteOrder/home.recentSiteOrder/
     //   window.bounds 窗口几何记忆，主进程内部状态/
     //   translate.targetLang/translate.engine/translate.autoTranslate 网页翻译 dev.79/
     //   ui.workspaceSwitcherMode 折叠态工作区切换模式 TP7/
@@ -102,7 +102,9 @@ describe('SettingsManager', () => {
     //   mail.state 邮箱页三区栏宽 2026-11-10/
     //   transit.items 中转区项目索引/
     //   ui.minimizeToTray 关闭窗口驻留托盘默认关闭 2026-11-10） + 自定义 1 项
-    expect(entries).toHaveLength(42);
+    expect(entries).toHaveLength(44);
+    expect(mgr.get('home.frequentSiteOrder')).toEqual([]);
+    expect(mgr.get('home.recentSiteOrder')).toEqual([]);
 
     const keys = entries.map((e) => e.key);
     expect(keys).toContain('language');

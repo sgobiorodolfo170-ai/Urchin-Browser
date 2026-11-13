@@ -76,6 +76,42 @@ describe('FaviconService', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('falls back to the origin favicon when no page icons are reported', async () => {
+    const service = new FaviconService(dataDir);
+    const { session, fetchMock } = createSession(() => new Response(PNG_BYTES));
+    const result = await service.resolve({
+      pageUrl: 'https://example.com/deep/page',
+      candidates: [],
+      session,
+    });
+    expect(result).toMatch(/^urchin:\/\/favicon\/[a-f0-9]{64}$/);
+    expect(fetchMock).toHaveBeenCalledWith('https://example.com/favicon.ico', expect.any(Object));
+  });
+
+  it('tries the origin icon after an unsupported declared image', async () => {
+    const service = new FaviconService(dataDir);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('<svg/>'))
+      .mockResolvedValueOnce(new Response(PNG_BYTES));
+    const result = await service.resolve({
+      pageUrl: 'https://example.com/page',
+      candidates: ['/icon.svg'],
+      session: { fetch: fetchMock },
+    });
+    expect(result).toBeDefined();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://example.com/icon.svg',
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://example.com/favicon.ico',
+      expect.any(Object),
+    );
+  });
+
   it('should reject non-image bodies', async () => {
     const service = new FaviconService(dataDir);
     const { session } = createSession(() => new Response('<html><body>not an icon</body></html>'));

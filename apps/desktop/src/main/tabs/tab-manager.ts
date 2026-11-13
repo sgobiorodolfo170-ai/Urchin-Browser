@@ -690,8 +690,7 @@ export class TabManager {
       this.emitUpdated(tab);
     });
 
-    wc.on('page-favicon-updated', (...args: unknown[]) => {
-      const favicons = args[1];
+    const resolveFavicon = (favicons: unknown) => {
       // dev.48：钉定图标的 tab（pi 模块打开的网页）不被页面真实 favicon 覆盖
       if (tab.piIconPinned) return;
 
@@ -720,7 +719,7 @@ export class TabManager {
           // 标签已关闭/复用、导航已发生或已有更新事件 → 丢弃过期结果
           if (this.tabs.get(tab.id) !== tab) return;
           if (this.faviconSequences.get(tab.id) !== sequence) return;
-          if (tab.piIconPinned || tab.favicon === favicon) return;
+          if (!favicon || tab.piIconPinned || tab.favicon === favicon) return;
           tab.favicon = favicon;
           this.emitUpdated(tab);
         })
@@ -728,10 +727,32 @@ export class TabManager {
           if (this.tabs.get(tab.id) !== tab) return;
           if (this.faviconSequences.get(tab.id) !== sequence) return;
           console.error(`[tab ${tab.id}] favicon resolve failed:`, err);
-          if (tab.favicon !== undefined) {
-            tab.favicon = undefined;
-            this.emitUpdated(tab);
-          }
+        });
+    };
+    wc.on('page-favicon-updated', (...args: unknown[]) => resolveFavicon(args[1]));
+    wc.on('did-finish-load', () => {
+      if (!this.faviconResolver || tab.piIconPinned || !/^https?:/.test(tab.url)) return;
+      const pageUrl = tab.url;
+      const sequence = this.faviconSequences.get(tab.id);
+      // 读取已加载页面的声明，兼容 touch icon 和只声明 SVG favicon 的站点。
+      void wc
+        .executeJavaScript<unknown>(
+          `Array.from(document.querySelectorAll('link[rel]'))
+        .filter(link => /^(icon|shortcut icon|apple-touch-icon|apple-touch-icon-precomposed)$/i.test(link.rel))
+        .slice(0, 32).map(link => link.href)`,
+        )
+        .then((icons) => {
+          if (this.tabs.get(tab.id) !== tab || tab.url !== pageUrl) return;
+          if (this.faviconSequences.get(tab.id) !== sequence) return;
+          resolveFavicon(icons);
+        })
+        .catch(() => {
+          if (
+            this.tabs.get(tab.id) === tab &&
+            tab.url === pageUrl &&
+            this.faviconSequences.get(tab.id) === sequence
+          )
+            resolveFavicon([]);
         });
     });
 

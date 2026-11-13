@@ -11,7 +11,7 @@
  * 数据：
  * - 常用书签持久化于 settings（home.frequentSites: { url, title }[]，仅根网址）
  * - 最近浏览由 history.list 派生（取根域 origin，按最近浏览时间去重排序）
- * - favicon 用 Google favicon 服务（真实网站图标）
+ * - favicon 复用主进程采集的本地缓存
  *
  * 交互：
  * - 最近浏览区卡片可拖入常用区（自动去重：已存在则不添加）
@@ -29,6 +29,7 @@ import { parseTransitDrag } from '../transit/drag-utils';
 export interface FrequentSite {
   readonly url: string;
   readonly title: string;
+  readonly favicon?: string;
 }
 
 /** 主页 props */
@@ -43,15 +44,6 @@ const RECENT_LIMIT = 20;
 /** 浏览器内置图标（主页顶部标题用；随 renderer 打包）。
  *  相对路径：生产页面从 file:// 加载，绝对路径会解析到磁盘根导致 404。 */
 const BROWSER_ICON = './browser-icon.png';
-
-/**
- * 网站 favicon 候选源（按序尝试；Google 服务不可达时回退到 DuckDuckGo）。
- * 全部失败时组件显示内置浏览器图标。
- */
-const FAVICON_SOURCES = [
-  (host: string) => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`,
-  (host: string) => `https://icons.duckduckgo.com/ip3/${encodeURIComponent(host)}.ico`,
-];
 
 /**
  * 网站去重键：origin 去掉 www. 前缀。
@@ -85,78 +77,31 @@ function toRootUrl(url: string): string | null {
 /** 拖拽数据类型（区分来源：常用区重排 vs 最近区拖入） */
 type DragPayload = { kind: 'frequent'; index: number } | { kind: 'recent'; site: FrequentSite };
 
-/**
- * 网站 favicon（内置优先 + 多源回退）。
- *
- * 优先使用内置站点目录图标（site-directory 命中 → public/sites/<key>.png，本地无网络依赖）；
- * 未命中再依次尝试 Google / DuckDuckGo 外部服务；全部失败显示浏览器内置图标。
- */
-function SiteFavicon({ url, className }: { url: string; className?: string }) {
+/** 主页复用浏览记录中的本地图标，避免向第三方服务发送浏览站点。 */
+function SiteFavicon({
+  url,
+  favicon,
+  className,
+}: {
+  url: string;
+  favicon?: string;
+  className?: string;
+}) {
   const [srcIndex, setSrcIndex] = useState(0);
-  const host = (() => {
-    try {
-      return new URL(url).hostname;
-    } catch {
-      return '';
-    }
-  })();
-
-  // dev.45：pi 模块统一 π 品牌图标——pi 本机服务页（127.0.0.1/localhost）
-  // 不走外部 favicon 服务（Google 服务对 localhost 也取不到图标），
-  // 直接用与左侧栏入口一致的本地 π 图标
-  if (host === '127.0.0.1' || host === 'localhost') {
-    return (
-      <img
-        src="./pi-icon.png"
-        alt=""
-        draggable={false}
-        className={cn('shrink-0 rounded object-contain', className)}
-      />
-    );
-  }
-
-  // 内置站点命中 → 本地图标（无外部网络依赖）
-  // onError 走 state 递增回退链，避免直接改 src 造成"失败→重设同一 URL→再失败"死循环
   const builtin = lookupBuiltinSite(url);
-  if (builtin) {
-    const source = srcIndex < FAVICON_SOURCES.length ? FAVICON_SOURCES[srcIndex] : undefined;
-    const fallbackSrc = host && source ? source(host) : BROWSER_ICON;
-    return (
-      <img
-        src={srcIndex === 0 ? builtinIconUrl(builtin) : fallbackSrc}
-        alt=""
-        className={cn(
-          className,
-          srcIndex > 0 && srcIndex >= FAVICON_SOURCES.length && 'opacity-40',
-        )}
-        draggable={false}
-        onError={() => {
-          if (srcIndex < FAVICON_SOURCES.length) {
-            setSrcIndex((i) => i + 1);
-          }
-          // 已到末尾：src 为 BROWSER_ICON（本地资源），不再触发 onError
-        }}
-      />
-    );
-  }
-
-  const source = srcIndex < FAVICON_SOURCES.length && host ? FAVICON_SOURCES[srcIndex] : undefined;
-  const src = source ? source(host) : '';
-  // 所有源失败 → 显示内置图标（最终回退，半透明淡化避免颜色点亮）
-  const finalUrl = src || BROWSER_ICON;
-
+  const sources = [
+    ...(favicon ? [favicon] : []),
+    ...(builtin ? [builtinIconUrl(builtin)] : []),
+    BROWSER_ICON,
+  ];
+  useEffect(() => setSrcIndex(0), [url, favicon]);
   return (
     <img
-      src={finalUrl}
+      src={sources[Math.min(srcIndex, sources.length - 1)]}
       alt=""
-      className={cn(className, !src && 'opacity-40')}
       draggable={false}
-      onError={() => {
-        // 当前源失败 → 尝试下一源；已到末尾则用内置图标（不会再触发 onError）
-        if (srcIndex < FAVICON_SOURCES.length) {
-          setSrcIndex((i) => i + 1);
-        }
-      }}
+      className={cn(className, srcIndex >= sources.length - 1 && 'opacity-40')}
+      onError={() => setSrcIndex((i) => Math.min(i + 1, sources.length - 1))}
     />
   );
 }
@@ -178,6 +123,7 @@ function siteDisplayName(url: string, fallbackTitle: string): string {
 export function NewTabPage({ onNavigate }: NewTabPageProps) {
   const [frequent, setFrequent] = useState<readonly FrequentSite[]>([]);
   const [recent, setRecent] = useState<readonly FrequentSite[]>([]);
+  const [icons, setIcons] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [dragOverFrequent, setDragOverFrequent] = useState(false);
   /** 拖拽期间是否已落在常用区内（dragend 判断"拖出即删除"用） */
@@ -190,7 +136,7 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
       try {
         const [settingsRes, historyRes] = await Promise.all([
           window.urchin.invoke('settings.get', { key: 'home.frequentSites' }),
-          window.urchin.invoke('history.list', { limit: RECENT_LIMIT, offset: 0 }),
+          window.urchin.invoke('history.list', { limit: 500, offset: 0 }),
         ]);
         if (cancelled) return;
         const saved = (settingsRes as { value: unknown }).value;
@@ -210,7 +156,15 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
         }
         setFrequent(dedupedFrequent);
         // 最近浏览：history 按 visitedAt 降序 → 取根域去重（保序=最新在前）
-        const entries = (historyRes as { entries: { url: string; title: string }[] }).entries ?? [];
+        const entries =
+          (historyRes as { entries: { url: string; title: string; favicon?: string }[] }).entries ??
+          [];
+        const collected: Record<string, string> = {};
+        for (const entry of entries) {
+          if (entry.favicon && !collected[siteKey(entry.url)])
+            collected[siteKey(entry.url)] = entry.favicon;
+        }
+        setIcons(collected);
         const seen = new Set<string>();
         const recentSites: FrequentSite[] = [];
         for (const e of entries) {
@@ -219,7 +173,8 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
           const key = siteKey(root);
           if (seen.has(key)) continue;
           seen.add(key);
-          recentSites.push({ url: root, title: e.title || root });
+          recentSites.push({ url: root, title: e.title || root, favicon: e.favicon });
+          if (recentSites.length >= RECENT_LIMIT) break;
         }
         setRecent(recentSites);
       } catch {
@@ -431,7 +386,11 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
               className="group flex select-none flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
               title={siteDisplayName(site.url, site.title)}
             >
-              <SiteFavicon url={site.url} className="h-10 w-10 rounded-lg bg-white shadow-sm" />
+              <SiteFavicon
+                url={site.url}
+                favicon={icons[siteKey(site.url)] ?? site.favicon}
+                className="h-10 w-10 rounded-lg bg-white shadow-sm"
+              />
               <span className="w-full truncate text-center text-xs text-text-secondary group-hover:text-text">
                 {siteDisplayName(site.url, site.title)}
               </span>
@@ -467,7 +426,11 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
                 className="group flex select-none flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
                 title={siteDisplayName(site.url, site.title)}
               >
-                <SiteFavicon url={site.url} className="h-10 w-10 rounded-lg bg-white shadow-sm" />
+                <SiteFavicon
+                  url={site.url}
+                  favicon={icons[siteKey(site.url)] ?? site.favicon}
+                  className="h-10 w-10 rounded-lg bg-white shadow-sm"
+                />
                 <span className="w-full truncate text-center text-xs text-text-secondary group-hover:text-text">
                   {siteDisplayName(site.url, site.title)}
                 </span>

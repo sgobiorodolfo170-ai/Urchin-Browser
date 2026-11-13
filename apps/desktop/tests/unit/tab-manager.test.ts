@@ -567,6 +567,36 @@ describe('TabManager webContents events', () => {
     expect(mgr.getTab(tab.id)?.favicon).toBe('urchin://favicon/abc123');
   });
 
+  it('collects declared icons when the page finishes loading', async () => {
+    const { wc, mgr, tab } = setup();
+    mgr.loadUrl(tab.id, 'https://example.com/page');
+    vi.mocked(wc.executeJavaScript).mockResolvedValue(['https://example.com/touch.png']);
+    const resolver = vi.fn().mockResolvedValue('urchin://favicon/cached');
+    mgr.setFaviconResolver(resolver);
+    wc._emitEvent('did-finish-load');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(resolver).toHaveBeenCalledWith({
+      pageUrl: 'https://example.com/page',
+      candidates: ['https://example.com/touch.png'],
+      workspaceId: tab.workspaceId,
+    });
+    expect(mgr.getTab(tab.id)?.favicon).toBe('urchin://favicon/cached');
+  });
+
+  it('preserves a collected icon when a later resolution fails', async () => {
+    const { wc, mgr, tab } = setup();
+    const resolver = vi
+      .fn()
+      .mockResolvedValueOnce('urchin://favicon/cached')
+      .mockResolvedValueOnce(undefined);
+    mgr.setFaviconResolver(resolver);
+    wc._emitEvent('page-favicon-updated', undefined, ['/good.png']);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    wc._emitEvent('page-favicon-updated', undefined, ['/bad.png']);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mgr.getTab(tab.id)?.favicon).toBe('urchin://favicon/cached');
+  });
+
   it('should clear favicon on main-frame navigation start', () => {
     const { wc, mgr, tab } = setup();
     wc._emitEvent('page-favicon-updated', undefined, ['https://a.com/fav.ico']);

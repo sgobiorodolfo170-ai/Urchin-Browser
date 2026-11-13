@@ -114,7 +114,16 @@ export class FaviconService {
   async resolve(options: FaviconResolveOptions): Promise<string | undefined> {
     await this.ready;
     const seen = new Set<string>();
-    for (const candidate of options.candidates.slice(0, MAX_CANDIDATES)) {
+    const candidates = options.candidates.slice(0, MAX_CANDIDATES);
+    try {
+      const page = new URL(options.pageUrl);
+      if (page.protocol === 'http:' || page.protocol === 'https:') {
+        candidates.push(new URL('/favicon.ico', page.origin).href);
+      }
+    } catch {
+      // 非网页地址没有站点默认图标。
+    }
+    for (const candidate of candidates) {
       const normalized = normalizeCandidate(candidate, options.pageUrl);
       if (!normalized || seen.has(normalized)) continue;
       seen.add(normalized);

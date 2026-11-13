@@ -565,7 +565,19 @@ hooks 无法直接 `require`，从源码提取 `FOREIGN_PLATFORM_RULES` 到 `isF
 
 ### 10.5 验收结果
 
-见 §10.6（打包完成后回填）。
+2026-11-13 18:35 完成 dev.200 重打包（代码 HEAD `1514b78f`），真实退出码 **`PKG_EXIT=0`**。日志：`.zwork/dev200-package.log`（本机忽略文件）。
+
+| 验收项 | 实测结果 |
+| --- | --- |
+| 版本 / 通道 | `dev.yml` version=`0.3.0-dev.200`；`app-update.yml` channel=dev / releaseType=prerelease；validated 通过，载荷 7z+differential |
+| 安装包 / blockmap | exe **319.62 MB（335,142,460 B）**；blockmap 309,861 B；dev.yml SHA-512 独立复算一致 |
+| DSH 单一版本 | **`0.2.2-rc.2x326`**；交接预估 x327 包含已裁掉的 cua-macos，本次减少 1 包；无旧版、无 dsh-invariants |
+| DSH 冒烟 | port=59525，**stderr=0B**，认证 URL 捕获成功（临时 DSH_HOME，不触碰用户配置） |
+| afterPack | 闭包 468 / 已含 627 / 补齐 peer-only 21 / 覆盖旧版 0 / 有意排除 6 / 平台裁剪 1 / 兜底删除 0 / 过滤非运行时 420 |
+| 平台与长路径 | cua-macos 实体不存在，asar 索引无 cua-macos / dsh-invariants / 0.2.0-rc.2；MAX_PATH 剪除 **0**，独立扫描相对路径 >188 残余 **0** |
+| 解包体积与文件数 | **1,180.48 MB / 34,206 文件**；体积达标，文件数仍高于清单 30,000 目标（#16 为 34,541），此项未达标，未宣称清单全绿 |
+
+DSH 混版与 macOS 包裁剪验收通过；清单文件数目标偏差保留。模型列表 / 新建会话业务闭环由用户使用新安装包覆盖安装后验收，本轮未启动 win-unpacked 或改动真实用户数据。
 
 ---
 

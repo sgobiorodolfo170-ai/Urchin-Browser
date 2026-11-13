@@ -1,9 +1,8 @@
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NewTabPage } from '../../src/renderer/home/NewTabPage';
 
-afterEach(cleanup);
-it('收藏夹按站点展示，单页直接导航，多页弹窗按时间倒序，变更同步', async () => {
+beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
     configurable: true,
     value(this: HTMLDialogElement) {
@@ -16,6 +15,13 @@ it('收藏夹按站点展示，单页直接导航，多页弹窗按时间倒序�
       this.removeAttribute('open');
     },
   });
+  Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
+    configurable: true,
+    value: vi.fn(),
+  });
+});
+afterEach(cleanup);
+it('收藏夹按站点展示，单页直接导航，多页弹窗按时间倒序，变更同步', async () => {
   let changed: () => void = vi.fn();
   let bookmarks = [
     { type: 'bookmark', url: 'https://example.com/old', title: '旧页面', createdAt: 1 },
@@ -98,7 +104,7 @@ it('长按拖入常用网站会创建最近浏览文件夹并收藏，重排顺�
   Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => zone });
   fireEvent.pointerDown(source, { button: 0, clientX: 20, clientY: 200 });
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 380));
+    await new Promise((resolve) => setTimeout(resolve, 80));
   });
   fireEvent.pointerMove(source, { clientX: 20, clientY: 80 });
   fireEvent.pointerUp(source, { clientX: 20, clientY: 80 });
@@ -122,7 +128,7 @@ it('长按拖入常用网站会创建最近浏览文件夹并收藏，重排顺�
   const again = within(recentZone).getByTitle('recent.test');
   fireEvent.pointerDown(again, { button: 0 });
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 380));
+    await new Promise((resolve) => setTimeout(resolve, 80));
   });
   fireEvent.pointerUp(again, { clientX: 20, clientY: 80 });
   await waitFor(() =>
@@ -168,7 +174,7 @@ it('保存的常用图标顺序优先，长按重排保存新顺序且不打开�
   Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => target });
   fireEvent.pointerDown(source, { button: 0 });
   await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 380));
+    await new Promise((resolve) => setTimeout(resolve, 80));
   });
   fireEvent.pointerUp(source, { clientX: 20, clientY: 20 });
   fireEvent.click(source);
@@ -184,5 +190,86 @@ it('保存的常用图标顺序优先，长按重排保存新顺序且不打开�
     value: ['b.test', 'a.test'],
   });
   expect(navigate).not.toHaveBeenCalled();
+  vi.unstubAllGlobals();
+});
+
+it('60ms 后图标锁定光标，拖出常用区删除该站所有收藏，保留文件夹和其他网站', async () => {
+  let bookmarks = [
+    { id: 'folder', type: 'folder', title: '最近浏览', parentId: null, createdAt: 0 },
+    {
+      id: 'a1',
+      type: 'bookmark',
+      title: 'A1',
+      url: 'https://a.test/one',
+      parentId: null,
+      createdAt: 1,
+    },
+    {
+      id: 'a2',
+      type: 'bookmark',
+      title: 'A2',
+      url: 'https://www.a.test/two',
+      parentId: 'folder',
+      createdAt: 2,
+    },
+    {
+      id: 'a3',
+      type: 'bookmark',
+      title: '重复收藏',
+      url: 'https://a.test/one',
+      parentId: 'folder',
+      createdAt: 3,
+    },
+    {
+      id: 'b',
+      type: 'bookmark',
+      title: 'B',
+      url: 'https://b.test/page',
+      parentId: null,
+      createdAt: 4,
+    },
+  ];
+  const invoke = vi.fn((channel: string, payload: Record<string, unknown>) => {
+    if (channel === 'bookmark.list') return Promise.resolve({ bookmarks });
+    if (channel === 'history.list') return Promise.resolve({ entries: [], total: 0 });
+    if (channel === 'settings.get') return Promise.resolve({ value: [] });
+    if (channel === 'bookmark.delete') bookmarks = bookmarks.filter((b) => b.id !== payload.id);
+    return Promise.resolve({});
+  });
+  Object.defineProperty(window, 'urchin', {
+    configurable: true,
+    value: { invoke, on: () => vi.fn() },
+  });
+  Object.defineProperty(HTMLElement.prototype, 'setPointerCapture', {
+    configurable: true,
+    value: vi.fn(),
+  });
+  Object.defineProperty(document, 'elementFromPoint', {
+    configurable: true,
+    value: () => document.body,
+  });
+  vi.stubGlobal('PointerEvent', MouseEvent);
+  render(<NewTabPage onNavigate={vi.fn()} />);
+  const source = await screen.findByTitle('a.test');
+  expect(screen.queryByRole('heading', { name: '常用网站' })).not.toBeInTheDocument();
+  // 未到长按阈值就松手，不可删除。
+  fireEvent.pointerDown(source, { button: 0, clientX: 100, clientY: 100 });
+  fireEvent.pointerUp(source, { clientX: 150, clientY: 150 });
+  expect(invoke).not.toHaveBeenCalledWith('bookmark.delete', expect.anything());
+  fireEvent.pointerDown(source, { button: 0, clientX: 100, clientY: 100 });
+  // 等待前的轻微移动也必须保留抓取，并使用最新坐标。
+  fireEvent.pointerMove(source, { clientX: 120, clientY: 130 });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  });
+  expect(screen.getByTestId('dragged-site-icon')).toHaveStyle({ left: '100px', top: '110px' });
+  expect(source).toHaveStyle({ opacity: '0' });
+  fireEvent.pointerMove(source, { clientX: 220, clientY: 250 });
+  expect(screen.getByTestId('dragged-site-icon')).toHaveStyle({ left: '200px', top: '230px' });
+  fireEvent.pointerUp(source, { clientX: 220, clientY: 250 });
+  expect(await screen.findByText('已移出常用网站并取消该网站的收藏')).toBeInTheDocument();
+  expect(bookmarks.map((b) => b.id)).toEqual(['folder', 'b']);
+  expect(screen.queryByTitle('a.test')).not.toBeInTheDocument();
+  expect(screen.getByTitle('b.test')).toBeInTheDocument();
   vi.unstubAllGlobals();
 });

@@ -69,6 +69,9 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
     x: number;
     y: number;
     ready: boolean;
+    moved: boolean;
+    startX: number;
+    startY: number;
     timer: ReturnType<typeof setTimeout>;
   } | null>(null);
   const suppressClick = useRef(false);
@@ -178,12 +181,32 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
     suppressClick.current = true;
     const hit = document.elementFromPoint(x, y);
     const zone = hit?.closest<HTMLElement>('[data-site-zone]')?.dataset.siteZone;
-    if (!zone || saving.current) return;
+    if (saving.current || !source.moved) return;
+    if (source.recent && !zone) return;
     const targetRecent = zone === 'recent';
-    if (!source.recent && targetRecent) return;
+
     saving.current = true;
     setNotice('');
     try {
+      if (!source.recent && zone !== 'frequent') {
+        const res = (await window.urchin.invoke('bookmark.list', {})) as BookmarkListRes;
+        const group = groupSitePages(
+          res.bookmarks.flatMap((b) =>
+            b.url && b.type === 'bookmark'
+              ? [{ url: b.url, title: b.title, time: b.createdAt }]
+              : [],
+          ),
+        ).find((site) => site.key === source.site.key);
+        const urls = new Set(group?.pages.map((page) => page.url));
+        for (const bookmark of res.bookmarks) {
+          if (bookmark.type === 'bookmark' && bookmark.url && urls.has(bookmark.url)) {
+            await window.urchin.invoke('bookmark.delete', { id: bookmark.id });
+          }
+        }
+        await refreshRef.current();
+        setNotice('已移出常用网站并取消该网站的收藏');
+        return;
+      }
       if (source.recent && !targetRecent) {
         const res = (await window.urchin.invoke('bookmark.list', {})) as BookmarkListRes;
         const saved = new Set(res.bookmarks.map((b) => b.url));
@@ -223,7 +246,7 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
       setOrders(ordersRef.current);
       if (source.recent && !targetRecent) setNotice('已收藏到常用网站');
     } catch {
-      setNotice('保存失败，请重试；已收藏的网页会保留');
+      setNotice('保存失败，请重试');
       await refreshRef.current();
     } finally {
       saving.current = false;
@@ -235,7 +258,12 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
       <button
         key={site.key}
         data-site-key={site.key}
-        style={{ touchAction: 'none' }}
+        style={{
+          touchAction: 'none',
+          opacity: drag?.site.key === site.key && drag.recent === isRecent ? 0 : 1,
+        }}
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
         onContextMenu={(e) => e.preventDefault()}
         onPointerDown={(e) => {
           if (e.button !== 0 || saving.current) return;
@@ -247,11 +275,14 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
             x: e.clientX,
             y: e.clientY,
             ready: false,
+            moved: false,
+            startX: e.clientX,
+            startY: e.clientY,
             timer: setTimeout(() => {
               source.ready = true;
               suppressClick.current = true;
               setDrag({ site, recent: isRecent, x: source.x, y: source.y });
-            }, 350),
+            }, 60),
           };
           gesture.current = source;
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -259,14 +290,16 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
         onPointerMove={(e) => {
           const source = gesture.current;
           if (!source) return;
-          if (!source.ready && Math.hypot(e.clientX - source.x, e.clientY - source.y) > 8) {
-            clearTimeout(source.timer);
-            gesture.current = null;
-            return;
-          }
+          source.moved ||= Math.hypot(e.clientX - source.startX, e.clientY - source.startY) > 6;
+          source.x = e.clientX;
+          source.y = e.clientY;
           if (source.ready) setDrag({ site, recent: isRecent, x: e.clientX, y: e.clientY });
         }}
         onPointerUp={(e) => {
+          if (gesture.current)
+            gesture.current.moved ||=
+              Math.hypot(e.clientX - gesture.current.startX, e.clientY - gesture.current.startY) >
+              6;
           void finishDrag(e.clientX, e.clientY);
         }}
         onPointerCancel={() => {
@@ -317,14 +350,14 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
       )}
       {drag && (
         <div
-          className="pointer-events-none fixed z-50 rounded-lg bg-surface p-2 shadow-xl"
-          style={{ left: drag.x + 12, top: drag.y + 12 }}
+          data-testid="dragged-site-icon"
+          className="pointer-events-none fixed z-50"
+          style={{ left: drag.x - 20, top: drag.y - 20 }}
         >
           <SiteFavicon url={drag.site.url} favicon={drag.site.favicon} className="h-10 w-10" />
         </div>
       )}
       <section className="mt-8 w-4/5" aria-label="常用网站" data-site-zone="frequent">
-        <h2 className="text-xs font-medium text-text-secondary">常用网站</h2>
         <div
           data-testid="frequent-sites"
           className="mt-4 grid max-h-[40vh] grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-x-4 gap-y-6 overflow-y-auto p-4"

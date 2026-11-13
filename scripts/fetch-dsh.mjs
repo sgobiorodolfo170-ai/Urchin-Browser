@@ -10,7 +10,7 @@
  *
  *   1. 版本唯一真源 = apps/desktop/package.json 的依赖 "@deepseek-ai/dsh"
  *      （精确 pin，无 ^~ 前缀）——锁文件与 vendor 都以它为准。
- *   2. vendor 已存在且版本匹配且依赖已安装 → 什么都不做（幂等）。
+ *   2. vendor 版本匹配且依赖已安装 → 检查 Typert / Client 运行时出口，缺失则补建（幂等）。
  *   3. 版本不匹配 / 目录缺失 → 删除旧树（含 node_modules，约 2GB，可能较慢）
  *      后 `git clone --depth 1 --branch dsh-v<版本>`，再在 vendor 内安装依赖。
  *   4. 安装命令按 vendor 自身 package.json 的 packageManager 字段推导
@@ -25,11 +25,12 @@
  * 已知 Windows 事项：vendor node_modules 约 1.96GB 且含 pnpm 符号链接树，
  * 删除可能耗时 1-2 分钟；如删除失败（文件被占用），请手动清理该目录后重跑。
  */
-import { execFile, execSync } from 'node:child_process';
+import { execFile, execFileSync, execSync } from 'node:child_process';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { missingRuntimeArtifacts, typertGeneratorArgs } from './lib/dsh-dev-artifacts.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -122,6 +123,52 @@ function installDependencies() {
   writeFileSync(stampFile, `${readVendorVersion()}\n`, 'utf8');
 }
 
+function prepareDevRuntime() {
+  const nodePath = join(repoRoot, 'apps', 'desktop', 'build', 'node', 'node.exe');
+  if (!existsSync(nodePath)) fail('缺少便携 Node v24，请先运行 node scripts/fetch-node.mjs');
+  let state = missingRuntimeArtifacts(vendorDir);
+  if (state.missing.length > 0) {
+    console.log(`[fetch-dsh] 缺少 ${state.missing.length} 个 Typert 运行时文件，执行上游生成器 …`);
+    execFileSync(nodePath, typertGeneratorArgs, { cwd: vendorDir, stdio: 'inherit' });
+    state = missingRuntimeArtifacts(vendorDir);
+    if (state.missing.length > 0) fail(`生成后仍缺少 Typert 文件：${state.missing.join(', ')}`);
+  }
+  console.log(`[fetch-dsh] Typert 运行时文件齐全（${state.contributors} 个 contributor）`);
+  let client = missingRuntimeArtifacts(vendorDir, './client');
+  if (client.missing.length > 0) {
+    console.log(
+      `[fetch-dsh] 缺少 ${client.missing.length} 个 Client bundle，编译 Host/Client 后打包 …`,
+    );
+    execFileSync(
+      nodePath,
+      [
+        '--import',
+        'tsx/esm',
+        '--input-type=module',
+        '--eval',
+        "import { referencedProjectsCompilerArgs } from './scripts/compile-referenced-projects.ts'; " +
+          "import { spawnSync } from 'node:child_process'; " +
+          "for (const face of ['host','client']) { const r = spawnSync(process.execPath, referencedProjectsCompilerArgs(process.cwd(), face), {stdio:'inherit'}); if (r.status !== 0) process.exit(r.status ?? 1); }",
+      ],
+      { cwd: vendorDir, stdio: 'inherit' },
+    );
+    execFileSync(
+      nodePath,
+      [
+        'node_modules/tsdown/dist/run.mjs',
+        '--config-loader',
+        'native',
+        '--env.DSH_BUILD_FACE',
+        'client',
+      ],
+      { cwd: vendorDir, stdio: 'inherit' },
+    );
+    client = missingRuntimeArtifacts(vendorDir, './client');
+    if (client.missing.length > 0) fail(`打包后仍缺少 Client bundle：${client.missing.join(', ')}`);
+  }
+  console.log(`[fetch-dsh] Client bundle 齐全（${client.contributors} 个包）`);
+}
+
 async function main() {
   const desired = readDesiredVersion();
   const tag = `dsh-v${desired}`;
@@ -132,12 +179,16 @@ async function main() {
     console.log('[fetch-dsh] --force：忽略本地状态，重新拉取');
   } else if (vendorVersion === desired) {
     if (installed === desired) {
-      console.log(`[fetch-dsh] vendor/${desired} 已就绪（版本匹配 + 依赖已安装），无需同步。`);
+      prepareDevRuntime();
+      console.log(
+        `[fetch-dsh] vendor/${desired} 已就绪（版本、依赖与 Typert/Client 文件检查通过）。`,
+      );
       return;
     }
     console.log(`[fetch-dsh] vendor 版本 ${desired} 已匹配，仅补装依赖 …`);
     installDependencies();
-    console.log('[fetch-dsh] 完成：开发态 dsh 可用（dev 态用 tsx 直启源码，无需 build）。');
+    prepareDevRuntime();
+    console.log('[fetch-dsh] 完成：开发态依赖与 Typert/Client 运行时文件已就绪。');
     return;
   } else if (vendorVersion != null) {
     console.log(`[fetch-dsh] vendor 版本不匹配：本地 ${vendorVersion} → 目标 ${desired}，重建`);
@@ -155,6 +206,7 @@ async function main() {
     );
   }
   installDependencies();
+  prepareDevRuntime();
   console.log('[fetch-dsh] 完成：vendor/deepseek-harness 已就绪。');
 }
 

@@ -215,4 +215,6 @@
 | v0.3.0-dev.199 | 2026-11-13 | 标题栏与地址栏等高（32→40，主进程/CSS 同源）+ 地址栏吸附标题栏：卡片触及标题栏带即吸附入位并不再跟随球，点击悬浮球折叠解除吸附、展开回到与球同行；新增落位决策/吸附几何单测 |
 | v0.3.0-dev.200 | 2026-11-13 | 修复 DSH 无法创建会话（P0-1 依赖混版根治）：@deepseek-ai/dsh 0.2.1-rc.3→0.2.2-rc.2，全量重生成 lockfile（连清 .pnpm 虚拟存储快照）；新增打包门禁 validate-dsh（版本单一性 + 便携 Node 启动冒烟 stderr 零容忍）接入 package:win；afterPack 版本择优修「平铺旧版回写」+ 平台裁剪四层（supportedArchitectures / files 负向规则 / afterPack 规则+manifest 判定 / prune 脚本），安装包 646.66→320.19MB；单实例锁 lock-lost 二次拦截；logger URL query 凭据/JWT/递归脱敏 + 7 单测；本版首打同时携带 dev.194–199 已入库未打包改动 |
 
+| v0.3.0-dev.201 | 2026-11-13 | 修复开发态 DSH 启动失败：sync:dsh 检查 Typert/Client 实际出口，缺失时生成 Typert、编译 Host/Client 并打包 Client；修复版本安装戳误判就绪与生成器退出 0 未执行；恢复 DSH 生命周期 E2E |
+
 > 补记：M25 邮箱模块（2026-09-29，commit `fe9b3482`）交付时未留版本行，范围见 [邮箱模块功能规划](./docs/邮箱模块功能规划.md) 与 [ADR-010](./docs/decisions/ADR-010-邮箱模块选型与架构.md)。

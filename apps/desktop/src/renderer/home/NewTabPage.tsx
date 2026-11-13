@@ -1,7 +1,7 @@
 /** 主页：收藏夹与最近浏览按网站归集，保留完整网页地址。 */
 import { useEffect, useRef, useState } from 'react';
 import type { BookmarkCreateRes, BookmarkListRes, HistoryListRes } from '@urchin/ipc-contract';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { displayNameForLocale } from '../../shared/brand';
 import { lookupBuiltinSite, builtinIconUrl } from './site-directory-lookup';
@@ -75,6 +75,8 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
     timer: ReturnType<typeof setTimeout>;
   } | null>(null);
   const suppressClick = useRef(false);
+  const [deletingUrl, setDeletingUrl] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -204,7 +206,6 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
           }
         }
         await refreshRef.current();
-        setNotice('已移出常用网站并取消该网站的收藏');
         return;
       }
       if (source.recent && !targetRecent) {
@@ -248,6 +249,28 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
       setNotice('保存失败，请重试');
       await refreshRef.current();
     } finally {
+      saving.current = false;
+    }
+  };
+
+  const deleteBookmark = async (url: string) => {
+    if (saving.current) return;
+    saving.current = true;
+    setDeletingUrl(url);
+    setDeleteError('');
+    try {
+      const res = (await window.urchin.invoke('bookmark.list', {})) as BookmarkListRes;
+      for (const bookmark of res.bookmarks) {
+        if (bookmark.type === 'bookmark' && bookmark.url === url) {
+          await window.urchin.invoke('bookmark.delete', { id: bookmark.id });
+        }
+      }
+      await refreshRef.current();
+    } catch {
+      setDeleteError('取消收藏失败，请重试');
+      await refreshRef.current();
+    } finally {
+      setDeletingUrl(null);
       saving.current = false;
     }
   };
@@ -311,9 +334,13 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
             return;
           }
           if (!isRecent && site.pages.length === 1 && site.pages[0]) onNavigate(site.pages[0].url);
-          else setSelected({ key: site.key, recent: isRecent });
+          else {
+            setDeleteError('');
+            setSelected({ key: site.key, recent: isRecent });
+          }
         }}
         className="group flex min-w-0 cursor-grab select-none flex-col items-center gap-1.5 rounded-lg p-2 hover:bg-surface-secondary"
+        aria-label={siteDisplayName(site.url, site.title)}
         title={siteDisplayName(site.url, site.title)}
         aria-haspopup={isRecent || site.pages.length > 1 ? 'dialog' : undefined}
       >
@@ -322,9 +349,11 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
           favicon={site.favicon}
           className="h-10 w-10 rounded-lg bg-white shadow-sm"
         />
-        <span className="w-full truncate text-center text-xs text-text-secondary group-hover:text-text">
-          {siteDisplayName(site.url, site.title)}
-        </span>
+        {isRecent && (
+          <span className="w-full truncate text-center text-xs text-text-secondary group-hover:text-text">
+            {siteDisplayName(site.url, site.title)}
+          </span>
+        )}
       </button>
     ));
 
@@ -335,17 +364,6 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
         {displayNameForLocale(navigator.language)}
       </h1>
       <div className="mt-6 h-0.5 w-4/5 shrink-0 rounded-full bg-gradient-to-r from-red-500 via-orange-400 to-red-500" />
-      {loading && <Loader2 aria-label="加载中" className="mt-4 h-4 w-4 animate-spin" />}
-      {error && (
-        <p role="alert" className="mt-4 text-sm text-text-secondary">
-          加载失败，请重新打开主页重试
-        </p>
-      )}
-      {notice && (
-        <p role="status" className="mt-3 text-sm text-text-secondary">
-          {notice}
-        </p>
-      )}
       {drag && (
         <div
           data-testid="dragged-site-icon"
@@ -358,17 +376,23 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
       <section className="mt-8 w-4/5" aria-label="常用网站" data-site-zone="frequent">
         <div
           data-testid="frequent-sites"
-          className="mt-4 grid max-h-[40vh] grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-x-4 gap-y-6 overflow-y-auto p-4"
+          className="mt-4 grid min-h-[72px] max-h-[40vh] grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-x-4 gap-y-6 overflow-y-auto p-4"
         >
           {renderSites(frequent, false)}
-          {!loading && !error && !frequent.length && (
-            <p className="col-span-full text-center text-sm text-text-secondary">
-              收藏网页后，将自动显示在这里
-            </p>
-          )}
         </div>
       </section>
       <div className="mt-6 h-0.5 w-4/5 shrink-0 rounded-full bg-gradient-to-r from-blue-500 via-teal-400 to-green-500" />
+      {loading && <Loader2 aria-label="加载中" className="mt-4 h-4 w-4 animate-spin" />}
+      {error && (
+        <p role="alert" className="mt-4 text-sm text-text-secondary">
+          加载失败，请重新打开主页重试
+        </p>
+      )}
+      {notice && (
+        <p role="status" className="mt-3 text-sm text-text-secondary">
+          {notice}
+        </p>
+      )}
       <section className="mt-8 w-4/5" aria-label="最近浏览" data-site-zone="recent">
         <h2 className="text-xs font-medium text-text-secondary">最近浏览</h2>
         <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-x-4 gap-y-6">
@@ -406,11 +430,16 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
             关闭
           </button>
         </div>
+        {deleteError && (
+          <p role="alert" className="mb-2 text-sm text-red-500">
+            {deleteError}
+          </p>
+        )}
         <ul className="max-h-[60vh] overflow-y-auto">
           {active?.pages.map((page) => (
-            <li key={page.url}>
+            <li key={page.url} className="flex items-center gap-2">
               <button
-                className="w-full rounded-lg p-3 text-left hover:bg-surface-secondary"
+                className="min-w-0 flex-1 rounded-lg p-3 text-left hover:bg-surface-secondary"
                 onClick={() => {
                   setSelected(null);
                   onNavigate(page.url);
@@ -419,6 +448,20 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
                 <span className="block truncate">{page.title || page.url}</span>
                 <span className="block truncate text-xs text-text-secondary">{page.url}</span>
               </button>
+              {!selected?.recent && (
+                <button
+                  type="button"
+                  aria-label={`取消收藏：${page.title || page.url}`}
+                  title="取消收藏"
+                  disabled={deletingUrl !== null}
+                  onClick={() => {
+                    void deleteBookmark(page.url);
+                  }}
+                  className="shrink-0 rounded-lg p-2 text-text-secondary hover:bg-surface-secondary hover:text-red-500 disabled:opacity-40"
+                >
+                  <Trash2 aria-hidden="true" className="h-4 w-4" />
+                </button>
+              )}
             </li>
           ))}
         </ul>

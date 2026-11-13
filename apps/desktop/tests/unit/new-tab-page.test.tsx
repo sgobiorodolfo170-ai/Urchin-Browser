@@ -67,7 +67,10 @@ it('收藏夹按站点展示，单页直接导航，多页弹窗按时间倒序�
   fireEvent.click(screen.getByLabelText('关闭列表'));
   bookmarks = [];
   changed();
-  expect(await screen.findByText('收藏网页后，将自动显示在这里')).toBeInTheDocument();
+  await waitFor(() =>
+    expect(within(screen.getByTestId('frequent-sites')).queryAllByRole('button')).toHaveLength(0),
+  );
+  expect(screen.getByTestId('frequent-sites')).toHaveTextContent('');
 });
 
 it('长按拖入常用网站会创建最近浏览文件夹并收藏，重排顺序持久化', async () => {
@@ -272,7 +275,7 @@ it('120ms 后图标锁定光标，拖出常用区删除该站所有收藏，保�
   fireEvent.pointerMove(source, { clientX: 220, clientY: 250 });
   expect(screen.getByTestId('dragged-site-icon')).toHaveStyle({ left: '200px', top: '230px' });
   fireEvent.pointerUp(source, { clientX: 220, clientY: 250 });
-  expect(await screen.findByText('已移出常用网站并取消该网站的收藏')).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByTitle('a.test')).not.toBeInTheDocument());
   expect(bookmarks.map((b) => b.id)).toEqual(['folder', 'b']);
   expect(screen.queryByTitle('a.test')).not.toBeInTheDocument();
   expect(screen.getByTitle('b.test')).toBeInTheDocument();
@@ -311,4 +314,49 @@ it('长按超过120ms但未移动仍可点击打开网页', async () => {
   expect(navigate).toHaveBeenCalledWith('https://single.test/path');
   expect(invoke).not.toHaveBeenCalledWith('bookmark.delete', expect.anything());
   vi.unstubAllGlobals();
+});
+
+it('常用区域仅显示图标，列表逐页取消收藏且删除最后一页后移除站点', async () => {
+  let bookmarks = [
+    { id: 'a1', type: 'bookmark', url: 'https://a.test/one', title: '第一页', createdAt: 1 },
+    { id: 'a2', type: 'bookmark', url: 'https://a.test/two', title: '第二页', createdAt: 2 },
+    { id: 'copy', type: 'bookmark', url: 'https://a.test/two', title: '重复收藏', createdAt: 0 },
+    { id: 'b', type: 'bookmark', url: 'https://b.test/', title: '其他站点', createdAt: 0 },
+  ];
+  let fail = true;
+  const invoke = vi.fn((channel: string, payload: Record<string, unknown>) => {
+    if (channel === 'bookmark.list') return Promise.resolve({ bookmarks });
+    if (channel === 'settings.get') return Promise.resolve({ value: [] });
+    if (channel === 'history.list') return Promise.resolve({ entries: [], total: 0 });
+    if (channel === 'bookmark.delete') {
+      if (fail) return Promise.reject(new Error('save failed'));
+      bookmarks = bookmarks.filter((b) => b.id !== payload.id);
+    }
+    return Promise.resolve({});
+  });
+  Object.defineProperty(window, 'urchin', {
+    configurable: true,
+    value: { invoke, on: () => vi.fn() },
+  });
+  const navigate = vi.fn();
+  render(<NewTabPage onNavigate={navigate} />);
+  const site = await screen.findByTitle('a.test');
+  expect(screen.getByTestId('frequent-sites').textContent).toBe('');
+  expect(site).toHaveAccessibleName('a.test');
+  fireEvent.click(site);
+  fireEvent.click(screen.getByRole('button', { name: '取消收藏：第二页' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('取消收藏失败');
+  expect(screen.getByText('第二页')).toBeInTheDocument();
+  fail = false;
+  fireEvent.click(screen.getByRole('button', { name: '取消收藏：第二页' }));
+  await waitFor(() => expect(screen.queryByText('第二页')).not.toBeInTheDocument());
+  expect(bookmarks.map((b) => b.id)).toEqual(['a1', 'b']);
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  expect(screen.getByText('第一页')).toBeInTheDocument();
+  expect(navigate).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '取消收藏：第一页' }));
+  await waitFor(() => expect(screen.queryByTitle('a.test')).not.toBeInTheDocument());
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.getByTitle('b.test')).toBeInTheDocument();
+  expect(bookmarks.map((b) => b.id)).toEqual(['b']);
 });

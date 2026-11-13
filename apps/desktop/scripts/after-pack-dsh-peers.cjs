@@ -281,7 +281,6 @@ exports.default = async function afterPack(context) {
     'react-dom',
     'lucide-react',
     'marked',
-    'turndown',
     'clsx',
     'tailwind-merge',
     'defuddle',

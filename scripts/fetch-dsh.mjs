@@ -126,49 +126,71 @@ function installDependencies() {
 function prepareDevRuntime() {
   const nodePath = join(repoRoot, 'apps', 'desktop', 'build', 'node', 'node.exe');
   if (!existsSync(nodePath)) fail('缺少便携 Node v24，请先运行 node scripts/fetch-node.mjs');
+  const runtimeStamp = join(vendorDir, '.dsh-runtime-ready.json');
+  const recipe = 'typert-host-compile-host-bundle-client-compile-client-bundle-web-v2';
+  let stamp;
+  try {
+    stamp = JSON.parse(readFileSync(runtimeStamp, 'utf8'));
+  } catch {
+    /* 首次准备 */
+  }
   let state = missingRuntimeArtifacts(vendorDir);
-  if (state.missing.length > 0) {
-    console.log(`[fetch-dsh] 缺少 ${state.missing.length} 个 Typert 运行时文件，执行上游生成器 …`);
-    execFileSync(nodePath, typertGeneratorArgs, { cwd: vendorDir, stdio: 'inherit' });
-    state = missingRuntimeArtifacts(vendorDir);
-    if (state.missing.length > 0) fail(`生成后仍缺少 Typert 文件：${state.missing.join(', ')}`);
-  }
-  console.log(`[fetch-dsh] Typert 运行时文件齐全（${state.contributors} 个 contributor）`);
   let client = missingRuntimeArtifacts(vendorDir, './client');
-  if (client.missing.length > 0) {
-    console.log(
-      `[fetch-dsh] 缺少 ${client.missing.length} 个 Client bundle，编译 Host/Client 后打包 …`,
-    );
-    execFileSync(
-      nodePath,
-      [
-        '--import',
-        'tsx/esm',
-        '--input-type=module',
-        '--eval',
-        "import { referencedProjectsCompilerArgs } from './scripts/compile-referenced-projects.ts'; " +
-          "import { spawnSync } from 'node:child_process'; " +
-          "for (const face of ['host','client']) { const r = spawnSync(process.execPath, referencedProjectsCompilerArgs(process.cwd(), face), {stdio:'inherit'}); if (r.status !== 0) process.exit(r.status ?? 1); }",
-      ],
-      { cwd: vendorDir, stdio: 'inherit' },
-    );
-    execFileSync(
-      nodePath,
-      [
-        'node_modules/tsdown/dist/run.mjs',
-        '--config-loader',
-        'native',
-        '--env.DSH_BUILD_FACE',
-        'client',
-      ],
-      { cwd: vendorDir, stdio: 'inherit' },
-    );
+  const webIndex = join(vendorDir, 'apps', 'web', 'dist', 'index.html');
+  if (
+    state.missing.length ||
+    client.missing.length ||
+    !existsSync(webIndex) ||
+    stamp?.recipe !== recipe ||
+    stamp?.version !== readVendorVersion()
+  ) {
+    // 旧流程生成的 Client 文件即使存在，也可能残留未解析的 Host 依赖，必须迁移重建。
+    rmSync(runtimeStamp, { force: true });
+    console.log('[fetch-dsh] 按完整 Host → Client 顺序准备运行时 …');
+    execFileSync(nodePath, typertGeneratorArgs, { cwd: vendorDir, stdio: 'inherit' });
+    for (const face of ['host', 'client']) {
+      execFileSync(
+        nodePath,
+        [
+          '--import',
+          'tsx/esm',
+          '--input-type=module',
+          '--eval',
+          "import { referencedProjectsCompilerArgs } from './scripts/compile-referenced-projects.ts'; " +
+            "import { spawnSync } from 'node:child_process'; " +
+            `const r = spawnSync(process.execPath, referencedProjectsCompilerArgs(process.cwd(), '${face}'), {stdio:'inherit'}); if (r.status !== 0) process.exit(r.status ?? 1);`,
+        ],
+        { cwd: vendorDir, stdio: 'inherit' },
+      );
+      execFileSync(
+        nodePath,
+        [
+          'node_modules/tsdown/dist/run.mjs',
+          '--config-loader',
+          'native',
+          '--env.DSH_BUILD_FACE',
+          face,
+        ],
+        { cwd: vendorDir, stdio: 'inherit' },
+      );
+    }
+    const webRoot = join(vendorDir, 'apps', 'web');
+    execFileSync(nodePath, [join(webRoot, 'node_modules', 'vite', 'bin', 'vite.js'), 'build'], {
+      cwd: webRoot,
+      stdio: 'inherit',
+    });
+    state = missingRuntimeArtifacts(vendorDir);
     client = missingRuntimeArtifacts(vendorDir, './client');
-    if (client.missing.length > 0) fail(`打包后仍缺少 Client bundle：${client.missing.join(', ')}`);
+    if (state.missing.length || client.missing.length || !existsSync(webIndex))
+      fail(
+        `构建后仍缺少运行时文件（含 Web 外壳）：${[...state.missing, ...client.missing].join(', ')}`,
+      );
+    writeFileSync(runtimeStamp, JSON.stringify({ version: readVendorVersion(), recipe }) + '\n');
   }
-  console.log(`[fetch-dsh] Client bundle 齐全（${client.contributors} 个包）`);
+  console.log(
+    `[fetch-dsh] Typert ${state.contributors} / Client ${client.contributors} / Web 外壳齐全，完整构建流程已确认`,
+  );
 }
-
 async function main() {
   const desired = readDesiredVersion();
   const tag = `dsh-v${desired}`;

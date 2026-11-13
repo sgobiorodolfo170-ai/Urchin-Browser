@@ -74,7 +74,7 @@ files:
   - '!**/node_modules/clsx/**'
   - '!**/node_modules/tailwind-merge/**'
   - '!**/node_modules/marked/**'
-  - '!**/node_modules/turndown/**'
+  # turndown 是 dsh-tool-web 的 Node 运行时依赖，不能按 renderer-only 排除。
   - '!**/node_modules/defuddle/**'
   # 平台裁剪（2026-11-12 dev.193 体积事故整改 · 本项目只发布 Windows x64）：
   # 依赖树里 5 组包按平台拆分、写在 optionalDependencies 里，pnpm 若不加限制会

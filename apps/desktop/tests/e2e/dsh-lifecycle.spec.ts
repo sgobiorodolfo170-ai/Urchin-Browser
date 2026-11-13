@@ -21,7 +21,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
@@ -159,6 +159,34 @@ test.describe('DSH 生命周期（§7.1 修复固化）', () => {
           { timeout: 30_000, intervals: [1_000] },
         )
         .toBe(true);
+
+      // 后端就绪与认证成功不代表前端已挂载：必须看到真实侧栏控件，防止空白页假绿。
+      await expect
+        .poll(
+          async () =>
+            electronApp.evaluate(async ({ webContents }, origin) => {
+              const view = webContents
+                .getAllWebContents()
+                .find((w) => w.getURL().startsWith(origin + '/'));
+              if (!view) return false;
+              return (await view.executeJavaScript(
+                `Boolean(document.querySelector('[data-sidebar-toggle], [data-sidebar-opener]'))`,
+              )) as boolean;
+            }, origin),
+          { timeout: 30_000, intervals: [500], message: 'DSH 前端侧栏组件应实际挂载' },
+        )
+        .toBe(true);
+      const rendered = await electronApp.evaluate(async ({ webContents }, origin) => {
+        const view = webContents
+          .getAllWebContents()
+          .find((w) => w.getURL().startsWith(origin + '/'))!;
+        return (await view.capturePage()).toPNG().toString('base64');
+      }, origin);
+      writeFileSync(test.info().outputPath('dsh-rendered.png'), Buffer.from(rendered, 'base64'));
+      await test.info().attach('dsh-rendered', {
+        body: Buffer.from(rendered, 'base64'),
+        contentType: 'image/png',
+      });
 
       // 3. 开一个无关标签使其聚焦（非 dsh 标签激活态），再点入口：
       //    origin 匹配应命中已存在的 dsh 标签 → 激活而非新开（重复开标签缺陷回归位）

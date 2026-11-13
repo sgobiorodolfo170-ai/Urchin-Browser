@@ -588,6 +588,21 @@ DSH 混版与 macOS 包裁剪验收通过；清单文件数目标偏差保留。
 - 实测：生成 39 个 Typert 产物，104 个 Client 出口齐全；真实 DSH 生命周期 E2E 首次 **1 passed（9.3s）**；保留安装戳并移走一个 Typert 与一个 Client 文件后，`sync:dsh` 自动补建成功，再次同步幂等通过，恢复后 E2E **1 passed（8.9s）**；覆盖入口启动、认证跳转、不重复开标签、关标签停后端。
 - 范围：开发同步工具及本机忽略的 vendor 构建产物；未修改上游源码、已发布 dev.200 安装包或用户数据。
 
+### 10.7 dev.202 第一阶段：开发态白屏（2026-11-13）
+
+- 用户实测揭示 dev.201 生命周期测试只证明启动与认证，不证明前端渲染；补充真实侧栏 DOM 挂载断言后，原产物稳定失败。
+- 继续定位两处遗漏：Host 编译后未运行 Host bundle，Client bundler 将内部依赖作为未解析外部依赖；Web 外壳 `apps/web/dist/index.html` 也缺失。
+- 同步流程修正为 Typert → Host 编译 → Host bundle → Client 编译 → Client bundle → Web 构建；新增流程版本戳，强制重建旧流程留下的“文件存在但不可用”的产物。运行时文件检查补充 Web 外壳。
+- 修复后 Client 构建 `UNRESOLVED_IMPORT=0`；增加真实侧栏挂载断言的生命周期 E2E **1 passed（9.6s）**。阶段二安装版问题单独调查，不以此结果声称真实会话已修复。
+
+### 10.8 dev.202 第二阶段：安装版新建会话失败（2026-11-13）
+
+- 安装完整性：安装版 FileVersion=`0.3.0-dev.200`；与本机 dev.200 发布树比较，34,206 个文件全部存在且大小一致，`app.asar` SHA-256 相同，唯一额外文件为卸载器；DSH 单一版本 `0.2.2-rc.2x326`。没有更新残留或半装证据。应用日志中的混版 WARN 属旧进程旧时间段。
+- 当前错误在界面实测复现：`agent-preset/invalid: tool-web (@deepseek-ai/dsh-tool-web): never started`。独立导入进一步证实 `ERR_MODULE_NOT_FOUND: Cannot find package 'turndown'`。dev.200 的 renderer-only 排除规则仍排除了新版 DSH Web 工具的 Node 依赖，是新发布版本仍存在的打包缺陷。
+- 本机小修复：仅新增安装目录 `resources/app.asar.unpacked/node_modules/turndown`（7.2.4，与 dsh-tool-web 的本地依赖一致；其 domino 依赖原已存在），不改 asar、注册表、版本、更新通道、凭据或已有会话。回滚仅需移除本次新增目录。重启 DSH 子进程后，实测新建会话条目、工作区和输入框显示正常；未发送真实模型请求。
+- 永久修复：同时撤销 electron-builder 与 afterPack 对 turndown 的排除，并为新建会话才加载的 dsh-tool-web 加独立导入门禁。Node 权限限制只允许读取产物目录，防止仓库外层 node_modules 掩盖漏包；旧 dev.200 产物被门禁正确拒绝，修补后的安装目录通过隔离导入。
+- 用户验收：项目隔离实例已由用户确认“组件正常，新建会话成功”；安装版本机小修复已自动化界面实测通过，用户复测确认“新建会话已正常”；后续更新仍由标准安装器替换文件。本次不自动发布新 Release。dev.202 重打包 18m55s 成功：319.67 MiB，turndown 7.2.5 已入包，预设工具隔离导入和 DSH 启动冒烟（stderr=0B）均通过，见打包清单 #19。
+
 ## 附录 A · 证据索引
 
 | 结论 | 证据位置 |

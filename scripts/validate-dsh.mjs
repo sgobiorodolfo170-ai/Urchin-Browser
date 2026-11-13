@@ -20,11 +20,12 @@
  * 属端口撞车 / 打包刚结束时的瞬时资源竞争。现改为让内核分配空闲端口，并对
  * 「未就绪」类失败最多重试 3 次；插件激活失败等致命特征一律立即失败、不重试。
  */
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 /** 插件激活失败的致命特征（stderr 出现任一即判定冒烟失败，且不重试）。 */
 const FATAL_STDERR_RE =
@@ -273,6 +274,22 @@ export async function smokeTestDsh(releaseDir, { timeoutMs = 90000, attempts = 3
 /** 组合门禁。skipSmoke 用于排障（CLI 传 --skip-dsh-smoke）。 */
 export async function validateDshRuntime(releaseDir, { skipSmoke = false, timeoutMs } = {}) {
   const versions = validateDshVersions(releaseDir);
+  // Agent 预设工具在新建会话时才加载，启动冒烟无法发现它的依赖被裁掉。
+  const resources = join(resolve(releaseDir), 'win-unpacked', 'resources');
+  const toolEntry = join(dshRootOf(releaseDir), 'dsh-tool-web', 'lib', 'index.js');
+  execFileSync(
+    join(resources, 'node', 'node.exe'),
+    [
+      '--permission',
+      `--allow-fs-read=${join(resolve(releaseDir), 'win-unpacked')}`,
+      '--input-type=module',
+      '--eval',
+      'await import(process.argv[1]);',
+      pathToFileURL(toolEntry).href,
+    ],
+    { timeout: 30000, stdio: 'pipe' },
+  );
+  console.log('[dsh-gate] Agent 预设工具 dsh-tool-web 导入通过（只允许读取产物目录）');
   if (skipSmoke) {
     console.log('[dsh-gate] 启动冒烟已跳过（--skip-dsh-smoke）');
     return { ...versions, smoke: 'skipped' };

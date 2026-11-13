@@ -76,6 +76,60 @@ files:
   - '!**/node_modules/marked/**'
   - '!**/node_modules/turndown/**'
   - '!**/node_modules/defuddle/**'
+  # 平台裁剪（2026-11-12 dev.193 体积事故整改 · 本项目只发布 Windows x64）：
+  # 依赖树里 5 组包按平台拆分、写在 optionalDependencies 里，pnpm 若不加限制会
+  # 把 darwin / linux / win32-arm64 / ia32 / wasm 变体全部装进 .pnpm，traversal
+  # 收集器再原样打进 app.asar.unpacked。实测（dev.193 重打包）这些非目标平台包
+  # 占解压态约 1 GB：libreoffice-kit 5 平台 837 MB（真正需要的 win32-x64 仅
+  # 192 MB）、sharp 25 个变体、ripgrep 13 个、sherpa-onnx 6 个、node-addon-
+  # require-builtin 9 个。表现是安装包 295 MB → 646 MB（+119%），功能零收益。
+  # 治本开关在根 package.json 的 pnpm.supportedArchitectures（见 pnpm-workspace
+  # .yaml 说明），本段是第二道防线：即使 pnpm 装进了非目标平台包，也不进产物。
+  # ⚠ 与 B1 同理，必须走 files（组装期不收）。若只在 afterPack 删实体，app.asar
+  # 里仍留着索引条目，形成幽灵条目。新增平台拆分包时须同步 afterPack 的
+  # FOREIGN_PLATFORM_RULES，两处口径必须一致。
+  - '!**/node_modules/@deepseek-ai/libreoffice-kit-darwin-*/**'
+  - '!**/node_modules/@deepseek-ai/libreoffice-kit-win32-arm64/**'
+  - '!**/node_modules/@deepseek-ai/libreoffice-kit-wasm/**'
+  - '!**/node_modules/@img/sharp-darwin-*/**'
+  - '!**/node_modules/@img/sharp-linux*/**'
+  - '!**/node_modules/@img/sharp-freebsd-*/**'
+  - '!**/node_modules/@img/sharp-wasm32/**'
+  - '!**/node_modules/@img/sharp-webcontainers-*/**'
+  - '!**/node_modules/@img/sharp-win32-arm64/**'
+  - '!**/node_modules/@img/sharp-win32-ia32/**'
+  - '!**/node_modules/@img/sharp-libvips-darwin-*/**'
+  - '!**/node_modules/@img/sharp-libvips-linux*/**'
+  - '!**/node_modules/@vscode/ripgrep-darwin-*/**'
+  - '!**/node_modules/@vscode/ripgrep-linux*/**'
+  - '!**/node_modules/@vscode/ripgrep-win32-arm64/**'
+  - '!**/node_modules/@vscode/ripgrep-win32-ia32/**'
+  - '!**/node_modules/sherpa-onnx-darwin-*/**'
+  - '!**/node_modules/sherpa-onnx-linux-*/**'
+  - '!**/node_modules/sherpa-onnx-win-ia32/**'
+  - '!**/node_modules/node-addon-require-builtin-darwin-*/**'
+  - '!**/node_modules/node-addon-require-builtin-linux-*/**'
+  - '!**/node_modules/node-addon-require-builtin-win32-arm64-*/**'
+  - '!**/node_modules/node-addon-require-builtin-win32-ia32-*/**'
+  - '!**/node_modules/@koromix/koffi-darwin-*/**'
+  - '!**/node_modules/@koromix/koffi-linux-*/**'
+  - '!**/node_modules/@koromix/koffi-freebsd-*/**'
+  - '!**/node_modules/@koromix/koffi-openbsd-*/**'
+  - '!**/node_modules/@koromix/koffi-win32-arm64/**'
+  - '!**/node_modules/@koromix/koffi-win32-ia32/**'
+  # node-addon-system 的 optionalDependencies 只声明 darwin/linux（无 win32），
+  # Windows 走主包内置实现，平台子包可直接剔除（打包后 dsh 冒烟兜验）。
+  - '!**/node_modules/@deepseek-ai/node-addon-system-darwin-*/**'
+  - '!**/node_modules/@deepseek-ai/node-addon-system-linux-*/**'
+  # 精确排除（2026-11-13 dev.193 收尾）：包名**不带**平台后缀，只能靠
+  # package.json 的 os 字段识别的包。上方前缀规则与 supportedArchitectures 都
+  # 按目录名/平台后缀匹配，拦不住这类包——dev.193 上一轮筛残留时用的匹配词是
+  # darwin / linux，而本包用的是 macos，被漏掉后 3.6 MB 进了产物。
+  # @deepseek-ai/dsh-experimental-cua-macos 的 manifest 为 os: ["darwin"]，是
+  # dsh-cua-bundle 的 optionalDependency，只在 macOS 上有实现。
+  # 新增同类包时须同步 afterPack 的 EXPLICIT_FOREIGN_PACKAGES（该脚本另有
+  # manifest os/cpu 自动判定兜底，本清单是显式可审计的那一层）。
+  - '!**/node_modules/@deepseek-ai/dsh-experimental-cua-macos/**'
 
 # 额外资源：图标文件复制到 resources 目录（运行时窗口图标用）
 extraResources:

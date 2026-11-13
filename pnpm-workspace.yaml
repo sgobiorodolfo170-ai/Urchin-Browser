@@ -3,3 +3,12 @@ packages:
   - 'packages/*'
   - 'vendor/pi/packages/*'
   - '!vendor/pi/packages/tui'
+
+# 平台裁剪（2026-11-12 dev.193 体积事故整改）
+# 本项目只发布 Windows x64 的 NSIS 安装包，但依赖树里有大量「按平台拆分」的
+# optionalDependencies（libreoffice-kit / sharp / ripgrep / sherpa-onnx /
+# node-addon-require-builtin）。若不限制平台，pnpm 会把 darwin / linux /
+# win32-arm64 / wasm 等变体一并装进 .pnpm，electron-builder 再原样打进
+# app.asar.unpacked —— dev.194 之前实测这些非目标平台包占解压态约 1 GB，
+# 安装包从 295 MB 涨到 646 MB。真正的开关在根 package.json 的
+# pnpm.supportedArchitectures（pnpm 9 只认那份），此处仅作可读性说明。

@@ -126,8 +126,12 @@ pnpm-lock.yaml.bak
 # 由 `pnpm sync:dsh` 按桌面依赖版本从上游 tag 拉取；版本一致性由 check:dsh 把守
 vendor/deepseek-harness/
 
+# dsh 旧版本树归档（0.2.1-rc.3 升级 0.2.2-rc.2 后保留回滚/取证用；2026-11-13 入 ignore 防误提交）
+vendor/_dsh-old-*/
+
 # Agent 工作区：评估报告、记忆、临时产物——不纳入版本管理
 .workbuddy-ai/
+.zwork/
 
 # 外部工具（Hunyuan 等）会话本地记忆目录：不入版本管理（同 .workbuddy-ai/）
 .workbuddy/

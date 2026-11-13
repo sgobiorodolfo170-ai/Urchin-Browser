@@ -126,27 +126,54 @@ export function addLogSink(sink: LogSink): () => void {
 }
 
 /**
- * 消息脱敏：移除可能的凭据片段。
+ * URL query 中的凭据参数（dev.193 整改 R6）。
+ * 实测 dev193 日志里 bookmark.search 的 query 含第三方站点
+ * `?access_token=<JWT>&refresh_token=<JWT>`，tab-manager / view-integration 的
+ * url 含 dsh `?token=...`，均因「只按字段名脱敏」而明文落盘。
+ */
+const URL_CREDENTIAL_RE =
+  /([?&](?:token|access_token|refresh_token|id_token|secret|api[_-]?key|key|code|sig|signature|password|credential)=)([^&\s"'<>]+)/gi;
+
+/** JWT 三段式（eyJ…），兜住不挂在 query 参数下的裸令牌。 */
+const JWT_RE = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
+
+/**
+ * 字符串值脱敏：在字段名脱敏之外，覆盖 URL query 凭据、JWT 与通用密钥形态。
  * 02-架构设计 §7.4：日志不得记录敏感凭据。
  */
-function sanitizeMessage(msg: string): string {
-  if (typeof msg !== 'string') return String(msg);
-  return msg
+function sanitizeString(value: string): string {
+  return value
+    .replace(URL_CREDENTIAL_RE, '$1***REDACTED***')
+    .replace(JWT_RE, '***REDACTED***')
     .replace(/sk-[A-Za-z0-9]{20,}/g, 'sk-***REDACTED***')
     .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer ***REDACTED***')
     .replace(/api[_-]?key["'\s:=]+["'][^"']{8,}["']/gi, 'api_key=***REDACTED***');
 }
 
-/** meta 脱敏：递归处理嵌套对象。 */
+/** 消息脱敏：移除可能的凭据片段。 */
+function sanitizeMessage(msg: string): string {
+  if (typeof msg !== 'string') return String(msg);
+  return sanitizeString(msg);
+}
+
+/** 递归脱敏任意值（含数组与字符串），供 sanitizeMeta 复用。 */
+function sanitizeValue(value: unknown): unknown {
+  if (typeof value === 'string') return sanitizeString(value);
+  if (Array.isArray(value)) return value.map(sanitizeValue);
+  if (typeof value === 'object' && value !== null) {
+    return sanitizeMeta(value as Record<string, unknown>);
+  }
+  return value;
+}
+
+/** meta 脱敏：字段名命中直接置红；其余值递归走 sanitizeValue。 */
 function sanitizeMeta(meta: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(meta)) {
     if (/key|token|secret|password|credential/i.test(key)) {
       result[key] = '***REDACTED***';
-    } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      result[key] = sanitizeMeta(value as Record<string, unknown>);
     } else {
-      result[key] = value;
+      result[key] = sanitizeValue(value);
     }
   }
   return result;

@@ -16,6 +16,14 @@
       "electron",
       "esbuild"
     ],
+    "supportedArchitectures": {
+      "os": [
+        "win32"
+      ],
+      "cpu": [
+        "x64"
+      ]
+    },
     "packageExtensions": {},
     "overrides": {
       "@earendil-works/pi-durable": "workspace:*",

@@ -55,6 +55,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveBuildInfo } from './build-version.mjs';
+import { validateDshRuntime } from './validate-dsh.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const desktopDir = resolve(repoRoot, 'apps', 'desktop');
@@ -201,6 +202,8 @@ function validateArtifacts(info, { expectBlockmap = true } = {}) {
       `releaseType=${info.releaseType} manifest=${expectedYml} ` +
       `payload=${expectBlockmap ? '7z+differential' : 'zip (differential off)'}`,
   );
+  // 供打包后 DSH 运行时门禁使用（版本单一性 + 启动冒烟）。
+  return releaseDir;
 }
 
 // A3 实验开关（opt-in，见文件头注释）：--nsis-zip 改用 zip 载荷并关闭差分包
@@ -258,7 +261,12 @@ if ((result.status ?? 1) !== 0) {
 }
 
 try {
-  validateArtifacts(info, { expectBlockmap: !nsisZip });
+  const releaseDir = validateArtifacts(info, { expectBlockmap: !nsisZip });
+  // dev.193 事故门禁（R4）：版本单一性 + dsh web 启动冒烟（stderr 零容忍）。
+  // 排障可用 --skip-dsh-smoke 跳过冒烟，但版本检查始终执行。
+  await validateDshRuntime(releaseDir, {
+    skipSmoke: process.argv.includes('--skip-dsh-smoke'),
+  });
 } catch (error) {
   console.error(`[package-win] artifact validation failed: ${error.message}`);
   process.exit(1);

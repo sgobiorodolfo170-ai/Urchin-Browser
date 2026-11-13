@@ -14,10 +14,14 @@
  *
  * 几何计算：悬浮层宽度 = max(中区宽 × 0.6, 卡片最小可用宽) + 阴影边距；高度 = 状态栏区域 +
  * 阴影边距 + 建议/提示展开高；底部对齐内容区底，水平居中于中区（右缘为悬浮球让位）。
+ *
+ * 2026-11-13 标题栏吸附：标题栏与地址栏卡片等高（WINDOW_TITLEBAR_HEIGHT =
+ * CARD_HEIGHT = 40px），地址栏被拖到标题栏上（卡片触及标题栏带）即吸附入位、
+ * 此后不再跟随球移动；点击悬浮球折叠地址栏解除吸附，再次展开回到与球同行。
  */
 import { BrowserWindow, Menu } from 'electron';
 import { createLogger } from '@urchin/logger';
-import { WINDOW_FRAME_WIDTH } from '../tabs/view-integration';
+import { WINDOW_FRAME_WIDTH, WINDOW_TITLEBAR_HEIGHT } from '../tabs/view-integration';
 import {
   STATUS_BALL_RESERVED_WIDTH,
   rectsIntersect,
@@ -164,11 +168,79 @@ export function computeStatusBarBounds(params: {
   return { x, y, width, height };
 }
 
+/**
+ * 计算标题栏吸附态的窗口 Y（屏幕坐标；导出供单测）。
+ *
+ * 吸附 = 地址栏卡片与自绘标题栏等高对齐：卡片顶边 = 标题栏顶边。两者等高
+ * （CARD_HEIGHT = WINDOW_TITLEBAR_HEIGHT = 40px，2026-11-13 用户指令「标题栏高度
+ * 与地址栏等高」），对齐后卡片恰好覆盖标题栏带。窗口 Y = 标题栏顶 − 卡片顶边在
+ * 窗口内的偏移（height − SHADOW_PAD − CARD_HEIGHT，卡片贴窗口底部；建议/toast
+ * 面板向上展开时同样锚住卡片、窗口向上长高）。
+ */
+export function computeTitleBarSnapY(params: { contentTop: number; height: number }): number {
+  const cardTopOffset = params.height - SHADOW_PAD - CARD_HEIGHT;
+  return Math.round(params.contentTop + WINDOW_FRAME_WIDTH - cardTopOffset);
+}
+
+/**
+ * 吸附触发判定（导出供单测）：跟随落位的卡片顶边触及标题栏底边（≤）即吸附。
+ * 标题栏带 = [contentTop + WINDOW_FRAME_WIDTH, +WINDOW_TITLEBAR_HEIGHT]；
+ * 「触及即对齐入位」是吸附的语义（磁吸不停在半途，不停留在与标题栏半重叠的中间态）。
+ */
+export function shouldSnapToTitleBar(params: { cardTop: number; contentTop: number }): boolean {
+  return params.cardTop <= params.contentTop + WINDOW_FRAME_WIDTH + WINDOW_TITLEBAR_HEIGHT;
+}
+
+/**
+ * 地址栏垂直落位决策——吸附与「球同行跟随」的统一出口（导出供单测）。
+ *
+ * 优先级：
+ * 1. 吸附态 → 卡片固定在标题栏带内，不跟随球移动；解除只经「点击悬浮球折叠」
+ *    （见 setCollapsed），再次展开回到与球同行；
+ * 2. 未吸附且球与卡片水平区间不重叠 → 卡片中心对齐球心（同行跟随）；跟随落位的
+ *    卡片触及标题栏带时转吸附——「地址栏被拖动到标题栏上」即吸附入位，此后球
+ *    怎么动都不再跟随；
+ * 3. 其余（球不可用 / 球在卡片水平跨度内——防垂直拖动把卡片「扫」到球行盖住球，
+ *    2026-11-13 防重叠前提）→ 保持默认底部行。
+ */
+export function resolveBarVerticalPlacement(params: {
+  /** 默认底部行的窗口 Y（computeStatusBarBounds 的结果） */
+  defaultY: number;
+  /** 窗口高（含建议/toast 展开高；卡片贴窗口底部） */
+  height: number;
+  /** 宿主内容区顶（屏幕坐标）；标题栏顶 = contentTop + WINDOW_FRAME_WIDTH */
+  contentTop: number;
+  /** 球心 Y（屏幕坐标）；null = 球不可用 */
+  ballCenterY: number | null;
+  /** 球与卡片水平区间是否重叠（相切不算） */
+  ballOverlapsHorizontally: boolean;
+  snapped: boolean;
+}): { y: number; snapped: boolean } {
+  const { defaultY, height, contentTop, ballCenterY, ballOverlapsHorizontally, snapped } = params;
+  if (snapped) {
+    return { y: computeTitleBarSnapY({ contentTop, height }), snapped: true };
+  }
+  if (ballCenterY === null || ballOverlapsHorizontally) {
+    return { y: defaultY, snapped: false };
+  }
+  // 卡片中心在窗口内的偏移：overlayHeight - 下阴影边距 - 卡片半高
+  const cardCenterOffset = height - SHADOW_PAD - CARD_HEIGHT / 2;
+  const followedY = Math.round(ballCenterY - cardCenterOffset);
+  // 卡片顶边在窗口内的偏移：height - SHADOW_PAD - CARD_HEIGHT（卡片贴窗口底部）
+  const cardTop = followedY + (height - SHADOW_PAD - CARD_HEIGHT);
+  if (shouldSnapToTitleBar({ cardTop, contentTop })) {
+    return { y: computeTitleBarSnapY({ contentTop, height }), snapped: true };
+  }
+  return { y: followedY, snapped: false };
+}
+
 export class StatusBarOverlay {
   private win: BrowserWindow | null = null;
   private state: StatusBarState = { ...DEFAULT_STATUS_BAR_STATE };
   private panelHeight = 0;
   private collapsed = false;
+  /** 标题栏吸附态：卡片已吸附入标题栏带、不跟随球移动（2026-11-13；折叠时解除） */
+  private snapped = false;
   private htmlFullscreen = false;
   private parentClosing = false;
   private parentListenersAttached = false;
@@ -203,6 +275,8 @@ export class StatusBarOverlay {
   setCollapsed(collapsed: boolean): void {
     if (this.collapsed === collapsed) return;
     this.collapsed = collapsed;
+    // 折叠即解除标题栏吸附（2026-11-13 用户指令）：再次展开自动回到与悬浮球同行。
+    if (collapsed) this.snapped = false;
     this.applyVisibility();
     this.sendState();
   }
@@ -215,6 +289,11 @@ export class StatusBarOverlay {
   /** 当前折叠态（供悬浮球点击切换） */
   get isCollapsed(): boolean {
     return this.collapsed;
+  }
+
+  /** 是否已吸附到标题栏（观测/调试用；吸附解除只经折叠，见 setCollapsed） */
+  get isSnappedToTitleBar(): boolean {
+    return this.snapped;
   }
 
   /** HTML5 全屏抑制（主进程 tab 事件调用） */
@@ -387,8 +466,9 @@ export class StatusBarOverlay {
     const parent = this.options.getParentWindow();
     if (!parent) return;
     const layout = this.options.getLayout();
+    const contentBounds = parent.getContentBounds();
     const bounds = computeStatusBarBounds({
-      contentBounds: parent.getContentBounds(),
+      contentBounds,
       leftWidth: layout.leftWidth,
       rightWidth: layout.rightWidth,
       bottomHeight: layout.bottomHeight,
@@ -396,21 +476,26 @@ export class StatusBarOverlay {
       // 与悬浮球共用网页区底部同一行：右缘必须为球让位
       reserveRight: STATUS_BALL_RESERVED_WIDTH,
     });
-    // 与悬浮球同行跟随（2026-11-13 加防重叠前提）：仅当球的水平区间与地址栏
-    // 不相交（球在地址栏右侧）才把卡片对齐到球的行。此前无条件跟随——球位于
-    // 地址栏跨度内时，每次垂直拖动地址栏都"扫"到球的行上把球盖住（用户实测
-    // 「拖入地址栏被覆盖」）；球在跨度内时地址栏回默认底部行，不再跟随。
+    // 垂直落位统一决策（吸附 + 球同行跟随共用 resolveBarVerticalPlacement）：
+    // - 地址栏被拖到标题栏上（卡片触及标题栏带）→ 吸附入位，此后不再跟随球移动；
+    // - 吸附由「点击悬浮球折叠地址栏」解除，再次展开回到与球同行（见 setCollapsed）；
+    // - 球与卡片水平区间不相交（球在地址栏右侧）才同行跟随——否则会把卡片
+    //   「扫」到球的行上盖住球（2026-11-13 防重叠前提，用户实测回归）。
     const ball = this.options.getBallBounds?.() ?? null;
-    if (ball && !rectsOverlapHorizontally(ball, bounds)) {
-      const BALL_SIZE = 40 + 6 * 2; // BALL_SIZE + BALL_PAD
-      const ballCenterY = ball.y + BALL_SIZE / 2;
-      // 卡片中心在窗口内的偏移：overlayHeight - 下阴影边距 - 卡片半高
-      const cardCenterOffset = bounds.height - SHADOW_PAD - CARD_HEIGHT / 2;
-      bounds.y = Math.round(ballCenterY - cardCenterOffset);
-      // Y 不夹取在父窗口内容区内（2026-11-13 用户指令）：球可把地址栏随意
-      // 推进/拖出窗口——地址栏是 owned 子窗口，跟随球 Y 定位到窗外仍可交互；
-      // X 方向仍锚定窗口布局（不随球横移），水平避让逻辑不变。
-    }
+    const BALL_SIZE = 40 + 6 * 2; // BALL_SIZE + BALL_PAD
+    const placement = resolveBarVerticalPlacement({
+      defaultY: bounds.y,
+      height: bounds.height,
+      contentTop: contentBounds.y,
+      ballCenterY: ball ? ball.y + BALL_SIZE / 2 : null,
+      ballOverlapsHorizontally: ball ? rectsOverlapHorizontally(ball, bounds) : true,
+      snapped: this.snapped,
+    });
+    this.snapped = placement.snapped;
+    bounds.y = placement.y;
+    // Y 不夹取在父窗口内容区内（2026-11-13 用户指令）：地址栏是 owned 子窗口，
+    // 跟随球 Y 定位到窗外仍可交互（向上出窗已被标题栏吸附拦截入位，向下仍可出窗）；
+    // X 方向仍锚定窗口布局（不随球横移），水平避让逻辑不变。
     // 兜底：地址栏即将落到与球重叠的位置（球在地址栏折叠期间被拖进该区域、
     // 窗口缩放后几何变化等）——把球移出地址栏区域，球侧回调会再触发一次
     // refresh 收敛。resolvingOverlap 护栏防退化场景（上下都放不下球）死循环。

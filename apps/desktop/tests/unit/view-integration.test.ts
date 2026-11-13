@@ -230,7 +230,7 @@ describe('view-integration', () => {
 
       expect(window.browserWindow.setBrowserView).toHaveBeenCalledWith(tab.view);
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 48 - 6 }),
+        expect.objectContaining({ x: 52, y: 48, width: 800 - 104, height: 600 - 56 - 6 }),
       );
       expect(window.browserWindow.webContents.send).toHaveBeenCalledWith(
         'tab:event',
@@ -297,7 +297,7 @@ describe('view-integration', () => {
       fireTab('updated', { ...tab });
 
       expect(tab.view.setBounds).toHaveBeenCalledWith(
-        expect.objectContaining({ y: 40, width: 800 - 104, height: 600 - 48 - 6 }),
+        expect.objectContaining({ y: 48, width: 800 - 104, height: 600 - 56 - 6 }),
       );
     });
 
@@ -540,9 +540,9 @@ describe('HTML5 fullscreen (��Ƕ��Ƶȫ������ UI ��)', ()
     tab.view.setBounds.mockClear();
     tab.htmlFullscreen = false;
     fireTab('updated', tab);
-    // �ָ����沼�֣��� 8px ���32px �����������Ҳ�����ײ���ַ��������
+    // �ָ����沼�֣��� 8px ���40px �����������Ҳ�����ײ���ַ��������
     expect(tab.view.setBounds).toHaveBeenCalledWith(
-      expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 48 - 6 }),
+      expect.objectContaining({ x: 52, y: 48, width: 800 - 104, height: 600 - 56 - 6 }),
     );
   });
 
@@ -558,7 +558,7 @@ describe('HTML5 fullscreen (��Ƕ��Ƶȫ������ UI ��)', ()
       expect(window.browserWindow.contentView.addChildView).toHaveBeenCalledWith(tab.view);
       expect(tab.view.setBounds).toHaveBeenCalledWith(
         // GenOffice ��ǩ��ַ�����أ���ͼ����������ȫ���߶ȣ��Կ�������������
-        expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 48 - 6 }),
+        expect.objectContaining({ x: 52, y: 48, width: 800 - 104, height: 600 - 56 - 6 }),
       );
     });
 
@@ -601,7 +601,7 @@ describe('HTML5 fullscreen (��Ƕ��Ƶȫ������ UI ��)', ()
 
       expect(tab.view.setBounds).toHaveBeenCalledWith(
         // GenOffice ��ǩ��ַ�����أ���ͼ����������ȫ���߶ȣ��Կ�������������
-        expect.objectContaining({ x: 52, y: 40, width: 800 - 104, height: 600 - 48 - 6 }),
+        expect.objectContaining({ x: 52, y: 48, width: 800 - 104, height: 600 - 56 - 6 }),
       );
       expect(tab.view.setBounds).not.toHaveBeenCalledWith({
         x: 0,

@@ -56,9 +56,11 @@
   /* 自绘窗口 chrome（Windows frameless）：
    * 外框宽度/标题栏高度需与主进程 view-integration.ts 的
    * WINDOW_FRAME_WIDTH / WINDOW_TITLEBAR_HEIGHT 保持同步（BrowserView 内缩）。
+   * 标题栏高度与悬浮地址栏卡片等高（40px，2026-11-13 用户指令）——
+   * 地址栏吸附标题栏时卡片恰好覆盖标题栏带。
    * 外框始终为 #F6F2F0：亮/暗主题下都作为「悬浮窗底座」，不随主题切换。 */
   --window-frame-width: 8px;
-  --window-titlebar-height: 32px;
+  --window-titlebar-height: 40px;
   --window-shell-radius: 12px;
   --window-frame-background: #f6f2f0;
 

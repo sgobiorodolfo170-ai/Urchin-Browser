@@ -48,7 +48,9 @@ const DEFAULT_BOTTOM_HEIGHT = 48;
  */
 const USE_CUSTOM_CHROME = process.platform === 'win32';
 export const WINDOW_FRAME_WIDTH = USE_CUSTOM_CHROME ? 8 : 0;
-export const WINDOW_TITLEBAR_HEIGHT = USE_CUSTOM_CHROME ? 32 : 0;
+/** 自绘标题栏高度：与悬浮地址栏卡片等高（status-bar-overlay.ts CARD_HEIGHT = 40；
+ * 2026-11-13 用户指令「标题栏高度 = 地址栏高度」），地址栏吸附时恰好覆盖标题栏带。 */
+export const WINDOW_TITLEBAR_HEIGHT = USE_CUSTOM_CHROME ? 40 : 0;
 /**
  * 窗口外壳底部内阴影预留高度（px）。
  * 网页底部留此空隙，露出 .app-window-shell::after 底部内高光/暗边（3D 效果），

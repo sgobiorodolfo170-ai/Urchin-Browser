@@ -21,6 +21,8 @@ import { join } from 'node:path';
 import { desktopCapturer, screen, shell, type BrowserWindow, type NativeImage } from 'electron';
 import { createLogger } from '@urchin/logger';
 
+import { getWindowBounds } from './window-bounds';
+
 const log = createLogger('capture-overlay');
 
 /** 截图保存子目录名（相对用户数据目录） */
@@ -51,10 +53,16 @@ export interface SelectionRect {
 
 export class CaptureOverlay {
   private window: BrowserWindow | null = null;
+  private starting = false;
   /** 整屏截图缓存（物理像素 NativeImage） */
   private screenshot: NativeImage | null = null;
   /** 主显示器缩放因子（物理 → 逻辑换算） */
   private scaleFactor = 1;
+  private windows: SelectionRect[] = [];
+
+  getWindowRects(): SelectionRect[] {
+    return this.windows;
+  }
 
   constructor(private readonly options: CaptureOverlayOptions) {}
 
@@ -68,21 +76,45 @@ export class CaptureOverlay {
    * 已打开时不重复创建（返回 false）。
    */
   async start(): Promise<boolean> {
-    if (this.isOpen) return false;
+    if (this.isOpen || this.starting) return false;
+    this.starting = true;
+    try {
+      return await this.open();
+    } catch (error) {
+      this.close();
+      throw error;
+    } finally {
+      this.starting = false;
+    }
+  }
 
+  private async open(): Promise<boolean> {
     const primary = screen.getPrimaryDisplay();
     this.scaleFactor = primary.scaleFactor;
+
+    this.windows = (await getWindowBounds())
+      .map((r) => ({
+        x: Math.max(0, r.x / this.scaleFactor - primary.bounds.x),
+        y: Math.max(0, r.y / this.scaleFactor - primary.bounds.y),
+        width:
+          Math.min(primary.bounds.width, (r.x + r.width) / this.scaleFactor - primary.bounds.x) -
+          Math.max(0, r.x / this.scaleFactor - primary.bounds.x),
+        height:
+          Math.min(primary.bounds.height, (r.y + r.height) / this.scaleFactor - primary.bounds.y) -
+          Math.max(0, r.y / this.scaleFactor - primary.bounds.y),
+      }))
+      .filter((r) => r.width > 0 && r.height > 0);
 
     // 截主屏：thumbnailSize 用物理尺寸（原始分辨率），保证裁剪精度
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
       thumbnailSize: {
-        width: primary.size.width,
-        height: primary.size.height,
+        width: Math.round(primary.size.width * this.scaleFactor),
+        height: Math.round(primary.size.height * this.scaleFactor),
       },
       fetchWindowIcons: false,
     });
-    const source = sources[0];
+    const source = sources.find((s) => s.display_id === String(primary.id)) ?? sources[0];
     if (!source) {
       throw new Error('No screen available to capture');
     }
@@ -98,7 +130,9 @@ export class CaptureOverlay {
       x: primary.bounds.x,
       y: primary.bounds.y,
       frame: false,
-      transparent: true,
+      transparent: false,
+      show: false,
+      enableLargerThanScreen: true,
       resizable: false,
       movable: false,
       minimizable: false,
@@ -145,26 +179,22 @@ export class CaptureOverlay {
       }
     });
 
+    // 页面背景图解码后才显示，避免先显示空白透明窗。
     await win.loadURL('urchin://capture-overlay');
-    // ready-to-show 后再显示：transparent 窗口合成器未就绪直接 show 会黑屏/
-    // 交互失效（卡死诱因之一），等页面首帧渲染完成再抢焦点。
     if (win.isDestroyed()) return true;
-    win.once('ready-to-show', () => {
-      if (!win.isDestroyed()) {
-        win.show();
-        win.focus();
-      }
-    });
-    // 页面加载完成但 ready-to-show 未触发（如透明窗口在某些合成器下不触发）时兜底显示
-    const fallbackShow = setTimeout(() => {
-      if (!win.isDestroyed() && !win.isVisible()) {
-        win.show();
-        win.focus();
-      }
-    }, 500);
-    // 清理兜底定时器（合并进上方 closed 清理逻辑，避免 Mock 单 handler 语义差异）
-    const clearFallback = (): void => clearTimeout(fallbackShow);
-    win.on('closed', clearFallback);
+    await win.webContents.executeJavaScript(`(async () => {
+      const img = document.getElementById('screen');
+      if (!img.complete || !img.src) await new Promise((resolve, reject) => {
+        img.addEventListener('load', resolve, { once: true });
+        img.addEventListener('error', reject, { once: true });
+      });
+      await img.decode();
+    })()`);
+    if (!win.isDestroyed()) {
+      win.setAlwaysOnTop(true, 'screen-saver');
+      win.show();
+      win.focus();
+    }
     log.info('capture overlay opened');
     return true;
   }

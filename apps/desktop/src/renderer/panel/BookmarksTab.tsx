@@ -67,6 +67,8 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
   // 目录轨迹：面板级状态（跨 tab 切换保留），以 ref 为真源（导航与异步刷新
   // 共享同一份，避免闭包过期态）；快照经 view 下发渲染。
   const folderIdRef = useRef<string | null>(null);
+  const backRef = useRef<BmTrailSeg[][]>([]);
+  const forwardRef = useRef<BmTrailSeg[][]>([]);
   const trailRef = useRef<BmTrailSeg[]>([]);
   /** picker 上下文只拉取一次的守卫（原 `if (pickerMode && !pickerContext)` 语义） */
   const pickerCtxFetchedRef = useRef(false);
@@ -114,6 +116,9 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
   /** 面包屑跳转：目标为 null 回根级；否则按轨迹截断或补占位段（原 jumpToFolder） */
   const jumpToFolder = useCallback(
     (id: string | null): void => {
+      if (id === folderIdRef.current) return;
+      backRef.current.push([...trailRef.current]);
+      forwardRef.current = [];
       if (id == null) {
         folderIdRef.current = null;
         trailRef.current = [];
@@ -136,6 +141,8 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
   /** 进入下级文件夹（原 bindBookmarkRows 的 folder-item 点击：轨迹追加后渲染） */
   const enterFolder = useCallback(
     (folder: Bookmark): void => {
+      backRef.current.push([...trailRef.current]);
+      forwardRef.current = [];
       folderIdRef.current = folder.id;
       trailRef.current = [
         ...trailRef.current,
@@ -145,6 +152,35 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
     },
     [refresh],
   );
+
+  useEffect(() => {
+    if (!active) return;
+    const navigate = (e: MouseEvent): void => {
+      if (e.button !== 3 && e.button !== 4) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (pendingDelete || moving) return;
+      const source = e.button === 3 ? backRef.current : forwardRef.current;
+      const destination = e.button === 3 ? forwardRef.current : backRef.current;
+      const trail = source.pop();
+      if (!trail) return;
+      destination.push([...trailRef.current]);
+      trailRef.current = trail;
+      folderIdRef.current = trail.at(-1)?.id ?? null;
+      void refresh();
+    };
+    const suppress = (e: MouseEvent): void => {
+      if (e.button === 3 || e.button === 4) e.preventDefault();
+    };
+    window.addEventListener('mouseup', navigate, true);
+    window.addEventListener('mousedown', suppress, true);
+    window.addEventListener('auxclick', suppress, true);
+    return () => {
+      window.removeEventListener('mouseup', navigate, true);
+      window.removeEventListener('mousedown', suppress, true);
+      window.removeEventListener('auxclick', suppress, true);
+    };
+  }, [active, refresh, pendingDelete, moving]);
 
   /** 星标取消收藏（删除失败保持现状，原 .star 点击逻辑） */
   const unstar = useCallback(

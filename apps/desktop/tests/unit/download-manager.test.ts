@@ -481,3 +481,27 @@ describe('DownloadManager', () => {
     expect(listener).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('native download controls', () => {
+  it('forwards pause, resume and cancel to the underlying download', () => {
+    const manager = new DownloadManager();
+    const item = manager.create({
+      filename: 'test',
+      url: 'https://example.com/file',
+      savePath: '/tmp/test',
+      totalBytes: 100,
+      mimeType: 'application/octet-stream',
+    });
+    const control = { pause: vi.fn(), resume: vi.fn(), cancel: vi.fn() };
+    manager.bindControl(item.id, control);
+    manager.pause(item.id);
+    expect(control.pause).toHaveBeenCalledOnce();
+    manager.resume(item.id);
+    expect(control.resume).toHaveBeenCalledOnce();
+    manager.cancel(item.id);
+    expect(control.cancel).toHaveBeenCalledOnce();
+    manager.unbindControl(item.id);
+    manager.cancel(item.id);
+    expect(control.cancel).toHaveBeenCalledOnce();
+  });
+});

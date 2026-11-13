@@ -20,7 +20,7 @@ export function getCaptureOverlayHtml(): string {
   <title>框选截图</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #111; }
     body { position: relative; cursor: crosshair; user-select: none; }
 
     /* 背景：整屏截图铺满窗口（覆盖窗口 = 主显示器逻辑尺寸，截图物理像素 ÷ dpr 正好相等） */
@@ -81,6 +81,7 @@ export function getCaptureOverlayHtml(): string {
     (function () {
       // 背景截图：主进程桌面截图，直接铺满窗口显示
       window.urchin.invoke('screenshot.getImageData', {}).then(function (res) {
+        windows = res.windows || [];
         document.getElementById('screen').src = res.dataUri;
       }).catch(function (e) {
         document.getElementById('hint').textContent = '加载截图失败：' + e.message;
@@ -94,6 +95,8 @@ export function getCaptureOverlayHtml(): string {
         left: document.getElementById('mask-left'),
         right: document.getElementById('mask-right'),
       };
+      var windows = [];
+      var candidate = null;
       var rect = null;
       // 交互状态机：null=空闲 / 'create'=拖拽新建 / 'move'=拖拽移动 / 'resize'=拖拽缩放
       var mode = null;
@@ -212,6 +215,13 @@ export function getCaptureOverlayHtml(): string {
           rect = { left: nl, top: nt, right: nr, bottom: nb };
           renderSelection();
         } else {
+          if (!rect) {
+            var found = windows.find(function (r) { return x >= r.x && y >= r.y && x < r.x + r.width && y < r.y + r.height; });
+            candidate = found ? { left: found.x, top: found.y, right: found.x + found.width, bottom: found.y + found.height } : null;
+            if (candidate) {
+              rect = candidate; renderSelection(); rect = null;
+            } else { selection.style.display = 'none'; Object.keys(masks).forEach(function (key) { masks[key].style.cssText = ''; }); }
+          }
           // 空闲悬停：按命中区切换指针样式，提示可移动/缩放
           var zone = hitZone(e.clientX, e.clientY);
           selection.style.cursor = zone ? zone.cursor : '';
@@ -222,6 +232,11 @@ export function getCaptureOverlayHtml(): string {
         if (!mode) return;
         // 新建选区过小视为误操作，重置
         if (mode === 'create' && (rect.right - rect.left < MIN_SIZE || rect.bottom - rect.top < MIN_SIZE)) {
+          if (candidate) {
+            rect = candidate; renderSelection(); mode = null;
+            actions.style.cssText = 'display:flex;left:' + rect.right + 'px;top:' + Math.min(rect.bottom, window.innerHeight - 48) + 'px;';
+            return;
+          }
           rect = null;
           selection.style.display = 'none';
           actions.style.display = 'none';

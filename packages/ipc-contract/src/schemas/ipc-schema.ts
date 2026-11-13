@@ -1645,6 +1645,9 @@ export type ScreenshotGetImageDataReq = z.infer<typeof screenshotGetImageDataReq
 export const screenshotGetImageDataResSchema = z.object({
   /** data URI 格式：data:image/png;base64,xxxx（物理像素整屏） */
   dataUri: z.string().min(1),
+  windows: z
+    .array(z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }))
+    .optional(),
 });
 export type ScreenshotGetImageDataRes = z.infer<typeof screenshotGetImageDataResSchema>;
 

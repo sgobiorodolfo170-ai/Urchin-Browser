@@ -43,7 +43,7 @@ export function registerScreenshotHandlers(
 
   // 覆盖窗口拉取背景截图
   registerHandler(ipcMain, 'screenshot.getImageData', () => {
-    return { dataUri: deps.overlay.getImageData() };
+    return { dataUri: deps.overlay.getImageData(), windows: deps.overlay.getWindowRects() };
   });
 
   // 覆盖窗口确认框选：裁剪保存

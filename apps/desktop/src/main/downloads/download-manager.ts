@@ -44,6 +44,16 @@ const TERMINAL_STATES: ReadonlySet<DownloadState> = new Set([
 ]);
 
 export class DownloadManager {
+  private readonly controls = new Map<string, { pause(): void; resume(): void; cancel(): void }>();
+
+  bindControl(id: string, control: { pause(): void; resume(): void; cancel(): void }): void {
+    this.controls.set(id, control);
+  }
+
+  unbindControl(id: string): void {
+    this.controls.delete(id);
+  }
+
   /** 下载项集合：id → DownloadItem */
   private readonly entries = new Map<string, DownloadItem>();
 
@@ -159,6 +169,9 @@ export class DownloadManager {
       throw new Error(`Download not found: ${id}`);
     }
 
+    if (existing.state === 'completed' || existing.state === 'cancelled') return existing;
+    this.controls.get(id)?.cancel();
+
     const updated: DownloadItem = {
       ...existing,
       state: 'cancelled',
@@ -186,6 +199,9 @@ export class DownloadManager {
       throw new Error(`Download not found: ${id}`);
     }
 
+    if (existing.state === 'completed' || existing.state === 'cancelled') return existing;
+    this.controls.get(id)?.pause();
+
     const updated: DownloadItem = {
       ...existing,
       state: 'paused',
@@ -211,6 +227,9 @@ export class DownloadManager {
     if (!existing) {
       throw new Error(`Download not found: ${id}`);
     }
+
+    if (existing.state === 'completed' || existing.state === 'cancelled') return existing;
+    this.controls.get(id)?.resume();
 
     const updated: DownloadItem = {
       ...existing,

@@ -14,6 +14,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CaptureOverlay } from '../../src/main/screenshots/capture-overlay';
 
+vi.mock('../../src/main/screenshots/window-bounds', () => ({
+  getWindowBounds: vi.fn().mockResolvedValue([]),
+}));
+
 // ── Mock Electron ──────────────────────────────────────────────────────────
 
 /** Mock NativeImage：记录 crop 调用，返回可序列化的伪 PNG */
@@ -52,7 +56,11 @@ class MockWindow {
   once(event: string, handler: () => void) {
     this.on(event, handler);
   }
+  setAlwaysOnTop(): void {
+    /* mock */
+  }
   webContents = {
+    executeJavaScript: vi.fn().mockResolvedValue(undefined),
     on: (
       event: string,
       handler: (_event: unknown, input: { key: string; type: string }) => void,
@@ -153,14 +161,15 @@ describe('CaptureOverlay', () => {
     expect(desktopCapturer.getSources).toHaveBeenCalledWith(
       expect.objectContaining({
         types: ['screen'],
-        thumbnailSize: { width: 1920, height: 1080 },
+        thumbnailSize: { width: 2880, height: 1620 },
       }),
     );
 
     // 覆盖窗口：透明 + 置顶 + 无边框 + 全屏 + preload
     expect(lastWindow?.loadedUrl).toBe('urchin://capture-overlay');
     const opts = lastWindow!.opts;
-    expect(opts.transparent).toBe(true);
+    expect(opts.transparent).toBe(false);
+    expect(opts.show).toBe(false);
     expect(opts.alwaysOnTop).toBe(true);
     expect(opts.frame).toBe(false);
     expect(opts.skipTaskbar).toBe(true);
@@ -178,11 +187,9 @@ describe('CaptureOverlay', () => {
     expect(desktopCapturer.getSources).toHaveBeenCalledTimes(1);
   });
 
-  it('start should show window on ready-to-show (not before)', async () => {
+  it('start should show window after background decoding', async () => {
     await overlay.start();
-    // ready-to-show 前窗口不可见（等合成器就绪，避免透明窗口黑屏/卡死）
-    expect(lastWindow?.visible).toBe(false);
-    lastWindow?.readyToShowHandler?.();
+    expect(lastWindow?.webContents.executeJavaScript).toHaveBeenCalledOnce();
     expect(lastWindow?.visible).toBe(true);
   });
 

@@ -19,7 +19,7 @@
  * CARD_HEIGHT = 40px），地址栏被拖到标题栏上（卡片触及标题栏带）即吸附入位、
  * 此后不再跟随球移动；点击悬浮球折叠地址栏解除吸附，再次展开回到与球同行。
  */
-import { BrowserWindow, Menu } from 'electron';
+import { BrowserWindow, Menu, clipboard } from 'electron';
 import { createLogger } from '@urchin/logger';
 import { WINDOW_FRAME_WIDTH, WINDOW_TITLEBAR_HEIGHT } from '../tabs/view-integration';
 import {
@@ -369,10 +369,27 @@ export class StatusBarOverlay {
     // 地址栏 copy/paste/selectAll 右键菜单（与主窗口地址栏行为对齐）
     win.webContents.on('context-menu', (_e, params) => {
       if (!params.isEditable) return;
+      const pasted = clipboard.readText().trim();
+      let target = '';
+      try {
+        const url = new URL(pasted.includes('://') ? pasted : `https://${pasted}`);
+        if (['http:', 'https:', 'file:'].includes(url.protocol) && !/\s/.test(pasted))
+          target = url.href;
+      } catch {
+        /* 剪贴板不是地址时保留普通粘贴。 */
+      }
       const menu = Menu.buildFromTemplate([
         { role: 'cut', enabled: params.editFlags.canCut, label: '剪切' },
         { role: 'copy', enabled: params.editFlags.canCopy, label: '复制' },
         { role: 'paste', enabled: params.editFlags.canPaste, label: '粘贴' },
+        ...(target
+          ? [
+              {
+                label: `粘贴并转到 '${pasted.slice(0, 120)}'`,
+                click: () => this.options.onAction({ type: 'navigate', url: target }),
+              },
+            ]
+          : []),
         { type: 'separator' },
         { role: 'selectAll', label: '全选' },
       ]);

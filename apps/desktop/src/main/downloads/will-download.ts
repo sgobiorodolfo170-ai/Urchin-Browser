@@ -120,14 +120,17 @@ async function handleDownload(
     mimeType: item.getMimeType(),
   });
 
+  deps.downloadManager.bindControl(download.id, item);
+
   item.on('updated', (_e, state) => {
     deps.downloadManager.update(download.id, {
       receivedBytes: item.getReceivedBytes(),
       totalBytes: item.getTotalBytes(),
-      state: state === 'interrupted' ? 'interrupted' : 'progressing',
+      state: item.isPaused() ? 'paused' : state === 'interrupted' ? 'interrupted' : 'progressing',
     });
   });
   item.on('done', (_e, state) => {
+    deps.downloadManager.unbindControl(download.id);
     if (state === 'completed') {
       deps.downloadManager.update(download.id, {
         state: 'completed',

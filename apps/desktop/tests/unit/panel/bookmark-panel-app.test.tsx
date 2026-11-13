@@ -667,3 +667,18 @@ describe('BookmarkPanelApp · 下载列表', () => {
     expect(invoke.mock.calls.filter(([ch]) => ch === 'download.list').length).toBe(afterLoad + 1);
   });
 });
+
+it('navigates bookmark folders with mouse back and forward buttons', async () => {
+  invoke.mockImplementation(async (channel: string) => {
+    if (channel === 'bookmark.list')
+      return { bookmarks: [FOLDER, { ...BM1, parentId: FOLDER.id }] };
+    return {};
+  });
+  render(<BookmarkPanelApp />);
+  fireEvent.click(await screen.findByText('工作'));
+  await screen.findByText('Example');
+  fireEvent.mouseUp(window, { button: 3 });
+  await waitFor(() => expect(screen.queryByText('Example')).toBeNull());
+  fireEvent.mouseUp(window, { button: 4 });
+  await screen.findByText('Example');
+});

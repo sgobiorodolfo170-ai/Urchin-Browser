@@ -34,6 +34,18 @@ const mockInvoke = vi.fn();
 const mockOn = vi.fn().mockReturnValue(() => undefined);
 const mockOnMessagePort = vi.fn().mockReturnValue(() => undefined);
 beforeEach(() => {
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
+    configurable: true,
+    value(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    },
+  });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', {
+    configurable: true,
+    value(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    },
+  });
   mockInvoke.mockReset();
   mockOn.mockReset();
   mockOn.mockReturnValue(() => undefined);
@@ -943,7 +955,7 @@ describe('App (Browser Shell)', () => {
       if (channel === 'settings.get') return Promise.resolve({ value: [] });
       if (channel === 'history.list') {
         return Promise.resolve({
-          entries: [{ url: 'https://github.com', title: 'GitHub', visitedAt: 100 }],
+          entries: [{ url: 'https://github.com', title: 'GitHub 页面', visitedAt: 100 }],
         });
       }
       return Promise.resolve({});
@@ -951,9 +963,10 @@ describe('App (Browser Shell)', () => {
     renderApp();
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
 
-    // 当前标签是主页占位（urchin://newtab）→ 点击最近浏览卡片 → 主页就地转为网站标签
+    // 最近浏览先展开网页列表，再在当前主页标签打开具体页面
     await waitFor(() => expect(screen.getByText('GitHub')).toBeInTheDocument());
     fireEvent.click(screen.getByText('GitHub'));
+    fireEvent.click(await screen.findByText('GitHub 页面'));
 
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('tab.loadUrl', {

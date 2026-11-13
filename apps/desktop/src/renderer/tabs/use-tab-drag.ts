@@ -16,7 +16,7 @@
  *   由主进程 screen.getCursorScreenPoint() 轮询看护（与悬浮球拖动引擎同一模式）：
  *   光标拖回窗内 → reentered 事件取消（标签保留）；窗外静止 1s（视为松手）→
  *   committed 事件（主进程已开新窗口并关闭原标签，渲染层只做状态清理）。
- * 仅 http/https 可拖（内部页无法外部打开）。
+ * 所有标签均可在侧栏内排序；仅 http/https 可拖出窗口。
  *
  * 右键菜单状态也在此收拢：菜单渲染在 App 根层（TabCardContextMenu），
  * 跨工作区打开/关闭等动作依赖 App 的标签生命周期，故状态经 hook 归 App 域。
@@ -52,6 +52,8 @@ export function useTabDrag() {
     tabId: number;
     workspaceId: string;
     captureEl: HTMLElement;
+    startX: number;
+    startY: number;
   } | null>(null);
 
   /**
@@ -90,10 +92,10 @@ export function useTabDrag() {
   const handleTabPointerDown = useCallback((e: React.PointerEvent, tab: TabSnapshot) => {
     // TP7：右键不触发拖拽（右键弹出工作区菜单）
     if (e.button !== 0) return;
-    if (!/^https?:\/\//i.test(tab.url)) return;
+
     // 关闭按钮等交互元素上不启动拖拽：setPointerCapture 会把 pointerup 后的
     // click 事件重定向到卡片（捕获目标），关闭按钮的 onClick 永远不触发（关闭阻塞）
-    if ((e.target as HTMLElement).closest('button')) return;
+    if ((e.target as HTMLElement).closest('button[aria-label="关闭标签"]')) return;
     const el = e.currentTarget as HTMLElement;
     tabDragRef.current = {
       pointerId: e.pointerId,
@@ -101,6 +103,8 @@ export function useTabDrag() {
       tabId: tab.id,
       workspaceId: tab.workspaceId ?? DEFAULT_WORKSPACE_ID,
       captureEl: el,
+      startX: e.clientX,
+      startY: e.clientY,
     };
     detachPendingRef.current = false;
     if (typeof el.setPointerCapture === 'function') {
@@ -115,6 +119,14 @@ export function useTabDrag() {
   const handleTabPointerMove = useCallback((e: React.PointerEvent) => {
     const st = tabDragRef.current;
     if (!st) return;
+    if (Math.hypot(e.clientX - st.startX, e.clientY - st.startY) > 6) {
+      const list = st.captureEl.parentElement;
+      if (list) {
+        const bounds = list.getBoundingClientRect();
+        if (e.clientY < bounds.top + 24) list.scrollTop -= 16;
+        if (e.clientY > bounds.bottom - 24) list.scrollTop += 16;
+      }
+    }
     if (
       e.clientX < 0 ||
       e.clientY < 0 ||
@@ -124,7 +136,7 @@ export function useTabDrag() {
       // 指针越过窗口边界：不立即开新窗口（v3 行为，无法拖回），改为挂起并
       // 上报主进程开始光标看护。挂起中重复出界只上报一次（幂等守卫）；
       // 上报失败回滚挂起态，窗内松手仍可正常结束。
-      if (!detachPendingRef.current) {
+      if (/^https?:\/\//i.test(st.url) && !detachPendingRef.current) {
         detachPendingRef.current = true;
         void window.urchin
           .invoke('tab.detachDrag.start', {
@@ -143,7 +155,31 @@ export function useTabDrag() {
   const handleTabPointerEnd = useCallback((e: React.PointerEvent) => {
     const st = tabDragRef.current;
     tabDragRef.current = null;
-    if (!st || !detachPendingRef.current) return;
+    if (!st) return;
+    const moved = Math.hypot(e.clientX - st.startX, e.clientY - st.startY) > 6;
+    if (moved) {
+      st.captureEl.addEventListener(
+        'click',
+        (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        },
+        { capture: true, once: true },
+      );
+      if (e.type !== 'pointercancel') {
+        const target = document
+          .elementFromPoint?.(e.clientX, e.clientY)
+          ?.closest<HTMLElement>('[data-tab-id]');
+        if (target && Number(target.dataset.tabId) !== st.tabId) {
+          void window.urchin
+            .invoke('tab.reorder', { tabId: st.tabId, targetTabId: Number(target.dataset.tabId) })
+            .catch(console.error);
+        }
+      }
+    }
+    if (st.captureEl.hasPointerCapture?.(e.pointerId))
+      st.captureEl.releasePointerCapture(e.pointerId);
+    if (!detachPendingRef.current) return;
     detachPendingRef.current = false;
     // 窗内松手 = 拖回成立，明确取消主进程看护（幂等；常规路径 reentered 先到，
     // 此处兜底「松手时窗内但轮询尚未判定」的竞态）。

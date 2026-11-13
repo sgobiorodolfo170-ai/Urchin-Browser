@@ -156,6 +156,22 @@ describe('TabManager', () => {
     expect(ids).toEqual([3, 2, 1]);
   });
 
+  it('reorders without changing activation and keeps new tabs on top', () => {
+    const mgr = new TabManager(createMockFactory());
+    const a = mgr.create({ windowId: 1, active: true });
+    const b = mgr.create({ windowId: 1 });
+    const c = mgr.create({ windowId: 1 });
+    const other = mgr.create({ windowId: 2 });
+    mgr.reorder(a.id, c.id);
+    expect(mgr.query({ windowId: 1 }).map((t) => t.id)).toEqual([a.id, c.id, b.id]);
+    expect(mgr.getTab(a.id)?.active).toBe(true);
+    mgr.reorder(a.id, other.id);
+    mgr.reorder(a.id, 9999);
+    expect(mgr.query({ windowId: 1 }).map((t) => t.id)).toEqual([a.id, c.id, b.id]);
+    const newest = mgr.create({ windowId: 1 });
+    expect(mgr.query({ windowId: 1 })[0]?.id).toBe(newest.id);
+  });
+
   it('should assign indexInWindow correctly', () => {
     const factory = createMockFactory();
     const mgr = new TabManager(factory);

@@ -92,3 +92,47 @@ test('新建标签后旧标签保持原状态且置顶新标签', async () => {
     await electronApp.close();
   }
 });
+
+test('侧栏激活样式、拖动排序与固定留白在两种状态均可用', async () => {
+  const { electronApp, window } = await launchApp();
+  try {
+    for (let i = 0; i < 15; i++)
+      await window.getByRole('button', { name: '新建标签', exact: true }).click();
+    const aside = window.locator('[aria-label="右侧边栏"]');
+    for (const expanded of [true, false]) {
+      const tabs = aside.locator('[data-tab-id]');
+      await tabs.first().scrollIntoViewIfNeeded();
+      const active = aside.locator('[data-tab-id][aria-current="page"]');
+      await expect(active).toHaveCount(1);
+      const activeId = await active.getAttribute('data-tab-id');
+      expect(await active.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe('none');
+      expect(
+        await aside
+          .locator('[data-tab-id]:not([aria-current])')
+          .first()
+          .evaluate((el) => getComputedStyle(el).boxShadow),
+      ).toBe('none');
+      const firstId = await tabs.first().getAttribute('data-tab-id');
+      const first = await tabs.first().boundingBox();
+      const second = await tabs.nth(1).boundingBox();
+      if (!first || !second) throw new Error('missing tab bounds');
+      await window.mouse.move(first.x + 15, first.y + 15);
+      await window.mouse.down();
+      await window.mouse.move(second.x + 15, second.y + second.height / 2, { steps: 8 });
+      await window.mouse.up();
+      await expect(tabs.nth(1)).toHaveAttribute('data-tab-id', firstId!);
+      await expect(active).toHaveAttribute('data-tab-id', activeId!);
+      const blank = aside.locator('[data-sidebar-blank]');
+      expect((await blank.boundingBox())!.height).toBeGreaterThanOrEqual(48);
+      const last = tabs.last();
+      await last.scrollIntoViewIfNeeded();
+      expect(
+        (await last.boundingBox())!.y + (await last.boundingBox())!.height,
+      ).toBeLessThanOrEqual((await blank.boundingBox())!.y);
+      await blank.dblclick();
+      await expect(aside.locator('[data-tab-card]')).toHaveCount(expanded ? 0 : 16);
+    }
+  } finally {
+    await electronApp.close();
+  }
+});

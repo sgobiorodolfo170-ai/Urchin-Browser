@@ -2865,6 +2865,10 @@ export type DevtoolsEvaluateRes = z.infer<typeof devtoolsEvaluateResSchema>;
  */
 export const ipcSchema = {
   'tab.create': { req: tabCreateReqSchema, res: tabCreateResSchema },
+  'tab.reorder': {
+    req: z.object({ tabId: tabIdSchema, targetTabId: tabIdSchema }),
+    res: z.object({ ok: z.literal(true) }),
+  },
   'tab.close': { req: tabCloseReqSchema, res: tabCloseResSchema },
   'tab.list': { req: tabListReqSchema, res: tabListResSchema },
   'tab.setActive': { req: tabSetActiveReqSchema, res: tabSetActiveResSchema },

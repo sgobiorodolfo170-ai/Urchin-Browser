@@ -215,7 +215,10 @@ export class TabManager {
 
     // 计算窗口内的位置索引
     const windowSet = this.windowTabs.get(opts.windowId);
-    const indexInWindow = opts.index ?? windowSet?.size ?? 0;
+    const indexInWindow =
+      opts.index ??
+      Math.max(-1, ...Array.from(windowSet ?? [], (id) => this.tabs.get(id)?.indexInWindow ?? -1)) +
+        1;
 
     // 是否激活：默认 true（如果该窗口还没有 tab 则必须激活）
     const hasActive = this.activeTabPerWindow.has(opts.windowId);
@@ -485,9 +488,32 @@ export class TabManager {
     if (info.windowId !== undefined) {
       result = result.filter((t) => t.windowId === info.windowId);
     }
-    // 右侧边栏倒推排序：新建的标签页始终在最上面。
-    // id 单调递增 = 创建顺序，降序即最新在前（LIFO 栈式列表）。
-    return result.sort((a, b) => b.id - a.id).map((t) => this.toSnapshot(t));
+    // 按可调整的位置倒序排列；新建标签分配最大位置，仍置顶。
+    return result
+      .sort((a, b) => b.indexInWindow - a.indexInWindow || b.id - a.id)
+      .map((t) => this.toSnapshot(t));
+  }
+
+  /** 在同一工作区内将标签移至目标标签的位置，不改变当前激活页。 */
+  reorder(tabId: number, targetTabId: number): void {
+    const tab = this.tabs.get(tabId);
+    const target = this.tabs.get(targetTabId);
+    if (!tab || !target) return;
+    if (
+      tab.windowId !== target.windowId ||
+      tab.workspaceId !== target.workspaceId ||
+      tabId === targetTabId
+    )
+      return;
+    const ordered = this.query({ windowId: tab.windowId });
+    const from = ordered.findIndex((item) => item.id === tabId);
+    const to = ordered.findIndex((item) => item.id === targetTabId);
+    ordered.splice(from, 1);
+    ordered.splice(to, 0, this.toSnapshot(tab));
+    ordered.forEach((item, i) => {
+      this.tabs.get(item.id)!.indexInWindow = ordered.length - i;
+    });
+    ordered.forEach((item) => this.emitUpdated(this.tabs.get(item.id)!));
   }
 
   /** 获取 Tab 快照。 */
@@ -837,6 +863,7 @@ export class TabManager {
       snapshot.canGoForward ? '1' : '0',
       snapshot.active ? '1' : '0',
       snapshot.crashed ? '1' : '0',
+      snapshot.indexInWindow,
       snapshot.workspaceId,
       snapshot.viewKind,
       snapshot.dirty ? '1' : '0',

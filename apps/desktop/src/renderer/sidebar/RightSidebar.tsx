@@ -101,7 +101,7 @@ export function RightSidebar({
     <aside
       ref={asideRef}
       className={cn(
-        'relative flex shrink-0 flex-col border-l border-border bg-transparent',
+        'relative flex min-h-0 shrink-0 flex-col border-l border-border bg-transparent',
         resizing
           ? ''
           : retracting
@@ -204,6 +204,8 @@ export function RightSidebar({
           />
         </div>
       )}
+
+      <div data-sidebar-blank className="h-14 w-full shrink-0" title="双击展开/折叠右侧边栏" />
 
       {/* 底部折叠/展开按钮已移除（2026-08-14）：改为双击右侧边栏空白处展开/折叠，
        *  由 aside 的 onDoubleClick 处理；与悬停自动展开互斥（设置开关控制）。 */}

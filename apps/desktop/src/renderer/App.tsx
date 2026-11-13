@@ -536,7 +536,9 @@ export function App() {
             // 前插：与右侧边栏倒推排序一致（新建标签置顶，LIFO）
             return [snapshot, ...prev];
           case 'updated':
-            return prev.map((t) => (t.id === snapshot.id ? snapshot : t));
+            return prev
+              .map((t) => (t.id === snapshot.id ? snapshot : t))
+              .sort((a, b) => b.indexInWindow - a.indexInWindow || b.id - a.id);
           case 'activated':
             setActiveTabId(snapshot.id);
             return prev.map((t) => ({ ...t, active: t.id === snapshot.id }));

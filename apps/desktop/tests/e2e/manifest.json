@@ -319,7 +319,7 @@
     {
       "spec": "tab-order-repro.spec.ts",
       "area": "标签与启动",
-      "tests": 1,
+      "tests": 2,
       "durationSec": 8,
       "triggers": [
         "apps/desktop/src/main/tabs/**",

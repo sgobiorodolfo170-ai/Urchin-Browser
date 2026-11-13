@@ -93,6 +93,11 @@ export function registerTabHandlers(
     return { tab: snapshot };
   });
 
+  registerHandler(ipcMain, 'tab.reorder', (req) => {
+    tabManager.reorder(req.tabId, req.targetTabId);
+    return { ok: true as const };
+  });
+
   // tab.close：关闭指定标签
   // 阶段 2：genoffice 标签先过编辑器自己的关闭守卫（原生三键对话框）；
   // 用户取消时 closed=false，标签保留（渲染层无需回滚——主进程未发事件）。

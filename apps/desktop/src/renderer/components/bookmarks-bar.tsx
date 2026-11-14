@@ -122,7 +122,10 @@ export function BookmarksBar({
     }
   };
   return (
-    <div ref={rowRef} className="flex h-9 min-w-0 shrink-0 items-center justify-center px-2">
+    <div
+      ref={rowRef}
+      className="flex h-9 min-w-0 shrink-0 items-center justify-center bg-transparent px-2"
+    >
       <nav
         ref={barRef}
         id="bookmarks-bar"

@@ -263,17 +263,22 @@ html[data-window='statusbar'] body {
   background: radial-gradient(ellipse 50% 100% at 50% 0%, rgba(0, 0, 0, 0.5), transparent 72%);
 }
 
-/* 书签栏：中间向两端对称渐变，隐藏滚动条但保留滚轮和键盘滚动。 */
+/* 淡橙渐变只绘制在自适应胶囊内，外围占位区域保持透明。 */
 .bookmarks-bar {
+  color: #633b16;
   scrollbar-width: none;
   overscroll-behavior-x: contain;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--color-address-bar) 65%, transparent) 0%,
-    color-mix(in srgb, var(--color-primary) 16%, var(--color-address-bar)) 50%,
-    color-mix(in srgb, var(--color-address-bar) 65%, transparent) 100%
-  );
+  background-clip: padding-box;
+  background: linear-gradient(90deg, #fff4e6 0%, #ffdfb5 50%, #fff4e6 100%);
 }
 .bookmarks-bar::-webkit-scrollbar {
   display: none;
+}
+
+.bookmarks-bar button:hover {
+  background-color: rgba(234, 136, 31, 0.14);
+}
+.bookmarks-bar .text-text-secondary {
+  color: inherit;
+  opacity: 0.75;
 }

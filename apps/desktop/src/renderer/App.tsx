@@ -409,30 +409,6 @@ export function App() {
   // TP7：加载工作区列表 / 变更广播 / 跟随活动标签 / 失效回退等 effect 已随工作区
   // 状态收拢进 use-workspaces.ts（见下方 hook 调用点）。
 
-  // TP4：启动时读取保存的标签快照（非默认工作区部分），用于切换到该工作区时懒恢复。
-  // 默认工作区的标签由主进程在启动时直接恢复，不在此处理。
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = (await window.urchin.invoke('settings.get', { key: 'session.lastTabs' })) as {
-          value: unknown;
-        };
-        const saved = Array.isArray(res?.value)
-          ? (res.value as { url: string; title: string; workspaceId: string; active: boolean }[])
-          : [];
-        const byWs: Record<string, { url: string; title: string; active: boolean }[]> = {};
-        for (const tab of saved) {
-          const wsId = tab.workspaceId ?? DEFAULT_WORKSPACE_ID;
-          if (wsId === DEFAULT_WORKSPACE_ID) continue;
-          (byWs[wsId] ??= []).push({ url: tab.url, title: tab.title, active: tab.active });
-        }
-        savedTabsByWorkspaceRef.current = byWs;
-      } catch (e) {
-        log.error('Failed to load saved tabs for lazy restore:', e);
-      }
-    })();
-  }, []);
-
   // ── 编辑守卫：标签关闭/切换拦截 + 确认弹窗状态 ──
   // 声明在 tab 事件订阅 effect 之前：事件路径（新建标签等绕过 handleSelectTab
   // 的激活）的守卫同样要弹此对话框并落位。

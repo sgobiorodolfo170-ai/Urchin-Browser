@@ -8,8 +8,8 @@
  * 覆盖链路（同一 userData 两次启动）：
  * 1. 首次启动：创建工作区 + 在默认工作区/新工作区各开一个网页标签；
  * 2. 优雅退出（before-quit → performCleanup 写 session.lastTabs）；
- * 3. 同一 userData 重启：工作区元数据仍在、默认工作区标签恢复；
- * 4. 切到自定义工作区：上次打开的标签按 TP4 懒恢复。
+ * 3. 同一 userData 重启：工作区元数据仍在、全部工作区标签恢复；
+ * 4. 切到自定义工作区：上次打开的标签恢复全部标签。
  */
 import {
   test,
@@ -63,9 +63,23 @@ async function launchApp(userDataDir: string): Promise<{
     },
     timeout: 30_000,
   });
-  const window = await electronApp.firstWindow();
-  await window.waitForLoadState('domcontentloaded');
-  return { electronApp, window };
+  // 恢复的网页也可能先发出 window 事件，须选择带浏览器 preload 的主界面。
+  let window: Page | undefined;
+  await expect
+    .poll(
+      async () => {
+        for (const candidate of electronApp.windows()) {
+          if (await candidate.evaluate(() => 'urchin' in window).catch(() => false)) {
+            window = candidate;
+            return true;
+          }
+        }
+        return false;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
+  return { electronApp, window: window! };
 }
 
 interface TabView {
@@ -176,18 +190,35 @@ test.describe('重启恢复（TP4 / TP7）', () => {
         state.tabs.some((t) => t.workspaceId === 'default' && t.url.startsWith(defaultUrl)),
       ).toBe(true);
 
-      // ── 4. 切到自定义工作区：TP4 懒恢复上次打开的标签 ──
-      await restarted.mouse.move(10, 10);
-      await restarted
+      // 未访问自定义工作区就再次退出：不能用默认工作区快照覆盖其标签。
+      expect(
+        state.tabs.filter((t) => t.workspaceId === created.workspaceId).map((t) => t.url),
+      ).toEqual([workspaceUrl]);
+      const closedAgain = electronApp.waitForEvent('close');
+      await electronApp.evaluate(({ app }) => app.quit()).catch(() => undefined);
+      await closedAgain;
+      electronApp = undefined;
+      const third = await launchApp(userDataDir);
+      electronApp = third.electronApp;
+      expect(
+        (await listTabs(third.window))
+          .filter((t) => t.workspaceId === created.workspaceId)
+          .map((t) => t.url),
+      ).toEqual([workspaceUrl]);
+      const restoredWindow = third.window;
+
+      // ── 4. 切到自定义工作区：显示上次打开的标签 ──
+      await restoredWindow.mouse.move(10, 10);
+      await restoredWindow
         .locator('[aria-label="右侧边栏"]')
         .first()
         .evaluate((el) => {
           el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
         });
-      await restarted
+      await restoredWindow
         .getByRole('button', { name: '新建标签' })
         .waitFor({ state: 'visible', timeout: 15_000 });
-      await restarted
+      await restoredWindow
         .getByRole('button', { name: /重启工作区/ })
         .first()
         .click();
@@ -195,7 +226,7 @@ test.describe('重启恢复（TP4 / TP7）', () => {
       await expect
         .poll(
           async () =>
-            (await listTabs(restarted)).some(
+            (await listTabs(restoredWindow)).some(
               (t) => t.workspaceId === created.workspaceId && t.url.startsWith(workspaceUrl),
             ),
           { timeout: 20_000 },

@@ -1603,40 +1603,46 @@ void app.whenReady().then(async () => {
     markStartup('main:deferred-end');
   });
 
-  // 为主窗口创建初始 tab：默认打开主页占位标签（urchin://newtab）。
-  // 标签持久化（TP4）：若 startup.restoreTabs 开启且 session.lastTabs 有默认工作区的保存标签，
-  // 则恢复这些标签（创建 + 激活上次活跃的）；否则创建单个主页占位。
-  // 其他工作区的标签不在此恢复——由渲染层在切换到该工作区时懒恢复。
+  // 在主进程恢复全部工作区，确保未访问的工作区也进入下一次退出快照。
+  // 默认工作区仍遵循 startup.restoreTabs；自定义工作区始终保留标签。
   {
     const restoreDefault = ctx.settingsManager.get('startup.restoreTabs') === true;
     const savedAll = ctx.settingsManager.get('session.lastTabs');
-    const savedTabs = Array.isArray(savedAll)
-      ? (savedAll as { url: string; title: string; workspaceId: string; active: boolean }[])
-      : [];
-    const defaultTabs = savedTabs.filter((t) => t.workspaceId === 'default');
-
-    let restored = false;
-    if (restoreDefault && defaultTabs.length > 0) {
-      let activeTabId: number | undefined;
-      for (const tab of defaultTabs) {
-        // ADR-014：丢弃遗留的 urchin://ai 启动器标签（pi 入口已改为直接打开
-        // pi-web-host 托管的 http 页，urchin://ai 路由已释放）。避免旧会话恢复出 404 页。
-        if (tab.url.startsWith('urchin://ai')) continue;
+    let activeTabId: number | undefined;
+    let defaultTabId: number | undefined;
+    if (Array.isArray(savedAll)) {
+      for (const entry of savedAll as unknown[]) {
+        if (typeof entry !== 'object' || entry === null) continue;
+        const tab = entry as Record<string, unknown>;
+        if (
+          !tab ||
+          typeof tab.url !== 'string' ||
+          typeof tab.workspaceId !== 'string' ||
+          !ctx.workspaceRegistry.has(tab.workspaceId) ||
+          (tab.workspaceId === 'default' && !restoreDefault) ||
+          tab.url.startsWith('urchin://ai') ||
+          tab.url.startsWith('urchin://workspaces') ||
+          tab.url.startsWith('urchin://genoffice')
+        )
+          continue;
         const created = tabManager.create({
           windowId: mainWindow.id,
           url: tab.url,
-          workspaceId: 'default',
+          workspaceId: tab.workspaceId,
           active: false,
         });
-        if (tab.active) activeTabId = created.id;
+        if (tab.workspaceId === 'default') {
+          defaultTabId ??= created.id;
+          if (tab.active) activeTabId = created.id;
+        }
       }
-      if (activeTabId) tabManager.setActive(activeTabId);
-      restored = true;
-      log.info('default workspace tabs restored', { count: defaultTabs.length });
     }
-    if (!restored) {
-      tabManager.create({ windowId: mainWindow.id, url: 'urchin://newtab' });
-    }
+    defaultTabId ??= tabManager.create({
+      windowId: mainWindow.id,
+      url: 'urchin://newtab',
+      workspaceId: 'default',
+    }).id;
+    tabManager.setActive(activeTabId ?? defaultTabId);
   }
   markStartup('main:first-tab');
 

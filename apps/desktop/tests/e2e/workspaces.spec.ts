@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * E2E 测试：工作区（TP7）Cookie 隔离 + 切换恢复 + 卡片总览页
  *
@@ -15,13 +16,7 @@
  *
  * 引擎注入：无（纯本地 HTTP fixture，不 mock 页面）。
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { createServer, type Server } from 'node:http';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

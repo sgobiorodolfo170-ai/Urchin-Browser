@@ -148,8 +148,8 @@
     {
       "spec": "launch.spec.ts",
       "area": "标签与启动",
-      "tests": 6,
-      "durationSec": 22,
+      "tests": 7,
+      "durationSec": 26,
       "triggers": [
         "apps/desktop/src/main/bootstrap/**",
         "apps/desktop/src/main/lifecycle/**",

@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * E2E 回归：收藏夹面板文件夹删除（用户报告：收藏夹选项卡下添加的文件夹无法删除）
  *
@@ -14,13 +15,7 @@
  * 3. 点击确认「删除」→ 文件夹行消失
  * 4. 主进程状态同步：bookmark.list 中不再存在该文件夹
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';

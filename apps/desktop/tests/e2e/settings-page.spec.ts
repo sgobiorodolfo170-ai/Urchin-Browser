@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * 设置页 E2E 冒烟（refactor-plan-p2 §Session3 必跑清单所列
  * settings-page-component 的落地；此前该页无任何 E2E 覆盖）
@@ -6,13 +7,7 @@
  * 数据目录与 userData 均隔离到临时目录（设置值存共享设置库，不隔离会
  * 污染用户真实设置/用例互污，见 workspaces.spec 同款注释）。
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';

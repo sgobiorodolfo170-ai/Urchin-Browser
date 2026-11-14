@@ -1,3 +1,4 @@
+import { finishProcessExit } from './exit-process';
 /**
  * 信号处理：Ctrl+C (SIGINT) 和 kill 命令 (SIGTERM)。
  * 转发到统一异步清理流程，完成（或硬超时）后再 app.exit()。
@@ -19,7 +20,9 @@ export function installSignalHandlers(ctx: AppContext): void {
   const handle = (signal: 'SIGINT' | 'SIGTERM'): void => {
     if (ctx.isCleaningUp) return; // 已有退出流程在跑，忽略重复信号
     log.info(`${signal} received, performing cleanup`);
-    runCleanupAndExit(ctx, { exit: (code) => app.exit(code) });
+    runCleanupAndExit(ctx, {
+      exit: (code) => finishProcessExit(code, (exitCode) => app.exit(exitCode)),
+    });
   };
 
   process.on('SIGINT', () => handle('SIGINT'));

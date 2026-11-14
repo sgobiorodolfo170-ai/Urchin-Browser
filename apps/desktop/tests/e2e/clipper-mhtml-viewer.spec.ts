@@ -1,10 +1,11 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * M26 MHTML 查看器 E2E：先用真实 Electron 生成 MHTML，再以文件参数启动应用，
  * 验证宿主只读查看器加载并解析出文档标题。
  *
  * 不依赖剪藏流程，直接验证 routeLocalFile 的 mhtml 分支与 Chromium MHTML 解析。
  */
-import { test, expect, _electron as electron, type ElectronApplication } from '@playwright/test';
+import { expect, type ElectronApplication } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';

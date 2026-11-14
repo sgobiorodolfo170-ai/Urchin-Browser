@@ -1,4 +1,5 @@
-import { test, expect, _electron as electron } from '@playwright/test';
+import { test, electron } from './helpers/electron-test';
+import { expect } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
@@ -28,7 +29,7 @@ test('middle-button drags sticky anywhere', async () => {
   });
   const window = await electronApp.firstWindow();
   await window.waitForLoadState('domcontentloaded');
-  await window.getByRole('button', { name: '笔记', exact: true }).click();
+  await window.getByRole('button', { name: '速记', exact: true }).click();
   await window.getByLabel('便利贴画布').waitFor({ state: 'visible', timeout: 15_000 });
 
   // 新建便利贴

@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * E2E 测试：网页翻译（M24 dev.82）
  *
@@ -10,13 +11,7 @@
  * 引擎注入：URCHIN_TRANSLATE_TEST_BASE 环境变量（index.ts 装配方支持）。
  * 真实网络（国内微软引擎可用性等）不在 E2E 覆盖范围，由手工验收清单承担。
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { createServer, type Server } from 'node:http';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

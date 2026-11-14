@@ -1,16 +1,11 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * M26 剪藏 E2E：本地文章页 → 地址栏剪藏 → 面板保存 Markdown → 文件落盘。
  *
  * 使用本地 HTTP 服务，避免依赖外网；数据目录隔离到临时目录，
  * 直接断言 <dataDir>/documents/clipper/*.md 内容。
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { createServer, type Server } from 'node:http';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';

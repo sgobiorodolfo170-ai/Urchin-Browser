@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * 复现：关闭激活标签后，应激活侧边栏相邻的下一个标签（正下方），
  * 而不是跳到列表最底部（最旧）的标签（2026-11-10 用户指令）。
@@ -7,13 +8,7 @@
  * 旧实现激活最底部的 t1（Set 插入序首个），新实现应激活正下方
  * 的 t3——以「唯一激活卡片位于列表顶部」断言。
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';

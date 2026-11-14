@@ -1,10 +1,11 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * 测量：主页（urchin://newtab）标签的内存占用
  *
  * 方法：app.getAppMetrics() 采集所有 Electron 进程的工作集内存，
  * 对比 新建主页标签 前后 的进程数 + 内存增量。
  */
-import { test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { type ElectronApplication, type Page } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';

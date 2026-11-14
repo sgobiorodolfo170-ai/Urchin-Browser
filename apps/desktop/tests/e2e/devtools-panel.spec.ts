@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * E2E 测试：M15 DevTools 检视列（dev.119，CDP 采集面板一期）
  *
@@ -10,7 +11,7 @@
  * F12 键盘拦截与面板渲染属 UI 交互层，受 Playwright CDP 与 before-input-event
  * 时序影响较大，由人工验收清单承担（见规划 §10.3 Spike 结论）。
  */
-import { test, expect, _electron as electron } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';

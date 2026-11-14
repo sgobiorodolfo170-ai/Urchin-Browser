@@ -14,6 +14,7 @@
 // Polyfill 必须在所有其他模块之前加载：undici 顶层 require node:worker_threads
 // 并解构 markAsUncloneable（Node 22.3+ 才有），Electron 32/Node 20 缺失会导致启动崩溃。
 import './polyfills/worker-threads-polyfill';
+import { finishProcessExit } from './lifecycle/exit-process';
 import { app, nativeTheme, screen, session, dialog } from 'electron';
 import { join, basename } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -96,6 +97,7 @@ import { installDragInjection, type TransitDragData } from './transit/drag-injec
 import { resolvePortableUserData } from './portable';
 import { installDevtoolsShortcuts } from './devtools';
 import type { AppContext } from './bootstrap/app-context';
+import { installLaunchHealth } from './bootstrap/launch-health';
 import { installEventLoopWatchdog } from './bootstrap/watchdog';
 import { runCleanupAndExit } from './lifecycle/cleanup';
 import { registerIpcHandlers } from './bootstrap/handlers';
@@ -1320,7 +1322,11 @@ void app.whenReady().then(async () => {
   });
 
   // 首帧渲染完成打点（启动优化 B5 诊断）：主窗口首载 HTML 完成
-  mainWebContents.once('did-finish-load', () => markStartup('main:did-finish-load'));
+  mainWebContents.once('did-finish-load', () => {
+    markStartup('main:did-finish-load');
+    const disposeLaunchHealth = installLaunchHealth(process.env.URCHIN_LAUNCH_READY_FILE);
+    app.once('will-quit', disposeLaunchHealth);
+  });
 
   // 启动优化（B3，窗口先出）：主窗口与 mainWebContents 已就绪——「窗口可见」的
   // 关键路径到此为止，以下初始化不阻塞首帧，移入 setImmediate 延后执行：
@@ -1694,7 +1700,9 @@ app.on('before-quit', (event) => {
     return;
   }
   event.preventDefault();
-  runCleanupAndExit(ctx, { exit: (code) => app.exit(code) });
+  runCleanupAndExit(ctx, {
+    exit: (code) => finishProcessExit(code, (exitCode) => app.exit(exitCode)),
+  });
 });
 
 // 信号处理（SIGINT/SIGTERM → 统一清理，实现见 lifecycle/signals.ts）

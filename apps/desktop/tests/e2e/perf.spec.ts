@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * W7 性能验收：10 标签内存测量
  * 依据：ADR-008 v0.1 验收标准 - 内存 ≤500MB（10 标签场景，P95）
@@ -7,7 +8,7 @@
  * 原因：本机实测 707.7~715.9MB、CI 实测 567.4MB，环境差（~150MB）已超过单线
  * 750MB 的余量，用单线会把环境噪声判成代码回归。重校目标线仍属产品决策。
  */
-import { test, expect, _electron as electron } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';

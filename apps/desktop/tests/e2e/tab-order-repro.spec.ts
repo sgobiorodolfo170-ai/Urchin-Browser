@@ -1,13 +1,8 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * 复现：新建标签后，被顶下去的旧标签在右侧栏是否保持原状态（标题/URL）
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';

@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * E2E：DSH 生命周期链路（§7.1 修复固化 · docs/DSH-遗留规划.md §一 R3）
  *
@@ -14,13 +15,7 @@
  * 前置：pnpm install + dist 已构建（pnpm build）+ vendor（pnpm sync:dsh）
  *      + 便携 Node（node scripts/fetch-node.mjs）。
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { existsSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

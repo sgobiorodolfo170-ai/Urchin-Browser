@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * E2E 测试：v0.1 关键路径
  * 依据：07-立项准备 §2.6 D5 / 05-路线图 v0.1 验收 / ADR-008 W6
@@ -11,13 +12,7 @@
  * 注意：AI 摘要路径依赖真实 Provider + API key，v0.1 E2E 暂不覆盖，
  * 由单元测试（provider-e2e.test.ts）验证 Orchestrator ↔ Provider SDK 集成。
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
@@ -253,4 +248,23 @@ test('截图覆盖整个显示器，窗口预选与背景保持相同坐标', as
   } finally {
     await electronApp.close();
   }
+});
+
+test('主线程无响应时关闭有期限且不遗留本测试进程', async () => {
+  test.skip(process.platform !== 'win32', 'Windows 原生输入法阻塞的回收回归');
+  const { electronApp } = await launchApp();
+  await electronApp.evaluate(() => {
+    const nativeProcess = process as NodeJS.Process & { hang(): void };
+    setTimeout(() => nativeProcess.hang(), 100);
+  });
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const startedAt = Date.now();
+  await electronApp.close();
+  expect(Date.now() - startedAt).toBeLessThan(10_000);
+  await expect
+    .poll(() => {
+      const child = electronApp.process();
+      return child.exitCode !== null || child.signalCode !== null;
+    })
+    .toBe(true);
 });

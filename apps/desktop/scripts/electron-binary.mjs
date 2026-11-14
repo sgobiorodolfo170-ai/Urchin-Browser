@@ -18,8 +18,10 @@ import {
   readFileSync,
   statSync,
   unlinkSync,
+  renameSync,
   writeFileSync,
 } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,7 +46,15 @@ export function resolveElectronBinary() {
   const icon = join(appRoot, 'build', 'icon.ico');
   if (!existsSync(icon)) return source;
 
+  const stamp = `${branded}.json`;
+  const pending = `${branded}.${process.pid}.tmp`;
+  const iconHash = createHash('sha256').update(readFileSync(icon)).digest('hex');
   try {
+    if (existsSync(branded) && existsSync(stamp)) {
+      const cached = JSON.parse(readFileSync(stamp, 'utf8'));
+      if (cached.sourceMtime === statSync(source).mtimeMs && cached.iconHash === iconHash)
+        return branded;
+    }
     if (existsSync(branded)) {
       const brandedTime = statSync(branded).mtimeMs;
       if (brandedTime >= statSync(source).mtimeMs && brandedTime >= statSync(icon).mtimeMs) {
@@ -55,8 +65,8 @@ export function resolveElectronBinary() {
     const require = createRequire(import.meta.url);
     const { NtExecutable, NtExecutableResource, Resource, Data } = require('resedit');
 
-    copyFileSync(source, branded);
-    const exe = NtExecutable.from(readFileSync(branded), { ignoreCert: true });
+    copyFileSync(source, pending);
+    const exe = NtExecutable.from(readFileSync(pending), { ignoreCert: true });
     const res = NtExecutableResource.from(exe);
 
     // 语言跟随 electron.exe 的版本资源（通常是 en-US 1033），无版本资源时用 1033。
@@ -79,14 +89,20 @@ export function resolveElectronBinary() {
     }
 
     res.outputResource(exe);
-    writeFileSync(branded, Buffer.from(exe.generate()));
+    writeFileSync(pending, Buffer.from(exe.generate()));
+    renameSync(pending, branded);
+    writeFileSync(stamp, JSON.stringify({ sourceMtime: statSync(source).mtimeMs, iconHash }));
     return branded;
   } catch (error) {
-    // 品牌副本写坏会让应用直接启动失败：删除并回退原 exe。
+    // 只删除本次临时文件，不删除可能仍在运行的有效品牌副本。
     try {
-      if (existsSync(branded)) unlinkSync(branded);
+      if (existsSync(pending)) unlinkSync(pending);
     } catch {
       /* 清理由下一次启动重试 */
+    }
+    if (existsSync(branded) && statSync(branded).mtimeMs >= statSync(source).mtimeMs) {
+      console.warn('[launch] 品牌副本正在使用，保留现有可用副本，图标更新延后。');
+      return branded;
     }
     console.warn('[launch] 品牌图标注入失败，回退 electron.exe:', error?.message ?? error);
     return source;

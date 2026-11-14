@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * E2E：GenOffice 编辑器融合 · PDF / HTML / Docs(docx) / Slides(pptx) / Sheets(xlsx)
  * （阶段 4 + 5）
@@ -11,13 +12,7 @@
  *
  * 前置：`pnpm genoffice:build`（vendor 产物）；缺失时整组 skip。
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';

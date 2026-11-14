@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * E2E 测试：重启后恢复工作区与已打开标签（TP4 + TP7 持久化闭环）
  *
@@ -11,13 +12,7 @@
  * 3. 同一 userData 重启：工作区元数据仍在、全部工作区标签恢复；
  * 4. 切到自定义工作区：上次打开的标签恢复全部标签。
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { createServer, type Server } from 'node:http';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

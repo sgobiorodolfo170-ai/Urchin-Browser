@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * E2E：pi 阶段 2 自研托管服务链路（docs/pi-web-评估.md 阶段 2 / M2A 骨架）
  *
@@ -10,13 +11,7 @@
  *
  * 前置：pnpm install + dist 已构建（pnpm build 生成 dist/main/pi-web-host.js 与 dist/pi-web）
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';

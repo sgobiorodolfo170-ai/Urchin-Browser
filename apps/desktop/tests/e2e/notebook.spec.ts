@@ -1,16 +1,11 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * M27 笔记 / 便利贴 E2E
  *
  * 覆盖：左侧栏入口 → 三区渲染 → 新建笔记 → 任务清单 → 便利贴。
  * 数据目录隔离到临时目录，避免污染本机真实笔记。
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
@@ -49,7 +44,7 @@ test.describe('M27 笔记 / 便利贴', () => {
   test('should open notebook page and edit note/task/sticky', async () => {
     const { electronApp, window } = await launchApp();
 
-    await window.getByRole('button', { name: '笔记', exact: true }).click();
+    await window.getByRole('button', { name: '速记', exact: true }).click();
 
     // 三区渲染：左区导航、中区笔记、右区便利贴画布
     await expect(window.getByLabel('笔记导航')).toBeVisible({ timeout: 15_000 });

@@ -1,4 +1,5 @@
-import { test, expect, _electron as electron } from '@playwright/test';
+import { test, electron } from './helpers/electron-test';
+import { expect } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
@@ -25,7 +26,7 @@ test('notebook regions fill', async () => {
   });
   const window = await electronApp.firstWindow();
   await window.waitForLoadState('domcontentloaded');
-  await window.getByRole('button', { name: '笔记', exact: true }).click();
+  await window.getByRole('button', { name: '速记', exact: true }).click();
   await window.getByLabel('笔记导航').waitFor({ state: 'visible', timeout: 15_000 });
   await window.waitForTimeout(1500);
 
@@ -47,5 +48,6 @@ test('notebook regions fill', async () => {
   });
   console.log('REGIONS', JSON.stringify(dims));
   expect(dims.grid).not.toBeNull();
+  await window.screenshot({ path: test.info().outputPath('quicknote-layout.png') });
   await electronApp.close();
 });

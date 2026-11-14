@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * E2E 回归：收藏夹悬浮面板（独立子窗口，悬浮于网页之上）
  *
@@ -13,13 +14,7 @@
  *    不依赖开发共享书签库——2026-11-09 起双变量隔离，空 fixture 库同样断言）
  * 5. 再次点击 → 面板关闭
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';

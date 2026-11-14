@@ -1,3 +1,4 @@
+import { test, electron } from './helpers/electron-test';
 /**
  * E2E：GenOffice Markdown 编辑器融合（阶段 2 打样）
  *
@@ -11,13 +12,7 @@
  * 前置：`pnpm genoffice:build`（vendor 产物）；缺失时整组 skip，保证 CI 无 vendor
  * 构建时流水线不误红（打包/本地验收跑完整路径）。
  */
-import {
-  test,
-  expect,
-  _electron as electron,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, type ElectronApplication, type Page } from '@playwright/test';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';

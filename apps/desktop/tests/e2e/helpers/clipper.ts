@@ -89,8 +89,18 @@ export async function waitForClipperSaveSettled(
         .first()
         .isVisible()
         .catch(() => false)
-    )
+    ) {
+      // 保存提示出现后旧面板仍可能有自动关闭定时器。先关闭并等到窗口销毁，
+      // 再允许调用者重新打开，避免旧定时器关闭下一轮剪藏面板。
+      await panel
+        .getByRole('button', { name: '关闭剪藏面板' })
+        .click()
+        .catch((error: unknown) => {
+          if (!panel.isClosed()) throw error;
+        });
+      await expect.poll(() => panel.isClosed(), { timeout }).toBe(true);
       return;
+    }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(`clipper panel did not settle (close or saved notice) in ${timeout}ms`);

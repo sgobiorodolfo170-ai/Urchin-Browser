@@ -154,3 +154,64 @@ test.describe('v0.1 关键路径', () => {
     }
   });
 });
+
+test('地址栏原生粘贴并转到菜单确实发出导航', async () => {
+  const { electronApp } = await launchApp();
+  try {
+    const bar = await getStatusBarPage(electronApp);
+    await bar.getByRole('textbox', { name: '地址栏' }).click();
+    // 触发实际 context-menu 监听器，并执行实际菜单项的回调；避免测试操作系统菜单坐标。
+    await electronApp.evaluate(({ BrowserWindow, Menu, clipboard }) => {
+      const win = BrowserWindow.getAllWindows().find((w) => w.getTitle() === 'Urchin Status Bar');
+      if (!win) throw new Error('status bar missing');
+      win.focus();
+      const original = Menu.buildFromTemplate;
+      const previousClipboard = clipboard.readText();
+      clipboard.writeText('https://example.com/paste-go-regression');
+      Menu.buildFromTemplate = (template) => {
+        const item = template.find((entry) => entry.label?.startsWith('粘贴并转到'));
+        if (!item || typeof item.click !== 'function') throw new Error('paste-and-go missing');
+        const menu = original(template);
+        item.click(menu.items[0]!, win, { triggeredByAccelerator: false });
+        menu.popup = () => {
+          /* 不打开 OS 菜单，直接执行原生菜单回调。 */
+        };
+        return menu;
+      };
+      try {
+        win.webContents.emit(
+          'context-menu',
+          {},
+          { isEditable: true, editFlags: { canCut: true, canCopy: true, canPaste: true } },
+        );
+      } finally {
+        Menu.buildFromTemplate = original;
+        clipboard.writeText(previousClipboard);
+      }
+    });
+    await expect
+      .poll(async () => bar.getByRole('textbox', { name: '地址栏' }).inputValue())
+      .toContain('example.com/paste-go-regression');
+  } finally {
+    await electronApp.close();
+  }
+});
+
+test('截图覆盖整个显示器，窗口预选与背景保持相同坐标', async () => {
+  const { electronApp } = await launchApp();
+  try {
+    const bar = await getStatusBarPage(electronApp);
+    await bar.evaluate(() => window.urchin.invoke('screenshot.capture', {}));
+    const capture = electronApp.windows().find((p) => p.url().includes('capture-overlay'));
+    if (!capture) throw new Error('capture overlay missing');
+    const display = await electronApp.evaluate(({ screen }) => screen.getPrimaryDisplay().bounds);
+    const viewport = await capture.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    expect(viewport).toEqual({ width: display.width, height: display.height });
+    const image = await capture
+      .locator('#screen')
+      .evaluate((el: HTMLImageElement) => ({ width: el.naturalWidth, height: el.naturalHeight }));
+    expect(image.width / image.height).toBeCloseTo(viewport.width / viewport.height, 3);
+  } finally {
+    await electronApp.close();
+  }
+});

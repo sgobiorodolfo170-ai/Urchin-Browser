@@ -386,7 +386,15 @@ export class StatusBarOverlay {
           ? [
               {
                 label: `粘贴并转到 '${pasted.slice(0, 120)}'`,
-                click: () => this.options.onAction({ type: 'navigate', url: target }),
+                click: () => {
+                  // 与地址栏按 Enter 一样显式结束编辑；窗口失焦不会清除 DOM 输入焦点。
+                  void win.webContents
+                    .executeJavaScript('document.activeElement?.blur()')
+                    .then(() => this.options.onAction({ type: 'navigate', url: target }))
+                    .catch((error: unknown) =>
+                      log.warn('paste-and-go failed', { error: String(error) }),
+                    );
+                },
               },
             ]
           : []),

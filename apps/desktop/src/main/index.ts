@@ -1486,9 +1486,14 @@ void app.whenReady().then(async () => {
         }
       },
       onAction: (action) => {
-        // 动作已由 ui.statusbar.action handler 转发并处理焦点；
-        // 此回调保留为扩展点，当前无需额外处理。
-        void action;
+        // 原生右键菜单不经过渲染层 IPC，必须转发给 App 的动作分发器。
+        sendToMainWindow('ui.statusbar.action', action);
+        if (action.type === 'navigate') {
+          // 与 ui.statusbar.action 的导航路径一致，离开输入焦点以同步新 URL。
+          mainWindow.browserWindow.focus?.();
+          const active = tabManager.query({ windowId: mainWindow.id }).find((tab) => tab.active);
+          if (active) tabManager.getTab(active.id)?.webContents.focus?.();
+        }
       },
       getBallBounds: () => ctx.statusBarBall?.getBounds() ?? null,
       onBallOverlap: (barBounds) => ctx.statusBarBall?.ensureClearOfRect(barBounds),

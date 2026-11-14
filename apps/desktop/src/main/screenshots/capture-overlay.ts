@@ -137,7 +137,11 @@ export class CaptureOverlay {
       movable: false,
       minimizable: false,
       maximizable: false,
-      fullscreenable: false,
+      // Windows 会把普通窗口钳制到 workArea，压缩背景图并导致窗口预选偏移。
+      // 隐藏时进入全屏，确保覆盖范围包含任务栏且与截图尺寸一致。
+      fullscreenable: true,
+      fullscreen: true,
+      thickFrame: false,
       alwaysOnTop: true,
       skipTaskbar: true,
       hasShadow: false,

@@ -170,6 +170,9 @@ describe('CaptureOverlay', () => {
     const opts = lastWindow!.opts;
     expect(opts.transparent).toBe(false);
     expect(opts.show).toBe(false);
+    expect(opts.fullscreen).toBe(true);
+    expect(opts.fullscreenable).toBe(true);
+    expect(opts.thickFrame).toBe(false);
     expect(opts.alwaysOnTop).toBe(true);
     expect(opts.frame).toBe(false);
     expect(opts.skipTaskbar).toBe(true);

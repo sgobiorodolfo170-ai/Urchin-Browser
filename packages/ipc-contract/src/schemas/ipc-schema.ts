@@ -2882,7 +2882,16 @@ export type DevtoolsEvaluateRes = z.infer<typeof devtoolsEvaluateResSchema>;
 export const ipcSchema = {
   'tab.create': { req: tabCreateReqSchema, res: tabCreateResSchema },
   'tab.reorder': {
-    req: z.object({ tabId: tabIdSchema, targetTabId: tabIdSchema }),
+    req: z.object({
+      tabId: tabIdSchema,
+      targetTabId: tabIdSchema,
+      /**
+       * 插入方位（相对 targetTabId 在渲染顺序中的位置）：before = 目标之前
+       * （默认，向后兼容旧语义）；after = 目标之后——末尾追加（拖到末卡下方
+       * 空白）的唯一表达方式（2026-11-15 侧栏拖拽死区修复）。
+       */
+      position: z.enum(['before', 'after']).default('before'),
+    }),
     res: z.object({ ok: z.literal(true) }),
   },
   'tab.close': { req: tabCloseReqSchema, res: tabCloseResSchema },

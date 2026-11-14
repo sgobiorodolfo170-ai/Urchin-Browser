@@ -494,8 +494,16 @@ export class TabManager {
       .map((t) => this.toSnapshot(t));
   }
 
-  /** 在同一工作区内将标签移至目标标签的位置，不改变当前激活页。 */
-  reorder(tabId: number, targetTabId: number): void {
+  /**
+   * 在同一工作区内将标签移至目标标签的位置，不改变当前激活页。
+   *
+   * @param tabId 目标 tab ID
+   * @param targetTabId 参照标签 ID
+   * @param position 插入方位（相对参照标签在渲染顺序中的位置）：
+   *   before = 参照之前（默认，向后兼容）；after = 参照之后——末尾追加
+   *   （拖到末卡下方空白）的唯一表达方式（2026-11-15 侧栏拖拽死区修复）。
+   */
+  reorder(tabId: number, targetTabId: number, position: 'before' | 'after' = 'before'): void {
     const tab = this.tabs.get(tabId);
     const target = this.tabs.get(targetTabId);
     if (!tab || !target) return;
@@ -508,8 +516,12 @@ export class TabManager {
     const ordered = this.query({ windowId: tab.windowId });
     const from = ordered.findIndex((item) => item.id === tabId);
     const to = ordered.findIndex((item) => item.id === targetTabId);
+    if (from < 0 || to < 0) return;
     ordered.splice(from, 1);
-    ordered.splice(to, 0, this.toSnapshot(tab));
+    // 摘除自身后参照位平移（自身在参照之上时参照前移一位），再按方位落位
+    const toAfterRemoval = to > from ? to - 1 : to;
+    const insertAt = position === 'after' ? toAfterRemoval + 1 : toAfterRemoval;
+    ordered.splice(insertAt, 0, this.toSnapshot(tab));
     ordered.forEach((item, i) => {
       this.tabs.get(item.id)!.indexInWindow = ordered.length - i;
     });

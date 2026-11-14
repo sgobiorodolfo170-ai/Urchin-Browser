@@ -146,6 +146,8 @@ export interface AppContext {
 
   /** 底部悬浮状态栏（独立透明子窗口，悬浮于网页之上）。在 whenReady 内初始化。 */
   statusBarOverlay: StatusBarOverlay | null;
+  /** 悬浮层尚未构造时收到的首帧状态；构造后重放。 */
+  pendingStatusBarState?: import('@urchin/ipc-contract').StatusBarState;
 
   /** 悬浮球（独立透明子窗口，网页区右侧）。在 whenReady 内初始化。 */
   statusBarBall: StatusBarBall | null;

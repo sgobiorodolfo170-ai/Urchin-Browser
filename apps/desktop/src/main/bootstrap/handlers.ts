@@ -50,7 +50,7 @@ import { registerPageContextHandlers } from '../page-context';
 import { registerFileHandlers, registerEditorHandlers, sweepDrafts } from '../files';
 import { registerFileAssociationHandlers } from '../file-association';
 import { createGenOfficeIntegration } from '../genoffice/integration';
-import { loadGenOfficeEmbed } from '../genoffice/loader';
+import type { GenOfficeEmbedApi } from '../genoffice/loader';
 import { createAiPanelPrefsStore } from '../genoffice/host-channels';
 import { registerGenOfficeHomeHandlers } from '../genoffice/home-handlers';
 import { GenOfficeHomeStore } from '../genoffice/home-store';
@@ -81,6 +81,7 @@ import { registerRuntimeHandlers, resolvePortableNodeExePath } from '../runtime'
 import { registerLogHandlers } from '../logs';
 import { DevtoolsManager, registerDevtoolsHandlers } from '../devtools';
 import type { AppContext } from './app-context';
+import { syncStatusBarState } from '../status-bar/sync-state';
 // 运行时惰性使用的 index.ts 共享符号（循环引用安全性见文件头注释）
 import { applyTheme } from './theme-apply';
 // 运行时惰性使用的 index.ts 共享符号（循环引用安全性见文件头注释）
@@ -255,12 +256,13 @@ export function registerIpcHandlers(ctx: AppContext): void {
   // M1 window 域 handler
   registerWindowHandlers(ipcMain, ctx.windowManager);
 
-  // GenOffice 编辑器集成（阶段 2-4）：注册宿主通道、初始化嵌入包、
+  // GenOffice 编辑器集成（阶段 2-4）：启动仅注册宿主通道；首次使用再初始化嵌入包、
   // 挂 dirty 旁路与关闭守卫。产物缺失时 available=false，标签全部回落
   // Urchin 内置查看器（用户策略：GenOffice 为主、Urchin 保底）。
   // URCHIN_DISABLE_GENOFFICE=1 时整体跳过（含嵌入包加载）。
   const genofficeAiPanelPrefs = createAiPanelPrefsStore();
-  const genofficeEmbed = GENOFFICE_DISABLED ? null : loadGenOfficeEmbed();
+  const getGenOfficeEmbed = (): GenOfficeEmbedApi | null =>
+    GENOFFICE_DISABLED ? null : (ctx.genofficeIntegration?.getEmbedApi() ?? null);
   if (!GENOFFICE_DISABLED) {
     ctx.genofficeIntegration = createGenOfficeIntegration({
       ipcMain,
@@ -270,7 +272,7 @@ export function registerIpcHandlers(ctx: AppContext): void {
       aiPanelPrefs: genofficeAiPanelPrefs,
       createHomeView: () => createGenOfficeShellHomeView(),
     });
-    ctx.genofficeIntegration.install();
+    ctx.genofficeIntegration.install({ deferEmbed: true });
     installGenOfficeWindowCloseGuard(ctx);
   }
 
@@ -316,7 +318,7 @@ export function registerIpcHandlers(ctx: AppContext): void {
       // GenOffice 主页入口 → GenOffice 通道（能力表驱动）；打不开的格式转交浏览器
       openLocalPath: (path) => openInGenOffice(defaultWindowId(ctx), path),
       openBlankDocument: (kind) => {
-        const view = genofficeEmbed?.createGenOfficeBlankView?.(kind);
+        const view = getGenOfficeEmbed()?.createGenOfficeBlankView?.(kind);
         if (!view) return false;
         ctx.tabManager.create({
           windowId: defaultWindowId(ctx),
@@ -329,10 +331,12 @@ export function registerIpcHandlers(ctx: AppContext): void {
         return true;
       },
       writeBlankPdf: async (filePath) => {
-        await genofficeEmbed?.writeBlankPdfFile?.(filePath);
+        await getGenOfficeEmbed()?.writeBlankPdfFile?.(filePath);
       },
-      setLanguage: (lang) => genofficeEmbed?.setGenOfficeLanguage?.(lang),
-      embedApi: genofficeEmbed,
+      setLanguage: (lang) => getGenOfficeEmbed()?.setGenOfficeLanguage?.(lang),
+      get embedApi() {
+        return getGenOfficeEmbed();
+      },
     });
   }
 
@@ -551,7 +555,9 @@ export function registerIpcHandlers(ctx: AppContext): void {
     settings: ctx.settingsManager,
     panel: clipperPanel,
     store: clipperStore,
-    embedApi: genofficeEmbed,
+    get embedApi() {
+      return getGenOfficeEmbed();
+    },
     openMhtmlFile: (path) => {
       if (!routeLocalFile(defaultWindowId(ctx), path)) {
         throw new Error(`无法打开 MHTML：${path}`);
@@ -910,7 +916,7 @@ export function registerIpcHandlers(ctx: AppContext): void {
 
   // UI 域 handler：状态栏状态同步（主渲染 → 主进程，缓存并转发给悬浮层）
   registerHandler(ipcMain, 'ui.statusbar.sync', (req) => {
-    ctx.statusBarOverlay?.handleSync(req);
+    syncStatusBarState(ctx, req);
     // 主题 + 灵敏度同步给球（球在所有页面常驻，可见性由主进程独立管理）
     sendBallConfig();
     return { ok: true as const };
@@ -918,7 +924,9 @@ export function registerIpcHandlers(ctx: AppContext): void {
 
   // UI 域 handler：悬浮层取缓存状态（悬浮层 → 主进程）
   registerHandler(ipcMain, 'ui.statusbar.getState', () => {
-    return ctx.statusBarOverlay?.getState() ?? DEFAULT_STATUS_BAR_STATE;
+    return (
+      ctx.statusBarOverlay?.getState() ?? ctx.pendingStatusBarState ?? DEFAULT_STATUS_BAR_STATE
+    );
   });
 
   // UI 域 handler：悬浮层上报建议/提示展开高度（悬浮层 → 主进程，重定位窗口）

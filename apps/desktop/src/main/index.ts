@@ -15,6 +15,7 @@
 // 并解构 markAsUncloneable（Node 22.3+ 才有），Electron 32/Node 20 缺失会导致启动崩溃。
 import './polyfills/worker-threads-polyfill';
 import { finishProcessExit } from './lifecycle/exit-process';
+import { replayStatusBarState } from './status-bar/sync-state';
 import { app, nativeTheme, screen, session, dialog } from 'electron';
 import { join, basename } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -1539,6 +1540,7 @@ void app.whenReady().then(async () => {
         };
       },
     });
+    replayStatusBarState(ctx);
     // 悬浮球在所有页面常驻（仅全屏/最小化隐藏），但**延后到主窗口首次显示后创建**：
     // · 主窗口可见前球毫无意义（applyVisibility 本来也会把它隐藏）；
     // · 更关键的是窗口顺序：Playwright 的 electronApp.firstWindow() 取「最先创建的页面」，

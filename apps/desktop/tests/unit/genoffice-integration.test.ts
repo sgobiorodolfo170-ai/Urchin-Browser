@@ -112,6 +112,47 @@ describe('createGenOfficeIntegration', () => {
     vi.clearAllMocks();
   });
 
+  it('defers the embed until the first document or asset operation', () => {
+    const api = makeEmbedApi();
+    mockedArtifacts.mockReturnValue(makeArtifacts());
+    mockedLoad.mockReturnValue(api);
+    const { deps, ipcHandlers } = makeDeps([]);
+    const integration = createGenOfficeIntegration(deps);
+    integration.install({ deferEmbed: true });
+    expect(ipcHandlers.size).toBeGreaterThan(0);
+    expect(mockedLoad).not.toHaveBeenCalled();
+    integration.resolveTabCreate('urchin://newtab');
+    expect(mockedLoad).not.toHaveBeenCalled();
+    expect(integration.getEmbedApi()).toBe(api);
+    integration.getEmbedApi();
+    integration.install({ deferEmbed: true });
+    expect(mockedLoad).toHaveBeenCalledTimes(1);
+    expect(api.initGenOfficeEmbed).toHaveBeenCalledTimes(1);
+    expect(api.initGenOfficeAi).toHaveBeenCalledTimes(1);
+  });
+
+  it('initializes before resolving a deferred editor and safely caches failure', () => {
+    const api = makeEmbedApi();
+    mockedArtifacts.mockReturnValue(makeArtifacts());
+    mockedLoad.mockReturnValue(api);
+    const integration = createGenOfficeIntegration(makeDeps([]).deps);
+    integration.install({ deferEmbed: true });
+    expect(integration.resolveTabCreate(buildGenOfficeUrl('markdown', 'C:\\a.md')).viewKind).toBe(
+      'genoffice',
+    );
+    expect(api.initGenOfficeEmbed).toHaveBeenCalledOnce();
+    const failing = makeEmbedApi();
+    failing.initGenOfficeEmbed.mockImplementation(() => {
+      throw new Error('broken artifact');
+    });
+    mockedLoad.mockReturnValue(failing);
+    const unavailable = createGenOfficeIntegration(makeDeps([]).deps);
+    unavailable.install({ deferEmbed: true });
+    expect(unavailable.getEmbedApi()).toBeNull();
+    expect(unavailable.getEmbedApi()).toBeNull();
+    expect(failing.initGenOfficeEmbed).toHaveBeenCalledOnce();
+  });
+
   it('should stay unavailable and fall back to file-viewer when artifacts are missing', () => {
     mockedArtifacts.mockReturnValue(null);
     mockedLoad.mockReturnValue(null);

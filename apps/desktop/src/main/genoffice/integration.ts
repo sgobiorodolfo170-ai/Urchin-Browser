@@ -4,7 +4,7 @@
  * 职责：
  * 1. install()（app ready 后调用一次）：
  *    - 注册宿主缺失的应用级通道（host-channels）
- *    - 加载 vendor 嵌入包并初始化（renderer/preload 路径）
+ *    - 默认加载 vendor 嵌入包；宿主可传 deferEmbed 延后至首次文档/资源使用
  *    - 挂 dirty 旁路监听：GenOffice 编辑器自报的 `${kind}:dirty-changed`
  *      同步到标签脏状态（侧栏脏点/关闭守卫共用）
  * 2. resolveTabCreate(url)：tab.create 分流——GenOffice 伪地址 → 预构建
@@ -57,7 +57,9 @@ export interface GenOfficeIntegration {
   readonly available: boolean;
   /** 阶段 3：GenOffice 原生 AI 通道已注册（编辑器 AI 面板/设置界面可用）。 */
   readonly aiAvailable: boolean;
-  install(): void;
+  install(options?: { readonly deferEmbed?: boolean }): void;
+  /** 首次文档/资源操作时加载并初始化重包；失败返回 null。 */
+  getEmbedApi(): GenOfficeEmbedApi | null;
   resolveTabCreate(url: string): GenOfficeTabCreate;
   /** 关闭前守卫；resolve true = 允许关闭。 */
   guardTabClose(tabId: number): Promise<boolean>;
@@ -71,6 +73,8 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
   let embed: GenOfficeEmbedApi | null = null;
   let available = false;
   let aiAvailable = false;
+  let installed = false;
+  let attempted = false;
 
   /** 不发 dirty-changed 推送的 kind（脏状态经轮询补齐）按 tabId 的定时器。 */
   const polledDirtyTimers = new Map<number, ReturnType<typeof setInterval>>();
@@ -130,18 +134,25 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
     }
   }
 
-  function install(): void {
-    // 应用级通道无条件注册：即使产物缺失也不影响浏览器本体
-    registerGenOfficeHostChannels(deps.ipcMain, {
-      getTheme: deps.getTheme,
-      ...(deps.aiPanelPrefs ? { aiPanelPrefs: deps.aiPanelPrefs } : {}),
-    });
+  function install(options: { readonly deferEmbed?: boolean } = {}): void {
+    if (!installed) {
+      registerGenOfficeHostChannels(deps.ipcMain, {
+        getTheme: deps.getTheme,
+        ...(deps.aiPanelPrefs ? { aiPanelPrefs: deps.aiPanelPrefs } : {}),
+      });
+      installed = true;
+    }
+    if (!options.deferEmbed) ensureEmbed();
+  }
 
+  function ensureEmbed(): GenOfficeEmbedApi | null {
+    if (attempted) return embed;
+    attempted = true;
     const artifacts = resolveGenOfficeArtifacts();
     const loaded = loadGenOfficeEmbed();
     if (!artifacts || !loaded) {
       log.info('genoffice artifacts unavailable — editor tabs fall back to built-in viewer');
-      return;
+      return null;
     }
 
     // shell Home 渲染产物（阶段 4.6）：有则随 genoffice-app:// 协议一并服务
@@ -156,7 +167,7 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
       });
     } catch (e) {
       log.error('genoffice embed init failed', { error: String(e) });
-      return;
+      return null;
     }
 
     // 阶段 3：GenOffice 原生 AI（ai:*）与会话存储（project:*）。
@@ -188,6 +199,7 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
     log.info('genoffice editor integration ready', {
       kinds: Object.keys(artifacts.rendererRoots),
     });
+    return embed;
   }
 
   function resolveTabCreate(url: string): GenOfficeTabCreate {
@@ -195,7 +207,8 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
     // 宿主以自有 preload 创建 WebContentsView（window.aiOffice 适配层）；
     // shell 产物缺失时回落为浏览器标签 → 渲染进程的 React 保底主页。
     if (url === GENOFFICE_HOME_URL || url.startsWith(`${GENOFFICE_HOME_URL}/`)) {
-      const view = deps.createHomeView?.();
+      ensureEmbed();
+      const view = embed ? deps.createHomeView?.() : null;
       if (view) {
         return {
           url: GENOFFICE_HOME_URL,
@@ -210,6 +223,7 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
 
     const target = parseGenOfficeUrl(url);
     if (!target) return { url, viewKind: 'browser' };
+    ensureEmbed();
     if (!embed || !available) {
       return { url: fallbackUrl(target.kind, target.path), viewKind: 'browser' };
     }
@@ -270,6 +284,7 @@ export function createGenOfficeIntegration(deps: GenOfficeIntegrationDeps): GenO
       return aiAvailable;
     },
     install,
+    getEmbedApi: ensureEmbed,
     resolveTabCreate,
     guardTabClose,
     confirmWindowClose,

@@ -309,7 +309,6 @@ export class StatusBarOverlay {
     if (this.isOpen) return;
     // 重置关闭标志（销毁后重建时）
     this.parentClosing = false;
-    this.parentListenersAttached = false;
     const parent = this.options.getParentWindow();
     if (!parent) {
       log.warn('status bar: parent window not available');
@@ -442,6 +441,8 @@ export class StatusBarOverlay {
 
   private applyVisibility(): void {
     const parent = this.options.getParentWindow();
+    // 首帧同步可能在父窗口 show 前到达；尚未创建子窗口时也要监听 show。
+    if (parent) this.attachParentListeners(parent);
     const parentVisible = parent ? parent.isVisible() : false;
     const parentMinimized = parent?.isMinimized?.() ?? false;
     // 外部网页可见且未折叠时显示地址栏；折叠时由悬浮球显示，地址栏隐藏。

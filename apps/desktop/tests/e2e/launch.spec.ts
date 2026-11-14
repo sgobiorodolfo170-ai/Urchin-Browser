@@ -122,6 +122,26 @@ test.describe('v0.1 关键路径', () => {
       await expect(statusBar.getByRole('textbox', { name: '地址栏' })).toHaveValue(/example\.com/, {
         timeout: 15_000,
       });
+      const address = statusBar.getByRole('textbox', { name: '地址栏' });
+      await address.click({ position: { x: 20, y: 10 } });
+      await expect
+        .poll(() =>
+          address.evaluate((el: HTMLInputElement) => ({
+            start: el.selectionStart,
+            coversEnd: el.selectionEnd === el.value.length,
+          })),
+        )
+        .toEqual({ start: 0, coversEnd: true });
+      // 已在编辑状态时再次单击，也应全选，而非只留下鼠标落点处的光标。
+      await address.click({ position: { x: 40, y: 10 } });
+      await expect
+        .poll(() =>
+          address.evaluate(
+            (el: HTMLInputElement) =>
+              el.selectionStart === 0 && el.selectionEnd === el.value.length,
+          ),
+        )
+        .toBe(true);
     } finally {
       await electronApp.close();
     }

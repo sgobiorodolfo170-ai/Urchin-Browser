@@ -69,7 +69,7 @@ async function launchApp(userDataDir: string): Promise<{
     .poll(
       async () => {
         for (const candidate of electronApp.windows()) {
-          if (await candidate.evaluate(() => 'urchin' in window).catch(() => false)) {
+          if (await candidate.evaluate(() => 'urchin' in globalThis.window).catch(() => false)) {
             window = candidate;
             return true;
           }

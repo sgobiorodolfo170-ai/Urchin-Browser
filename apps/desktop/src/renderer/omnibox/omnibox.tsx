@@ -218,6 +218,13 @@ export function Omnibox({
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
+          // 阻止鼠标默认光标/词语选择覆盖全选，右键仍使用原生编辑菜单。
+          onMouseDown={(e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            e.currentTarget.focus();
+            e.currentTarget.select();
+          }}
           onBlur={handleBlur}
           className="h-full w-full rounded-md bg-transparent text-[16px] text-text outline-none placeholder:text-text-secondary"
           aria-label="地址栏"

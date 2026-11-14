@@ -365,8 +365,8 @@
     {
       "spec": "workspaces.spec.ts",
       "area": "工作区",
-      "tests": 3,
-      "durationSec": 35,
+      "tests": 4,
+      "durationSec": 50,
       "triggers": [
         "apps/desktop/src/main/workspaces/**",
         "apps/desktop/src/renderer/workspaces/**",

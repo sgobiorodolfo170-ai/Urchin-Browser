@@ -5,6 +5,7 @@
  * 1. workspace.list / create / update 委托 registry 并广播变更
  * 2. workspace.remove：有打开标签时拒绝；无标签放行并广播
  * 3. workspace.clearData：有打开标签时拒绝；无标签调用 sessions.clearData
+ * 4. workspace.reorder：委托 registry.reorder 并广播变更（2026-11-15 拖拽重排）
  */
 import { describe, it, expect, vi } from 'vitest';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
@@ -55,6 +56,7 @@ function createDeps() {
     })),
     update: vi.fn(() => ({ ...sample })),
     remove: vi.fn(),
+    reorder: vi.fn(),
   } as unknown as WorkspaceRegistry;
 
   const sessions = {
@@ -189,5 +191,34 @@ describe('registerWorkspaceHandlers', () => {
     ).resolves.toEqual({
       ok: true,
     });
+  });
+
+  it('should reorder workspaces and broadcast change', async () => {
+    const { ipcMain, handlers } = createMockIpcMain();
+    const { deps, registry, broadcastChanged } = createDeps();
+    registerWorkspaceHandlers(ipcMain, deps);
+
+    const res = (await handlers.get('workspace.reorder')?.({
+      orderedIds: ['w2', 'w1'],
+    })) as { ok: boolean };
+    expect(res).toEqual({ ok: true });
+    expect(registry.reorder).toHaveBeenCalledWith(['w2', 'w1']);
+    expect(broadcastChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('should propagate reorder rejection without broadcast', async () => {
+    const { ipcMain, handlers } = createMockIpcMain();
+    const { deps, registry, broadcastChanged } = createDeps();
+    registry.reorder = vi.fn(() => {
+      throw new Error('工作区不存在：ghost');
+    });
+    registerWorkspaceHandlers(ipcMain, deps);
+
+    const res = (await handlers.get('workspace.reorder')?.({
+      orderedIds: ['ghost'],
+    })) as { code: string };
+    // registry 抛普通 Error → registerHandler 装箱为 INTERNAL（非 IpcError）
+    expect(res.code).toBe('INTERNAL');
+    expect(broadcastChanged).not.toHaveBeenCalled();
   });
 });

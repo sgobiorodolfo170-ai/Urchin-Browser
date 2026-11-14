@@ -354,6 +354,34 @@ export function useWorkspaces({
     [refreshWorkspaces],
   );
 
+  /**
+   * 重排非默认工作区（总览页卡片拖拽，2026-11-15 用户指令）。
+   *
+   * 先乐观更新本地列表（拖拽落位即时生效，不等 IPC 往返），再持久化；
+   * 失败时以主进程权威列表回滚（workspace:changed 广播也会触发权威刷新）。
+   * 默认工作区恒居首——orderedIds 由调用方（总览页）从展示序剔除默认工作区
+   * 与「新建」卡后生成。
+   */
+  const handleReorderWorkspaces = useCallback(
+    (orderedIds: readonly string[]) => {
+      setWorkspaces((prev) => {
+        const byId = new Map(prev.map((ws) => [ws.id, ws]));
+        const reordered = orderedIds
+          .map((id) => byId.get(id))
+          .filter((ws): ws is Workspace => ws !== undefined);
+        const missing = prev.filter((ws) => !ws.isDefault && !orderedIds.includes(ws.id));
+        const def = prev.find((ws) => ws.isDefault);
+        return [...(def ? [def] : []), ...reordered, ...missing];
+      });
+      void window.urchin.invoke('workspace.reorder', { orderedIds }).catch((e) => {
+        console.error('Failed to reorder workspaces:', e);
+        // 以主进程权威顺序回滚（乐观更新与持久化真源保持一致）
+        void refreshWorkspaces();
+      });
+    },
+    [refreshWorkspaces],
+  );
+
   /** 在另一工作区打开当前页（标签右键菜单）。 */
   const handleOpenInWorkspace = useCallback(async (workspaceId: string, tab: { url: string }) => {
     try {
@@ -465,6 +493,7 @@ export function useWorkspaces({
     handleUpdateWorkspace,
     handleRemoveWorkspace,
     handleClearWorkspaceData,
+    handleReorderWorkspaces,
     handleOpenInWorkspace,
     handleOpenInNewWorkspace,
     handleOpenWorkspacesPage,

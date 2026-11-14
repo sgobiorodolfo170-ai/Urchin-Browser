@@ -4,7 +4,7 @@
  * 依据：契约 B §3.1 workspace.* / 契约 D TP7
  * 职责：
  * 注册 workspace.list / workspace.create / workspace.update /
- *      workspace.remove / workspace.clearData IPC handler。
+ *      workspace.remove / workspace.clearData / workspace.reorder IPC handler。
  *
  * 设计理由（AGENTS.md §七.2 + §六「Single Source of Truth」）：
  * - handler 只做协议适配，业务逻辑委托 WorkspaceRegistry / WorkspaceSessionManager
@@ -81,6 +81,14 @@ export function registerWorkspaceHandlers(ipcMain: IpcMain, deps: WorkspaceHandl
     }
     assertNoOpenTabs(deps.tabManager, req.id, '清空数据');
     await deps.sessions.clearData(req.id);
+    deps.broadcastChanged();
+    return { ok: true as const };
+  });
+
+  // workspace.reorder：重排非默认工作区（总览页卡片拖拽，2026-11-15 用户指令）
+  registerHandler(ipcMain, 'workspace.reorder', (req) => {
+    log.info('workspace.reorder', { order: req.orderedIds });
+    deps.registry.reorder(req.orderedIds);
     deps.broadcastChanged();
     return { ok: true as const };
   });

@@ -315,6 +315,18 @@ export const workspaceClearDataResSchema = z.object({
 });
 export type WorkspaceClearDataRes = z.infer<typeof workspaceClearDataResSchema>;
 
+/** 工作区重排：orderedIds = 非默认工作区的新顺序（默认工作区恒居首、不入此列，
+ *  注册表会校验与既有非默认工作区集合完全一致，防漏/重/多）。 */
+export const workspaceReorderReqSchema = z.object({
+  orderedIds: z.array(workspaceIdSchema),
+});
+export type WorkspaceReorderReq = z.infer<typeof workspaceReorderReqSchema>;
+
+export const workspaceReorderResSchema = z.object({
+  ok: z.literal(true),
+});
+export type WorkspaceReorderRes = z.infer<typeof workspaceReorderResSchema>;
+
 /** 查询当前渲染进程所属窗口 id（多窗口下渲染层不再硬编码 windowId=1）。 */
 export const windowGetCurrentReqSchema = z.object({}).default({});
 export type WindowGetCurrentReq = z.infer<typeof windowGetCurrentReqSchema>;
@@ -2922,6 +2934,7 @@ export const ipcSchema = {
   'workspace.update': { req: workspaceUpdateReqSchema, res: workspaceUpdateResSchema },
   'workspace.remove': { req: workspaceRemoveReqSchema, res: workspaceRemoveResSchema },
   'workspace.clearData': { req: workspaceClearDataReqSchema, res: workspaceClearDataResSchema },
+  'workspace.reorder': { req: workspaceReorderReqSchema, res: workspaceReorderResSchema },
   'history.record': { req: historyRecordReqSchema, res: historyRecordResSchema },
   'history.search': { req: historySearchReqSchema, res: historySearchResSchema },
   'history.list': { req: historyListReqSchema, res: historyListResSchema },

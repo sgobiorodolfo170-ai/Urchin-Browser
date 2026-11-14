@@ -218,9 +218,9 @@ export function Omnibox({
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
-          // 阻止鼠标默认光标/词语选择覆盖全选，右键仍使用原生编辑菜单。
+          // 仅首次点击进入编辑时全选；已聚焦时保留原生光标定位与自由选择。
           onMouseDown={(e) => {
-            if (e.button !== 0) return;
+            if (e.button !== 0 || document.activeElement === e.currentTarget) return;
             e.preventDefault();
             e.currentTarget.focus();
             e.currentTarget.select();

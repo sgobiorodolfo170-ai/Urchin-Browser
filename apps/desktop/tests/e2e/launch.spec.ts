@@ -132,8 +132,27 @@ test.describe('v0.1 关键路径', () => {
           })),
         )
         .toEqual({ start: 0, coversEnd: true });
-      // 已在编辑状态时再次单击，也应全选，而非只留下鼠标落点处的光标。
+      // 再次点击释放全选，允许用户定位光标和选择局部文字。
       await address.click({ position: { x: 40, y: 10 } });
+      await expect
+        .poll(() =>
+          address.evaluate(
+            (el: HTMLInputElement) =>
+              el.selectionStart === 0 && el.selectionEnd === el.value.length,
+          ),
+        )
+        .toBe(false);
+      await address.press('End');
+      await address.press('Shift+ArrowLeft');
+      await expect
+        .poll(() =>
+          address.evaluate(
+            (el: HTMLInputElement) => (el.selectionEnd ?? 0) - (el.selectionStart ?? 0),
+          ),
+        )
+        .toBe(1);
+      await address.blur();
+      await address.click({ position: { x: 20, y: 10 } });
       await expect
         .poll(() =>
           address.evaluate(

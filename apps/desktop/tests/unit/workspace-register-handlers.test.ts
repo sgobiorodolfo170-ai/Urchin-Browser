@@ -193,6 +193,23 @@ describe('registerWorkspaceHandlers', () => {
     });
   });
 
+  it('should re-check open tabs after clearData and reject before removing (race guard)', async () => {
+    const { ipcMain, handlers } = createMockIpcMain();
+    const { deps, registry, broadcastChanged, tabManager } = createDeps();
+    // 第一次守卫（clearData 前）无标签放行；第二次（clearData 后）发现新标签——
+    // 模拟清存储耗时期间其它窗口又在被删工作区新建标签的竞态。
+    let call = 0;
+    (tabManager.query as ReturnType<typeof vi.fn>).mockImplementation(() =>
+      call++ === 0 ? [] : [{ id: 1, windowId: 1, workspaceId: 'w1' }],
+    );
+    registerWorkspaceHandlers(ipcMain, deps);
+
+    const res = (await handlers.get('workspace.remove')?.({ id: 'w1' })) as { code: string };
+    expect(res.code).toBe('STATE');
+    expect(registry.remove).not.toHaveBeenCalled();
+    expect(broadcastChanged).not.toHaveBeenCalled();
+  });
+
   it('should reorder workspaces and broadcast change', async () => {
     const { ipcMain, handlers } = createMockIpcMain();
     const { deps, registry, broadcastChanged } = createDeps();

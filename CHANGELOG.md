@@ -280,3 +280,5 @@
 | v0.3.0-dev.231 | 2026-11-15 | 工作区总览页两条用户指令修订：「新建」卡由固定第 9 格改为**恒居全部卡片末位**（工作区多时随滚动出现）；总览页内新建后**不再切换/关页**（面板收起清空表单可连续创建，失败面板内显错；新卡以末位出现，点击才切换并按既有逻辑建主页标签）。E2E：cards 用例补「新建留页」阶段、溢出用例改末位断言 |
 
 | v0.3.0-dev.232 | 2026-11-15 | 右侧栏标签拖拽排序「时灵时不灵」修复：主进程 tab 事件 16ms 节流对跨 tab 连发不再覆盖丢弃 pending（此前 reorder 连发 3 条 updated 丢中间一条，渲染层永久按陈旧 indexInWindow 排序且不自愈）；拖拽落点改 computeReorderTarget 几何边界计算（卡片上/下半=前/后，间隙/列表 padding/末卡下方空白全有效，原地自动跳过），tab.reorder 增可选 position before/after（after=末尾追加唯一表达）；单测 +16（纯函数 12 + reorder 语义 4）、E2E 补死区拖放 3 落点用例（--repeat-each=3 全绿） |
+
+| v0.3.0-dev.233 | 2026-11-15 | 工作区删除功能三处逻辑漏洞修复（用户指令「检查代码」）：① 主进程 workspace.remove 的「无打开标签」守卫与 registry.remove 之间隔着 await 清存储（可秒级），期间其它窗口新建的标签会把工作区连同活 BrowserView 一起删成幽灵——clearData 后二次守卫（复查与删除间无 await，handler 内原子），单测 +1；② 其它窗口删除本窗口当前工作区时 fallback 只改 id 不动标签，落入 activeTabId null 降级态——改走 handleSwitchWorkspace 统一激活/新建标签；③ 删除成功后清理渲染层会话残留（lastActive 指针 / TP4 保存标签 / 总览页快照与限流戳），TP4 死数据不再滞留会话 |

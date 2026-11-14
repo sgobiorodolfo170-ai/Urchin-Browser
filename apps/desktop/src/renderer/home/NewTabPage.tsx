@@ -372,10 +372,10 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
           <SiteFavicon url={drag.site.url} favicon={drag.site.favicon} className="h-10 w-10" />
         </div>
       )}
-      <section className="mt-8 w-4/5" aria-label="常用网站" data-site-zone="frequent">
+      <section className="mt-6 w-4/5" aria-label="常用网站" data-site-zone="frequent">
         <div
           data-testid="frequent-sites"
-          className="mt-4 grid min-h-[72px] max-h-[40vh] grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-x-4 gap-y-6 overflow-y-auto p-4"
+          className="grid min-h-[72px] max-h-[40vh] grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-x-4 gap-y-6 overflow-y-auto p-4"
         >
           {renderSites(frequent, false)}
         </div>

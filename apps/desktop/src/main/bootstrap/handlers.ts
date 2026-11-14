@@ -346,6 +346,32 @@ export function registerIpcHandlers(ctx: AppContext): void {
 
   // M5 bookmark 域 handler
   // 新建书签时从当前标签快照取已缓存图标（主进程可信来源，渲染层不可伪造）。
+  registerHandler(ipcMain, 'tab.getPageBackground', async (req, callCtx) => {
+    const owner = ctx.windowManager.getWindowByWebContents(callCtx.event.sender);
+    const tab = ctx.tabManager.getTab(req.tabId);
+    if (!owner || tab?.windowId !== owner.id) return { color: null };
+    try {
+      const color = await tab.webContents.executeJavaScript<unknown>(`(() => {
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+        const context = canvas.getContext('2d'); if (!context) return null;
+        context.fillStyle = '#fff'; context.fillRect(0, 0, 1, 1);
+        const ancestors = []; let element = document.elementFromPoint(innerWidth / 2, 1) || document.body;
+        while (element && ancestors.length < 32) { ancestors.unshift(element); element = element.parentElement; }
+        if (document.body && !ancestors.includes(document.body)) { context.fillStyle = getComputedStyle(document.body).backgroundColor; context.fillRect(0, 0, 1, 1); }
+        for (const node of ancestors) { context.fillStyle = getComputedStyle(node).backgroundColor; context.fillRect(0, 0, 1, 1); }
+        const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
+        return 'rgb(' + r + ', ' + g + ', ' + b + ')';
+      })()`);
+      return {
+        color:
+          typeof color === 'string' && /^rgb\(\d{1,3}, \d{1,3}, \d{1,3}\)$/.test(color)
+            ? color
+            : null,
+      };
+    } catch {
+      return { color: null };
+    }
+  });
   registerHandler(ipcMain, 'bookmark.openFolderMenu', (req, callCtx) =>
     openBookmarkFolderMenu(ctx.bookmarkManager, callCtx.event.sender as WebContents, req),
   );

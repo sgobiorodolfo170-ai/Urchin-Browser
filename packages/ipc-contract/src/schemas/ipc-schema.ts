@@ -2874,6 +2874,15 @@ export const ipcSchema = {
     res: z.object({ ok: z.literal(true) }),
   },
   'tab.close': { req: tabCloseReqSchema, res: tabCloseResSchema },
+  'tab.getPageBackground': {
+    req: z.object({ tabId: z.number().int().positive() }),
+    res: z.object({
+      color: z
+        .string()
+        .regex(/^rgb\(\d{1,3}, \d{1,3}, \d{1,3}\)$/)
+        .nullable(),
+    }),
+  },
   'tab.list': { req: tabListReqSchema, res: tabListResSchema },
   'tab.setActive': { req: tabSetActiveReqSchema, res: tabSetActiveResSchema },
   'tab.reload': { req: tabReloadReqSchema, res: tabReloadResSchema },

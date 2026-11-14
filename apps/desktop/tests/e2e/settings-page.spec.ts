@@ -17,6 +17,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createServer } from 'node:http';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -294,6 +295,64 @@ test.describe('设置页', () => {
         Math.abs((await bar.boundingBox())!.width - (await card.boundingBox())!.width / 2),
       )
       .toBeLessThan(1);
+    const region = bar.locator('..');
+    await expect(region).toHaveCSS('background-image', 'none');
+    const server = createServer((_req, res) => {
+      res.setHeader('Content-Type', 'text/html');
+      res.end('<html><body>background sync test</body></html>');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('server address missing');
+    const backgroundUrl = `http://127.0.0.1:${address.port}/`;
+    try {
+      await window.evaluate(async (url) => {
+        const api = globalThis.window.urchin;
+        const result = (await api.invoke('tab.list', { windowId: 1 })) as {
+          tabs: { id: number; active: boolean }[];
+        };
+        await api.invoke('tab.loadUrl', { tabId: result.tabs.find((tab) => tab.active)!.id, url });
+      }, backgroundUrl);
+      await expect
+        .poll(async () =>
+          electronApp.evaluate(
+            ({ webContents }, url) =>
+              webContents.getAllWebContents().some((view) => view.getURL() === url),
+            backgroundUrl,
+          ),
+        )
+        .toBe(true);
+      const recolorPage = async (color: string) => {
+        await electronApp.evaluate(
+          async ({ webContents }, background) => {
+            const page = webContents
+              .getAllWebContents()
+              .find((view) => view.getURL() === background.url);
+            if (!page) throw new Error('external page missing');
+            await page.executeJavaScript(
+              `document.documentElement.style.backgroundColor = ${JSON.stringify(background.color)}; document.body.style.backgroundColor = ${JSON.stringify(background.color)};`,
+            );
+          },
+          { color, url: backgroundUrl },
+        );
+      };
+      await recolorPage('rgb(18, 52, 86)');
+      await expect(region).toHaveCSS('background-color', 'rgb(18, 52, 86)', { timeout: 10000 });
+      await recolorPage('rgb(24, 25, 28)');
+      await expect(region).toHaveCSS('background-color', 'rgb(24, 25, 28)', { timeout: 10000 });
+      await window.getByRole('button', { name: '设置', exact: true }).click();
+      await expect
+        .poll(async () =>
+          region.evaluate(
+            (el) =>
+              getComputedStyle(el).backgroundColor ===
+              getComputedStyle(document.querySelector('main .bg-surface')!).backgroundColor,
+          ),
+        )
+        .toBe(true);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
     await electronApp.close();
   });
 });

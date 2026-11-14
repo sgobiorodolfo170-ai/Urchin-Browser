@@ -1430,6 +1430,8 @@ export function App() {
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             {useCustomChrome && bookmarksBarHeight > 0 && (
               <BookmarksBar
+                pageTabId={isInternalPage ? null : activeTabId}
+                pageUrl={activeTab?.url ?? ''}
                 addressBarExtraWidth={devtoolsOpen ? devtoolsWidth : 0}
                 onNavigate={(url) => void handleNavigate(url)}
               />

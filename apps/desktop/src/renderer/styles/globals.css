@@ -263,20 +263,25 @@ html[data-window='statusbar'] body {
   background: radial-gradient(ellipse 50% 100% at 50% 0%, rgba(0, 0, 0, 0.5), transparent 72%);
 }
 
-/* 淡橙渐变只绘制在自适应胶囊内，外围占位区域保持透明。 */
+/* 胶囊使用主题中性色；外围以当前页面的纯色背景单独填充。 */
 .bookmarks-bar {
-  color: #633b16;
+  color: var(--color-text);
   scrollbar-width: none;
   overscroll-behavior-x: contain;
   background-clip: padding-box;
-  background: linear-gradient(90deg, #fff4e6 0%, #ffdfb5 50%, #fff4e6 100%);
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-secondary) 0%,
+    color-mix(in srgb, var(--color-primary) 6%, var(--color-address-bar)) 50%,
+    var(--color-surface-secondary) 100%
+  );
 }
 .bookmarks-bar::-webkit-scrollbar {
   display: none;
 }
 
 .bookmarks-bar button:hover {
-  background-color: rgba(234, 136, 31, 0.14);
+  background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
 }
 .bookmarks-bar .text-text-secondary {
   color: inherit;

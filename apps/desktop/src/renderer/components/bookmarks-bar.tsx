@@ -41,10 +41,51 @@ export function useTitlebarBookmarks() {
 export function BookmarksBar({
   onNavigate,
   addressBarExtraWidth = 0,
+  pageTabId = null,
+  pageUrl = '',
 }: {
   readonly onNavigate: (url: string) => void;
   readonly addressBarExtraWidth?: number;
+  readonly pageTabId?: number | null;
+  readonly pageUrl?: string;
 }) {
+  const [pageBackground, setPageBackground] = useState<{
+    tabId: number;
+    url: string;
+    color: string;
+  } | null>(null);
+  useEffect(() => {
+    if (pageTabId === null) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // 仅在书签栏可见时采样；串行查询避免慢页面积压，兼顾页面自身的主题切换。
+    const refresh = async () => {
+      try {
+        const res = (await window.urchin.invoke('tab.getPageBackground', { tabId: pageTabId })) as {
+          color: string | null;
+        };
+        if (!disposed)
+          setPageBackground(
+            res.color ? { tabId: pageTabId, url: pageUrl, color: res.color } : null,
+          );
+      } catch {
+        /* 页面切换/关闭时保留当前背景。 */
+      }
+      if (!disposed)
+        timer = setTimeout(() => {
+          void refresh();
+        }, 1000);
+    };
+    void refresh();
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+    };
+  }, [pageTabId, pageUrl]);
+  const regionColor =
+    pageBackground?.tabId === pageTabId && pageBackground.url === pageUrl
+      ? pageBackground.color
+      : 'var(--color-surface)';
   const rowRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLElement>(null);
   const [minimumWidth, setMinimumWidth] = useState(0);
@@ -124,7 +165,8 @@ export function BookmarksBar({
   return (
     <div
       ref={rowRef}
-      className="flex h-9 min-w-0 shrink-0 items-center justify-center bg-transparent px-2"
+      className="bookmarks-bar-region flex h-9 min-w-0 shrink-0 items-center justify-center px-2"
+      style={{ backgroundColor: regionColor, backgroundImage: 'none' }}
     >
       <nav
         ref={barRef}

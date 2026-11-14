@@ -1429,7 +1429,10 @@ export function App() {
            *  右键菜单、tab:event 弹回守卫多处消费）。 */}
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             {useCustomChrome && bookmarksBarHeight > 0 && (
-              <BookmarksBar onNavigate={(url) => void handleNavigate(url)} />
+              <BookmarksBar
+                addressBarExtraWidth={devtoolsOpen ? devtoolsWidth : 0}
+                onNavigate={(url) => void handleNavigate(url)}
+              />
             )}
             <ContentArea
               contentAreaRef={contentAreaRef}

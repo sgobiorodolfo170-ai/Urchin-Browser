@@ -144,7 +144,7 @@ export function OpsTab({
         fields={[
           {
             key: 'ui.titlebarBookmarksToggle',
-            label: '标题栏展开/折叠按钮',
+            label: '显示书签栏',
             desc: '在最小化按钮前显示展开/折叠按钮，点击可显示或隐藏收藏栏。',
             type: 'toggle',
           },

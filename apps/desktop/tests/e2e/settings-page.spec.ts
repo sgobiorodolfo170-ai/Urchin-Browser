@@ -86,7 +86,7 @@ test.describe('设置页', () => {
     await window.getByRole('button', { name: '操作', exact: true }).click();
     const titlebarToggle = window
       .locator('div.flex.items-center.justify-between')
-      .filter({ hasText: '标题栏展开/折叠按钮' })
+      .filter({ hasText: '显示书签栏' })
       .getByRole('switch');
     await expect(titlebarToggle).toHaveAttribute('aria-checked', 'true');
     await window.evaluate(async () => {
@@ -126,6 +126,68 @@ test.describe('设置页', () => {
     expect(
       Math.abs(itemBounds.x + itemBounds.width / 2 - barBounds.x - barBounds.width / 2),
     ).toBeLessThan(2);
+    const appearance = await bar.evaluate((el) => {
+      const style = getComputedStyle(el);
+      return {
+        radius: parseFloat(style.borderTopLeftRadius),
+        height: el.clientHeight,
+        background: style.backgroundImage,
+        scrollbar: style.scrollbarWidth,
+      };
+    });
+    expect(appearance.radius).toBeGreaterThanOrEqual(appearance.height / 2);
+    expect(appearance.background).toContain('linear-gradient');
+    expect(appearance.scrollbar).toBe('none');
+    const wideItemId = await window.evaluate(async () => {
+      const result = (await globalThis.window.urchin.invoke('bookmark.create', {
+        type: 'bookmark',
+        title: '内容自动调节宽度'.repeat(5),
+        url: 'https://example.net',
+      })) as { bookmark: { id: string } };
+      return result.bookmark.id;
+    });
+    await expect
+      .poll(async () => (await bar.boundingBox())!.width)
+      .toBeGreaterThan(barBounds.width + 20);
+    const expandedWidth = (await bar.boundingBox())!.width;
+    expect(expandedWidth).toBeLessThanOrEqual(sidebarBounds[1]!.left - sidebarBounds[0]!.right);
+    await window.evaluate(async (id) => {
+      await globalThis.window.urchin.invoke('bookmark.delete', { id });
+    }, wideItemId);
+    await expect.poll(async () => (await bar.boundingBox())!.width).toBe(barBounds.width);
+
+    const overflowIds = await window.evaluate(async () => {
+      const ids: string[] = [];
+      for (let i = 0; i < 16; i++) {
+        const result = (await globalThis.window.urchin.invoke('bookmark.create', {
+          type: 'folder',
+          title: `滚动测试文件夹-${i}-收藏内容`,
+        })) as { bookmark: { id: string } };
+        ids.push(result.bookmark.id);
+      }
+      return ids;
+    });
+    await expect
+      .poll(async () => bar.evaluate((el) => el.scrollWidth - el.clientWidth))
+      .toBeGreaterThan(300);
+    const scrollBox = (await bar.boundingBox())!;
+    await window.mouse.move(scrollBox.x + scrollBox.width / 2, scrollBox.y + scrollBox.height / 2);
+    await window.mouse.wheel(0, 280);
+    await expect.poll(async () => bar.evaluate((el) => el.scrollLeft)).toBeGreaterThan(100);
+    await window.mouse.wheel(0, -10000);
+    await expect.poll(async () => bar.evaluate((el) => el.scrollLeft)).toBe(0);
+    await window.mouse.wheel(140, 0);
+    await expect.poll(async () => bar.evaluate((el) => el.scrollLeft)).toBeGreaterThan(50);
+    const screenshotPath = test.info().outputPath('bookmarks-capsule-overflow.png');
+    await window.screenshot({ path: screenshotPath });
+    await test
+      .info()
+      .attach('书签栏胶囊与溢出滚动', { path: screenshotPath, contentType: 'image/png' });
+    await window.evaluate(async (ids) => {
+      for (const id of ids) await globalThis.window.urchin.invoke('bookmark.delete', { id });
+    }, overflowIds);
+    await expect.poll(async () => (await bar.boundingBox())!.width).toBe(barBounds.width);
+
     const folderId = await window.evaluate(async () => {
       const api = globalThis.window.urchin;
       const folder = (await api.invoke('bookmark.create', {
@@ -203,6 +265,35 @@ test.describe('设置页', () => {
         }),
       )
       .toMatch(/^https:\/\/example.com/);
+    // 与真实地址栏卡片对比：内容少或为空时，最小宽度恰好为地址栏的一半。
+    const addressBar = electronApp
+      .windows()
+      .find((page) => new URL(page.url()).searchParams.get('view') === 'statusbar');
+    expect(addressBar).toBeDefined();
+    const card = addressBar!.locator('.status-bar-card');
+    await expect(card).toBeVisible();
+    await expect
+      .poll(async () =>
+        Math.abs((await bar.boundingBox())!.width - (await card.boundingBox())!.width / 2),
+      )
+      .toBeLessThan(1);
+    await window.getByRole('button', { name: '展开左侧栏', exact: true }).click();
+    await expect
+      .poll(async () =>
+        Math.abs((await bar.boundingBox())!.width - (await card.boundingBox())!.width / 2),
+      )
+      .toBeLessThan(1);
+    await window.evaluate(async () => {
+      const api = globalThis.window.urchin;
+      const result = (await api.invoke('bookmark.list', {})) as { bookmarks: { id: string }[] };
+      for (const item of result.bookmarks) await api.invoke('bookmark.delete', { id: item.id });
+    });
+    await expect(bar.getByText('暂无收藏', { exact: true })).toBeVisible();
+    await expect
+      .poll(async () =>
+        Math.abs((await bar.boundingBox())!.width - (await card.boundingBox())!.width / 2),
+      )
+      .toBeLessThan(1);
     await electronApp.close();
   });
 });

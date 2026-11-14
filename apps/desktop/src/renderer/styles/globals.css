@@ -262,3 +262,18 @@ html[data-window='statusbar'] body {
 [data-theme='dark'] .status-bar-card::after {
   background: radial-gradient(ellipse 50% 100% at 50% 0%, rgba(0, 0, 0, 0.5), transparent 72%);
 }
+
+/* 书签栏：中间向两端对称渐变，隐藏滚动条但保留滚轮和键盘滚动。 */
+.bookmarks-bar {
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-address-bar) 65%, transparent) 0%,
+    color-mix(in srgb, var(--color-primary) 16%, var(--color-address-bar)) 50%,
+    color-mix(in srgb, var(--color-address-bar) 65%, transparent) 100%
+  );
+}
+.bookmarks-bar::-webkit-scrollbar {
+  display: none;
+}

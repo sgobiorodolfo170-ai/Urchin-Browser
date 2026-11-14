@@ -20,6 +20,10 @@
  * 此后不再跟随球移动；点击悬浮球折叠地址栏解除吸附，再次展开回到与球同行。
  */
 import { BrowserWindow, Menu, clipboard } from 'electron';
+import {
+  computeStatusBarCardWidth,
+  STATUS_BAR_SHADOW_PAD as SHADOW_PAD,
+} from '../../shared/status-bar-layout';
 import { createLogger } from '@urchin/logger';
 import { WINDOW_FRAME_WIDTH, WINDOW_TITLEBAR_HEIGHT } from '../tabs/view-integration';
 import {
@@ -34,24 +38,8 @@ const log = createLogger('status-bar-overlay');
 
 /** 状态栏卡片高度（px），与渲染层 h-10 一致 */
 const CARD_HEIGHT = 40;
-/** 卡片四周透明阴影边距（px），用于 3D 阴影与圆角透出网页 */
-const SHADOW_PAD = 8;
 /** 基础窗口高度 = 卡片 + 上下阴影边距（恰好占满 48px 状态栏区域并留 8px 底距） */
 const BASE_HEIGHT = CARD_HEIGHT + SHADOW_PAD * 2;
-/** 状态栏宽度占中区宽度比例（3/5） */
-const WIDTH_RATIO = 0.6;
-/**
- * 卡片最小可用宽度（px，不含左右阴影边距）。
- *
- * 卡片内是「固定件 + 弹性地址输入框」的一行 flex：4 个导航按钮（32×4）、
- * 5 个动作按钮（28×5）、卡片/按钮间隙（6×9）、卡片内边距 16、输入框内边距 24、
- * 安全图标 20、星标 20，合计约 386px 不参与收缩；地址输入框是唯一的弹性项。
- * 若卡片宽度低于该固定预算，flex 会把 input 压成 **0 宽** —— 视觉上地址栏还在，
- * 但既看不见也点不进去（2026-11-09 CI 实测：1024 宽窗口 + 右侧栏展开 → 中区 603px，
- * 3/5 = 362px 卡片，input 的 boundingBox 为 width:0，E2E 四个 spec 全红）。
- * 取 496（窗口宽 512，含阴影边距）→ 地址输入框 ≈ 114px，保证「看得见、能输入」。
- */
-const MIN_BAR_WIDTH = 496;
 /** 建议下拉额外高度（max-h-80=320 + 边距） */
 const SUGGESTIONS_PANEL_HEIGHT = 332;
 /** toast 额外高度 */
@@ -146,11 +134,7 @@ export function computeStatusBarBounds(params: {
   const middleWidth = Math.max(0, contentBounds.width - frame * 2 - leftWidth - rightWidth);
   // 宽度 = max(3/5 中区宽, 卡片最小可用宽)，再夹到「中区减去悬浮球让位」的上限。
   // 三段夹取缺一不可：只夹上限会在宽窗口下保持 3/5；只取最小值会在窄窗口下顶到球位。
-  const maxBarWidth = Math.max(0, middleWidth - reserveRight - SHADOW_PAD * 2);
-  const barWidth = Math.max(
-    0,
-    Math.min(Math.max(Math.round(middleWidth * WIDTH_RATIO), MIN_BAR_WIDTH), maxBarWidth),
-  );
+  const barWidth = computeStatusBarCardWidth(middleWidth, reserveRight);
   const width = barWidth + SHADOW_PAD * 2;
   // 默认居中于中区；若右缘会侵入悬浮球区域，则整体左移到刚好让出球位（不超过左缘）。
   const middleStart = contentBounds.x + frame + leftWidth;

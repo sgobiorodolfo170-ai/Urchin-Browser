@@ -24,18 +24,17 @@
  */
 import { BrowserWindow, screen } from 'electron';
 import { createLogger } from '@urchin/logger';
+import {
+  STATUS_BALL_SIZE as BALL_SIZE,
+  STATUS_BALL_PAD as BALL_PAD,
+  STATUS_SCROLLBAR_WIDTH as SCROLLBAR_WIDTH,
+  STATUS_BALL_GAP as BALL_GAP,
+} from '../../shared/status-bar-layout';
+export { STATUS_BALL_RESERVED_WIDTH } from '../../shared/status-bar-layout';
 import { WINDOW_FRAME_WIDTH } from '../tabs/view-integration';
 
 const log = createLogger('status-bar-ball');
 
-/** 悬浮球直径（px） */
-const BALL_SIZE = 40;
-/** 球四周阴影/边距（px） */
-const BALL_PAD = 6;
-/** 网页滚动条宽度（px），球需让出此宽度避免遮挡滑块 */
-const SCROLLBAR_WIDTH = 17;
-/** 球与滚动条之间的间隙（px） */
-const BALL_GAP = 8;
 /** 拖动轮询间隔（ms）：16ms ≈ 60fps，窗口拖动足够顺滑 */
 const DRAG_POLL_INTERVAL = 16;
 /**
@@ -499,11 +498,3 @@ export class StatusBarBall {
 
 /** 球直径（供渲染层使用） */
 export const STATUS_BALL_SIZE = BALL_SIZE;
-
-/**
- * 悬浮球在地址栏同一行占用的水平宽度（球窗口 + 滚动条让位 + 间隙）。
- *
- * 地址栏窗口与球共用网页区底部这一行，球固定在网页区右缘（`computeBallBounds`），
- * 因此地址栏的宽度上限必须让出这段宽度，否则两窗重叠（球会盖住地址栏右端的动作按钮）。
- */
-export const STATUS_BALL_RESERVED_WIDTH = SCROLLBAR_WIDTH + BALL_GAP + BALL_SIZE + BALL_PAD * 2;

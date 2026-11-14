@@ -18,6 +18,7 @@
  */
 import {
   app,
+  type WebContents,
   ipcMain,
   dialog,
   BrowserWindow,
@@ -36,6 +37,7 @@ import { registerTabHandlers, getLayoutState, setLayoutState, type BrowserViewLi
 import { TabDetachDragSupervisor } from '../tabs/tab-detach-drag';
 import { registerHistoryHandlers } from '../history';
 import { registerBookmarkHandlers } from '../bookmarks';
+import { openBookmarkFolderMenu } from '../bookmarks/folder-menu';
 import { registerSettingsHandlers } from '../settings';
 import { registerDownloadHandlers } from '../downloads';
 import { registerImportHandlers } from '../import';
@@ -344,6 +346,9 @@ export function registerIpcHandlers(ctx: AppContext): void {
 
   // M5 bookmark 域 handler
   // 新建书签时从当前标签快照取已缓存图标（主进程可信来源，渲染层不可伪造）。
+  registerHandler(ipcMain, 'bookmark.openFolderMenu', (req, callCtx) =>
+    openBookmarkFolderMenu(ctx.bookmarkManager, callCtx.event.sender as WebContents, req),
+  );
   registerBookmarkHandlers(ipcMain, ctx.bookmarkManager, {
     getFavicon: (url) => {
       const tabs = ctx.tabManager.query({});

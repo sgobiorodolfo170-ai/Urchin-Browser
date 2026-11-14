@@ -2919,6 +2919,14 @@ export const ipcSchema = {
   'history.delete': { req: historyDeleteReqSchema, res: historyDeleteResSchema },
   'history.clear': { req: historyClearReqSchema, res: historyClearResSchema },
   'bookmark.create': { req: bookmarkCreateReqSchema, res: bookmarkCreateResSchema },
+  'bookmark.openFolderMenu': {
+    req: z.object({
+      folderId: z.string().min(1),
+      x: z.number().int().min(0),
+      y: z.number().int().min(0),
+    }),
+    res: z.object({ url: urlSchema.nullable() }),
+  },
   'bookmark.list': { req: bookmarkListReqSchema, res: bookmarkListResSchema },
   'bookmark.search': { req: bookmarkSearchReqSchema, res: bookmarkSearchResSchema },
   'bookmark.update': { req: bookmarkUpdateReqSchema, res: bookmarkUpdateResSchema },

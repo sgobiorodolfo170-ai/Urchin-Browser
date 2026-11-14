@@ -96,9 +96,92 @@ test.describe('设置页', () => {
         url: 'https://example.com',
       });
     });
+    const sidebarsBefore = await window.locator('aside').evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const r = node.getBoundingClientRect();
+        return { top: r.top, bottom: r.bottom };
+      }),
+    );
     await window.getByRole('button', { name: '展开收藏栏', exact: true }).click();
     const bar = window.getByRole('navigation', { name: '收藏栏', exact: true });
     await expect(bar.getByRole('button', { name: '收藏栏测试' })).toBeVisible();
+    expect(
+      await window.locator('aside').evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const r = node.getBoundingClientRect();
+          return { top: r.top, bottom: r.bottom };
+        }),
+      ),
+    ).toEqual(sidebarsBefore);
+    const barBounds = (await bar.boundingBox())!;
+    const sidebarBounds = await window.locator('aside').evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const r = node.getBoundingClientRect();
+        return { left: r.left, right: r.right };
+      }),
+    );
+    expect(barBounds.x).toBeGreaterThanOrEqual(sidebarBounds[0]!.right - 1);
+    expect(barBounds.x + barBounds.width).toBeLessThanOrEqual(sidebarBounds[1]!.left + 1);
+    const itemBounds = (await bar.getByRole('button', { name: '收藏栏测试' }).boundingBox())!;
+    expect(
+      Math.abs(itemBounds.x + itemBounds.width / 2 - barBounds.x - barBounds.width / 2),
+    ).toBeLessThan(2);
+    const folderId = await window.evaluate(async () => {
+      const api = globalThis.window.urchin;
+      const folder = (await api.invoke('bookmark.create', {
+        type: 'folder',
+        title: '同步文件夹',
+      })) as { bookmark: { id: string } };
+      const child = (await api.invoke('bookmark.create', {
+        type: 'bookmark',
+        title: '同步子项',
+        url: 'https://example.org',
+        parentId: folder.bookmark.id,
+      })) as { bookmark: { id: string } };
+      await api.invoke('bookmark.update', { id: child.bookmark.id, title: '同步子项已重命名' });
+      return folder.bookmark.id;
+    });
+    await expect(bar.getByRole('button', { name: '同步文件夹' })).toBeVisible();
+    await expect(bar.getByRole('button', { name: '同步文件夹' })).toHaveAttribute(
+      'aria-haspopup',
+      'menu',
+    );
+    // 拦截原生菜单展示，验证实际构建的菜单与下拉锚点；原生菜单无需 DOM 浮层。
+    await electronApp.evaluate(({ Menu }) => {
+      Menu.prototype.popup = function (options) {
+        const probe = globalThis as typeof globalThis & {
+          bookmarkMenuProbe?: { labels: string[]; x?: number; y?: number };
+        };
+        probe.bookmarkMenuProbe = {
+          labels: this.items.map((item) => item.label),
+          x: options?.x,
+          y: options?.y,
+        };
+        options?.callback?.();
+      };
+    });
+    const folderBounds = (await bar.getByRole('button', { name: '同步文件夹' }).boundingBox())!;
+    await bar.getByRole('button', { name: '同步文件夹' }).click();
+    await expect
+      .poll(async () =>
+        electronApp.evaluate(
+          () =>
+            (globalThis as typeof globalThis & { bookmarkMenuProbe?: { labels: string[] } })
+              .bookmarkMenuProbe?.labels,
+        ),
+      )
+      .toEqual(['同步子项已重命名']);
+    const menuPosition = await electronApp.evaluate(
+      () =>
+        (globalThis as typeof globalThis & { bookmarkMenuProbe?: { x: number; y: number } })
+          .bookmarkMenuProbe!,
+    );
+    expect(menuPosition.x).toBe(Math.round(folderBounds.x));
+    expect(menuPosition.y).toBe(Math.round(folderBounds.y + folderBounds.height));
+    await window.evaluate(async (id) => {
+      await globalThis.window.urchin.invoke('bookmark.delete', { id });
+    }, folderId);
+    await expect(bar.getByRole('button', { name: '同步文件夹' })).toHaveCount(0);
     await expect(window.getByRole('button', { name: '折叠收藏栏' })).toHaveAttribute(
       'aria-expanded',
       'true',

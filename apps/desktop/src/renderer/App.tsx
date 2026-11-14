@@ -1395,9 +1395,6 @@ export function App() {
             onToggleBookmarks={titlebarBookmarks.toggle}
           />
         )}
-        {useCustomChrome && bookmarksBarHeight > 0 && (
-          <BookmarksBar onNavigate={(url) => void handleNavigate(url)} />
-        )}
 
         {/* 主体三列：左/右侧栏夹住中区，整体位于自绘标题栏下方 */}
         <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -1430,21 +1427,26 @@ export function App() {
            *  展示组件见 content/ContentArea.tsx（refactor-plan-p2 §2.3 步骤 4）；
            *  标签/工作区/守卫触发的真源仍在 App（tab 生命周期被侧栏列表、
            *  右键菜单、tab:event 弹回守卫多处消费）。 */}
-          <ContentArea
-            contentAreaRef={contentAreaRef}
-            activeTab={activeTab}
-            activeTabId={activeTabId}
-            tabCount={tabs.length}
-            onNavigate={(url) => void handleNavigate(url)}
-            onOpenFileInGenOffice={() => void handleOpenFilePicker('genoffice')}
-            onFileViewerToast={showEditorToast}
-            workspaceOverviewItems={workspaceOverviewItems}
-            currentWorkspaceId={currentWorkspaceId}
-            onOverviewSwitch={handleOverviewSwitch}
-            onOverviewCreate={handleOverviewCreate}
-            guardAsk={editorGuardAsk}
-            onGuardDismiss={() => setEditorGuardAsk(null)}
-          />
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            {useCustomChrome && bookmarksBarHeight > 0 && (
+              <BookmarksBar onNavigate={(url) => void handleNavigate(url)} />
+            )}
+            <ContentArea
+              contentAreaRef={contentAreaRef}
+              activeTab={activeTab}
+              activeTabId={activeTabId}
+              tabCount={tabs.length}
+              onNavigate={(url) => void handleNavigate(url)}
+              onOpenFileInGenOffice={() => void handleOpenFilePicker('genoffice')}
+              onFileViewerToast={showEditorToast}
+              workspaceOverviewItems={workspaceOverviewItems}
+              currentWorkspaceId={currentWorkspaceId}
+              onOverviewSwitch={handleOverviewSwitch}
+              onOverviewCreate={handleOverviewCreate}
+              guardAsk={editorGuardAsk}
+              onGuardDismiss={() => setEditorGuardAsk(null)}
+            />
+          </div>
 
           {/* M15 DevTools 检视列（F12 开关；右侧栏左侧的第三列）。
            *  开合/宽度真源在 App（useDevtoolsColumn：width 驱动主进程

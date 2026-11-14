@@ -72,14 +72,14 @@ export function FolderList({
 
   return (
     <div
-      className="flex shrink-0 flex-col"
+      className="flex min-h-0 min-w-0 shrink-0 flex-col bg-surface-secondary/30"
       style={{ width: width ?? 192 }}
       data-testid="mail-folder-list"
     >
       {/* 写邮件按钮 */}
       {onCompose && (
         <button
-          className="m-2 flex shrink-0 items-center justify-center gap-1.5 rounded-md bg-blue-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-600"
+          className="m-3 flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-blue-500 px-3 py-3 shadow-sm text-sm font-medium text-white hover:bg-blue-600"
           onClick={onCompose}
         >
           <PenSquare className="h-4 w-4" />
@@ -89,7 +89,7 @@ export function FolderList({
       <div className="shrink-0 border-b border-border px-3 py-2 text-xs font-semibold uppercase text-text-secondary">
         文件夹
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {loading && (
           <div className="flex items-center justify-center py-4">
             <Loader2 className="h-4 w-4 animate-spin text-text-secondary" />
@@ -101,11 +101,13 @@ export function FolderList({
         {sorted.map((f) => (
           <button
             key={f.path}
-            className={`flex w-full items-center gap-2 px-3 py-1.5 text-sm ${
+            className={`mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
               f.path === selectedFolder
-                ? 'bg-surface-secondary text-text'
+                ? 'bg-blue-500/10 font-medium text-blue-600 dark:text-blue-400'
                 : 'text-text-secondary hover:bg-surface-secondary/50 hover:text-text'
             }`}
+            aria-current={f.path === selectedFolder ? 'true' : undefined}
+            title={folderDisplayName(f)}
             onClick={() => onSelect(f.path)}
           >
             <Inbox className="h-3.5 w-3.5 shrink-0" />

@@ -6,6 +6,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MessageList } from '../../src/renderer/mail/MessageList';
 import { MailView } from '../../src/renderer/mail/MailView';
 import {
   DEFAULT_FOLDER_WIDTH,
@@ -67,6 +68,64 @@ describe('MailView 三区布局', () => {
     });
   });
 
+  it('shows the active folder title and hides invalid dates', () => {
+    render(
+      <MessageList
+        folderName="已发送"
+        total={1}
+        selectedUid={null}
+        loading={false}
+        onSelect={() => undefined}
+        messages={[
+          {
+            uid: 1,
+            folder: 'Sent',
+            flags: [],
+            envelope: {
+              subject: '测试主题',
+              from: 'test@example.com',
+              to: [],
+              date: 'invalid',
+              size: 0,
+            },
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText('已发送')).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid Date/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the latest message body when an earlier request finishes last', async () => {
+    const base = invoke.getMockImplementation()! as Invoke;
+    let finishFirst!: (value: unknown) => void;
+    const first = new Promise((resolve) => {
+      finishFirst = resolve;
+    });
+    const messages = [1, 2].map((uid) => ({
+      uid,
+      folder: 'INBOX',
+      flags: ['\\Seen'],
+      envelope: { subject: `主题${uid}`, from: 'test@example.com', to: [], date: '', size: 0 },
+    }));
+    invoke.mockImplementation((channel: string, req: unknown) => {
+      if (channel === 'mail.message.list')
+        return Promise.resolve({ messages, total: 2, fromCache: true });
+      if (channel === 'mail.message.fetch')
+        return (req as { uid: number }).uid === 1
+          ? first
+          : Promise.resolve({ uid: 2, text: '最新正文', attachments: [] });
+      return base(channel, req);
+    });
+    render(<MailView />);
+    fireEvent.click(await screen.findByRole('button', { name: /主题1/ }));
+    fireEvent.click(screen.getByRole('button', { name: /主题2/ }));
+    await screen.findByText('最新正文');
+    finishFirst({ uid: 1, text: '旧正文', attachments: [] });
+    await waitFor(() => expect(screen.queryByText('旧正文')).not.toBeInTheDocument());
+    expect(screen.getByText('最新正文')).toBeInTheDocument();
+  });
+
   it('should render three panes with default widths in grid template', async () => {
     render(<MailView />);
 
@@ -118,6 +177,7 @@ describe('MailView 三区布局', () => {
       expect(req.value.v).toBe(1);
       // 默认 192 + 60 位移（未越上限）
       expect(req.value.folderWidth).toBe(252);
+      expect(screen.getByTestId('mail-folder-list').style.width).toBe('252px');
       expect(req.value.listWidth).toBe(DEFAULT_LIST_WIDTH);
     });
   });

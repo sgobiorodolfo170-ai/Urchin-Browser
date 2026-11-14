@@ -152,9 +152,9 @@ export function MessageDetail({ message, body, loading, accountId }: MessageDeta
 
   if (!message) {
     return (
-      <div className="flex flex-1 items-center justify-center text-text-secondary">
+      <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center bg-surface-secondary/20 p-6 text-text-secondary">
         <div className="flex flex-col items-center">
-          <Mail className="mb-2 h-10 w-10" />
+          <Mail className="mb-4 h-12 w-12 text-blue-500/60" />
           <span className="text-sm">选择一封邮件查看</span>
         </div>
       </div>
@@ -169,15 +169,15 @@ export function MessageDetail({ message, body, loading, accountId }: MessageDeta
   const displayText = showTranslated ? translate.result.text : body?.text;
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-surface">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface">
       {/* 主题 + 操作工具栏 */}
-      <div className="shrink-0 border-b border-border px-6 pt-4 pb-3">
-        <h2 className="mb-3 text-lg font-semibold leading-snug text-text">
+      <div className="max-h-[45%] shrink-0 overflow-y-auto border-b border-border px-6 pt-6 pb-4">
+        <h2 className="mb-4 break-words text-xl font-semibold leading-snug text-text">
           {message.envelope.subject || '(无主题)'}
         </h2>
 
         {/* 发件人卡片 */}
-        <div className="flex items-start gap-3">
+        <div className="flex flex-wrap items-start gap-3">
           <span
             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white ${avatarColor(sender.addr)}`}
           >
@@ -188,10 +188,10 @@ export function MessageDetail({ message, body, loading, accountId }: MessageDeta
               <span className="truncate text-sm font-medium text-text">{sender.name}</span>
               <span className="truncate text-xs text-text-secondary">&lt;{sender.addr}&gt;</span>
             </div>
-            <div className="mt-0.5 text-xs text-text-secondary">
+            <div className="mt-1 break-all text-xs text-text-secondary">
               发送至 {message.envelope.to.join('、') || '我'}
             </div>
-            <div className="mt-0.5 text-xs text-text-secondary">
+            <div className="mt-1 break-all text-xs text-text-secondary">
               {formatFullDate(message.envelope.date)}
             </div>
           </div>
@@ -277,7 +277,7 @@ export function MessageDetail({ message, body, loading, accountId }: MessageDeta
       </div>
 
       {/* 正文 */}
-      <div className="flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden">
         {loading && (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-5 w-5 animate-spin text-text-secondary" />

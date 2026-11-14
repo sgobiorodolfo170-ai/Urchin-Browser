@@ -23,6 +23,7 @@ import {
   Settings as SettingsIcon,
   KeyRound,
 } from 'lucide-react';
+import { folderDisplayName } from './folder-names';
 import { AccountSetup } from './AccountSetup';
 import { FolderList } from './FolderList';
 import { MessageList } from './MessageList';
@@ -82,6 +83,9 @@ interface MailMessageBody {
 type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
 export function MailView() {
+  const bodyRequest = useRef(0);
+  const folderRequest = useRef(0);
+  const listRequest = useRef(0);
   const [accounts, setAccounts] = useState<MailAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
 
@@ -211,7 +215,10 @@ export function MailView() {
   const endResize = () => {
     if (!dragRef.current) return;
     dragRef.current = null;
-    if (live) persistWidths(live);
+    if (live) {
+      setPersisted(buildMailState(live.folderWidth, live.listWidth));
+      persistWidths(live);
+    }
     setLive(null);
     setDragging(null);
   };
@@ -278,12 +285,15 @@ export function MailView() {
   // ────────────── 文件夹加载 ──────────────
 
   const loadFolders = useCallback(async (accountId: string) => {
+    const request = ++folderRequest.current;
+    setLoadingFolders(true);
     setError(null);
     try {
       const res = (await window.urchin.invoke('mail.folder.list', { accountId })) as {
         folders: MailFolder[];
         fromCache: boolean;
       };
+      if (request !== folderRequest.current) return;
       setFolders(res.folders);
       if (res.fromCache) {
         setConnStatus('connected');
@@ -293,23 +303,30 @@ export function MailView() {
         setSyncing(false);
       }
     } catch (e) {
+      if (request !== folderRequest.current) return;
       setConnStatus('error');
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoadingFolders(false);
+      if (request === folderRequest.current) setLoadingFolders(false);
     }
   }, []);
 
   useEffect(() => {
+    setFolders([]);
     // 密码缺失时不发起连接（会报 账户密码缺失），先展示重授权卡片
     if (selectedAccount?.hasPassword) {
       void loadFolders(selectedAccount.id);
     }
+    return () => {
+      ++folderRequest.current;
+    };
   }, [selectedAccount, loadFolders]);
 
   // ────────────── 邮件列表加载 ──────────────
 
   const loadMessages = useCallback(async (accountId: string, folder: string) => {
+    const request = ++listRequest.current;
+    setLoadingMessages(true);
     setError(null);
     try {
       const res = (await window.urchin.invoke('mail.message.list', {
@@ -318,6 +335,7 @@ export function MailView() {
         limit: 50,
         offset: 0,
       })) as { messages: MailMessageSummary[]; total: number; fromCache: boolean };
+      if (request !== listRequest.current) return;
       setMessages(res.messages);
       setMessageTotal(res.total);
       if (res.fromCache) {
@@ -326,16 +344,22 @@ export function MailView() {
         setSyncing(false);
       }
     } catch (e) {
+      if (request !== listRequest.current) return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoadingMessages(false);
+      if (request === listRequest.current) setLoadingMessages(false);
     }
   }, []);
 
   useEffect(() => {
+    setMessages([]);
+    setMessageTotal(0);
     if (selectedAccount && selectedAccount.hasPassword && selectedFolder) {
       void loadMessages(selectedAccount.id, selectedFolder);
     }
+    return () => {
+      ++listRequest.current;
+    };
   }, [selectedAccount, selectedFolder, loadMessages]);
 
   // ────────────── 邮件正文加载 ──────────────
@@ -343,6 +367,7 @@ export function MailView() {
   const openMessage = useCallback(
     async (msg: MailMessageSummary) => {
       if (!selectedAccount) return;
+      const request = ++bodyRequest.current;
       setSelectedMessage(msg);
       setMessageBody(null);
       setLoadingBody(true);
@@ -352,6 +377,7 @@ export function MailView() {
           folder: msg.folder,
           uid: msg.uid,
         })) as MailMessageBody;
+        if (request !== bodyRequest.current) return;
         setMessageBody(body);
 
         // 标记已读（如果未读）
@@ -363,6 +389,7 @@ export function MailView() {
               uid: msg.uid,
               seen: true,
             });
+            if (request !== bodyRequest.current) return;
             setMessages((prev) =>
               prev.map((m) => (m.uid === msg.uid ? { ...m, flags: [...m.flags, '\\Seen'] } : m)),
             );
@@ -371,13 +398,21 @@ export function MailView() {
           }
         }
       } catch (e) {
+        if (request !== bodyRequest.current) return;
         setError(e instanceof Error ? e.message : String(e));
       } finally {
-        setLoadingBody(false);
+        if (request === bodyRequest.current) setLoadingBody(false);
       }
     },
     [selectedAccount],
   );
+
+  useEffect(() => {
+    ++bodyRequest.current;
+    setSelectedMessage(null);
+    setMessageBody(null);
+    setLoadingBody(false);
+  }, [selectedAccount?.id, selectedFolder]);
 
   // ────────────── 新邮件事件监听 ──────────────
 
@@ -414,13 +449,7 @@ export function MailView() {
 
   if (showAccountSetup || accounts.length === 0) {
     return (
-      <div className="flex h-full flex-col bg-surface">
-        <div className="border-b border-border px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Mail className="h-5 w-5 text-text-secondary" />
-            <h1 className="text-base font-semibold text-text">邮箱设置</h1>
-          </div>
-        </div>
+      <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
         <div className="flex-1 overflow-y-auto p-4">
           <AccountSetup
             onSaved={() => {
@@ -437,15 +466,24 @@ export function MailView() {
   // 密码密文缺失 → 重授权卡片（顶栏保留可切换/添加账户；2026-11-10）
   if (selectedAccount && !selectedAccount.hasPassword) {
     return (
-      <div className="flex h-full flex-col bg-surface">
+      <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
         {/* 顶栏（与主视图一致）：账户选择 + 刷新 + 设置 */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+        <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
+          <Mail className="h-5 w-5 shrink-0 text-blue-500" />
           <select
-            className="rounded-md border border-border bg-surface px-2 py-1 text-sm text-text"
+            aria-label="邮箱账户"
+            className="min-w-0 max-w-[60%] rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
             value={selectedAccount.id}
             onChange={(e) => {
               const acc = accounts.find((a) => a.id === e.target.value);
-              if (acc) setSelectedAccount(acc);
+              if (acc) {
+                setSelectedAccount(acc);
+                setSelectedFolder('INBOX');
+                setComposing(false);
+                setComposeData({});
+                setReauthPassword('');
+                setReauthError(null);
+              }
             }}
           >
             {accounts.map((a) => (
@@ -521,15 +559,24 @@ export function MailView() {
   const widths = live ?? restoreWidths(persisted, containerWidth);
 
   return (
-    <div className="flex h-full flex-col bg-surface">
+    <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
       {/* 顶栏：账户选择 + 刷新 + 设置 */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+      <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
+        <Mail className="h-5 w-5 shrink-0 text-blue-500" />
         <select
-          className="rounded-md border border-border bg-surface px-2 py-1 text-sm text-text"
+          aria-label="邮箱账户"
+          className="min-w-0 max-w-[60%] rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text"
           value={selectedAccount?.id ?? ''}
           onChange={(e) => {
             const acc = accounts.find((a) => a.id === e.target.value);
-            if (acc) setSelectedAccount(acc);
+            if (acc) {
+              setSelectedAccount(acc);
+              setSelectedFolder('INBOX');
+              setComposing(false);
+              setComposeData({});
+              setReauthPassword('');
+              setReauthError(null);
+            }
           }}
         >
           {accounts.map((a) => (
@@ -577,7 +624,7 @@ export function MailView() {
       {/* 三区布局：文件夹 | 邮件列表 | 邮件详情（分割线可拖拽，宽度持久化 mail.state） */}
       <div
         ref={threePaneRef}
-        className="grid h-full w-full min-w-0 flex-1 overflow-hidden"
+        className="grid min-h-0 w-full min-w-0 flex-1 overflow-hidden"
         style={{
           gridTemplateColumns: `${widths.folderWidth}px ${SPLITTER_WIDTH}px ${widths.listWidth}px ${SPLITTER_WIDTH}px minmax(0, 1fr)`,
         }}
@@ -610,6 +657,13 @@ export function MailView() {
         <MessageList
           messages={messages}
           total={messageTotal}
+          folderName={folderDisplayName(
+            folders.find((f) => f.path === selectedFolder) ?? {
+              path: selectedFolder,
+              name: selectedFolder,
+              flags: [],
+            },
+          )}
           selectedUid={selectedMessage?.uid ?? null}
           onSelect={(msg) => void openMessage(msg)}
           loading={loadingMessages}
@@ -647,6 +701,7 @@ export function MailView() {
           />
         ) : (
           <MessageDetail
+            key={`${selectedAccount?.id}:${selectedFolder}:${selectedMessage?.uid}`}
             message={selectedMessage}
             body={messageBody}
             loading={loadingBody}

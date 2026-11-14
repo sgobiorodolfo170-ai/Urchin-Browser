@@ -340,13 +340,40 @@ test.describe('工作区（TP7）', () => {
         'title',
         /默认工作区/,
       );
+
+      // ── 总览页内新建（2026-11-15 用户指令）：创建后留在总览页，新卡居「新建」卡之前 ──
+      await window
+        .getByRole('button', { name: /^切换工作区/ })
+        .first()
+        .click();
+      await expect(overviewPage).toBeVisible({ timeout: 15_000 });
+      await window.getByRole('button', { name: '新建工作区' }).click();
+      const createInput = window.getByPlaceholder('工作区名称');
+      await createInput.fill('工作C');
+      await createInput.press('Enter');
+      // 总览页不关闭；面板收起（输入框消失）；新卡出现在「新建」卡之前（末位）
+      await expect(overviewPage).toBeVisible({ timeout: 15_000 });
+      await expect(createInput).toHaveCount(0);
+      const createdOverview = window.locator('button[title^="切换到工作区"]');
+      await expect(createdOverview.filter({ hasText: '工作C' })).toBeVisible();
+      const orderTitles = await overviewPage.evaluate((el) =>
+        Array.from(el.querySelectorAll('button')).map(
+          (b) => b.getAttribute('aria-label') ?? b.getAttribute('title') ?? '',
+        ),
+      );
+      expect(orderTitles).toEqual([
+        '切换到工作区 默认工作区',
+        '切换到工作区 工作A',
+        '切换到工作区 工作C',
+        '新建工作区',
+      ]);
     } finally {
       await electronApp.close();
       await new Promise<void>((resolvePromise) => server.close(() => resolvePromise()));
     }
   });
 
-  test('should cap the overview at 9 cards per screen with the add card pinned 9th and scroll the rest', async () => {
+  test('should cap the overview at 9 cards per screen with the add card last and scroll the rest', async () => {
     const { electronApp, window } = await launchApp();
 
     // 判定每张卡片是否完全落在滚动视口内（首屏 9 卡断言用）。
@@ -378,9 +405,19 @@ test.describe('工作区（TP7）', () => {
         );
       });
 
-      // ── 展开侧栏，经选项卡条连续创建 8 个工作区（默认 + 8 = 9 个）──
+      // ── 展开侧栏，经选项卡条连续创建 9 个工作区（默认 + 9 = 10 个）──
       await expandRightSidebar(window);
-      for (const name of ['工作A', '工作B', '工作C', '工作D', '工作E', '工作F', '工作G', '工作H']) {
+      for (const name of [
+        '工作A',
+        '工作B',
+        '工作C',
+        '工作D',
+        '工作E',
+        '工作F',
+        '工作G',
+        '工作H',
+        '工作I',
+      ]) {
         await window.getByRole('button', { name: '新建工作区' }).click();
         const nameInput = window.getByPlaceholder('工作区名称');
         await nameInput.fill(name);
@@ -400,20 +437,23 @@ test.describe('工作区（TP7）', () => {
         .click();
       await expect(overviewPage).toBeVisible({ timeout: 15_000 });
 
-      // ── 卡片总数 = 9 个工作区 + 「新建」卡 = 10 > 9 → 网格可滚动 ──
+      // ── 卡片总数 = 10 个工作区 + 「新建」卡 = 11 > 9 → 网格可滚动 ──
       const wsCards = window.locator('button[title^="切换到工作区"]');
-      await expect(wsCards).toHaveCount(9);
+      await expect(wsCards).toHaveCount(10);
       await expect(grid.evaluate((el) => el.scrollHeight > el.clientHeight)).resolves.toBe(true);
 
-      // ── 首屏恰好 9 卡完全可见：8 个工作区 + 第 9 卡「新建」（固定末位）；第 9 个工作区折下 ──
+      // ── 首屏恰好 9 卡完全可见：默认卡 + 8 个工作区（工作A~H）；第 9 个工作区
+      //    （工作I，第 10 卡位）与恒居末位的「新建」卡（第 11 卡位）都折下 ──
       let cards = await cardVisibility();
       expect(cards.filter((c) => c.visible)).toHaveLength(9);
-      // 「新建」卡无 title（仅 aria-label=新建工作区），必须落在首屏第 9 卡位
-      expect(cards.find((c) => c.title === '')?.visible).toBe(true);
-      // 第 9 个工作区（工作H）不在首屏，需滚动查看
-      expect(cards.find((c) => c.title.endsWith('工作H'))?.visible).toBe(false);
+      // 首屏末卡是工作H（第 9 卡位）
+      expect(cards.find((c) => c.title.endsWith('工作H'))?.visible).toBe(true);
+      // 「新建」卡无 title（仅 aria-label=新建工作区），恒居末位、首屏不可见
+      expect(cards.find((c) => c.title === '')?.visible).toBe(false);
+      // 第 9 个工作区（工作I）不在首屏，需滚动查看
+      expect(cards.find((c) => c.title.endsWith('工作I'))?.visible).toBe(false);
 
-      // ── 滚到底 → 最后一个工作区卡完全可见（滑块滚动查看超出部分） ──
+      // ── 滚到底 → 最后一个工作区卡与「新建」卡都完全可见（滑块滚动查看） ──
       await grid.evaluate((el) => {
         el.scrollTop = el.scrollHeight;
       });
@@ -421,7 +461,9 @@ test.describe('工作区（TP7）', () => {
         .poll(
           async () => {
             cards = await cardVisibility();
-            return cards.find((c) => c.title.endsWith('工作H'))?.visible ?? false;
+            const lastWs = cards.find((c) => c.title.endsWith('工作I'))?.visible ?? false;
+            const addCard = cards.find((c) => c.title === '')?.visible ?? false;
+            return lastWs && addCard;
           },
           { timeout: 5_000 },
         )

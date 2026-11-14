@@ -305,26 +305,18 @@ export function useWorkspaces({
     [tabs, activeTabId, doSelectTab, handleCloseTab],
   );
 
-  // 工作区总览页新建工作区：创建后切到新工作区——先在工作区内新建主页标签（await 确保
-  // 标签已激活），再关闭总览页——否则关闭总览页时标签管理器会自动激活旧工作区的标签，
-  // 导致 currentWorkspaceId 被同步回旧工作区，新创建的工作区看起来像被"自动删除"了。
-  // 空工作区在 registry 中持久化保留，不因无存储标签而被删除。
+  // 工作区总览页新建工作区（2026-11-15 用户指令：创建后留在总览页，不切换不关页）：
+  // 只创建 + 刷新（workspace:changed 广播亦会刷新），新卡片以「新建」卡前的末位
+  // 出现；新工作区为空且在 registry 中持久化保留，点其卡片时按既有逻辑新建主页
+  // 标签并切换（handleOverviewSwitch）。创建失败向上抛错，由新建卡面板显示。
   const handleOverviewCreate = useCallback(
     async (name: string, color: WorkspaceColor) => {
       const ws = await handleCreateWorkspace(name, color);
-      if (ws) {
-        setCurrentWorkspaceId(ws.id);
-        const windowId = await getCurrentWindowId();
-        await window.urchin.invoke('tab.create', {
-          windowId,
-          url: 'urchin://newtab',
-          active: true,
-          workspaceId: ws.id,
-        });
-        if (activeTabId != null) handleCloseTab(activeTabId);
+      if (!ws) {
+        throw new Error('创建工作区失败，请重试');
       }
     },
-    [handleCreateWorkspace, activeTabId, handleCloseTab],
+    [handleCreateWorkspace],
   );
 
   const handleUpdateWorkspace = useCallback(

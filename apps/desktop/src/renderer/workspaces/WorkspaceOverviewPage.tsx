@@ -2,10 +2,11 @@
  * 工作区总览页（urchin://workspaces，参考 ego-lite Space 卡片设计）。
  *
  * 折叠态「点击卡片切换」模式的核心页面：只保留卡片网格，无标题/说明文字。
- * 布局（用户指令 2026-11-13）：固定 3×3 网格，单页最多 9 卡——首格为默认工作区
- * 卡（固定不可拖）、其后 7 卡是可拖工作区、第 9 卡固定为「新建」卡；第 9 个起的
- * 工作区排在「新建」卡之后，网格纵向滚动（可见滑块）查看。每张卡片是该工作区
- * **整个浏览器窗口**的截图（由 App 采集并注入 snapshot）：
+ * 布局（用户指令 2026-11-13，2026-11-15 修订）：固定 3×3 网格，单屏最多 9 卡——
+ * 首格为默认工作区卡（固定不可拖）、其后是可拖工作区卡，**「新建」卡恒居全部
+ * 卡片末位**（原为固定第 9 格，经用户指令改为最后）；工作区较多时网格纵向滚动
+ * （可见滑块）查看，「新建」卡随末位滚动出现。每张卡片是该工作区**整个浏览器
+ * 窗口**的截图（由 App 采集并注入 snapshot）：
  * - 窗口 UI（侧栏/地址栏）来自 window.captureUi
  * - 激活标签网页来自 tab.captureThumbnail，按内容区矩形叠加
  * 卡片高度 = 总览区可视高度 / 3（三行恰好铺满首屏；所有行统一等高，滚动后的
@@ -35,9 +36,9 @@ import type { Workspace, WorkspaceColor } from './types';
 import { WORKSPACE_COLORS, WORKSPACE_COLOR_KEYS, workspaceInitial } from './workspace-colors';
 import { extractIpcMessage } from './types';
 
-/** 总览页网格列数：固定 3 列（单页 9 卡 = 3×3，用户指令 2026-11-13）。 */
+/** 总览页网格列数：固定 3 列（单屏 9 卡 = 3×3，用户指令 2026-11-13）。 */
 const GRID_COLUMNS = 3;
-/** 总览页网格单屏行数：3 行 × 3 列 = 9 卡，其中末卡固定为「新建」卡。 */
+/** 总览页网格单屏行数：3 行 × 3 列 = 9 卡；「新建」卡恒居全部卡片末位。 */
 const GRID_ROWS = 3;
 /** 网格间距（对应 Tailwind gap-5），换算行高时需扣除行间空隙。 */
 const GRID_GAP = 20;
@@ -47,9 +48,6 @@ const PAGE_PADDING_Y = 32;
 const MIN_CARD_HEIGHT = 160;
 /** 首帧实测前的行高兜底（useLayoutEffect 在绘制前完成实测并重渲染）。 */
 const FALLBACK_ROW_HEIGHT = 180;
-
-/** 首屏工作区卡容量：9 卡中末卡为「新建」卡，故首屏最多 8 个工作区。 */
-const FIRST_PAGE_WORKSPACES = GRID_ROWS * GRID_COLUMNS - 1;
 
 /** 单个工作区在总览页的展示数据（App 计算后注入）。 */
 export interface WorkspaceOverviewItem {
@@ -420,7 +418,9 @@ function WorkspaceCard({
   );
 }
 
-/** 新建工作区卡片（虚线边框 + 命名 + 色板），尺寸与工作区卡一致（网格单元铺满）。 */
+/** 新建工作区卡片（虚线边框 + 命名 + 色板），尺寸与工作区卡一致（网格单元铺满）。
+ *  创建成功后留在总览页（2026-11-15 用户指令）：收起面板并清空表单，便于连续
+ *  创建；失败时面板保持打开并显示错误。 */
 function NewWorkspaceCard({
   onCreate,
 }: {
@@ -439,7 +439,11 @@ function NewWorkspaceCard({
     setError('');
     try {
       await onCreate(trimmed, color);
-      // 成功：App 负责切换并关页，本组件无需自关
+      // 成功：留在总览页，收起面板并复位表单（连续创建不被上次输入干扰）
+      setOpen(false);
+      setName('');
+      setColor('blue');
+      setSaving(false);
     } catch (err) {
       setError(extractIpcMessage(err));
       setSaving(false);
@@ -542,11 +546,9 @@ export function WorkspaceOverviewPage({
     handleCardPointerEnd,
   } = useOverviewCardDrag({ pageRef, others, onReorder });
 
-  // 「新建」卡固定为第 9 卡（用户指令 2026-11-13）：首屏 = 默认卡 + 前 7 个可拖卡
-  // + 新建卡；第 9 个起的可拖卡排在其后，滚动查看。
+  // 「新建」卡恒居全部卡片末位（用户指令 2026-11-15，原为固定第 9 格）：
+  // 渲染序 = 默认卡 + 全部可拖卡 + 新建卡；工作区多时末位随滚动出现。
   const displayOthers = previewOthers ?? others;
-  const firstPageOthers = displayOthers.slice(0, FIRST_PAGE_WORKSPACES - 1);
-  const overflowOthers = displayOthers.slice(FIRST_PAGE_WORKSPACES - 1);
 
   const dragProps = (item: WorkspaceOverviewItem) =>
     ({
@@ -568,8 +570,8 @@ export function WorkspaceOverviewPage({
       style={{ scrollbarGutter: 'stable' }}
       aria-label="工作区总览"
     >
-      {/* 3×3 网格：3 行行高 = 可视高度/3，恰好铺满首屏；工作区超过 8 个时内容
-       *  超出页面可视区，由页面滚动条（可见滑块）承接滚动。 */}
+      {/* 3×3 网格：3 行行高 = 可视高度/3，恰好铺满首屏；卡片总数超过 9 时内容
+       *  超出页面可视区，由页面滚动条（可见滑块）承接滚动，「新建」卡恒居末位。 */}
       <div
         className="grid w-full gap-5"
         style={{
@@ -587,7 +589,7 @@ export function WorkspaceOverviewPage({
           />
         )}
 
-        {firstPageOthers.map((item) => (
+        {displayOthers.map((item) => (
           <WorkspaceCard
             key={item.workspace.id}
             item={item}
@@ -598,16 +600,6 @@ export function WorkspaceOverviewPage({
         ))}
 
         <NewWorkspaceCard onCreate={onCreate} />
-
-        {overflowOthers.map((item) => (
-          <WorkspaceCard
-            key={item.workspace.id}
-            item={item}
-            active={item.workspace.id === currentWorkspaceId}
-            onSwitch={onSwitch}
-            {...dragProps(item)}
-          />
-        ))}
       </div>
     </div>
   );

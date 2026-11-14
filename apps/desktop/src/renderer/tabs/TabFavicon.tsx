@@ -2,8 +2,7 @@
  * 标签页图标（展开态与折叠态共用）
  *
  * 加载中 → spinner；崩溃 → 红叉；urchin://settings → 齿轮；
- * 普通网页 → 优先封装库内置图标（site-directory 命中 → 本地 /sites/<key>.png，离线可用），
- * 未命中内置 → 网页真实 favicon（主进程 page-favicon-updated 抓取）；
+ * 普通网页 → 主进程访问时采集并持久缓存的 favicon；
  * 图标加载失败逐级回退，皆不可用 → 灰点占位。
  */
 import { useEffect, useState } from 'react';
@@ -16,7 +15,6 @@ import {
   PenLine,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { lookupBuiltinSite, builtinIconUrl } from '../home/site-directory-lookup';
 import { getGenOfficeTabIcon } from '../components/genoffice-icons';
 import type { TabSnapshot } from './types';
 
@@ -59,18 +57,10 @@ export function TabFavicon({
     if (genofficeIcon) return genofficeIcon;
     return <FileText className={cn('shrink-0 text-text-secondary', className ?? 'h-3 w-3')} />;
   }
-  const builtin = lookupBuiltinSite(tab.url ?? '');
-  const builtinSrc = builtin ? builtinIconUrl(builtin) : undefined;
-  return (
-    <TabSiteIcon
-      src={builtinSrc ?? tab.favicon}
-      fallbackSrc={builtinSrc && tab.favicon ? tab.favicon : undefined}
-      className={className}
-    />
-  );
+  return <TabSiteIcon src={tab.favicon} className={className} />;
 }
 
-/** 标签页网站图标 <img>：加载失败逐级回退（内置图标 → 网页 favicon → 浏览器图标半透明占位）。
+/** 标签页网站图标 <img>：加载失败逐级回退（网页缓存图标 → 浏览器图标半透明占位）。
  *  src 变化（同一标签页导航到新站点）时重置回退状态，重新从最新源尝试。 */
 function TabSiteIcon({
   src,
@@ -93,7 +83,7 @@ function TabSiteIcon({
   const sources = sourceList.filter((value, index) => sourceList.indexOf(value) === index);
   const current = sources[step];
   if (!current) {
-    // 完全无法识别（无内置图标、网页无 favicon 或加载失败）：
+    // 完全无法识别（网页无 favicon 或加载失败）：
     // 用浏览器图标半透明占位，淡化显示避免与真实站点图标混淆
     // 相对路径：生产页面从 file:// 加载，绝对路径会解析到磁盘根导致 404
     return (

@@ -1,20 +1,8 @@
-/**
- * 内置常见网站目录（主页站点比对用）
- *
- * 2026-08-14 设计：主页常用/最近书签的图标与名称优先从本目录比对——
- * 命中内置条目则使用本地打包图标（不依赖外部网络），未命中再回退外部 favicon 服务。
- *
- * 2026-08-15 扩充：一期收录 500 个站点，按类别分组排列（组内大致按 key 排序），
- * 便于人工翻阅与增量补充。条目顺序不影响查找（DOMAIN_INDEX 建索引）。
- *
- * 图标资源：renderer/public/sites/<key>.png（由 scripts/fetch-site-icons 批量下载打包）。
- * 新增站点：在 SITE_DIRECTORY 登记 { key, domains[], name } 即可——
- * fetch-site-icons 脚本会自动从本文件解析站点清单并下载图标，无需另行维护清单。
- */
+/** 内置站点名称目录，仅用于网站名称匹配；图标由用户访问时采集并持久缓存。 */
 
 /** 内置站点条目 */
 export interface BuiltinSite {
-  /** 图标文件名（不含扩展名，对应 public/sites/<key>.png） */
+  /** 站点稳定标识（用于名称目录维护） */
   readonly key: string;
   /** 该站点可匹配的域名（含/不含 www，统一小写） */
   readonly domains: readonly string[];

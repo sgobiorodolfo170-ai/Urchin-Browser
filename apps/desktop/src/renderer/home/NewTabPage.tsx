@@ -4,7 +4,7 @@ import type { BookmarkCreateRes, BookmarkListRes, HistoryListRes } from '@urchin
 import { Loader2, Trash2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { displayNameForLocale } from '../../shared/brand';
-import { lookupBuiltinSite, builtinIconUrl } from './site-directory-lookup';
+import { lookupBuiltinSite } from './site-directory-lookup';
 import { groupSitePages, type SiteGroup } from './site-groups';
 
 export interface NewTabPageProps {
@@ -22,12 +22,7 @@ function SiteFavicon({
   className?: string;
 }) {
   const [srcIndex, setSrcIndex] = useState(0);
-  const builtin = lookupBuiltinSite(url);
-  const sources = [
-    ...(favicon ? [favicon] : []),
-    ...(builtin ? [builtinIconUrl(builtin)] : []),
-    BROWSER_ICON,
-  ];
+  const sources = [...(favicon ? [favicon] : []), BROWSER_ICON];
   useEffect(() => setSrcIndex(0), [url, favicon]);
   return (
     <img

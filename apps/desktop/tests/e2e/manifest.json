@@ -209,7 +209,7 @@
       "spec": "notebook.spec.ts",
       "area": "笔记",
       "tests": 1,
-      "durationSec": 3,
+      "durationSec": 8,
       "triggers": [
         "apps/desktop/src/renderer/notebook/**",
         "apps/desktop/src/renderer/sidebar/**",
@@ -218,7 +218,7 @@
       "deps": "none",
       "ciRuns": true,
       "alwaysRecommend": false,
-      "note": "入口 → 三区渲染 → 笔记/任务/便利贴，持久化 settings.notebook.state"
+      "note": "入口 → 三区渲染 → Markdown 编辑/撤销/阅读/字号 → 任务/便利贴，持久化 settings.notebook.state"
     },
     {
       "spec": "perf.spec.ts",

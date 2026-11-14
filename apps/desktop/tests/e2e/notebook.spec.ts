@@ -58,6 +58,43 @@ test.describe('M27 笔记 / 便利贴', () => {
     await title.fill('E2E 新建笔记');
     await expect(title).toHaveValue('E2E 新建笔记');
 
+    const body = window.getByLabel('笔记正文');
+    const source = '## 本周计划\n\n优先完成编辑器\n\n- [ ] 阅读体验';
+    await body.fill(source);
+    await body.evaluate((element: HTMLTextAreaElement) => {
+      const start = element.value.indexOf('编辑器');
+      element.setSelectionRange(start, start + 3);
+    });
+    await window.getByRole('button', { name: '加粗', exact: true }).click();
+    await expect(body).toHaveValue(source.replace('编辑器', '**编辑器**'));
+    // 格式操作与键盘输入共用 Chromium 原生撤销栈。
+    await body.press('ControlOrMeta+z');
+    await expect(body).toHaveValue(source);
+    await body.press('ControlOrMeta+Shift+z');
+    await expect(body).toHaveValue(source.replace('编辑器', '**编辑器**'));
+
+    await window.getByRole('button', { name: '阅读笔记' }).click();
+    const reading = window.getByRole('region', { name: '笔记阅读' });
+    await expect(reading.getByRole('heading', { name: '本周计划' })).toBeVisible();
+    await expect(reading.locator('strong')).toHaveText('编辑器');
+    await window.getByRole('button', { name: '增大正文字号' }).click();
+    await expect(reading.locator('.notebook-note-preview')).toHaveCSS('font-size', '18px');
+    await window.getByRole('button', { name: '编辑笔记' }).click();
+    await expect(body).toHaveValue(source.replace('编辑器', '**编辑器**'));
+    await body.press('ControlOrMeta+z');
+    await expect(body).toHaveValue(source);
+    await body.press('ControlOrMeta+Shift+z');
+    await expect(body).toHaveValue(source.replace('编辑器', '**编辑器**'));
+
+    await expect
+      .poll(async () => {
+        const result = (await window.evaluate(async () => {
+          return globalThis.window.urchin.invoke('settings.get', { key: 'notebook.state' });
+        })) as { value?: { notes?: { title: string; content: string }[] } };
+        return result.value?.notes?.find((note) => note.title === 'E2E 新建笔记')?.content;
+      })
+      .toBe(source.replace('编辑器', '**编辑器**'));
+
     // 任务清单
     await window.getByLabel('切换到任务清单').click();
     const taskInput = window.getByPlaceholder('添加任务后按 Enter');

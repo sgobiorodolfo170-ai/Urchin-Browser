@@ -10,6 +10,7 @@ import { ArrowLeft, Check, ListTodo, NotebookPen, Plus, Trash2 } from 'lucide-re
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { cn } from '../lib/utils';
 import { makeNotebookId } from './normalize';
+import { NoteEditor } from './NoteEditor';
 import { parseTransitDrag } from '../transit/drag-utils';
 import type { NotePage, NotebookMeta, NotebookState, TaskItem } from './types';
 
@@ -409,37 +410,6 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
         ]}
       />
     </section>
-  );
-}
-
-function NoteEditor({
-  note,
-  onChange,
-}: {
-  readonly note: NotePage;
-  readonly onChange: (patch: Partial<Pick<NotePage, 'title' | 'content'>>) => void;
-}) {
-  return (
-    <div className="m-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
-      <input
-        className="min-w-0 border-b border-border bg-surface-secondary/20 px-5 py-4 text-xl font-semibold text-text outline-none focus:bg-primary/5"
-        placeholder="笔记标题"
-        value={note.title}
-        autoFocus
-        onChange={(e) => onChange({ title: e.target.value })}
-        aria-label="笔记标题"
-      />
-      <textarea
-        className="min-h-0 flex-1 resize-none bg-transparent px-5 py-4 text-sm leading-7 text-text outline-none focus:bg-primary/[0.02]"
-        placeholder="开始记录…"
-        value={note.content}
-        onChange={(e) => onChange({ content: e.target.value })}
-        aria-label="笔记正文"
-      />
-      <div className="shrink-0 border-t border-border px-5 py-2 text-right text-[10px] tabular-nums text-text-secondary">
-        {note.content.length} 字
-      </div>
-    </div>
   );
 }
 

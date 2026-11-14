@@ -1,0 +1,54 @@
+.notebook-note-body,
+.notebook-note-preview {
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+
+.notebook-note-body,
+.notebook-note-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.notebook-note-preview > :first-child {
+  margin-top: 0;
+}
+
+.notebook-note-preview :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 1.6em;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.notebook-note-preview :is(h5, h6) {
+  font-size: 1em;
+}
+
+.notebook-note-preview li + li {
+  margin-top: 0.35em;
+}
+
+.notebook-note-preview li:has(> input[type='checkbox']) {
+  list-style: none;
+}
+
+.notebook-note-preview input[type='checkbox'] {
+  margin-right: 0.5em;
+  accent-color: var(--color-primary);
+}
+
+.notebook-note-preview :is(pre, table) {
+  max-width: 100%;
+  overflow-x: auto;
+  font-size: 0.875em;
+}
+
+.notebook-note-preview table {
+  display: block;
+}
+
+.notebook-note-preview img {
+  height: auto;
+  border-radius: var(--radius-md);
+}

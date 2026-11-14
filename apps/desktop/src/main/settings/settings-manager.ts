@@ -66,6 +66,7 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   // 链接行为：点击网页内链接时是否在新标签页打开（默认 false = 当前标签页打开）
   ['links.openInNewTab', false],
   // 右侧边栏展开方式（默认双击展开；true=悬停自动展开，与双击互斥，设置页 select 切换）
+  ['ui.titlebarBookmarksToggle', true],
   ['ui.rightSidebarAutoExpand', false],
   // 左侧边栏悬停自动展开（默认关闭；双击切换始终可用，悬停展开仅在折叠态生效）
   ['ui.leftSidebarAutoExpand', false],

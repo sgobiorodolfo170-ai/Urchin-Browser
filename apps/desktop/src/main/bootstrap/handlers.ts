@@ -782,6 +782,7 @@ export function registerIpcHandlers(ctx: AppContext): void {
   // UI 域 handler：布局状态切换（左/右侧栏宽度 + 下侧栏高度 + 内容区可见性）
   registerHandler(ipcMain, 'ui.layout.setState', (req) => {
     const newState = setLayoutState({
+      bookmarksBarHeight: req.bookmarksBarHeight,
       leftWidth: req.leftWidth,
       rightWidth: req.rightWidth,
       bottomHeight: req.bottomHeight,

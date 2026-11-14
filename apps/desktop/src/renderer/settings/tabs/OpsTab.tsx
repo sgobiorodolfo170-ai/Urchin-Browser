@@ -140,6 +140,19 @@ export function OpsTab({
     <section>
       <h1 className="mb-4 text-2xl font-semibold">操作</h1>
       <SettingsSection
+        title="标题栏"
+        fields={[
+          {
+            key: 'ui.titlebarBookmarksToggle',
+            label: '标题栏展开/折叠按钮',
+            desc: '在最小化按钮前显示展开/折叠按钮，点击可显示或隐藏收藏栏。',
+            type: 'toggle',
+          },
+        ]}
+        entries={entries}
+        onChange={onChange}
+      />
+      <SettingsSection
         title="侧栏与工作区"
         fields={OPS_FIELDS}
         entries={entries}

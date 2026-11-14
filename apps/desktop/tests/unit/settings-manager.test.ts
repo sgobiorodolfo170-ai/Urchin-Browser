@@ -102,7 +102,7 @@ describe('SettingsManager', () => {
     //   mail.state 邮箱页三区栏宽 2026-11-10/
     //   transit.items 中转区项目索引/
     //   ui.minimizeToTray 关闭窗口驻留托盘默认关闭 2026-11-10） + 自定义 1 项
-    expect(entries).toHaveLength(44);
+    expect(entries).toHaveLength(45);
     expect(mgr.get('home.frequentSiteOrder')).toEqual([]);
     expect(mgr.get('home.recentSiteOrder')).toEqual([]);
 

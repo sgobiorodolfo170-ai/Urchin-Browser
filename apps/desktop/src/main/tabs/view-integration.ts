@@ -97,6 +97,7 @@ export interface TabEventPayload {
 
 /** 布局状态：左/右侧栏宽度 + 下侧栏区域高度 */
 export interface LayoutState {
+  bookmarksBarHeight?: number;
   leftWidth: number;
   rightWidth: number;
   /**
@@ -115,6 +116,7 @@ export interface LayoutState {
 
 /** 全局布局状态（v0.1 单窗口，简化为全局） */
 const layoutState: LayoutState = {
+  bookmarksBarHeight: 0,
   leftWidth: DEFAULT_LEFT_WIDTH,
   rightWidth: DEFAULT_RIGHT_WIDTH,
   bottomHeight: DEFAULT_BOTTOM_HEIGHT,
@@ -140,10 +142,14 @@ function computeViewBounds(windowBounds: { width: number; height: number }): {
   height: number;
 } {
   const horizontalInset = WINDOW_FRAME_WIDTH * 2;
-  const verticalInset = WINDOW_FRAME_WIDTH * 2 + WINDOW_TITLEBAR_HEIGHT + SHELL_BOTTOM_INSET;
+  const verticalInset =
+    WINDOW_FRAME_WIDTH * 2 +
+    WINDOW_TITLEBAR_HEIGHT +
+    (layoutState.bookmarksBarHeight ?? 0) +
+    SHELL_BOTTOM_INSET;
   return {
     x: WINDOW_FRAME_WIDTH + layoutState.leftWidth,
-    y: WINDOW_FRAME_WIDTH + WINDOW_TITLEBAR_HEIGHT,
+    y: WINDOW_FRAME_WIDTH + WINDOW_TITLEBAR_HEIGHT + (layoutState.bookmarksBarHeight ?? 0),
     width: Math.max(
       0,
       windowBounds.width -
@@ -169,6 +175,7 @@ export function getLayoutState(): LayoutState {
  * browserViewHidden：临时隐藏 BrowserView（如收藏夹面板弹出时），避免遮挡弹出层。
  */
 export function setLayoutState(next: {
+  bookmarksBarHeight?: number;
   leftWidth?: number;
   rightWidth?: number;
   bottomHeight?: number;
@@ -176,6 +183,8 @@ export function setLayoutState(next: {
   browserViewHidden?: boolean;
   devtoolsWidth?: number;
 }): LayoutState & { contentHidden: boolean } {
+  if (next.bookmarksBarHeight !== undefined)
+    layoutState.bookmarksBarHeight = next.bookmarksBarHeight;
   if (next.leftWidth !== undefined) layoutState.leftWidth = next.leftWidth;
   if (next.rightWidth !== undefined) layoutState.rightWidth = next.rightWidth;
   if (next.bottomHeight !== undefined) layoutState.bottomHeight = next.bottomHeight;
@@ -320,7 +329,11 @@ export function installTabViewIntegration(
     if (tab.viewKind === 'genoffice') {
       bounds.height = Math.max(
         0,
-        contentBounds.height - WINDOW_FRAME_WIDTH * 2 - WINDOW_TITLEBAR_HEIGHT - SHELL_BOTTOM_INSET,
+        contentBounds.height -
+          WINDOW_FRAME_WIDTH * 2 -
+          WINDOW_TITLEBAR_HEIGHT -
+          (layoutState.bookmarksBarHeight ?? 0) -
+          SHELL_BOTTOM_INSET,
       );
     }
     // 防御性检查：确保 bounds 宽高不为零，否则网页不可见

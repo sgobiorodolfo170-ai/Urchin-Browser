@@ -13,12 +13,20 @@
  * - 关闭复用既有 window.close（按 sender 反查窗口 id），不新增关闭通道。
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Copy, Minus, Square, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Copy, Minus, Square, X } from 'lucide-react';
 import { getCurrentWindowId } from '../lib/current-window';
 import { displayNameForLocale } from '../../shared/brand';
 
 /** 自绘标题栏：品牌区 + 最小化/最大化/关闭按钮。 */
-export function AppTitleBar() {
+export function AppTitleBar({
+  bookmarksEnabled = false,
+  bookmarksExpanded = false,
+  onToggleBookmarks,
+}: {
+  readonly bookmarksEnabled?: boolean;
+  readonly bookmarksExpanded?: boolean;
+  readonly onToggleBookmarks?: () => void;
+}) {
   const [maximized, setMaximized] = useState(false);
 
   // 挂载时同步一次；之后窗口每次 resize（最大化/还原/手动缩放）再同步。
@@ -93,6 +101,23 @@ export function AppTitleBar() {
       </div>
 
       <div className="flex h-full shrink-0 items-stretch">
+        {bookmarksEnabled && (
+          <button
+            type="button"
+            className="app-window-control"
+            onClick={onToggleBookmarks}
+            aria-label={bookmarksExpanded ? '折叠收藏栏' : '展开收藏栏'}
+            aria-expanded={bookmarksExpanded}
+            aria-controls="bookmarks-bar"
+            title={bookmarksExpanded ? '折叠收藏栏' : '展开收藏栏'}
+          >
+            {bookmarksExpanded ? (
+              <ChevronUp className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
+          </button>
+        )}
         <button
           type="button"
           className="app-window-control"

@@ -18,6 +18,7 @@
  * 事件订阅：通过 window.urchin.on('tab:event', ...) 接收主进程推送的 tab 状态变更
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BookmarksBar, useTitlebarBookmarks } from './components/bookmarks-bar';
 import { AppTitleBar } from './components/app-titlebar';
 import { parseTransitDrag } from './transit/drag-utils';
 import { resolveDroppedFilePath } from './transit/file-path';
@@ -130,6 +131,8 @@ export function App() {
   //    见 hook 头注释；下方 hook 调用点接线） ──
   /** 内容区 DOM 引用：整窗快照叠加网页截图时用于取 BrowserView 对应矩形
    *  （ref 传给 ContentArea 挂载、传给 useWorkspaces 采集快照，真源仍在 App）。 */
+  const titlebarBookmarks = useTitlebarBookmarks();
+  const bookmarksBarHeight = titlebarBookmarks.enabled && titlebarBookmarks.expanded ? 36 : 0;
   const contentAreaRef = useRef<HTMLDivElement>(null);
   // M15 DevTools 检视列开合/宽度（真源仍归 App：width 驱动主进程 BrowserView
   // bounds；hook 收拢状态与 F12 订阅，见 devtools/use-devtools-column.ts）
@@ -778,13 +781,14 @@ export function App() {
           leftWidth: left,
           rightWidth: right,
           bottomHeight: BOTTOM_HEIGHT,
+          bookmarksBarHeight,
           devtoolsWidth: dtw ?? devtoolsWidth,
         });
       } catch (e) {
         log.error('Failed to update layout:', e);
       }
     },
-    [devtoolsWidth],
+    [devtoolsWidth, bookmarksBarHeight],
   );
 
   const handleToggleLeft = useCallback(() => {
@@ -1384,7 +1388,16 @@ export function App() {
             'radial-gradient(ellipse 92% 42% at 50% 18%, color-mix(in srgb, var(--color-primary) 8%, transparent) 0%, transparent 72%), linear-gradient(180deg, var(--color-titlebar) 0%, color-mix(in srgb, var(--color-titlebar) 60%, var(--color-surface)) 26%, var(--color-surface) 66%, var(--color-surface-secondary) 100%)',
         }}
       >
-        {useCustomChrome && <AppTitleBar />}
+        {useCustomChrome && (
+          <AppTitleBar
+            bookmarksEnabled={titlebarBookmarks.enabled}
+            bookmarksExpanded={titlebarBookmarks.expanded}
+            onToggleBookmarks={titlebarBookmarks.toggle}
+          />
+        )}
+        {useCustomChrome && bookmarksBarHeight > 0 && (
+          <BookmarksBar onNavigate={(url) => void handleNavigate(url)} />
+        )}
 
         {/* 主体三列：左/右侧栏夹住中区，整体位于自绘标题栏下方 */}
         <div className="flex min-h-0 flex-1 overflow-hidden">

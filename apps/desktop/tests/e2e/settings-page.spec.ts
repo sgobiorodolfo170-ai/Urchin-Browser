@@ -83,6 +83,43 @@ test.describe('设置页', () => {
       before === 'true' ? 'false' : 'true',
     );
 
+    await window.getByRole('button', { name: '操作', exact: true }).click();
+    const titlebarToggle = window
+      .locator('div.flex.items-center.justify-between')
+      .filter({ hasText: '标题栏展开/折叠按钮' })
+      .getByRole('switch');
+    await expect(titlebarToggle).toHaveAttribute('aria-checked', 'true');
+    await window.evaluate(async () => {
+      await globalThis.window.urchin.invoke('bookmark.create', {
+        type: 'bookmark',
+        title: '收藏栏测试',
+        url: 'https://example.com',
+      });
+    });
+    await window.getByRole('button', { name: '展开收藏栏', exact: true }).click();
+    const bar = window.getByRole('navigation', { name: '收藏栏', exact: true });
+    await expect(bar.getByRole('button', { name: '收藏栏测试' })).toBeVisible();
+    await expect(window.getByRole('button', { name: '折叠收藏栏' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await titlebarToggle.click();
+    await expect(bar).toHaveCount(0);
+    await expect(window.getByRole('button', { name: '展开收藏栏' })).toHaveCount(0);
+    await titlebarToggle.click();
+    await expect(window.getByRole('button', { name: '展开收藏栏' })).toBeVisible();
+    await window.getByRole('button', { name: '展开收藏栏' }).click();
+    await bar.getByRole('button', { name: '收藏栏测试' }).click();
+    await expect
+      .poll(async () =>
+        window.evaluate(async () => {
+          const result = (await globalThis.window.urchin.invoke('tab.list', { windowId: 1 })) as {
+            tabs: { active: boolean; url: string }[];
+          };
+          return result.tabs.find((tab) => tab.active)?.url;
+        }),
+      )
+      .toMatch(/^https:\/\/example.com/);
     await electronApp.close();
   });
 });

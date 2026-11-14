@@ -27,6 +27,7 @@ const DEFAULTS: Record<string, unknown> = {
   doNotTrack: true,
   blockAds: true,
   'links.openInNewTab': false,
+  'ui.titlebarBookmarksToggle': true,
   'ui.rightSidebarAutoExpand': false,
   'ui.leftSidebarAutoExpand': false,
   'ui.workspaceSwitcherMode': 'cards',

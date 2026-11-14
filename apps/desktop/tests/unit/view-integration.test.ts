@@ -166,6 +166,7 @@ describe('view-integration', () => {
     window = makeManagedWindow(1);
     windowManager.register(window);
     setLayoutState({
+      bookmarksBarHeight: 0,
       leftWidth: 44,
       rightWidth: 44,
       bottomHeight: 48,
@@ -180,6 +181,7 @@ describe('view-integration', () => {
   describe('getLayoutState / setLayoutState', () => {
     it('should return default layout state', () => {
       expect(getLayoutState()).toEqual({
+        bookmarksBarHeight: 0,
         leftWidth: 44,
         rightWidth: 44,
         bottomHeight: 48,
@@ -192,6 +194,7 @@ describe('view-integration', () => {
       const next = setLayoutState({ leftWidth: 200, rightWidth: 300, bottomHeight: 100 });
 
       expect(next).toEqual({
+        bookmarksBarHeight: 0,
         leftWidth: 200,
         rightWidth: 300,
         bottomHeight: 100,
@@ -348,6 +351,29 @@ describe('view-integration', () => {
     );
   });
 
+  it('moves and shrinks the native view while the bookmarks bar is expanded', () => {
+    const tab = makeTab({ id: 99, windowId: 1 });
+    tabManager.register(tab);
+    install();
+    fireTab('created', tab);
+    const before = tab.view.setBounds.mock.calls.at(-1)?.[0] as {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+    setLayoutState({ bookmarksBarHeight: 36 });
+    handle.refreshAllViewBounds();
+    expect(tab.view.setBounds).toHaveBeenLastCalledWith({
+      ...before,
+      y: before.y + 36,
+      height: before.height - 36,
+    });
+    setLayoutState({ bookmarksBarHeight: 0 });
+    handle.refreshAllViewBounds();
+    expect(tab.view.setBounds).toHaveBeenLastCalledWith(before);
+  });
+
   describe('browserViewHidden', () => {
     it('should zero bounds while hidden', () => {
       const tab = makeTab({ id: 11, windowId: 1 });
@@ -500,6 +526,7 @@ describe('HTML5 fullscreen (��Ƕ��Ƶȫ������ UI ��)', ()
     window = makeManagedWindow(1);
     windowManager.register(window);
     setLayoutState({
+      bookmarksBarHeight: 0,
       leftWidth: 44,
       rightWidth: 44,
       bottomHeight: 48,

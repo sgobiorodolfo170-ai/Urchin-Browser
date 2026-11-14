@@ -593,6 +593,7 @@ export type SettingsGetAllRes = z.infer<typeof settingsGetAllResSchema>;
 // ============================================================================
 
 export const uiLayoutSetStateReqSchema = z.object({
+  bookmarksBarHeight: z.number().int().min(0).max(36).optional(),
   leftWidth: z.number().int().min(0).max(400).optional(),
   rightWidth: z.number().int().min(0).max(600).optional(),
   bottomHeight: z.number().int().min(0).max(200).optional(),

@@ -641,6 +641,10 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
       case 'integrations.status':
         // 形状对齐上游 IntegrationsStatus：cli.status='missing' 让面板显示
         // 「CLI 不在 PATH」而不是空白/崩溃（Urchin 不随包分发 genoffice CLI）。
+        // agents/legacy 为空 → 助手行与旧版清理行不渲染，「没有列出我的助手」
+        // 折叠区默认展开（IntegrationsPane open={agents.length === 0}）。
+        // 该桥此前漏暴露为独立全局 window.aiOfficeIntegrations，页面卡在
+        // 「正在检测…」加载态（用户看到的空白页）——preload 侧已补暴露。
         return {
           cli: {
             ok: false,
@@ -656,10 +660,17 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
           skillVersion: '',
           skillNeedsCli: '',
           agents: [],
+          legacy: [],
         };
       case 'integrations.installSkill':
       case 'integrations.uninstallSkill':
-        return { installed: false, error: 'Urchin 暂不支持集成安装' };
+        // 抛错而非返回 {installed:false}：上游 run() 忽略返回值并直接显示
+        // 「已安装。新开一个会话后生效。」（intgInstalledHint）——假成功不可
+        // 接受。抛出后确认块保留（pending 不清空），用户可取消；无假反馈。
+        throw new Error('Urchin 暂不支持安装 GenOffice skill');
+      case 'integrations.sweepLegacySkillCopies':
+        // 旧版 per-tool 副本清单为空（status.agents/legacy 恒空），无账可扫
+        return { removed: [], kept: [] };
       case 'integrations.pickSkillDir': {
         const result = await dialog.showOpenDialog({
           title: '选择安装目录',
@@ -668,12 +679,35 @@ export function registerGenOfficeHomeHandlers(deps: GenOfficeHomeDeps): void {
         return result.canceled ? null : (result.filePaths[0] ?? null);
       }
       case 'integrations.saveSkillZip':
+        // 无捆绑 zip 可存（Urchin 不分发 genoffice CLI skill），返回 null =
+        // 上游语义中的「用户取消」，按钮静默无副作用
         return null;
       case 'integrations.copyText': {
         // Electron 44 起返回 Promise：不等待，显式 void（同 clipper/register-handlers.ts）
         void clipboard.writeText(strArg(args[0], ''));
         return null;
       }
+      case 'integrations.listSkills':
+        // GenOffice 自有 skills 目录列表：桩恒空（不实现本地 skill 管理）
+        return [];
+      case 'integrations.skillBody':
+        // listSkills 恒空则本方法不会被调；兜底空正文（上游对 null/'' 显示空块）
+        return '';
+      case 'integrations.importSkillFolder':
+      case 'integrations.importSkillZip':
+        // 抛错而非返回 null：上游 doImport 对 null 静默返回（按钮无任何反馈），
+        // 对 Error 显示「导入失败：{reason}」（intgSkillsImportFailed）——诚实
+        // 提示优于无反应。
+        throw new Error('Urchin 暂不支持导入 GenOffice skill');
+      case 'integrations.listRecommendedSkills':
+        // 推荐技能目录恒空 → FoundSkills 只显示「我的技能」空态
+        return [];
+      case 'integrations.installRecommendedSkill':
+        // 同 importSkill*：上游 doImport catch 后显示「导入失败：{reason}」
+        throw new Error('Urchin 暂不支持安装推荐技能');
+      case 'integrations.removeSkill':
+        // listSkills 恒空则无技能可移除；兜底 no-op
+        return null;
       // ── 文件搜索（Phase B：基础文件名匹配；非全文索引） ──
       case 'searchFiles': {
         const query = (args[0] ?? {}) as { q?: string; ext?: string; limit?: number };

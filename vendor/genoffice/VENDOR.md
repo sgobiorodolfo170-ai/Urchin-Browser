@@ -251,3 +251,26 @@ vendor/genoffice/apps/<app>/out/preload/index.js              # 编辑器 preloa
 - **Electron 对齐**：声明从 `^43.7.3`/`^43.3.0` 改为 `^43.8.0`（已安装 43.8.0，
   上游 43.8.3 仅差 patch）。
 - **verify 全绿**（1345 测试，覆盖率达标）。
+
+### 集成 skill 桥修正（2026-11-15，宿主侧，无 vendor 补丁）
+
+- **问题**：设置「集成」（IntegrationsPane）/「技能」（FoundSkills）两页读独立全局
+  `window.aiOfficeIntegrations`（上游 shell preload 暴露），宿主用自己的 preload 承载
+  shell 页面时漏暴露该全局——此前的 6 个集成桩误挂在 `window.aiOffice.integrations`
+  下成为死代码，面板 `status()` 永远拿不到数据，卡在「正在检测…」加载态（用户看到
+  空白页）。
+- **修复**（全部在宿主侧 `apps/desktop/`，不改 vendor 源码）：
+  - preload 补 `contextBridge.exposeInMainWorld('aiOfficeIntegrations', ...)`（14 个
+    方法对齐上游 IntegrationsApi，经 `genoffice:home` 通道分发），并删除
+    `window.aiOffice.integrations` 死桩；
+  - 主进程 home-handlers 补齐 8 个缺失 case（sweepLegacySkillCopies/listSkills/
+    skillBody/importSkillFolder/importSkillZip/listRecommendedSkills/
+    installRecommendedSkill/removeSkill），`integrations.status` 补 `legacy: []` 字段；
+  - 写入类方法（installSkill/uninstallSkill/importSkill*/installRecommendedSkill）
+    抛错而非返回假数据：上游 `run()` 忽略返回值会显示假「已安装」提示
+    （intgInstalledHint），`doImport` 对 Error 显示「导入失败：{reason}」——诚实
+    提示优于假成功/无反应；
+  - E2E 新增 `genoffice-settings-integrations.spec.ts`（manifest 已登记）。
+- **行为**：集成页完整渲染（hero 引导 + CLI 未检测 + 「没有列出我的助手」手动方式
+  + MCP「已停止」开关；复制命令真实可用）；技能页「我的技能」空态。真实 skill
+  安装（写本机 AI 助手目录）与本地 HTTP MCP 服务仍不支持，属宿主桩语义。

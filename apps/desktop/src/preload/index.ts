@@ -212,8 +212,9 @@ const genofficeApi = {
  * - AI 设置 → 既有 `ai:*` 通道（与编辑器 AI 面板同源）
  * - 事件 → `genoffice:home:event`（folderChanged）与 `app:theme-changed`
  *
- * 仅对 `genoffice-app://shell/` 页面暴露；账号/云项目/MCP/更新/集成等上游壳
- * 能力以中性桩返回（主进程侧实现），保证 Home 完整渲染。
+ * 仅对 `genoffice-app://shell/` 页面暴露；账号/云项目/MCP/更新等上游壳
+ * 能力以中性桩返回（主进程侧实现），保证 Home 完整渲染。集成 skill 桥独立
+ * 为 `window.aiOfficeIntegrations`（见 `createGenOfficeIntegrationsBridge`）。
  */
 function createGenOfficeHomeBridge(): Record<string, unknown> {
   const home = (method: string, ...args: unknown[]): Promise<unknown> =>
@@ -388,15 +389,38 @@ function createGenOfficeHomeBridge(): Record<string, unknown> {
         }),
     testAiSearchSettings: (input: unknown) => ipcRenderer.invoke('ai:search-test', input),
     testAiMediaSettings: (input: unknown) => ipcRenderer.invoke('ai:media-test', input),
-    // ── 集成（安装 skill 等，宿主暂不支持：中性桩） ──
-    integrations: {
-      status: () => home('integrations.status'),
-      installSkill: (target: unknown) => home('integrations.installSkill', target),
-      uninstallSkill: (agentId: unknown) => home('integrations.uninstallSkill', agentId),
-      pickSkillDir: (title: unknown) => home('integrations.pickSkillDir', title),
-      saveSkillZip: (title: unknown) => home('integrations.saveSkillZip', title),
-      copyText: (text: unknown) => home('integrations.copyText', text),
-    },
+  };
+}
+
+/**
+ * GenOffice 设置「集成」「技能」两页的 skill 桥。
+ *
+ * 上游渲染层读的是独立全局 `window.aiOfficeIntegrations`
+ * （IntegrationsPane.tsx:55 / FoundSkills.tsx:13），不读 `window.aiOffice`——
+ * 此前 6 个桩误挂在 `window.aiOffice.integrations` 下成了死代码，面板
+ * `status()` 永远拿不到数据而卡在「正在检测…」加载态，用户看到空白页。
+ * 方法名与参数对齐上游 IntegrationsApi
+ * （apps/shell/src/shared/integrations-api.ts），全部经单一 `genoffice:home`
+ * 通道分发到主进程中性桩（宿主暂不支持 skill 安装，见 home-handlers.ts）。
+ */
+function createGenOfficeIntegrationsBridge(): Record<string, unknown> {
+  const home = (method: string, ...args: unknown[]): Promise<unknown> =>
+    ipcRenderer.invoke('genoffice:home', { method, args });
+  return {
+    status: () => home('integrations.status'),
+    installSkill: (target: unknown) => home('integrations.installSkill', target),
+    uninstallSkill: (agentId: unknown) => home('integrations.uninstallSkill', agentId),
+    sweepLegacySkillCopies: () => home('integrations.sweepLegacySkillCopies'),
+    pickSkillDir: (title: unknown) => home('integrations.pickSkillDir', title),
+    saveSkillZip: (title: unknown) => home('integrations.saveSkillZip', title),
+    copyText: (text: unknown) => home('integrations.copyText', text),
+    listSkills: () => home('integrations.listSkills'),
+    skillBody: (path: unknown) => home('integrations.skillBody', path),
+    importSkillFolder: (title: unknown) => home('integrations.importSkillFolder', title),
+    importSkillZip: (title: unknown) => home('integrations.importSkillZip', title),
+    listRecommendedSkills: () => home('integrations.listRecommendedSkills'),
+    installRecommendedSkill: (name: unknown) => home('integrations.installRecommendedSkill', name),
+    removeSkill: (name: unknown) => home('integrations.removeSkill', name),
   };
 }
 
@@ -408,6 +432,8 @@ if (isTrustedOrigin) {
 // GenOffice shell Home 页面（genoffice-app://shell/）额外暴露 window.aiOffice
 if (protocol === 'genoffice-app:' && hostname === 'shell') {
   contextBridge.exposeInMainWorld('aiOffice', createGenOfficeHomeBridge());
+  // 设置「集成/技能」页的 skill 桥（上游渲染层读此独立全局，非 window.aiOffice）
+  contextBridge.exposeInMainWorld('aiOfficeIntegrations', createGenOfficeIntegrationsBridge());
   // 上游 shell 的窗口内标签条（AppFrame/TabBar）在 Urchin 中由浏览器标签体系
   // 取代：提供最小 TabsApi 桩（Home 视图内不再有独立标签），标签条由宿主 CSS 隐藏。
   contextBridge.exposeInMainWorld('aiOfficeTabs', {

@@ -131,6 +131,21 @@
       "note": "Markdown 编辑/保存/脏标记 + Home shell + 降级开关；需 genoffice 产物"
     },
     {
+      "spec": "genoffice-settings-integrations.spec.ts",
+      "area": "GenOffice",
+      "tests": 2,
+      "durationSec": 15,
+      "triggers": [
+        "apps/desktop/src/main/genoffice/**",
+        "apps/desktop/src/preload/**",
+        "scripts/genoffice-build.mjs"
+      ],
+      "deps": "genoffice-artifact",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "设置「集成/技能」页 aiOfficeIntegrations 中性桩渲染（不再卡加载态）；需 genoffice 产物"
+    },
+    {
       "spec": "homepage-memory-measure.spec.ts",
       "area": "标签与启动",
       "tests": 1,

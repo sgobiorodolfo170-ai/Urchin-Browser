@@ -315,6 +315,57 @@ describe('registerGenOfficeHomeHandlers', () => {
     expect(await harness.call('getAnalyticsEnabled')).toBe(false);
   });
 
+  it('should stub the full aiOfficeIntegrations surface (14 methods)', async () => {
+    // status：形状对齐上游 IntegrationsStatus（cli missing + agents/legacy 空）
+    const status = (await harness.call('integrations.status')) as {
+      cli: { status: string; location: null };
+      agents: unknown[];
+      legacy?: unknown[];
+      skillVersion: string;
+      skillNeedsCli: string;
+    };
+    expect(status.cli.status).toBe('missing');
+    expect(status.cli.location).toBeNull();
+    expect(status.agents).toEqual([]);
+    // legacy 此前漏字段：上游面板 legacy.length>0 才渲染清理行，缺字段靠 ?? [] 兜底
+    expect(status.legacy).toEqual([]);
+    expect(status.skillVersion).toBe('');
+    expect(status.skillNeedsCli).toBe('');
+
+    // 只读/无害方法返回中性数据
+    expect(await harness.call('integrations.sweepLegacySkillCopies')).toEqual({
+      removed: [],
+      kept: [],
+    });
+    expect(await harness.call('integrations.listSkills')).toEqual([]);
+    expect(await harness.call('integrations.listRecommendedSkills')).toEqual([]);
+    expect(await harness.call('integrations.skillBody', 'x/SKILL.md')).toBe('');
+    expect(await harness.call('integrations.saveSkillZip', '保存 zip')).toBeNull();
+    expect(await harness.call('integrations.removeSkill', 'demo')).toBeNull();
+
+    // 写入类方法抛错：上游 run() 忽略返回值会显示假「已安装」提示，
+    // doImport 对 Error 显示「导入失败：{reason}」——诚实提示优于假成功/无反应
+    await expect(
+      harness.call('integrations.installSkill', { agentId: 'claude-code' }),
+    ).rejects.toThrow('Urchin 暂不支持');
+    await expect(harness.call('integrations.uninstallSkill', 'claude-code')).rejects.toThrow(
+      'Urchin 暂不支持',
+    );
+    await expect(harness.call('integrations.importSkillFolder', '导入')).rejects.toThrow(
+      'Urchin 暂不支持',
+    );
+    await expect(harness.call('integrations.importSkillZip', '导入')).rejects.toThrow(
+      'Urchin 暂不支持',
+    );
+    await expect(
+      harness.call('integrations.installRecommendedSkill', 'doc-writer'),
+    ).rejects.toThrow('Urchin 暂不支持');
+
+    // pickSkillDir：真实对话框桩（canceled → null）
+    mocks.showOpenDialog.mockResolvedValueOnce({ canceled: true, filePaths: [] });
+    expect(await harness.call('integrations.pickSkillDir', '选择安装目录')).toBeNull();
+  });
+
   it('should return null for unknown methods', async () => {
     await expect(harness.call('nope')).resolves.toBeNull();
   });

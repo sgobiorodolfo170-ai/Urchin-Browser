@@ -47,6 +47,8 @@ export interface ContentAreaProps {
   readonly onOverviewSwitch: (workspaceId: string) => void;
   /** 总览页新建工作区：创建后切换并关闭总览页 */
   readonly onOverviewCreate: (name: string, color: WorkspaceColor) => Promise<void>;
+  /** 总览页拖拽重排：提交非默认工作区新顺序（乐观更新在 App，持久化走 workspace.reorder） */
+  readonly onOverviewReorder: (orderedIds: readonly string[]) => void;
   /** 编辑守卫三键确认请求（状态与触发在 App：关闭/切换入口 + tab:event 弹回） */
   readonly guardAsk: EditorGuardAsk | null;
   /** 取消守卫确认（取消按钮 / Esc / 遮罩点击共用） */
@@ -65,6 +67,7 @@ export function ContentArea({
   currentWorkspaceId,
   onOverviewSwitch,
   onOverviewCreate,
+  onOverviewReorder,
   guardAsk,
   onGuardDismiss,
 }: ContentAreaProps) {
@@ -186,6 +189,7 @@ export function ContentArea({
                 currentWorkspaceId={currentWorkspaceId}
                 onSwitch={onOverviewSwitch}
                 onCreate={onOverviewCreate}
+                onReorder={onOverviewReorder}
               />
             ) : isFileViewerTab ? (
               /* 本地文件查看器/文件夹浏览器：React 组件渲染（urchin://file-viewer），

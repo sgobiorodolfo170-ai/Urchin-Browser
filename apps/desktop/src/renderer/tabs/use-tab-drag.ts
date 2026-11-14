@@ -16,7 +16,8 @@
  *   由主进程 screen.getCursorScreenPoint() 轮询看护（与悬浮球拖动引擎同一模式）：
  *   光标拖回窗内 → reentered 事件取消（标签保留）；窗外静止 1s（视为松手）→
  *   committed 事件（主进程已开新窗口并关闭原标签，渲染层只做状态清理）。
- * 所有标签均可在侧栏内排序；仅 http/https 可拖出窗口。
+ * 所有标签均可在侧栏内排序（2026-11-15 落点改几何边界计算，消除卡片间隙/
+ * 列表空白死区，支持末尾追加；见 reorder-utils.ts）；仅 http/https 可拖出窗口。
  *
  * 右键菜单状态也在此收拢：菜单渲染在 App 根层（TabCardContextMenu），
  * 跨工作区打开/关闭等动作依赖 App 的标签生命周期，故状态经 hook 归 App 域。
@@ -24,6 +25,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_WORKSPACE_ID } from '../workspaces/types';
 import type { TabSnapshot } from './types';
+import { computeReorderTarget, type ReorderCard } from './reorder-utils';
 
 /** 标签卡片右键菜单状态（TabCardContextMenu 渲染于 App 根层）。 */
 export interface TabCardMenuState {
@@ -40,6 +42,36 @@ export interface TabCardMenuState {
 /** 主进程看护事件的 payload（tabId 用于丢弃陈旧会话的迟到事件）。 */
 interface DetachDragEventPayload {
   tabId?: number;
+}
+
+/**
+ * 松手落点 → tab.reorder（2026-11-15 几何边界重写，算法见 reorder-utils.ts）。
+ *
+ * 旧实现 document.elementFromPoint 只认「指针压在另一张卡片本体上」：卡片间隙、
+ * 列表 padding、末卡下方空白全是静默死区，且越出窗口右缘 1px 即失效——表现为
+ * 「有时能拖动有时拖不动」。改为卡片矩形序列 + 指针 Y 的几何边界计算：
+ * 任何落点都归入最近插入边界（上/下半卡、间隙、首卡上方、末卡下方全部有效）。
+ */
+function reorderToPointer(st: { tabId: number; captureEl: HTMLElement }, clientY: number): void {
+  const list = st.captureEl.parentElement;
+  if (!list) return;
+  // DOM 顺序 = 渲染顺序（上→下），与主进程 query 排序一致
+  const cards: ReorderCard[] = [];
+  for (const el of list.querySelectorAll<HTMLElement>('[data-tab-id]')) {
+    const id = Number(el.dataset.tabId);
+    if (!Number.isInteger(id)) continue;
+    const rect = el.getBoundingClientRect();
+    cards.push({ id, top: rect.top, bottom: rect.bottom });
+  }
+  const target = computeReorderTarget(cards, st.tabId, clientY);
+  if (!target) return;
+  void window.urchin
+    .invoke('tab.reorder', {
+      tabId: st.tabId,
+      targetTabId: target.targetId,
+      position: target.position,
+    })
+    .catch(console.error);
 }
 
 export function useTabDrag() {
@@ -167,13 +199,14 @@ export function useTabDrag() {
         { capture: true, once: true },
       );
       if (e.type !== 'pointercancel') {
-        const target = document
-          .elementFromPoint?.(e.clientX, e.clientY)
-          ?.closest<HTMLElement>('[data-tab-id]');
-        if (target && Number(target.dataset.tabId) !== st.tabId) {
-          void window.urchin
-            .invoke('tab.reorder', { tabId: st.tabId, targetTabId: Number(target.dataset.tabId) })
-            .catch(console.error);
+        // 拖出挂起 + 窗外松手 = 拖出提交语义，不做侧栏排序（主进程看门狗随后提交开新窗）
+        const insideWindow =
+          e.clientX >= 0 &&
+          e.clientY >= 0 &&
+          e.clientX <= window.innerWidth &&
+          e.clientY <= window.innerHeight;
+        if (insideWindow || !detachPendingRef.current) {
+          reorderToPointer(st, e.clientY);
         }
       }
     }

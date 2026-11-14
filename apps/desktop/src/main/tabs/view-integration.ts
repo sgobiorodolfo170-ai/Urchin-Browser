@@ -408,6 +408,22 @@ export function installTabViewIntegration(
     // 节流 pushEvent：网页加载过程中 did-start-loading / page-title-updated /
     // page-favicon-updated / did-navigate 等事件密集触发，若每次都 IPC send 会导致
     // 渲染进程被 IPC 消息淹没，React 状态更新阻塞 UI。合并 16ms 内的 updated 事件。
+    // 合并仅限同一 tab（页面加载风暴是单 tab 连发）；跨 tab 连发不得合并——
+    // pending 被覆盖会整条丢弃中间 tab 的状态变更，且 emitUpdated 去重键已前移、
+    // 主进程不会重发，渲染层将永久持有陈旧 indexInWindow（2026-11-15 拖拽排序
+    // 「有时不生效」根因：reorder 同步连发 3 个 updated，中间 tab 事件被覆盖，
+    // 列表按陈旧顺序渲染且不自愈）。
+    if (
+      updatedThrottleTimer !== null &&
+      pendingUpdatedSnapshot !== null &&
+      pendingUpdatedSnapshot.id !== snapshot.id
+    ) {
+      pushEvent(pendingUpdatedSnapshot.windowId, {
+        type: 'updated',
+        snapshot: pendingUpdatedSnapshot,
+      });
+      pendingUpdatedSnapshot = null;
+    }
     if (updatedThrottleTimer === null) {
       updatedThrottleTimer = setTimeout(() => {
         updatedThrottleTimer = null;

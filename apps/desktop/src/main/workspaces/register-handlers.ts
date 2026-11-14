@@ -4,7 +4,7 @@
  * 依据：契约 B §3.1 workspace.* / 契约 D TP7
  * 职责：
  * 注册 workspace.list / workspace.create / workspace.update /
- *      workspace.remove / workspace.clearData IPC handler。
+ *      workspace.remove / workspace.clearData / workspace.reorder IPC handler。
  *
  * 设计理由（AGENTS.md §七.2 + §六「Single Source of Truth」）：
  * - handler 只做协议适配，业务逻辑委托 WorkspaceRegistry / WorkspaceSessionManager
@@ -60,11 +60,15 @@ export function registerWorkspaceHandlers(ipcMain: IpcMain, deps: WorkspaceHandl
   });
 
   // workspace.remove：删除工作区（默认工作区由 registry 拒绝）
-  // 先清除分区数据（Cookie/存储/缓存），再删元数据——确保 UI 承诺的"清除"真正落地
+  // 先清除分区数据（Cookie/存储/缓存），再删元数据——确保 UI 承诺的"清除"真正落地。
+  // clearData 之后需二次守卫：await 清存储期间其它窗口可能又在该工作区新建标签，
+  // 若不复查会把工作区连同新标签一起删成幽灵（侧栏不可见但 BrowserView 存活）；
+  // 复查与 remove 之间无 await，handler 内原子，竞态窗口闭合。
   registerHandler(ipcMain, 'workspace.remove', async (req) => {
     log.info('workspace.remove', { id: req.id });
     assertNoOpenTabs(deps.tabManager, req.id, '删除');
     await deps.sessions.clearData(req.id);
+    assertNoOpenTabs(deps.tabManager, req.id, '删除');
     deps.registry.remove(req.id);
     deps.broadcastChanged();
     return { ok: true as const };
@@ -81,6 +85,14 @@ export function registerWorkspaceHandlers(ipcMain: IpcMain, deps: WorkspaceHandl
     }
     assertNoOpenTabs(deps.tabManager, req.id, '清空数据');
     await deps.sessions.clearData(req.id);
+    deps.broadcastChanged();
+    return { ok: true as const };
+  });
+
+  // workspace.reorder：重排非默认工作区（总览页卡片拖拽，2026-11-15 用户指令）
+  registerHandler(ipcMain, 'workspace.reorder', (req) => {
+    log.info('workspace.reorder', { order: req.orderedIds });
+    deps.registry.reorder(req.orderedIds);
     deps.broadcastChanged();
     return { ok: true as const };
   });

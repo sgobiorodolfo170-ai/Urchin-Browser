@@ -131,3 +131,52 @@ test('侧栏激活样式、拖动排序与固定留白在两种状态均可用',
     await electronApp.close();
   }
 });
+
+test('拖拽死区落点：末卡下方空白追加、卡片间隙、首卡上方置顶', async () => {
+  const { electronApp, window } = await launchApp();
+  try {
+    const aside = window.locator('[aria-label="右侧边栏"]');
+    // 3 个标签（新建置顶 LIFO）：顺序 [t3, t2, t1]，均内部页（无拖出看护干扰）
+    for (let i = 0; i < 2; i++)
+      await window.getByRole('button', { name: '新建标签', exact: true }).click();
+    const tabs = aside.locator('[data-tab-id]');
+    await expect(tabs).toHaveCount(3);
+    const id0 = await tabs.nth(0).getAttribute('data-tab-id');
+    const id1 = await tabs.nth(1).getAttribute('data-tab-id');
+    const id2 = await tabs.nth(2).getAttribute('data-tab-id');
+
+    /** 把第 index 张卡拖到指定视口点松手（steps 保证 move 事件序列完整） */
+    const dragCardTo = async (index: number, x: number, y: number): Promise<void> => {
+      const box = await tabs.nth(index).boundingBox();
+      if (!box) throw new Error('missing tab bounds');
+      await window.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await window.mouse.down();
+      await window.mouse.move(x, y, { steps: 8 });
+      await window.mouse.up();
+    };
+
+    // 1. 末卡下方空白（旧实现死区）：顶卡追加到末尾 → [t2, t1, t3]
+    const lastBox = (await tabs.nth(2).boundingBox())!;
+    await dragCardTo(0, lastBox.x + lastBox.width / 2, lastBox.y + lastBox.height + 40);
+    await expect(tabs.nth(0)).toHaveAttribute('data-tab-id', id1!);
+    await expect(tabs.nth(1)).toHaveAttribute('data-tab-id', id2!);
+    await expect(tabs.nth(2)).toHaveAttribute('data-tab-id', id0!);
+
+    // 2. 卡片间隙（旧实现死区）：末卡（t3）拖到前两卡间隙 → 插到 t2 前 → [t2, t3, t1]
+    //    （拖顶卡到其自身下方间隙是原地 no-op，故拖末卡向上）
+    const gapBox = (await tabs.nth(0).boundingBox())!;
+    await dragCardTo(2, gapBox.x + gapBox.width / 2, gapBox.y + gapBox.height + 3);
+    await expect(tabs.nth(0)).toHaveAttribute('data-tab-id', id1!);
+    await expect(tabs.nth(1)).toHaveAttribute('data-tab-id', id0!);
+    await expect(tabs.nth(2)).toHaveAttribute('data-tab-id', id2!);
+
+    // 3. 首卡上方列表 padding（旧实现死区）：t3 置顶回到初始顺序 → [t3, t2, t1]
+    const firstBox = (await tabs.nth(0).boundingBox())!;
+    await dragCardTo(1, firstBox.x + firstBox.width / 2, firstBox.y - 6);
+    await expect(tabs.nth(0)).toHaveAttribute('data-tab-id', id0!);
+    await expect(tabs.nth(1)).toHaveAttribute('data-tab-id', id1!);
+    await expect(tabs.nth(2)).toHaveAttribute('data-tab-id', id2!);
+  } finally {
+    await electronApp.close();
+  }
+});

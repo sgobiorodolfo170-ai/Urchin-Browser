@@ -4,9 +4,11 @@
  * 验证：
  * 1. 首次运行种子默认工作区并落盘
  * 2. 非法/损坏的持久化记录被规范化（默认工作区恒在、唯一）
- * 3. create / update / list / get / remove 语义
- * 4. 默认工作区保护（不可删除；可改名/换色）
+ * 3. create / update / list / get / remove / reorder 语义
+ * 4. 默认工作区保护（不可删除、恒居首；可改名/换色）
  * 5. 名称 trim + 非空校验
+ * 6. order 字段（拖拽顺序持久化，2026-11-15）：迁移（旧记录按 createdAt）+
+ *    脏条目容错（已删除 id 丢弃、缺失工作区补尾）+ 非法 payload 拒绝
  */
 import { describe, it, expect } from 'vitest';
 import { WorkspaceRegistry } from '../../src/main/workspaces/workspace-registry';
@@ -154,8 +156,101 @@ describe('WorkspaceRegistry', () => {
     const registry = new WorkspaceRegistry(persistence);
     registry.create({ name: '工作', color: 'violet' });
 
-    const last = persistence.saved.at(-1) as { version: number; workspaces: unknown[] };
+    const last = persistence.saved.at(-1) as {
+      version: number;
+      workspaces: unknown[];
+      order: string[];
+    };
     expect(last.version).toBe(1);
     expect(last.workspaces.length).toBe(2);
+    // order = 非默认工作区 id 序列（默认工作区不入列）
+    expect(last.order).toHaveLength(1);
+    expect(last.order[0]).not.toBe(DEFAULT_WORKSPACE_ID);
+  });
+
+  it('should reorder non-default workspaces and persist the order', () => {
+    const persistence = createPersistence();
+    const registry = new WorkspaceRegistry(persistence);
+    const jia = registry.create({ name: '工作甲', color: 'green' });
+    const yi = registry.create({ name: '工作乙', color: 'rose' });
+    const bing = registry.create({ name: '工作丙', color: 'cyan' });
+
+    registry.reorder([bing.id, jia.id, yi.id]);
+
+    expect(registry.list().map((w) => w.id)).toEqual([
+      DEFAULT_WORKSPACE_ID,
+      bing.id,
+      jia.id,
+      yi.id,
+    ]);
+    const last = persistence.saved.at(-1) as { order: string[] };
+    expect(last.order).toEqual([bing.id, jia.id, yi.id]);
+  });
+
+  it('should append newly created workspace after the custom order', () => {
+    const persistence = createPersistence();
+    const registry = new WorkspaceRegistry(persistence);
+    const jia = registry.create({ name: '工作甲', color: 'green' });
+    const yi = registry.create({ name: '工作乙', color: 'rose' });
+    registry.reorder([yi.id, jia.id]);
+    const bing = registry.create({ name: '工作丙', color: 'cyan' });
+
+    expect(registry.list().map((w) => w.id)).toEqual([
+      DEFAULT_WORKSPACE_ID,
+      yi.id,
+      jia.id,
+      bing.id,
+    ]);
+  });
+
+  it('should reject invalid reorder payloads (unknown / duplicate / default / missing)', () => {
+    const persistence = createPersistence();
+    const registry = new WorkspaceRegistry(persistence);
+    const jia = registry.create({ name: '工作甲', color: 'green' });
+    const yi = registry.create({ name: '工作乙', color: 'rose' });
+
+    expect(() => registry.reorder(['nope', yi.id, jia.id])).toThrow('工作区不存在');
+    expect(() => registry.reorder([jia.id, jia.id, yi.id])).toThrow('工作区顺序重复');
+    expect(() => registry.reorder([DEFAULT_WORKSPACE_ID, yi.id, jia.id])).toThrow(
+      '默认工作区恒居首，不接受重排',
+    );
+    expect(() => registry.reorder([jia.id])).toThrow('工作区顺序缺少部分工作区');
+    // 全部拒绝后顺序不被破坏
+    expect(registry.list().map((w) => w.id)).toEqual([DEFAULT_WORKSPACE_ID, jia.id, yi.id]);
+  });
+
+  it('should migrate legacy records without order field (createdAt order, upgrade-safe)', () => {
+    const persistence = createPersistence({
+      version: 1,
+      workspaces: [
+        { id: 'default', name: '默认工作区', color: 'amber', isDefault: true, createdAt: 0 },
+        { id: 'ws-late', name: '晚建', color: 'blue', isDefault: false, createdAt: 20 },
+        { id: 'ws-early', name: '早建', color: 'rose', isDefault: false, createdAt: 10 },
+      ],
+    });
+    const registry = new WorkspaceRegistry(persistence);
+
+    // 与旧版 list() 排序语义一致：默认首位 + createdAt 升序
+    expect(registry.list().map((w) => w.id)).toEqual(['default', 'ws-early', 'ws-late']);
+    // 首次落盘即生成 order 字段
+    expect(registry.list()).toHaveLength(3);
+    const last = persistence.saved.at(-1) as { order: string[] };
+    expect(last.order).toEqual(['ws-early', 'ws-late']);
+  });
+
+  it('should apply stored order and tolerate stale / missing entries on load', () => {
+    const persistence = createPersistence({
+      version: 1,
+      order: ['ws-late', 'gone', 'ws-early'],
+      workspaces: [
+        { id: 'default', name: '默认工作区', color: 'amber', isDefault: true, createdAt: 0 },
+        { id: 'ws-early', name: '早建', color: 'rose', isDefault: false, createdAt: 10 },
+        { id: 'ws-late', name: '晚建', color: 'blue', isDefault: false, createdAt: 20 },
+      ],
+    });
+    const registry = new WorkspaceRegistry(persistence);
+
+    // 'gone' 已不存在被丢弃；order 覆盖到的工作区按自定义顺序排列
+    expect(registry.list().map((w) => w.id)).toEqual(['default', 'ws-late', 'ws-early']);
   });
 });

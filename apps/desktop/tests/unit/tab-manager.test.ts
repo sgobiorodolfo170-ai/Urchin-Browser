@@ -172,6 +172,39 @@ describe('TabManager', () => {
     expect(mgr.query({ windowId: 1 })[0]?.id).toBe(newest.id);
   });
 
+  it('reorder after 语义：插到参照标签之后（末尾追加唯一表达方式）', () => {
+    const mgr = new TabManager(createMockFactory());
+    const a = mgr.create({ windowId: 1, active: true });
+    const b = mgr.create({ windowId: 1 });
+    const c = mgr.create({ windowId: 1 });
+    // 渲染顺序 [c, b, a]（新建置顶 LIFO）
+    // c（首张）after a（末张）= 追加到末尾——拖到末卡下方空白的落点语义
+    mgr.reorder(c.id, a.id, 'after');
+    expect(mgr.query({ windowId: 1 }).map((t) => t.id)).toEqual([b.id, a.id, c.id]);
+    // c after b（中间参照）= 紧随其后
+    mgr.reorder(c.id, b.id, 'after');
+    expect(mgr.query({ windowId: 1 }).map((t) => t.id)).toEqual([b.id, c.id, a.id]);
+  });
+
+  it('reorder before 语义可显式指定，缺省 position 等价 before', () => {
+    const mgr = new TabManager(createMockFactory());
+    const a = mgr.create({ windowId: 1, active: true });
+    const b = mgr.create({ windowId: 1 });
+    const c = mgr.create({ windowId: 1 });
+    // 渲染顺序 [c, b, a]：c before a = 插到 a 之前 → [b, c, a]
+    mgr.reorder(c.id, a.id, 'before');
+    expect(mgr.query({ windowId: 1 }).map((t) => t.id)).toEqual([b.id, c.id, a.id]);
+    // 缺省 position（旧调用方不传）= before。注意与旧实现的非对称位移不同：
+    // 旧实现从上往下拖时落在参照之后，几何语义修正后统一为参照之前
+    // （渲染层拖拽始终显式传方位，缺省仅兼容直接调用方）
+    const mgr2 = new TabManager(createMockFactory());
+    const a2 = mgr2.create({ windowId: 1, active: true });
+    const b2 = mgr2.create({ windowId: 1 });
+    const c2 = mgr2.create({ windowId: 1 });
+    mgr2.reorder(c2.id, a2.id);
+    expect(mgr2.query({ windowId: 1 }).map((t) => t.id)).toEqual([b2.id, c2.id, a2.id]);
+  });
+
   it('should assign indexInWindow correctly', () => {
     const factory = createMockFactory();
     const mgr = new TabManager(factory);

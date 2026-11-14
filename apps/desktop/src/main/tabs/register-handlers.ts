@@ -94,7 +94,7 @@ export function registerTabHandlers(
   });
 
   registerHandler(ipcMain, 'tab.reorder', (req) => {
-    tabManager.reorder(req.tabId, req.targetTabId);
+    tabManager.reorder(req.tabId, req.targetTabId, req.position);
     return { ok: true as const };
   });
 

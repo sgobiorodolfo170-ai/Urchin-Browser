@@ -2,10 +2,11 @@
  * 工作区总览页（urchin://workspaces，参考 ego-lite Space 卡片设计）。
  *
  * 折叠态「点击卡片切换」模式的核心页面：只保留卡片网格，无标题/说明文字。
- * 布局（用户指令 2026-11-13）：固定 3×3 网格，单页最多 9 卡——前 8 卡是工作区、
- * 第 9 卡固定为「新建」卡；第 9 个起的工作区排在「新建」卡之后，网格纵向滚动
- * （可见滑块）查看。每张卡片是该工作区**整个浏览器窗口**的截图（由 App 采集
- * 并注入 snapshot）：
+ * 布局（用户指令 2026-11-13，2026-11-15 修订）：固定 3×3 网格，单屏最多 9 卡——
+ * 首格为默认工作区卡（固定不可拖）、其后是可拖工作区卡，**「新建」卡恒居全部
+ * 卡片末位**（原为固定第 9 格，经用户指令改为最后）；工作区较多时网格纵向滚动
+ * （可见滑块）查看，「新建」卡随末位滚动出现。每张卡片是该工作区**整个浏览器
+ * 窗口**的截图（由 App 采集并注入 snapshot）：
  * - 窗口 UI（侧栏/地址栏）来自 window.captureUi
  * - 激活标签网页来自 tab.captureThumbnail，按内容区矩形叠加
  * 卡片高度 = 总览区可视高度 / 3（三行恰好铺满首屏；所有行统一等高，滚动后的
@@ -13,11 +14,18 @@
  * 卡片内禁用阴影，工作区名用实色胶囊标签；页面背景透明，直接透出 App 根节点
  * 的窗口级统一渐变。
  *
- * 数据全部由 App 推导注入；本组件只负责展示与交互（切换/新建）。
+ * 拖拽重排（用户指令 2026-11-15）：除默认工作区卡与「新建」卡固定原位外，
+ * 其余卡片可拖拽换位——指针按下超过 6px 阈值进入拖拽（未越过阈值保持点击
+ * 切换语义），悬停到其他可拖卡即交换位置（被拖卡落位到目标槽，自稳定不抖动），
+ * 松手提交新顺序（workspace.reorder 持久化；默认工作区恒居首）。拖拽引擎与
+ * 标签拖出（use-tab-drag）同一套约定：指针捕获 / 边缘自动滚动 / 拖后抑制 click。
+ *
+ * 数据全部由 App 推导注入；本组件只负责展示与交互（切换/新建/重排）。
  */
 import {
   useCallback,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -28,9 +36,9 @@ import type { Workspace, WorkspaceColor } from './types';
 import { WORKSPACE_COLORS, WORKSPACE_COLOR_KEYS, workspaceInitial } from './workspace-colors';
 import { extractIpcMessage } from './types';
 
-/** 总览页网格列数：固定 3 列（单页 9 卡 = 3×3，用户指令 2026-11-13）。 */
+/** 总览页网格列数：固定 3 列（单屏 9 卡 = 3×3，用户指令 2026-11-13）。 */
 const GRID_COLUMNS = 3;
-/** 总览页网格单屏行数：3 行 × 3 列 = 9 卡，其中末卡固定为「新建」卡。 */
+/** 总览页网格单屏行数：3 行 × 3 列 = 9 卡；「新建」卡恒居全部卡片末位。 */
 const GRID_ROWS = 3;
 /** 网格间距（对应 Tailwind gap-5），换算行高时需扣除行间空隙。 */
 const GRID_GAP = 20;
@@ -40,9 +48,6 @@ const PAGE_PADDING_Y = 32;
 const MIN_CARD_HEIGHT = 160;
 /** 首帧实测前的行高兜底（useLayoutEffect 在绘制前完成实测并重渲染）。 */
 const FALLBACK_ROW_HEIGHT = 180;
-
-/** 首屏工作区卡容量：9 卡中末卡为「新建」卡，故首屏最多 8 个工作区。 */
-const FIRST_PAGE_WORKSPACES = GRID_ROWS * GRID_COLUMNS - 1;
 
 /** 单个工作区在总览页的展示数据（App 计算后注入）。 */
 export interface WorkspaceOverviewItem {
@@ -58,6 +63,189 @@ export interface WorkspaceOverviewPageProps {
   readonly onSwitch: (workspaceId: string) => void;
   /** 新建工作区（命名 + 颜色），成功后切过去并关闭本页。 */
   readonly onCreate: (name: string, color: WorkspaceColor) => Promise<void>;
+  /** 拖拽重排提交：非默认工作区新顺序（App 乐观更新 + workspace.reorder 持久化）。 */
+  readonly onReorder: (orderedIds: readonly string[]) => void;
+}
+
+/** 拖拽起止与悬停目标的会话状态（ref：纯拖拽协议状态，不参与渲染）。 */
+interface DragSession {
+  pointerId: number;
+  workspaceId: string;
+  captureEl: HTMLElement;
+  startX: number;
+  startY: number;
+  /** 已越过拖拽阈值：未越过前保持点击语义（松手即切换工作区）。 */
+  started: boolean;
+  /** 拖拽起始时的顺序快照：松手时比对，顺序未变则不提交。 */
+  originalIds: string[];
+}
+
+/** 拖拽启动阈值（px）：与标签拖出（use-tab-drag）一致，区分「点击」与「拖拽」。 */
+const DRAG_START_THRESHOLD = 6;
+/** 拖拽中指针接近滚动容器边缘的判定距离与每步滚动量（与 use-tab-drag 一致）。 */
+const EDGE_SCROLL_ZONE = 24;
+const EDGE_SCROLL_STEP = 16;
+
+/**
+ * 总览页卡片拖拽重排引擎（仅管可拖卡；默认工作区与「新建」卡不接入）。
+ *
+ * 为什么悬停交换而不是松手才落位：拖拽中预览重排让被拖卡即时落到目标槽位，
+ * 指针下方永远是刚交换过来的被拖卡，后续 move 事件读到的还是它自身 → 不再触发
+ * 交换，天然自稳定、无抖动；松手时顺序已与视觉一致，直接提交。
+ * 为什么 commit 读 ref 而非 state：连续 pointermove 的 setState 批处理下，
+ * 松手（discrete 事件）虽会先 flush，但以 ref 为准可彻底消除时序依赖。
+ */
+function useOverviewCardDrag({
+  pageRef,
+  others,
+  onReorder,
+}: {
+  pageRef: React.RefObject<HTMLDivElement | null>;
+  others: readonly WorkspaceOverviewItem[];
+  onReorder: (orderedIds: readonly string[]) => void;
+}) {
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [previewOthers, setPreviewOthers] = useState<readonly WorkspaceOverviewItem[] | null>(null);
+  const sessionRef = useRef<DragSession | null>(null);
+  /** previewOthers 的同步镜像（applyPreview 维护；commit 读它，规避批处理时序）。 */
+  const previewRef = useRef<readonly WorkspaceOverviewItem[] | null>(null);
+
+  /** 更新拖拽预览顺序（值或 updater 均可；ref 同步写，commit 侧无时序依赖）。 */
+  const applyPreview = useCallback(
+    (
+      next:
+        | readonly WorkspaceOverviewItem[]
+        | null
+        | ((
+            prev: readonly WorkspaceOverviewItem[] | null,
+          ) => readonly WorkspaceOverviewItem[] | null),
+    ): void => {
+      const resolved = typeof next === 'function' ? next(previewRef.current) : next;
+      previewRef.current = resolved;
+      setPreviewOthers(resolved);
+    },
+    [],
+  );
+
+  const handleCardPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>, item: WorkspaceOverviewItem): void => {
+      if (event.button !== 0) return;
+      if (sessionRef.current) return; // 已有拖拽会话（多指针防御）
+      const el = event.currentTarget;
+      sessionRef.current = {
+        pointerId: event.pointerId,
+        workspaceId: item.workspace.id,
+        captureEl: el,
+        startX: event.clientX,
+        startY: event.clientY,
+        started: false,
+        originalIds: [],
+      };
+      if (typeof el.setPointerCapture === 'function') {
+        try {
+          el.setPointerCapture(event.pointerId);
+        } catch {
+          /* 指针捕获失败忽略：仍可拖拽 */
+        }
+      }
+    },
+    [],
+  );
+
+  const handleCardPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>): void => {
+      const session = sessionRef.current;
+      if (!session) return;
+
+      // 未越阈值：等待拖拽启动（点击语义不受影响）
+      if (!session.started) {
+        if (
+          Math.hypot(event.clientX - session.startX, event.clientY - session.startY) <=
+          DRAG_START_THRESHOLD
+        ) {
+          return;
+        }
+        session.started = true;
+        session.originalIds = others.map((it) => it.workspace.id);
+        applyPreview([...others]);
+        setDraggingId(session.workspaceId);
+      }
+
+      // 边缘自动滚动（页面级滚动容器；与 use-tab-drag 同参数）
+      const page = pageRef.current;
+      if (page) {
+        const rect = page.getBoundingClientRect();
+        if (event.clientY < rect.top + EDGE_SCROLL_ZONE) page.scrollTop -= EDGE_SCROLL_STEP;
+        if (event.clientY > rect.bottom - EDGE_SCROLL_ZONE) page.scrollTop += EDGE_SCROLL_STEP;
+      }
+
+      // 悬停交换：目标必须是另一个「可拖」工作区卡（默认卡 / 新建卡不在
+      // preview 序列中，closest 命中后 findIndex < 0 自然跳过）
+      const targetId = (
+        document.elementFromPoint?.(event.clientX, event.clientY) as HTMLElement | null
+      )?.closest<HTMLElement>('[data-workspace-card-id]')?.dataset.workspaceCardId;
+      if (!targetId || targetId === session.workspaceId) return;
+      applyPreview((prev) => {
+        const arr = prev ?? [];
+        const from = arr.findIndex((it) => it.workspace.id === session.workspaceId);
+        const to = arr.findIndex((it) => it.workspace.id === targetId);
+        if (from < 0 || to < 0 || from === to) return prev;
+        const next = [...arr];
+        const [moved] = next.splice(from, 1);
+        if (moved === undefined) return prev;
+        next.splice(to, 0, moved);
+        return next;
+      });
+    },
+    [others, pageRef, applyPreview],
+  );
+
+  const handleCardPointerEnd = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>): void => {
+      const session = sessionRef.current;
+      sessionRef.current = null;
+      if (!session) return;
+      if (session.captureEl.hasPointerCapture?.(event.pointerId)) {
+        session.captureEl.releasePointerCapture(event.pointerId);
+      }
+      setDraggingId(null);
+      if (!session.started) {
+        applyPreview(null);
+        return;
+      }
+      // 拖拽发生过：抑制紧随的 click（否则松手会触发「切换工作区」）
+      if (event.type !== 'pointercancel') {
+        session.captureEl.addEventListener(
+          'click',
+          (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          },
+          { capture: true, once: true },
+        );
+      }
+      if (event.type === 'pointercancel') {
+        applyPreview(null); // 取消：不提交，恢复原顺序
+        return;
+      }
+      const preview = previewRef.current;
+      const ids = (preview ?? others).map((it) => it.workspace.id);
+      const changed =
+        ids.length === session.originalIds.length &&
+        ids.some((id, i) => id !== session.originalIds[i]);
+      applyPreview(null);
+      if (changed) onReorder(ids);
+    },
+    [others, onReorder, applyPreview],
+  );
+
+  return {
+    draggingId,
+    previewOthers,
+    handleCardPointerDown,
+    handleCardPointerMove,
+    handleCardPointerEnd,
+  } as const;
 }
 
 /**
@@ -101,15 +289,30 @@ function useGridRowHeight(pageRef: React.RefObject<HTMLDivElement | null>): numb
  * - 内层视觉层承载截图/边框/名称/高光并执行 transform，命中区保持稳定。
  * 指针移动只写 CSS 变量（不触发 React 重渲染），倾斜与高光共用同一组变量；
  * 卡片内不使用任何阴影（名称用实色胶囊标签），激活态用 outline 描边表达。
+ *
+ * 拖拽（可选接入）：onCardPointerDown/Move/End 由父级 hook 注入，仅「可拖」
+ * 工作区卡接入；默认工作区卡不注入（保持点击语义、不可拖动）。指针捕获在
+ * 卡片本身，拖拽中的 move 事件重定向到被拖卡 → 卡内 tilt 与拖拽引擎共用
+ * 同一个 onPointerMove（先 tilt 后拖拽，互不干扰）。
  */
 function WorkspaceCard({
   item,
   active,
   onSwitch,
+  dragging = false,
+  onCardPointerDown,
+  onCardPointerMove,
+  onCardPointerEnd,
 }: {
   readonly item: WorkspaceOverviewItem;
   readonly active: boolean;
   readonly onSwitch: (workspaceId: string) => void;
+  /** 拖拽中的卡片：视觉层加描边提示（顺序在预览中已生效）。 */
+  readonly dragging?: boolean;
+  /** 拖拽引擎三键（未注入 = 固定卡：默认工作区）。 */
+  readonly onCardPointerDown?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  readonly onCardPointerMove?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  readonly onCardPointerEnd?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 }): React.JSX.Element {
   const cardRef = useRef<HTMLButtonElement | null>(null);
   const colorInfo = WORKSPACE_COLORS[item.workspace.color];
@@ -146,12 +349,23 @@ function WorkspaceCard({
       ref={cardRef}
       type="button"
       title={`切换到工作区 ${item.workspace.name}`}
+      data-workspace-card-id={item.workspace.id}
+      data-workspace-card-dragging={dragging || undefined}
       onClick={() => onSwitch(item.workspace.id)}
-      onPointerMove={handlePointerMove}
+      onPointerDown={onCardPointerDown}
+      onPointerMove={(event) => {
+        handlePointerMove(event);
+        onCardPointerMove?.(event);
+      }}
+      onPointerUp={onCardPointerEnd}
+      onPointerCancel={onCardPointerEnd}
       onPointerLeave={resetTilt}
-      onPointerCancel={resetTilt}
       onBlur={resetTilt}
-      className="relative block h-full w-full rounded-xl text-left outline-none hover:z-10 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
+      className={cn(
+        'relative block h-full w-full rounded-xl text-left outline-none hover:z-10 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2',
+        // 可拖卡给抓取光标提示；拖拽中握紧；固定卡（默认工作区）常规光标
+        onCardPointerDown ? (dragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default',
+      )}
     >
       <span
         data-workspace-card-visual="true"
@@ -161,6 +375,7 @@ function WorkspaceCard({
           active
             ? 'border-primary/70 outline outline-2 outline-primary/50 outline-offset-2'
             : 'border-border hover:border-primary/60',
+          dragging && 'ring-2 ring-primary/60 opacity-90',
         )}
         style={{
           transform:
@@ -203,7 +418,9 @@ function WorkspaceCard({
   );
 }
 
-/** 新建工作区卡片（虚线边框 + 命名 + 色板），尺寸与工作区卡一致（网格单元铺满）。 */
+/** 新建工作区卡片（虚线边框 + 命名 + 色板），尺寸与工作区卡一致（网格单元铺满）。
+ *  创建成功后留在总览页（2026-11-15 用户指令）：收起面板并清空表单，便于连续
+ *  创建；失败时面板保持打开并显示错误。 */
 function NewWorkspaceCard({
   onCreate,
 }: {
@@ -222,7 +439,11 @@ function NewWorkspaceCard({
     setError('');
     try {
       await onCreate(trimmed, color);
-      // 成功：App 负责切换并关页，本组件无需自关
+      // 成功：留在总览页，收起面板并复位表单（连续创建不被上次输入干扰）
+      setOpen(false);
+      setName('');
+      setColor('blue');
+      setSaving(false);
     } catch (err) {
       setError(extractIpcMessage(err));
       setSaving(false);
@@ -307,14 +528,36 @@ export function WorkspaceOverviewPage({
   currentWorkspaceId,
   onSwitch,
   onCreate,
+  onReorder,
 }: WorkspaceOverviewPageProps): React.JSX.Element {
   const pageRef = useRef<HTMLDivElement | null>(null);
   const rowHeight = useGridRowHeight(pageRef);
 
-  // 「新建」卡固定为第 9 卡：前 8 个工作区 + 新建卡铺满首屏 3×3；第 9 个起的
-  // 工作区排在其后，滚动查看（用户指令 2026-11-13：单页 9 卡包含新建卡）。
-  const firstPageItems = items.slice(0, FIRST_PAGE_WORKSPACES);
-  const overflowItems = items.slice(FIRST_PAGE_WORKSPACES);
+  // 可拖卡集合 = 非默认工作区（默认工作区卡 + 「新建」卡固定原位不可拖动）。
+  // 注册表保证默认工作区恒在且唯一，items 首项即默认卡；防御性用 isDefault
+  // 识别而非按下标，顺序语义与主进程真源（workspace-registry）对齐。
+  const defaultItem = items.find((it) => it.workspace.isDefault) ?? null;
+  const others = useMemo(() => items.filter((it) => !it.workspace.isDefault), [items]);
+  const {
+    draggingId,
+    previewOthers,
+    handleCardPointerDown,
+    handleCardPointerMove,
+    handleCardPointerEnd,
+  } = useOverviewCardDrag({ pageRef, others, onReorder });
+
+  // 「新建」卡恒居全部卡片末位（用户指令 2026-11-15，原为固定第 9 格）：
+  // 渲染序 = 默认卡 + 全部可拖卡 + 新建卡；工作区多时末位随滚动出现。
+  const displayOthers = previewOthers ?? others;
+
+  const dragProps = (item: WorkspaceOverviewItem) =>
+    ({
+      onCardPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) =>
+        handleCardPointerDown(event, item),
+      onCardPointerMove: handleCardPointerMove,
+      onCardPointerEnd: handleCardPointerEnd,
+      dragging: draggingId === item.workspace.id,
+    }) as const;
 
   return (
     // 页面级滚动容器（与旧版同构）：卡片悬停的 3D 倾斜溢出（scale 1.05 ≈ 每侧
@@ -327,8 +570,8 @@ export function WorkspaceOverviewPage({
       style={{ scrollbarGutter: 'stable' }}
       aria-label="工作区总览"
     >
-      {/* 3×3 网格：3 行行高 = 可视高度/3，恰好铺满首屏；工作区超过 8 个时内容
-       *  超出页面可视区，由页面滚动条（可见滑块）承接滚动。 */}
+      {/* 3×3 网格：3 行行高 = 可视高度/3，恰好铺满首屏；卡片总数超过 9 时内容
+       *  超出页面可视区，由页面滚动条（可见滑块）承接滚动，「新建」卡恒居末位。 */}
       <div
         className="grid w-full gap-5"
         style={{
@@ -337,25 +580,26 @@ export function WorkspaceOverviewPage({
           gridAutoRows: `${rowHeight}px`,
         }}
       >
-        {firstPageItems.map((item) => (
+        {defaultItem && (
+          <WorkspaceCard
+            key={defaultItem.workspace.id}
+            item={defaultItem}
+            active={defaultItem.workspace.id === currentWorkspaceId}
+            onSwitch={onSwitch}
+          />
+        )}
+
+        {displayOthers.map((item) => (
           <WorkspaceCard
             key={item.workspace.id}
             item={item}
             active={item.workspace.id === currentWorkspaceId}
             onSwitch={onSwitch}
+            {...dragProps(item)}
           />
         ))}
 
         <NewWorkspaceCard onCreate={onCreate} />
-
-        {overflowItems.map((item) => (
-          <WorkspaceCard
-            key={item.workspace.id}
-            item={item}
-            active={item.workspace.id === currentWorkspaceId}
-            onSwitch={onSwitch}
-          />
-        ))}
       </div>
     </div>
   );

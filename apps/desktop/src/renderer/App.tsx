@@ -1093,6 +1093,7 @@ export function App() {
     handleUpdateWorkspace,
     handleRemoveWorkspace,
     handleClearWorkspaceData,
+    handleReorderWorkspaces,
     handleOpenInWorkspace,
     handleOpenInNewWorkspace,
     handleOpenWorkspacesPage,
@@ -1448,6 +1449,7 @@ export function App() {
               currentWorkspaceId={currentWorkspaceId}
               onOverviewSwitch={handleOverviewSwitch}
               onOverviewCreate={handleOverviewCreate}
+              onOverviewReorder={handleReorderWorkspaces}
               guardAsk={editorGuardAsk}
               onGuardDismiss={() => setEditorGuardAsk(null)}
             />

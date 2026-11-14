@@ -98,14 +98,6 @@ export function useWorkspaces({
     }
   }, [activeTabId, tabs, currentWorkspaceId]);
 
-  // TP7：工作区被删除/清空后，当前工作区失效 → 回退默认工作区。
-  useEffect(() => {
-    if (currentWorkspaceId === DEFAULT_WORKSPACE_ID) return;
-    if (workspaces.length > 0 && !workspaces.some((w) => w.id === currentWorkspaceId)) {
-      setCurrentWorkspaceId(DEFAULT_WORKSPACE_ID);
-    }
-  }, [workspaces, currentWorkspaceId]);
-
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? null;
   const isWorkspacesTab = !!activeTab?.url?.startsWith('urchin://workspaces');
 
@@ -229,6 +221,21 @@ export function useWorkspaces({
     [tabs, currentWorkspaceId, activeTabId, doSelectTab],
   );
 
+  // TP7：工作区被删除/清空后，当前工作区失效 → 回退默认工作区。
+  // 走 handleSwitchWorkspace 而非仅 setCurrentWorkspaceId：本窗口删除自己的当前
+  // 工作区路径（handleRemoveWorkspace）会激活/新建默认工作区标签，而「其它窗口
+  // 删除了本窗口的当前工作区」只会走到这里——若只改 id 不动标签，活动标签悬在
+  // 已删工作区上，落入 activeTabId 为 null、中区无内容渲染的降级状态（与
+  // handleRemoveWorkspace 注释警告的同一坑）。effect 与 handleSwitchWorkspace
+  // 来自同一渲染，闭包一致；effect 内 return 守卫防重复回退（已回退到默认后
+  // 首行即返回，无循环）。
+  useEffect(() => {
+    if (currentWorkspaceId === DEFAULT_WORKSPACE_ID) return;
+    if (workspaces.length > 0 && !workspaces.some((w) => w.id === currentWorkspaceId)) {
+      handleSwitchWorkspace(DEFAULT_WORKSPACE_ID);
+    }
+  }, [workspaces, currentWorkspaceId, handleSwitchWorkspace]);
+
   /** 滚轮切换（折叠态）：dir=1 下一个 / -1 上一个。 */
   const handleCycleWorkspace = useCallback(
     (dir: 1 | -1) => {
@@ -305,26 +312,18 @@ export function useWorkspaces({
     [tabs, activeTabId, doSelectTab, handleCloseTab],
   );
 
-  // 工作区总览页新建工作区：创建后切到新工作区——先在工作区内新建主页标签（await 确保
-  // 标签已激活），再关闭总览页——否则关闭总览页时标签管理器会自动激活旧工作区的标签，
-  // 导致 currentWorkspaceId 被同步回旧工作区，新创建的工作区看起来像被"自动删除"了。
-  // 空工作区在 registry 中持久化保留，不因无存储标签而被删除。
+  // 工作区总览页新建工作区（2026-11-15 用户指令：创建后留在总览页，不切换不关页）：
+  // 只创建 + 刷新（workspace:changed 广播亦会刷新），新卡片以「新建」卡前的末位
+  // 出现；新工作区为空且在 registry 中持久化保留，点其卡片时按既有逻辑新建主页
+  // 标签并切换（handleOverviewSwitch）。创建失败向上抛错，由新建卡面板显示。
   const handleOverviewCreate = useCallback(
     async (name: string, color: WorkspaceColor) => {
       const ws = await handleCreateWorkspace(name, color);
-      if (ws) {
-        setCurrentWorkspaceId(ws.id);
-        const windowId = await getCurrentWindowId();
-        await window.urchin.invoke('tab.create', {
-          windowId,
-          url: 'urchin://newtab',
-          active: true,
-          workspaceId: ws.id,
-        });
-        if (activeTabId != null) handleCloseTab(activeTabId);
+      if (!ws) {
+        throw new Error('创建工作区失败，请重试');
       }
     },
-    [handleCreateWorkspace, activeTabId, handleCloseTab],
+    [handleCreateWorkspace],
   );
 
   const handleUpdateWorkspace = useCallback(
@@ -338,18 +337,66 @@ export function useWorkspaces({
   const handleRemoveWorkspace = useCallback(
     async (id: string) => {
       await window.urchin.invoke('workspace.remove', { id });
+      // 清理该工作区的会话残留：lastActive 指针 / TP4 保存标签 / 总览页快照与限流戳。
+      // savedTabs 残留最实质——被删工作区的懒恢复标签会成会话内死数据（仅退出时
+      // 全量覆写自愈）；其余为小泄漏，一并清理。
+      delete lastActiveByWorkspaceRef.current[id];
+      delete savedTabsByWorkspaceRef.current[id];
+      delete lastWorkspaceSnapshotAtRef.current[id];
+      setWorkspaceSnapshots((prev) => {
+        if (!(id in prev)) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
       await refreshWorkspaces();
       // 删除当前工作区后：切到默认工作区并激活/新建标签（仅 setCurrentWorkspaceId
-      // 会导致 activeTabId 为 null、中区无内容渲染的降级状态）
+      // 会导致 activeTabId 为 null、中区无内容渲染的降级状态）。其它窗口的同类
+      // 场景由上方 fallback effect 兜底（走同一 handleSwitchWorkspace）。
       if (currentWorkspaceId === id) handleSwitchWorkspace(DEFAULT_WORKSPACE_ID);
     },
-    [refreshWorkspaces, currentWorkspaceId, handleSwitchWorkspace],
+    [
+      refreshWorkspaces,
+      currentWorkspaceId,
+      handleSwitchWorkspace,
+      lastActiveByWorkspaceRef,
+      savedTabsByWorkspaceRef,
+      lastWorkspaceSnapshotAtRef,
+    ],
   );
 
   const handleClearWorkspaceData = useCallback(
     async (id: string) => {
       await window.urchin.invoke('workspace.clearData', { id });
       await refreshWorkspaces();
+    },
+    [refreshWorkspaces],
+  );
+
+  /**
+   * 重排非默认工作区（总览页卡片拖拽，2026-11-15 用户指令）。
+   *
+   * 先乐观更新本地列表（拖拽落位即时生效，不等 IPC 往返），再持久化；
+   * 失败时以主进程权威列表回滚（workspace:changed 广播也会触发权威刷新）。
+   * 默认工作区恒居首——orderedIds 由调用方（总览页）从展示序剔除默认工作区
+   * 与「新建」卡后生成。
+   */
+  const handleReorderWorkspaces = useCallback(
+    (orderedIds: readonly string[]) => {
+      setWorkspaces((prev) => {
+        const byId = new Map(prev.map((ws) => [ws.id, ws]));
+        const reordered = orderedIds
+          .map((id) => byId.get(id))
+          .filter((ws): ws is Workspace => ws !== undefined);
+        const missing = prev.filter((ws) => !ws.isDefault && !orderedIds.includes(ws.id));
+        const def = prev.find((ws) => ws.isDefault);
+        return [...(def ? [def] : []), ...reordered, ...missing];
+      });
+      void window.urchin.invoke('workspace.reorder', { orderedIds }).catch((e) => {
+        console.error('Failed to reorder workspaces:', e);
+        // 以主进程权威顺序回滚（乐观更新与持久化真源保持一致）
+        void refreshWorkspaces();
+      });
     },
     [refreshWorkspaces],
   );
@@ -465,6 +512,7 @@ export function useWorkspaces({
     handleUpdateWorkspace,
     handleRemoveWorkspace,
     handleClearWorkspaceData,
+    handleReorderWorkspaces,
     handleOpenInWorkspace,
     handleOpenInNewWorkspace,
     handleOpenWorkspacesPage,

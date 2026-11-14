@@ -315,6 +315,18 @@ export const workspaceClearDataResSchema = z.object({
 });
 export type WorkspaceClearDataRes = z.infer<typeof workspaceClearDataResSchema>;
 
+/** 工作区重排：orderedIds = 非默认工作区的新顺序（默认工作区恒居首、不入此列，
+ *  注册表会校验与既有非默认工作区集合完全一致，防漏/重/多）。 */
+export const workspaceReorderReqSchema = z.object({
+  orderedIds: z.array(workspaceIdSchema),
+});
+export type WorkspaceReorderReq = z.infer<typeof workspaceReorderReqSchema>;
+
+export const workspaceReorderResSchema = z.object({
+  ok: z.literal(true),
+});
+export type WorkspaceReorderRes = z.infer<typeof workspaceReorderResSchema>;
+
 /** 查询当前渲染进程所属窗口 id（多窗口下渲染层不再硬编码 windowId=1）。 */
 export const windowGetCurrentReqSchema = z.object({}).default({});
 export type WindowGetCurrentReq = z.infer<typeof windowGetCurrentReqSchema>;
@@ -2870,7 +2882,16 @@ export type DevtoolsEvaluateRes = z.infer<typeof devtoolsEvaluateResSchema>;
 export const ipcSchema = {
   'tab.create': { req: tabCreateReqSchema, res: tabCreateResSchema },
   'tab.reorder': {
-    req: z.object({ tabId: tabIdSchema, targetTabId: tabIdSchema }),
+    req: z.object({
+      tabId: tabIdSchema,
+      targetTabId: tabIdSchema,
+      /**
+       * 插入方位（相对 targetTabId 在渲染顺序中的位置）：before = 目标之前
+       * （默认，向后兼容旧语义）；after = 目标之后——末尾追加（拖到末卡下方
+       * 空白）的唯一表达方式（2026-11-15 侧栏拖拽死区修复）。
+       */
+      position: z.enum(['before', 'after']).default('before'),
+    }),
     res: z.object({ ok: z.literal(true) }),
   },
   'tab.close': { req: tabCloseReqSchema, res: tabCloseResSchema },
@@ -2922,6 +2943,7 @@ export const ipcSchema = {
   'workspace.update': { req: workspaceUpdateReqSchema, res: workspaceUpdateResSchema },
   'workspace.remove': { req: workspaceRemoveReqSchema, res: workspaceRemoveResSchema },
   'workspace.clearData': { req: workspaceClearDataReqSchema, res: workspaceClearDataResSchema },
+  'workspace.reorder': { req: workspaceReorderReqSchema, res: workspaceReorderResSchema },
   'history.record': { req: historyRecordReqSchema, res: historyRecordResSchema },
   'history.search': { req: historySearchReqSchema, res: historySearchResSchema },
   'history.list': { req: historyListReqSchema, res: historyListResSchema },

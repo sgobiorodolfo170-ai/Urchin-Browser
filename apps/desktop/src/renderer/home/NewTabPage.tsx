@@ -104,14 +104,18 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
           entries.push(...page.entries);
         }
         if (cancelled || current !== generation) return;
+        const recentSites = groupSitePages(entries.map((e) => ({ ...e, time: e.visitedAt })));
+        const cachedIcons = new Map(
+          recentSites.filter((site) => site.favicon).map((site) => [site.key, site.favicon]),
+        );
         setFrequent(
           groupSitePages(
             bookmarks.bookmarks.flatMap((b) =>
               b.type !== 'folder' && b.url ? [{ ...b, url: b.url, time: b.createdAt }] : [],
             ),
-          ),
+          ).map((site) => ({ ...site, favicon: cachedIcons.get(site.key) ?? site.favicon })),
         );
-        setRecent(groupSitePages(entries.map((e) => ({ ...e, time: e.visitedAt }))).slice(0, 20));
+        setRecent(recentSites.slice(0, 20));
         setError(false);
       } catch {
         if (!cancelled && current === generation) setError(true);

@@ -360,3 +360,78 @@ it('常用区域仅显示图标，列表逐页取消收藏且删除最后一页�
   expect(screen.getByTitle('b.test')).toBeInTheDocument();
   expect(bookmarks.map((b) => b.id)).toEqual(['b']);
 });
+
+it('常用图标同步同站最新采集缓存，不同页面及www归集，缺失历史图标时保留书签缓存', async () => {
+  let favicon = 'urchin://favicon/new';
+  const invoke = vi.fn((channel: string) =>
+    Promise.resolve(
+      channel === 'bookmark.list'
+        ? {
+            bookmarks: [
+              {
+                type: 'bookmark',
+                url: 'https://www.cache.test/saved',
+                title: '保存页',
+                favicon: 'urchin://favicon/old',
+                createdAt: 1,
+              },
+              {
+                type: 'bookmark',
+                url: 'https://fallback.test/saved',
+                title: '独有书签',
+                favicon: 'urchin://favicon/bookmark',
+                createdAt: 2,
+              },
+              {
+                type: 'bookmark',
+                url: 'https://missing.test/saved',
+                title: '缺图书签',
+                createdAt: 3,
+              },
+            ],
+          }
+        : channel === 'history.list'
+          ? {
+              entries: [
+                { url: 'https://cache.test/other', title: '访问页', favicon, visitedAt: 9 },
+                {
+                  url: 'https://cache.test/older',
+                  title: '旧记录',
+                  favicon: 'urchin://favicon/older',
+                  visitedAt: 8,
+                },
+                {
+                  url: 'https://missing.test/other',
+                  title: '访问页',
+                  favicon: 'urchin://favicon/missing',
+                  visitedAt: 7,
+                },
+              ],
+              total: 3,
+            }
+          : { value: [] },
+    ),
+  );
+  Object.defineProperty(window, 'urchin', {
+    configurable: true,
+    value: { invoke, on: () => vi.fn() },
+  });
+  const navigate = vi.fn();
+  render(<NewTabPage onNavigate={navigate} />);
+  const zone = screen.getByTestId('frequent-sites');
+  const cached = await within(zone).findByTitle('cache.test');
+  expect(cached.querySelector('img')).toHaveAttribute('src', 'urchin://favicon/new');
+  expect(within(zone).getByTitle('fallback.test').querySelector('img')).toHaveAttribute(
+    'src',
+    'urchin://favicon/bookmark',
+  );
+  expect(within(zone).getByTitle('missing.test').querySelector('img')).toHaveAttribute(
+    'src',
+    'urchin://favicon/missing',
+  );
+  favicon = 'urchin://favicon/newest';
+  fireEvent(window, new Event('focus'));
+  await waitFor(() => expect(cached.querySelector('img')).toHaveAttribute('src', favicon));
+  fireEvent.click(cached);
+  expect(navigate).toHaveBeenCalledWith('https://www.cache.test/saved');
+});

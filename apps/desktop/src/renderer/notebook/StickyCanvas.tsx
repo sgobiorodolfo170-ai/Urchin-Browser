@@ -71,7 +71,7 @@ const COLOR_DOTS: Record<StickyColor, string> = {
 const COLORS: readonly StickyColor[] = ['amber', 'pink', 'sky', 'emerald', 'violet'];
 
 const TOOL_BUTTON =
-  'flex h-7 w-7 items-center justify-center rounded-md border border-border bg-surface/90 text-text-secondary shadow-sm backdrop-blur hover:bg-surface hover:text-text';
+  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -341,7 +341,7 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
   return (
     <section
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden bg-surface-secondary outline-none"
+      className="relative h-full min-h-0 min-w-0 w-full overflow-hidden bg-surface-secondary/60 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30"
       style={{
         backgroundImage: 'radial-gradient(circle, var(--color-border) 1px, transparent 1px)',
         backgroundSize: `${24 * view.zoom}px ${24 * view.zoom}px`,
@@ -520,8 +520,8 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
         ))}
       </svg>
 
-      <div className="absolute left-2 top-2 z-20 flex items-center gap-1">
-        <span className="mr-1 hidden items-center gap-1 rounded-md border border-border bg-surface/90 px-2 py-1 text-xs text-text-secondary shadow-sm backdrop-blur sm:flex">
+      <div className="absolute left-3 right-3 top-3 z-20 flex w-fit max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1 rounded-xl border border-border bg-surface/95 p-1.5 shadow-md backdrop-blur">
+        <span className="mr-1 flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-text">
           <StickyNoteIcon className="h-3.5 w-3.5" />
           便利贴
         </span>
@@ -561,7 +561,7 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
         >
           <RotateCcw className="h-4 w-4" />
         </button>
-        <span className="ml-1 rounded bg-surface/80 px-1.5 py-0.5 text-[10px] text-text-secondary">
+        <span className="ml-1 rounded-lg bg-surface-secondary px-2 py-1 text-[10px] tabular-nums text-text-secondary">
           {Math.round(view.zoom * 100)}%
         </span>
       </div>
@@ -651,9 +651,11 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
         ))}
       </div>
 
-      {notebookStickies.length === 0 && (
+      {notebookStickies.length === 0 && notebookImages.length === 0 && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          <div className="max-w-xs rounded-lg border border-dashed border-border bg-surface/70 px-6 py-4 text-center text-xs text-text-secondary">
+          <div className="mx-4 max-w-xs rounded-2xl border border-border bg-surface/90 px-6 py-6 text-center text-xs leading-relaxed text-text-secondary shadow-sm">
+            <StickyNoteIcon className="mx-auto mb-3 h-9 w-9 text-primary/60" />
+            <p className="mb-2 text-sm font-medium text-text">给灵感留个位置</p>
             双击空白处、点击 + 或 Ctrl+V 粘贴文本，添加第一张便利贴；也可把图片拖入画布。
           </div>
         </div>
@@ -742,7 +744,7 @@ function StickyCard({
     <div
       data-sticky
       className={cn(
-        'pointer-events-auto absolute flex flex-col rounded-md shadow-md ring-1 ring-black/5',
+        'pointer-events-auto absolute flex flex-col rounded-xl shadow-lg ring-1 ring-black/10 focus-within:ring-2 focus-within:ring-primary/50',
         COLOR_CLASSES[sticky.color],
       )}
       style={{
@@ -764,7 +766,7 @@ function StickyCard({
       onPointerCancel={onDragEnd}
     >
       <div
-        className="group flex h-7 shrink-0 cursor-move items-center gap-1 px-1.5"
+        className="group flex h-9 shrink-0 cursor-move items-center gap-1 rounded-t-xl border-b border-black/5 bg-white/15 px-2"
         onPointerDown={onDragStart}
         onPointerMove={onDragMove}
         onPointerUp={onDragEnd}
@@ -777,7 +779,7 @@ function StickyCard({
               key={color}
               type="button"
               className={cn(
-                'h-2.5 w-2.5 rounded-full ring-1 ring-black/10',
+                'h-3 w-3 rounded-full ring-1 ring-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                 COLOR_DOTS[color],
                 sticky.color === color ? 'ring-2 ring-black/40' : '',
               )}
@@ -842,7 +844,7 @@ function StickyCard({
         />
       ) : (
         <textarea
-          className="min-h-0 flex-1 resize-none bg-transparent px-2.5 pb-2 leading-relaxed outline-none placeholder:text-black/35 dark:placeholder:text-white/35"
+          className="min-h-0 flex-1 resize-none bg-transparent px-3 py-2 leading-relaxed outline-none placeholder:text-black/35 dark:placeholder:text-white/35"
           style={{ fontSize: sticky.fontSize ?? STICKY_FONT_DEFAULT }}
           placeholder="写点什么…"
           value={sticky.text}

@@ -115,7 +115,7 @@ describe('protocol/index', () => {
       const body = await res.text();
 
       expect(res.status).toBe(200);
-      expect(body).toContain('<title>笔记</title>');
+      expect(body).toContain('<title>速记</title>');
     });
 
     it('should serve cached favicon bytes with image headers', async () => {

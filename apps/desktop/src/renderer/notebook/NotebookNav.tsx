@@ -39,7 +39,7 @@ interface DeleteTarget {
 }
 
 const ICON_BUTTON =
-  'flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-secondary hover:bg-surface hover:text-text';
+  'flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
 
 function notebookNotes(state: NotebookState, notebookId: string) {
   return state.notes
@@ -195,13 +195,19 @@ export function NotebookNav({ state, update }: NotebookNavProps) {
 
   return (
     <aside
-      className="flex h-full min-w-0 flex-col border-r border-border bg-surface"
+      className="flex h-full min-h-0 min-w-0 flex-col bg-surface-secondary/40"
       aria-label="笔记导航"
     >
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-          笔记本
-        </span>
+      <div className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+            <NotebookIcon className="h-4 w-4" />
+          </span>
+          <div>
+            <h1 className="text-sm font-semibold text-text">速记</h1>
+            <p className="text-[10px] text-text-secondary">随手记下，留住灵感</p>
+          </div>
+        </div>
         <button
           type="button"
           className={ICON_BUTTON}
@@ -213,7 +219,7 @@ export function NotebookNav({ state, update }: NotebookNavProps) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {state.notebooks.map((notebook) => {
           const expanded = state.expandedNotebookIds.includes(notebook.id);
           const isActive = state.activeNotebookId === notebook.id;
@@ -222,11 +228,13 @@ export function NotebookNav({ state, update }: NotebookNavProps) {
           const editingNotebook = editing?.kind === 'notebook' && editing.id === notebook.id;
 
           return (
-            <div key={notebook.id} className="mb-1">
+            <div key={notebook.id} className="mb-3">
               <div
                 className={cn(
-                  'group flex items-center gap-1 rounded-md px-1 py-1',
-                  isActive ? 'bg-surface-secondary' : 'hover:bg-surface-secondary',
+                  'group flex items-center gap-1 rounded-lg border px-1 py-2 transition-colors',
+                  isActive
+                    ? 'border-primary/20 bg-primary/10 shadow-sm'
+                    : 'border-transparent hover:bg-surface-secondary',
                 )}
               >
                 <button
@@ -269,7 +277,10 @@ export function NotebookNav({ state, update }: NotebookNavProps) {
                 <span className="shrink-0 text-xs text-text-secondary">{notes.length}</span>
                 <button
                   type="button"
-                  className={cn(ICON_BUTTON, 'opacity-0 group-hover:opacity-100')}
+                  className={cn(
+                    ICON_BUTTON,
+                    'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                  )}
                   onClick={() => startEdit('notebook', notebook.id, notebook.name)}
                   aria-label="重命名笔记本"
                   title="重命名笔记本"
@@ -294,11 +305,11 @@ export function NotebookNav({ state, update }: NotebookNavProps) {
               </div>
 
               {expanded && (
-                <div className="mt-1 pl-5">
+                <div className="mt-2 space-y-1 border-l border-border ml-3 pl-2">
                   <button
                     type="button"
                     className={cn(
-                      'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm',
+                      'flex w-full items-center gap-1.5 rounded-lg px-2 py-2 text-left text-sm',
                       isActive && state.middleMode === 'tasks'
                         ? 'bg-primary/10 text-primary'
                         : 'text-text-secondary hover:bg-surface-secondary hover:text-text',
@@ -328,7 +339,7 @@ export function NotebookNav({ state, update }: NotebookNavProps) {
                       <div
                         key={note.id}
                         className={cn(
-                          'group flex items-center gap-1.5 rounded-md px-2 py-1',
+                          'group flex items-center gap-1.5 rounded-lg px-2 py-2',
                           selected
                             ? 'bg-primary/10 text-primary'
                             : 'text-text-secondary hover:bg-surface-secondary hover:text-text',
@@ -368,7 +379,10 @@ export function NotebookNav({ state, update }: NotebookNavProps) {
                         )}
                         <button
                           type="button"
-                          className={cn(ICON_BUTTON, 'opacity-0 group-hover:opacity-100')}
+                          className={cn(
+                            ICON_BUTTON,
+                            'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+                          )}
                           onClick={() => startEdit('note', note.id, note.title)}
                           aria-label="重命名笔记"
                           title="重命名笔记"
@@ -399,7 +413,7 @@ export function NotebookNav({ state, update }: NotebookNavProps) {
 
                   <button
                     type="button"
-                    className="mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-text-secondary hover:bg-surface-secondary hover:text-text"
+                    className="mt-1 flex w-full items-center gap-1.5 rounded-lg px-2 py-2 text-left text-xs text-text-secondary hover:bg-surface-secondary hover:text-text"
                     onClick={() => addPage(notebook.id)}
                   >
                     <Plus className="h-3.5 w-3.5" />

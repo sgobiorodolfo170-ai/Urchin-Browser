@@ -20,7 +20,7 @@ export interface NotesTasksPaneProps {
 }
 
 const ICON_BUTTON =
-  'flex h-7 w-7 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text';
+  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-text-secondary shadow-sm transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
 
 function notesOf(state: NotebookState, notebookId: string): NotePage[] {
   return state.notes
@@ -150,7 +150,7 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
 
   return (
     <section
-      className="flex h-full min-w-0 flex-col bg-surface"
+      className="flex h-full min-h-0 min-w-0 flex-col bg-surface"
       aria-label="笔记内容"
       onDrop={handleTransitDrop}
       onDragOver={(e) => {
@@ -160,7 +160,7 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
         }
       }}
     >
-      <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+      <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-secondary/30 px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           {activeNote && mode === 'notes' && (
             <button
@@ -173,7 +173,16 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
               <ArrowLeft className="h-4 w-4" />
             </button>
           )}
-          <span className="min-w-0 truncate text-sm font-medium text-text">
+          {!(activeNote && mode === 'notes') && (
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              {mode === 'notes' ? (
+                <NotebookPen className="h-4 w-4" />
+              ) : (
+                <ListTodo className="h-4 w-4" />
+              )}
+            </span>
+          )}
+          <span className="min-w-0 truncate text-sm font-semibold text-text">
             {activeNote && mode === 'notes'
               ? activeNote.title || '无标题笔记'
               : mode === 'notes'
@@ -183,11 +192,11 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
-          <div className="flex items-center rounded-md border border-border bg-surface-secondary p-0.5">
+          <div className="flex items-center gap-1 rounded-xl border border-border bg-surface-secondary p-1">
             <button
               type="button"
               className={cn(
-                'flex h-6 w-7 items-center justify-center rounded',
+                'flex h-7 w-8 items-center justify-center rounded-lg transition-colors',
                 mode === 'notes'
                   ? 'bg-surface text-primary shadow-sm'
                   : 'text-text-secondary hover:text-text',
@@ -202,7 +211,7 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
             <button
               type="button"
               className={cn(
-                'flex h-6 w-7 items-center justify-center rounded',
+                'flex h-7 w-8 items-center justify-center rounded-lg transition-colors',
                 mode === 'tasks'
                   ? 'bg-surface text-primary shadow-sm'
                   : 'text-text-secondary hover:text-text',
@@ -249,7 +258,7 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
             onChange={(patch) => updateNote(activeNote.id, patch)}
           />
         ) : (
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-surface-secondary/20 p-3">
             {notes.length === 0 ? (
               <EmptyHint text="还没有笔记，点击右上角 + 新建一篇。" />
             ) : (
@@ -265,7 +274,7 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
                       `${note.title || '无标题笔记'}\n\n${note.content}`,
                     );
                   }}
-                  className="mb-1 block w-full cursor-grab rounded-md border border-transparent px-3 py-2 text-left hover:border-border hover:bg-surface-secondary"
+                  className="mb-3 block w-full cursor-grab rounded-xl border border-border bg-surface px-4 py-4 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   onClick={() =>
                     update((prev) => ({
                       ...prev,
@@ -277,8 +286,17 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
                   <div className="truncate text-sm font-medium text-text">
                     {note.title || '无标题笔记'}
                   </div>
-                  <div className="mt-0.5 line-clamp-2 text-xs text-text-secondary">
+                  <div className="mt-2 line-clamp-2 text-xs leading-relaxed text-text-secondary">
                     {previewOf(note) || '空白笔记'}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-2 text-[10px] text-text-secondary">
+                    <span>笔记</span>
+                    <time dateTime={new Date(note.updatedAt).toISOString()}>
+                      {new Date(note.updatedAt).toLocaleDateString('zh-CN', {
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </time>
                   </div>
                 </button>
               ))
@@ -287,9 +305,21 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
         )
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="border-b border-border p-2">
+          <div className="shrink-0 border-b border-border p-3">
+            <div className="mb-3 flex items-center justify-between text-xs text-text-secondary">
+              <span>完成进度</span>
+              <span className="tabular-nums">
+                {tasks.filter((task) => task.done).length} / {tasks.length}
+              </span>
+            </div>
+            <progress
+              aria-label="任务完成进度"
+              className="mb-3 block h-1.5 w-full overflow-hidden rounded-full accent-primary [&::-webkit-progress-bar]:bg-surface-secondary [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary"
+              max={tasks.length || 1}
+              value={tasks.filter((task) => task.done).length}
+            />
             <input
-              className="h-9 w-full rounded-md border border-border bg-surface px-2.5 text-sm text-text outline-none focus:border-primary"
+              className="h-10 w-full rounded-xl border border-border bg-surface px-3 text-sm text-text shadow-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
               placeholder="添加任务后按 Enter"
               value={taskDraft}
               onChange={(e) => setTaskDraft(e.target.value)}
@@ -302,7 +332,7 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
               aria-label="新任务"
             />
           </div>
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-surface-secondary/20 p-3">
             {tasks.length === 0 ? (
               <EmptyHint text="暂无任务，在上方输入框添加。" />
             ) : (
@@ -314,7 +344,7 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
                     e.dataTransfer.effectAllowed = 'copy';
                     e.dataTransfer.setData('text/plain', task.text);
                   }}
-                  className="group flex cursor-grab items-start gap-2 rounded-md px-2 py-1.5 hover:bg-surface-secondary"
+                  className="group mb-2 flex cursor-grab items-start gap-3 rounded-xl border border-border bg-surface px-3 py-3 shadow-sm transition-colors hover:border-primary/30"
                 >
                   <button
                     type="button"
@@ -342,7 +372,7 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
                     type="button"
                     className={cn(
                       ICON_BUTTON,
-                      'h-6 w-6 text-error/70 opacity-0 hover:text-error group-hover:opacity-100',
+                      'h-6 w-6 text-error/70 opacity-0 hover:text-error group-hover:opacity-100 group-focus-within:opacity-100',
                     )}
                     onClick={() => deleteTask(task.id)}
                     aria-label="删除任务"
@@ -390,9 +420,9 @@ function NoteEditor({
   readonly onChange: (patch: Partial<Pick<NotePage, 'title' | 'content'>>) => void;
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="m-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
       <input
-        className="border-b border-border bg-transparent px-4 py-3 text-lg font-medium text-text outline-none"
+        className="min-w-0 border-b border-border bg-surface-secondary/20 px-5 py-4 text-xl font-semibold text-text outline-none focus:bg-primary/5"
         placeholder="笔记标题"
         value={note.title}
         autoFocus
@@ -400,19 +430,25 @@ function NoteEditor({
         aria-label="笔记标题"
       />
       <textarea
-        className="min-h-0 flex-1 resize-none bg-transparent px-4 py-3 text-sm leading-relaxed text-text outline-none"
+        className="min-h-0 flex-1 resize-none bg-transparent px-5 py-4 text-sm leading-7 text-text outline-none focus:bg-primary/[0.02]"
         placeholder="开始记录…"
         value={note.content}
         onChange={(e) => onChange({ content: e.target.value })}
         aria-label="笔记正文"
       />
+      <div className="shrink-0 border-t border-border px-5 py-2 text-right text-[10px] tabular-nums text-text-secondary">
+        {note.content.length} 字
+      </div>
     </div>
   );
 }
 
 function EmptyHint({ text }: { readonly text: string }) {
   return (
-    <div className="flex h-full items-center justify-center px-6 text-center text-xs text-text-secondary">
+    <div className="flex h-full min-h-48 flex-col items-center justify-center px-6 py-8 text-center text-xs leading-relaxed text-text-secondary">
+      <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
+        <NotebookPen className="h-6 w-6" />
+      </span>
       {text}
     </div>
   );

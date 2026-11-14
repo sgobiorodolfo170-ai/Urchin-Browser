@@ -61,7 +61,7 @@ export function NotebookView() {
   if (!state) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-surface text-sm text-text-secondary">
-        正在加载笔记…
+        正在加载速记…
       </div>
     );
   }
@@ -130,7 +130,7 @@ export function NotebookView() {
     <div
       ref={containerRef}
       data-notebook-page
-      className="grid h-full w-full min-w-0 overflow-hidden bg-surface"
+      className="grid h-full min-h-0 w-full min-w-0 overflow-hidden bg-surface-secondary/40"
       style={{
         gridTemplateColumns: `${widths.left}px ${SPLITTER_WIDTH}px ${widths.middle}px ${SPLITTER_WIDTH}px ${widths.right}px`,
       }}
@@ -140,7 +140,7 @@ export function NotebookView() {
       <div
         {...splitterProps('left')}
         className={cn(
-          'relative h-full cursor-col-resize select-none',
+          'relative h-full cursor-col-resize select-none transition-colors hover:bg-primary/15',
           dragging === 'left' && 'bg-primary/20',
         )}
       >
@@ -152,7 +152,7 @@ export function NotebookView() {
       <div
         {...splitterProps('right')}
         className={cn(
-          'relative h-full cursor-col-resize select-none',
+          'relative h-full cursor-col-resize select-none transition-colors hover:bg-primary/15',
           dragging === 'right' && 'bg-primary/20',
         )}
       >

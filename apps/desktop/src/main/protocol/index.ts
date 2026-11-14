@@ -431,7 +431,7 @@ export function registerUrchinProtocol(
       if (host === 'notebook') {
         // M27 笔记 / 便利贴页由主窗口 React 组件渲染（NotebookView），BrowserView 仅占位。
         return new Response(
-          '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>笔记</title></head><body></body></html>',
+          '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>速记</title></head><body></body></html>',
           { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
         );
       }

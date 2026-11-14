@@ -668,7 +668,7 @@ describe('App (Browser Shell)', () => {
     renderApp();
     await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith('tab.list', { windowId: 1 }));
 
-    fireEvent.click(screen.getByLabelText('笔记'));
+    fireEvent.click(screen.getByLabelText('速记'));
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith('tab.create', {
         windowId: 1,

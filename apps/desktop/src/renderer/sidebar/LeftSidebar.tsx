@@ -163,8 +163,8 @@ export function LeftSidebar({
         <button
           className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
           onClick={onOpenNotebook}
-          aria-label="笔记"
-          title="笔记 / 便利贴"
+          aria-label="速记"
+          title="速记"
         >
           <PenLine className="h-4 w-4" />
         </button>

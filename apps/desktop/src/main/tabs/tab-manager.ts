@@ -614,6 +614,10 @@ export class TabManager {
     wc.on('did-start-loading', () => {
       this.navigationStartedAt.set(tab.id, Date.now());
       this.navigationDomReadyAt.delete(tab.id);
+      // render-process-gone 后 Electron 会在 reload / 新导航时创建替代渲染进程。
+      // 新一轮加载已经开始即表示标签脱离崩溃终态；否则即使页面恢复，侧栏仍会
+      // 永久显示红叉，后续快照也始终错误地携带 crashed=true。
+      tab.crashed = false;
       tab.loading = true;
       this.emitUpdated(tab);
     });

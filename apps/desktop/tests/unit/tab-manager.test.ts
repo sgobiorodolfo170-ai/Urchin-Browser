@@ -671,6 +671,19 @@ describe('TabManager webContents events', () => {
     expect(crashed).toHaveBeenCalled();
   });
 
+  it('should clear crashed state when a replacement renderer starts loading', () => {
+    const { wc, updated, mgr, tab } = setup();
+    wc._emitEvent('render-process-gone');
+    updated.mockClear();
+
+    wc._emitEvent('did-start-loading');
+
+    expect(mgr.getTab(tab.id)).toMatchObject({ crashed: false, loading: true });
+    expect(updated).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: tab.id, crashed: false, loading: true }),
+    );
+  });
+
   it('should deny window.open and load in current tab when linkBehavior is current', () => {
     const { wc, mgr, tab } = setup();
     mgr.setLinkBehaviorResolver(() => 'current');

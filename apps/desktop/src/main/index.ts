@@ -23,11 +23,7 @@ import { stat } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { createLogger } from '@urchin/logger';
 
-import {
-  PROVIDER_EVENT_CHANNEL,
-  DEVTOOLS_TOGGLE_CHANNEL,
-  type ProviderEvent,
-} from '@urchin/ipc-contract';
+import { PROVIDER_EVENT_CHANNEL, type ProviderEvent } from '@urchin/ipc-contract';
 import {
   WindowManager,
   createBrowserWindow,
@@ -1394,12 +1390,25 @@ void app.whenReady().then(async () => {
     // 复用 zoom 的 created + 存量补挂 + dispose 模式，不注入 BrowserView preload。
     ctx.disposeDragInjection = installDragInjection(tabManager);
 
-    // M15 DevTools F12 快捷键（dev.121）：对每个网页 tab + 主窗口 webContents
-    // 挂 before-input-event，命中 F12 → preventDefault + 推送 devtools:toggle
-    // 到渲染层（面板开合唯一状态源）。安装/卸载复用 zoom 的 created + 存量补挂模式。
-    ctx.disposeDevtoolsShortcuts = installDevtoolsShortcuts(tabManager, mainWebContents, () =>
-      sendToMainWindow(DEVTOOLS_TOGGLE_CHANNEL, undefined),
-    );
+    // ADR-022：所有现有/后续 owner 窗口与网页直接使用原生 DevTools。
+    const nativeDevtools = installDevtoolsShortcuts(tabManager, windowManager, {
+      allowTestPages: process.env.PLAYWRIGHT === '1',
+      onUnavailable: (windowId, message) => {
+        const owner = windowManager.getWindow(windowId)?.browserWindow;
+        if (!owner || owner.isDestroyed()) return;
+        void dialog
+          .showMessageBox(owner as Electron.BrowserWindow, {
+            type: 'info',
+            title: '开发者工具',
+            message,
+            buttons: ['确定'],
+          })
+          .catch(() => {
+            /* owner 可能在提示打开前关闭。 */
+          });
+      },
+    });
+    ctx.disposeDevtoolsShortcuts = nativeDevtools;
 
     // dev.45：pi 网页 favicon 统一为 π 品牌图标——拦截 pi 服务（当前随机端口）的
     // favicon 请求重定向到 urchin://pi-icon。效果覆盖标签栏/历史/主页等所有经
@@ -1507,6 +1516,7 @@ void app.whenReady().then(async () => {
         };
       },
       onLoad: async (win) => {
+        nativeDevtools.registerOwnerInput(mainWindow.id, win.webContents);
         const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
         if (isDev) {
           const base = process.env.URCHIN_RENDERER_URL ?? 'http://localhost:5173';

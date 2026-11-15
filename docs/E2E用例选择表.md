@@ -107,6 +107,7 @@ pnpm check:e2e-manifest                                      # G20：manifest �
 | `clipper-mhtml-viewer.spec.ts` | 剪藏 | 1 | 5s | 无 | 是 | 命中即跑 | `main/clipper/**` · `main/files/**` · `main/protocol/**` · `renderer/files/**` |
 | `clipper.spec.ts` | 剪藏 | 1 | 6s | 无 | 是 | 命中即跑 | 剪藏 + `main/status-bar/**` · `renderer/status-bar/**` · `renderer/omnibox/**` |
 | `devtools-panel.spec.ts` | DevTools | 3 | 10s | 无 | 是 | 命中即跑 | `main/devtools/**` · `renderer/devtools/**` |
+| `devtools-native.spec.ts` | DevTools | 1 | 45s（预算；本轮实测约 25s） | 无 | 是 | 命中即跑 | 原生 F12 输入/固定目标/20 轮开关；触发路径以 manifest 为准 |
 | `dsh-lifecycle.spec.ts` | DeepSeek Harness | 1 | 9s | **vendor-dsh** | **否（skip）** | 命中即跑 | `main/deepseek-harness/**` · `renderer/sidebar/**` · `main/tabs/**` · `scripts/fetch-dsh.mjs` · `scripts/fetch-node.mjs` |
 | `genoffice-editors.spec.ts` | GenOffice | 5 | 15s | **genoffice-artifact** | 是（A1 后） | 命中即跑 | `main/genoffice/**` · `main/files/**` · `main/protocol/**` · `renderer/files/**` · `scripts/genoffice-build.mjs` |
 | `genoffice-markdown.spec.ts` | GenOffice | 4 | 20s | **genoffice-artifact** | 是（A1 后） | 命中即跑 | 同上 |

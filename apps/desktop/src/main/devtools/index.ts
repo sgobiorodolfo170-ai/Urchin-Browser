@@ -9,7 +9,7 @@ export { DevtoolsManager } from './devtools-manager';
 export type { DevtoolsManagerOptions, DevtoolsStatusResult } from './devtools-manager';
 export { registerDevtoolsHandlers } from './register-handlers';
 export { installDevtoolsShortcuts } from './install-shortcuts';
-export type { DevtoolsToggleNotifier } from './install-shortcuts';
+export type { NativeDevtoolsOptions, NativeDevtoolsInstallation } from './install-shortcuts';
 export { TabCdpClient } from './cdp-client';
 export type {
   DebuggerLike,

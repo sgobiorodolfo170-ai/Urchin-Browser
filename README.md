@@ -67,7 +67,7 @@
 - **首版平台**：Windows
 - **差异化双定位**：
   - AI 原生——Side Panel 始终在侧，理解当前页面上下文，无需复制粘贴到外部 LLM
-  - 开发者友好——原生 DevTools 基线路线 + Chrome 扩展兼容 + 可脚本化 hooks；原生 F12 迁移待实施，见 [ADR-022](./docs/decisions/ADR-022-原生DevTools与专属调试增强.md)
+  - 开发者友好——F12 已接入原生 DevTools 独立窗口（Linux 定向验证通过，Windows 与完整验收待完成）；旧链路退出进度见[开发规划](./docs/开发者工具开发规划.md)，路线见 [ADR-022](./docs/decisions/ADR-022-原生DevTools与专属调试增强.md)
 - **Provider 中立**：用户自带 API key 或本地 LLM，浏览器不绑定任何提供方
 
 ## v0.1 功能概览

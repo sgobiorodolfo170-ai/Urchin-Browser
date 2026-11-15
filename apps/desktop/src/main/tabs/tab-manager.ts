@@ -228,6 +228,7 @@ export class TabManager {
       id,
       windowId: opts.windowId,
       url,
+      navigationSourceUrl: url,
       title: DEFAULT_TITLE,
       active,
       loading: false,
@@ -448,6 +449,7 @@ export class TabManager {
 
     // 立即更新 URL（did-navigate 事件会确认最终 URL，含重定向）
     tab.url = url;
+    tab.navigationSourceUrl = url;
     tab.loading = true;
     this.emitUpdated(tab);
 
@@ -684,6 +686,20 @@ export class TabManager {
       }
     });
 
+    // 自动脚本跳转保留收藏入口；真实用户操作后不再向旧入口回填。
+    const endSourceAssociation = (...args: unknown[]) => {
+      const input = args[1] as { type?: string } | undefined;
+      if (
+        input?.type === 'mouseDown' ||
+        input?.type === 'keyDown' ||
+        input?.type === 'rawKeyDown'
+      ) {
+        tab.navigationSourceUrl = undefined;
+      }
+    };
+    wc.on('before-mouse-event', endSourceAssociation);
+    wc.on('before-input-event', endSourceAssociation);
+
     // 主框架导航开始：清空旧页面图标并作废旧解析任务。
     // 若不清空，新页面没有 favicon 时标签会残留上一站点图标（用户可见错配）。
     wc.on('did-start-navigation', (...args: unknown[]) => {
@@ -691,6 +707,7 @@ export class TabManager {
       const isMainFrame = args[3];
       if (isInPlace === true || isMainFrame === false || tab.piIconPinned) return;
 
+      if (typeof args[1] === 'string') tab.navigationSourceUrl ??= args[1];
       this.faviconSequences.set(tab.id, (this.faviconSequences.get(tab.id) ?? 0) + 1);
       if (tab.favicon !== undefined) {
         tab.favicon = undefined;

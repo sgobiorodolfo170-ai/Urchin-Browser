@@ -1127,9 +1127,14 @@ void app.whenReady().then(async () => {
     if (isHttp && favicon && lastFaviconPerTab.get(snapshot.id) !== favicon) {
       lastFaviconPerTab.set(snapshot.id, favicon);
       ctx.historyManager.setFavicon(url, favicon);
-      if (ctx.bookmarkManager.updateFaviconByUrl(url, favicon) > 0) {
-        broadcastBookmarkChanged({ url });
+      const sourceUrl = tabManager.getTab(snapshot.id)?.navigationSourceUrl;
+      let changed = ctx.bookmarkManager.updateFaviconByUrl(url, favicon);
+      // 收藏入口可能跨域重定向；只回填实际导航的入口，不按域名猜测关联。
+      if (sourceUrl && sourceUrl !== url && /^https?:\/\//.test(sourceUrl)) {
+        ctx.historyManager.setFavicon(sourceUrl, favicon);
+        changed += ctx.bookmarkManager.updateFaviconByUrl(sourceUrl, favicon);
       }
+      if (changed > 0) broadcastBookmarkChanged({ url });
     } else if (!favicon) {
       // 导航清空图标后允许新页面复用同一图标 URL。
       lastFaviconPerTab.delete(snapshot.id);

@@ -782,13 +782,14 @@ export function App() {
           rightWidth: right,
           bottomHeight: BOTTOM_HEIGHT,
           bookmarksBarHeight,
+          browserViewHidden: workspaceManagerTarget !== null,
           devtoolsWidth: dtw ?? devtoolsWidth,
         });
       } catch (e) {
         log.error('Failed to update layout:', e);
       }
     },
-    [devtoolsWidth, bookmarksBarHeight],
+    [devtoolsWidth, bookmarksBarHeight, workspaceManagerTarget],
   );
 
   const handleToggleLeft = useCallback(() => {

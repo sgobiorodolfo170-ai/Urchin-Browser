@@ -184,14 +184,23 @@ export function WorkspaceBar({
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={submitCreate}
-              disabled={!name.trim()}
-              className="mt-3 w-full rounded-md bg-primary py-1.5 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-            >
-              创建工作区
-            </button>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCreating(false)}
+                className="flex-1 rounded-md border border-border py-1.5 text-sm text-text hover:bg-surface-secondary"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={submitCreate}
+                disabled={!name.trim()}
+                className="flex-1 rounded-md bg-primary py-1.5 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                创建工作区
+              </button>
+            </div>
           </div>
         </>
       )}

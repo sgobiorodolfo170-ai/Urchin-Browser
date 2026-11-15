@@ -153,6 +153,13 @@ test.describe('工作区（TP7）', () => {
       // ── 创建工作区「工作A」（创建后自动切换到它并新建主页标签） ──
       await window.getByRole('button', { name: '新建工作区' }).click();
       const nameInput = window.getByPlaceholder('工作区名称');
+      await nameInput.fill('取消的工作区');
+      await window.getByRole('button', { name: '取消', exact: true }).click();
+      await expect(nameInput).toBeHidden();
+      await expect(window.getByRole('button', { name: '取消的工作区', exact: true })).toHaveCount(
+        0,
+      );
+      await window.getByRole('button', { name: '新建工作区' }).click();
       await nameInput.fill('工作A');
       await nameInput.press('Enter');
       // 创建工作区弹出面板收起 → 选项卡条出现「工作A」
@@ -163,6 +170,19 @@ test.describe('工作区（TP7）', () => {
       // ── 在工作区A 登录 alice ──
       await navigateAndWait(electronApp, window, base, '/login?name=alice');
       await expect(window.getByText('sess:alice').first()).toBeVisible({ timeout: 20_000 });
+      await window.getByRole('button', { name: '工作A', exact: true }).click({ button: 'right' });
+      const manager = window.getByRole('dialog', { name: '管理工作区 工作A' });
+      await expect(manager).toBeVisible();
+      await expect
+        .poll(() =>
+          electronApp.evaluate(({ BrowserWindow }) => {
+            const main = BrowserWindow.getAllWindows().find((win) => win.getBrowserView());
+            return main?.getBrowserView()?.getBounds().width;
+          }),
+        )
+        .toBe(0);
+      await manager.getByRole('button', { name: '取消', exact: true }).click();
+      await expect(manager).toBeHidden();
       // 验证 /whoami 在同一会话看到 alice（Cookie 已写入分区）
       await navigateAndWait(electronApp, window, base, '/whoami');
       await expect(window.getByText('sess:alice').first()).toBeVisible({ timeout: 20_000 });

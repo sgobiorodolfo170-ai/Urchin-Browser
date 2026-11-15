@@ -146,6 +146,12 @@ test.describe('v0.1 关键路径', () => {
           ),
         )
         .toBe(1);
+      // 模拟从网页返回地址栏：系统窗口焦点与 DOM 焦点都应重新进入编辑。
+      await electronApp.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()
+          .find((win) => win.getBrowserView())
+          ?.focus();
+      });
       await address.blur();
       await address.click({ position: { x: 20, y: 10 } });
       await expect
@@ -156,6 +162,15 @@ test.describe('v0.1 关键路径', () => {
           ),
         )
         .toBe(true);
+      await address.fill('example.com');
+      const suggestion = statusBar
+        .getByRole('button')
+        .filter({ hasText: 'https://example.com' })
+        .first();
+      await expect(suggestion).toBeVisible();
+      await suggestion.click();
+      await expect(address).not.toBeFocused();
+      await expect(address).toHaveValue(/https:\/\/example\.com/);
     } finally {
       await electronApp.close();
     }

@@ -116,6 +116,7 @@ export function Omnibox({
   const [isFocused, setIsFocused] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const selectOnMouseUp = useRef(false);
 
   // 外部 URL 变化时同步输入（非焦点状态）
   useEffect(() => {
@@ -176,6 +177,13 @@ export function Omnibox({
     setInput(currentUrl);
   }, [currentUrl, onFocusChange]);
 
+  // 子窗口失去系统焦点时结束编辑，避免再次点击时残留 DOM 焦点跳过全选。
+  useEffect(() => {
+    const blurInput = (): void => inputRef.current?.blur();
+    window.addEventListener('blur', blurInput);
+    return () => window.removeEventListener('blur', blurInput);
+  }, []);
+
   // 清理 debounce timer
   useEffect(() => {
     return () => {
@@ -220,10 +228,19 @@ export function Omnibox({
           onFocus={handleFocus}
           // 仅首次点击进入编辑时全选；已聚焦时保留原生光标定位与自由选择。
           onMouseDown={(e) => {
-            if (e.button !== 0 || document.activeElement === e.currentTarget) return;
+            if (e.button !== 0) return;
+            selectOnMouseUp.current =
+              document.activeElement !== e.currentTarget || !document.hasFocus();
+            if (!selectOnMouseUp.current) return;
             e.preventDefault();
             e.currentTarget.focus();
             e.currentTarget.select();
+          }}
+          onMouseUp={(e) => {
+            if (!selectOnMouseUp.current) return;
+            e.preventDefault();
+            e.currentTarget.select();
+            selectOnMouseUp.current = false;
           }}
           onBlur={handleBlur}
           className="h-full w-full rounded-md bg-transparent text-[16px] text-text outline-none placeholder:text-text-secondary"
@@ -332,6 +349,7 @@ export function Omnibox({
                 'hover:bg-surface-secondary',
                 'focus:bg-surface-secondary focus:outline-none',
               )}
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 onNavigate(sug.url);
                 inputRef.current?.blur();

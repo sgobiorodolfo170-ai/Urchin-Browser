@@ -7,7 +7,9 @@
  * - store.remove 在拖出落盘后被调用（非 pinned 项）
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { createElement } from 'react';
+import { TransitPanel } from '../../src/renderer/transit/TransitPanel';
 import { useTransitStore } from '../../src/renderer/transit/store';
 import {
   normalizeItem,
@@ -184,5 +186,42 @@ describe('useTransitStore · remove after drag-out (pinned exemption)', () => {
 
     act(() => result.current.remove('t-pinned'));
     expect(result.current.items.map((it) => it.id)).toEqual(['t-free']);
+  });
+});
+
+describe.each([true, false])('TransitPanel direct pin (expanded=%s)', (expanded) => {
+  beforeEach(() => {
+    installUrchin((channel) =>
+      Promise.resolve(channel === 'settings.get' ? { value: [makeRawItem()] } : { ok: true }),
+    );
+  });
+
+  it('pins and unpins with one click without entering batch selection', async () => {
+    render(createElement(TransitPanel, { expanded }));
+    const pin = await screen.findByRole('button', { name: '固定：test.pdf' });
+    fireEvent.click(pin, { ctrlKey: true });
+    expect(screen.getByRole('button', { name: '取消固定：test.pdf' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    fireEvent.click(screen.getByRole('button', { name: '取消固定：test.pdf' }));
+    expect(screen.getByRole('button', { name: '固定：test.pdf' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('keeps pinned items after drag-out and removes unpinned items after successful drag-out', async () => {
+    const { container } = render(createElement(TransitPanel, { expanded }));
+    fireEvent.click(await screen.findByRole('button', { name: '固定：test.pdf' }));
+    const item = container.querySelector('[data-transit-item]')!;
+    const dataTransfer = { effectAllowed: '', dropEffect: 'copy', setData: vi.fn() };
+    fireEvent.dragStart(item, { dataTransfer });
+    fireEvent.dragEnd(item, { dataTransfer });
+    expect(screen.getByRole('button', { name: '取消固定：test.pdf' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '取消固定：test.pdf' }));
+    fireEvent.dragStart(item, { dataTransfer });
+    fireEvent.dragEnd(item, { dataTransfer });
+    expect(container.querySelector('[data-transit-item]')).toBeNull();
   });
 });

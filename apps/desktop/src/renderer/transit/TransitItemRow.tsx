@@ -7,7 +7,7 @@
  * Ctrl+单击切换图钉定住状态；多选模式下单击切换选中。
  */
 import { memo } from 'react';
-import { X, Pin } from 'lucide-react';
+import { X, Pin, PinOff } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { getTransitItemIcon } from './icons';
 import { TRANSIT_DRAG_MIME, truncateTitle, type TransitItem } from './types';
@@ -85,9 +85,23 @@ function TransitItemRowImpl({
     >
       <Icon className="h-4 w-4 shrink-0 text-text-secondary" />
       <span className="flex-1 truncate text-text">{truncateTitle(item.title)}</span>
-      {item.pinned && (
-        <Pin className="h-3 w-3 shrink-0 rotate-45 text-primary" aria-label="已定住" />
-      )}
+      <button
+        type="button"
+        className={cn(
+          'shrink-0 rounded p-1 transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+          item.pinned ? 'text-primary' : 'text-text-secondary hover:text-primary',
+        )}
+        aria-label={item.pinned ? `取消固定：${item.title}` : `固定：${item.title}`}
+        aria-pressed={!!item.pinned}
+        title={item.pinned ? '取消固定（拖出成功后移除）' : '固定（拖出后保留）'}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onTogglePin(item.id);
+        }}
+      >
+        {item.pinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+      </button>
       {item.missing && !item.pinned && (
         <span className="shrink-0 text-[10px] text-red-500" title="原文件已不存在">
           !

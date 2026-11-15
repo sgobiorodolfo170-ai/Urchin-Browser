@@ -15,6 +15,7 @@
  *   时，若该 item 未被图钉定住则从中转区移除
  *
  * 图钉定住（pinned）：
+ * - 单项图钉按钮：单击固定 / 取消固定，展开与折叠态均可用
  * - 展开态标题栏图钉按钮：点击进入多选，选中文件再次点击图钉即确认定住
  * - Ctrl+单击任意条目：切换该条目定住状态（不限展开/折叠）
  */
@@ -299,6 +300,7 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
           <TransitItemIcon
             key={item.id}
             item={item}
+            onDragStartItem={handleItemDragStart}
             onDragEndItem={handleDragEndItem}
             onTogglePin={togglePin}
           />
@@ -332,8 +334,8 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
               selectMode && 'bg-primary/20 text-primary',
             )}
             onClick={handlePinButtonClick}
-            aria-label={selectMode ? '确认定住选中项' : '进入多选定住'}
-            title={selectMode ? '确认定住选中项' : '多选定住'}
+            aria-label={selectMode ? '确认定住选中项' : '批量固定'}
+            title={selectMode ? '确认定住选中项' : '批量固定'}
           >
             <Pin className={cn('h-3.5 w-3.5', selectMode && 'rotate-45')} />
           </button>

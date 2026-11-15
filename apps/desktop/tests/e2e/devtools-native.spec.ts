@@ -20,12 +20,20 @@ async function input(app: ElectronApplication, id: number, nativeTool = false): 
       )
       .toBe(true);
   }
+  await app.evaluate(({ webContents }, wcId) => webContents.fromId(wcId)!.focus(), id);
+  await expect
+    .poll(() =>
+      app.evaluate(({ webContents }, wcId) => webContents.fromId(wcId)?.isFocused() ?? false, id),
+    )
+    .toBe(true);
   await app.evaluate(({ webContents }, wcId) => {
-    const wc = webContents.fromId(wcId)!;
-    wc.focus();
-    wc.sendInputEvent({ type: 'keyDown', keyCode: 'F12' });
-    wc.sendInputEvent({ type: 'keyUp', keyCode: 'F12' });
+    webContents.fromId(wcId)!.sendInputEvent({ type: 'keyDown', keyCode: 'F12' });
   }, id);
+  // KeyDown can move focus or destroy the tool. Release through the new focus,
+  // just as a physical keyUp does, rather than sending it to a stale renderer.
+  await app.evaluate(({ webContents }) => {
+    webContents.getFocusedWebContents()?.sendInputEvent({ type: 'keyUp', keyCode: 'F12' });
+  });
 }
 async function state(app: ElectronApplication, id: number) {
   return app.evaluate(({ webContents }, wcId) => {
@@ -36,6 +44,19 @@ async function state(app: ElectronApplication, id: number) {
       attached: wc?.debugger.isAttached() ?? false,
     };
   }, id);
+}
+
+async function toolId(app: ElectronApplication, targetId: number): Promise<number> {
+  // Windows can report opened before devToolsWebContents has been published.
+  let id: number | null = null;
+  await expect
+    .poll(async () => {
+      const current = await state(app, targetId);
+      id = current.toolId;
+      return current.open && id !== null;
+    })
+    .toBe(true);
+  return id!;
 }
 
 test('native F12: shell/page/tool, fixed targets, manual close and 20 cycles', async () => {
@@ -100,7 +121,7 @@ test('native F12: shell/page/tool, fixed targets, manual close and 20 cycles', a
     await input(app, shellId);
     await expect.poll(() => state(app!, a).then((s) => s.open)).toBe(true);
     expect((await state(app, a)).attached).toBe(false);
-    const toolA = (await state(app, a)).toolId!;
+    const toolA = await toolId(app, a);
     // 原生 UI 实际加载并显示多个面板，不以 opened=true 单独判成功。
     await expect
       .poll(() =>
@@ -162,16 +183,16 @@ test('native F12: shell/page/tool, fixed targets, manual close and 20 cycles', a
     );
     await input(app, barId);
     await expect.poll(() => state(app!, a).then((s) => s.open)).toBe(true);
-    await input(app, (await state(app, a)).toolId!, true);
+    await input(app, await toolId(app, a), true);
     await expect.poll(() => state(app!, a).then((s) => s.open)).toBe(false);
     for (let i = 0; i < 20; i++) {
       await input(app, a);
       await expect.poll(() => state(app!, a).then((s) => s.open)).toBe(true);
-      const tool = (await state(app, a)).toolId!;
+      const tool = await toolId(app, a);
       await input(app, tool, true);
       await expect.poll(() => state(app!, a).then((s) => s.open)).toBe(false);
     }
-    expect(await state(app, a)).toEqual({ open: false, toolId: null, attached: false });
+    await expect.poll(() => state(app!, a)).toEqual({ open: false, toolId: null, attached: false });
     expect(
       await app.evaluate(
         ({ webContents }, id) => webContents.fromId(id)!.executeJavaScript('window.f12Count'),
@@ -180,7 +201,9 @@ test('native F12: shell/page/tool, fixed targets, manual close and 20 cycles', a
     ).toBe(0);
     await expect(shell.getByLabel('开发者工具检视列', { exact: true })).toHaveCount(0);
   } finally {
-    if (app) await app.close();
+    if (app) {
+      await app.close();
+    }
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );

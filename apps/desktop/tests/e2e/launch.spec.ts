@@ -268,6 +268,7 @@ test('截图覆盖整个显示器，窗口预选与背景保持相同坐标', as
 test('主线程无响应时关闭有期限且不遗留本测试进程', async () => {
   test.skip(process.platform !== 'win32', 'Windows 原生输入法阻塞的回收回归');
   const { electronApp } = await launchApp();
+  const child = electronApp.process();
   await electronApp.evaluate(() => {
     const nativeProcess = process as NodeJS.Process & { hang(): void };
     setTimeout(() => nativeProcess.hang(), 100);
@@ -278,7 +279,6 @@ test('主线程无响应时关闭有期限且不遗留本测试进程', async ()
   expect(Date.now() - startedAt).toBeLessThan(10_000);
   await expect
     .poll(() => {
-      const child = electronApp.process();
       return child.exitCode !== null || child.signalCode !== null;
     })
     .toBe(true);

@@ -117,9 +117,6 @@ export interface AppContext {
   /** 网页翻译管理器引用（dev.81：右键菜单翻译动作与划词结果回传使用）。 */
   translateManagerRef: TranslateManager | null;
 
-  /** M15 DevTools 管理器卸载句柄（dev.121，CDP 会话清理）。 */
-  disposeDevtoolsManager: (() => void) | null;
-
   /** M15 DevTools F12 快捷键卸载句柄（dev.121）。 */
   disposeDevtoolsShortcuts: (() => void) | null;
 

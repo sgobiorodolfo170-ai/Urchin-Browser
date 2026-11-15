@@ -3,7 +3,7 @@
  *
  * registerIpcHandlers（~660 行）及其专属辅助函数自 index.ts 原样迁出：
  * 所有跨域 handler 注册（window/tab/history/bookmark/settings/workspace/
- * download/import/update/translate/devtools/screenshot/clipper/ai/dsh/
+ * download/import/update/translate/screenshot/clipper/ai/dsh/
  * pi-web-host/mail/file/editor 等）与 UI 域 handler 集中于此；可变状态一律
  * 经 AppContext（ctx）访问，本文件不持有可变模块级状态。
  *
@@ -31,7 +31,7 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createLogger } from '@urchin/logger';
-import { registerHandler, DEVTOOLS_EVENT_CHANNEL } from '@urchin/ipc-contract';
+import { registerHandler } from '@urchin/ipc-contract';
 import { registerWindowHandlers } from '../windows';
 import { registerTabHandlers, getLayoutState, setLayoutState, type BrowserViewLike } from '../tabs';
 import { TabDetachDragSupervisor } from '../tabs/tab-detach-drag';
@@ -78,7 +78,6 @@ import type { HttpTransport } from '../translate/engines/types';
 import { createUpdateService, registerUpdateHandlers, UPDATE_EVENT_CHANNEL } from '../update';
 import { registerRuntimeHandlers, resolvePortableNodeExePath } from '../runtime';
 import { registerLogHandlers } from '../logs';
-import { DevtoolsManager, registerDevtoolsHandlers } from '../devtools';
 import type { AppContext } from './app-context';
 import { syncStatusBarState } from '../status-bar/sync-state';
 // 运行时惰性使用的 index.ts 共享符号（循环引用安全性见文件头注释）
@@ -508,15 +507,6 @@ export function registerIpcHandlers(ctx: AppContext): void {
   ctx.disposeTranslateManager = () => translateManager.dispose();
   ctx.translateManagerRef = translateManager;
 
-  // M15 DevTools（dev.121，CDP 采集检视面板）：会话管理 + IPC handler。
-  // 事件推送复用 sendToMainWindow（devtools:event）；F12 toggle 走 devtools:toggle。
-  const devtoolsManager = new DevtoolsManager({
-    tabManager: ctx.tabManager,
-    notify: (payload) => sendToMainWindow(DEVTOOLS_EVENT_CHANNEL, payload),
-  });
-  registerDevtoolsHandlers(ipcMain, devtoolsManager);
-  ctx.disposeDevtoolsManager = () => devtoolsManager.dispose();
-
   // 截图域 handler（地址栏截图按钮）：弹出整屏框选覆盖窗口，确认后裁剪保存到
   // <数据目录>/screenshots/。CaptureOverlay 单例持覆盖窗口与截图缓存。
   const captureOverlay = new CaptureOverlay({
@@ -838,7 +828,6 @@ export function registerIpcHandlers(ctx: AppContext): void {
       bottomHeight: req.bottomHeight,
       contentHidden: req.contentHidden,
       browserViewHidden: req.browserViewHidden,
-      devtoolsWidth: req.devtoolsWidth,
     });
     // 立即刷新所有窗口的 BrowserView bounds
     ctx.tabViewIntegration?.refreshAllViewBounds();
@@ -859,7 +848,6 @@ export function registerIpcHandlers(ctx: AppContext): void {
       bottomHeight: newState.bottomHeight,
       contentHidden: newState.contentHidden,
       browserViewHidden: newState.browserViewHidden,
-      devtoolsWidth: newState.devtoolsWidth,
     };
   });
 

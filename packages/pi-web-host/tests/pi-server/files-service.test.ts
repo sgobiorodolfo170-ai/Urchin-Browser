@@ -17,6 +17,11 @@ import {
 import * as remoteSsh from '../../src/pi-server/remote-ssh-service.js';
 import type { ServerMessage } from '../../src/pi-server/protocol.js';
 
+vi.mock('node:os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:os')>();
+  return { ...actual, homedir: vi.fn(actual.homedir) };
+});
+
 const roots: string[] = [];
 const isWin = process.platform === 'win32';
 const wireOf = (p: string) => p.split(sep).join('/');
@@ -616,7 +621,10 @@ describe('makeDir', () => {
   it('should expand ~ to the home directory', async () => {
     const cwd = tempRoot();
     const name = `pi-mkdir-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const expected = join(homedir(), name);
+    // Exercise real tilde expansion and mkdir inside an isolated, writable home.
+    const home = tempRoot('pi-files-home-');
+    vi.mocked(homedir).mockReturnValue(home);
+    const expected = join(home, name);
     const { svc } = makeService(cwd);
 
     const abs = await svc.makeDir(`~/${name}`);

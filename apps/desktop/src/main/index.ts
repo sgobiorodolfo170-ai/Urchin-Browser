@@ -300,7 +300,6 @@ const ctx: AppContext = {
   disposeDragInjection: null,
   disposeTranslateManager: null,
   translateManagerRef: null,
-  disposeDevtoolsManager: null,
   disposeDevtoolsShortcuts: null,
   genofficeIntegration: null,
   genofficeHomeStore: null,

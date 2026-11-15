@@ -91,11 +91,17 @@ function keyboard(source: EventSource, action: () => void): () => void {
     pressed = true;
     action();
   });
+  // Native tools can take focus before keyUp reaches the page. Closing the
+  // tool starts a fresh press sequence; OS autoRepeat remains suppressed.
+  const offClosed = listen(source, 'devtools-closed', () => {
+    pressed = false;
+  });
   const offBlur = listen(source, 'blur', () => {
     pressed = false;
   });
   return () => {
     offInput();
+    offClosed();
     offBlur();
   };
 }

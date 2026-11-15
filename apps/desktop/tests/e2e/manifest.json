@@ -84,17 +84,6 @@
       "note": "原生 F12 三类输入通路、A/B 固定目标、手动关闭与 20 轮开关；不替代 Windows 实机键盘验收"
     },
     {
-      "spec": "devtools-panel.spec.ts",
-      "area": "DevTools",
-      "tests": 3,
-      "durationSec": 10,
-      "triggers": ["apps/desktop/src/main/devtools/**", "apps/desktop/src/renderer/devtools/**"],
-      "deps": "none",
-      "ciRuns": true,
-      "alwaysRecommend": false,
-      "note": "devtools.status/attach/evaluate/consoleAPICalled（F12 UI 由人工验收）"
-    },
-    {
       "spec": "dsh-lifecycle.spec.ts",
       "area": "DeepSeek Harness",
       "tests": 1,

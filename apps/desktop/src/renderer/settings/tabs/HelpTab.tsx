@@ -8,7 +8,7 @@
 /** 常用快捷键（帮助手册顶部速查）。 */
 const HELP_SHORTCUTS: readonly { readonly keys: string; readonly desc: string }[] = [
   { keys: 'Ctrl + O', desc: '打开本地文件（文档 / 音视频 / 图片 / 文本）' },
-  { keys: 'F12', desc: '打开或关闭右侧 DevTools 检视面板' },
+  { keys: 'F12', desc: '打开或关闭当前网页的原生开发者工具' },
   { keys: 'Ctrl + 滚轮', desc: '缩放当前网页或内部页内容' },
   { keys: 'Esc', desc: '取消截图，或关闭当前面板 / 对话框' },
   { keys: '双击标签卡片', desc: '关闭该标签' },
@@ -195,7 +195,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
     topics: [
       {
         title: '打开与使用',
-        body: '按 F12 打开或关闭右侧 DevTools 检视面板。面板提供 Network、Console 与 Runtime.evaluate（执行 JavaScript）。拖拽面板左缘可调整宽度。内部页与 GenOffice 标签不支持检视。',
+        body: '按 F12 打开或关闭当前网页的原生开发者工具。面板提供 Network、Console 与 Runtime.evaluate（执行 JavaScript）。拖拽面板左缘可调整宽度。内部页与 GenOffice 标签不支持检视。',
       },
     ],
   },

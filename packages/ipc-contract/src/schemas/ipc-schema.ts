@@ -614,9 +614,6 @@ export const uiLayoutSetStateReqSchema = z.object({
   /** 临时隐藏 BrowserView（如收藏夹面板弹出时），避免 BrowserView 遮挡 React 渲染的弹出层。
    *  Electron BrowserView 始终渲染在主窗口 webContents 之上，不隐藏则弹出层被遮挡且不可点击。 */
   browserViewHidden: z.boolean().optional(),
-  /** M15 DevTools 检视列宽度（0 = 折叠/未打开）。主进程据此扣减 BrowserView bounds 的水平区域。
-   *  v0.2 一期新增（向後兼容的加法字段）。 */
-  devtoolsWidth: z.number().int().min(0).max(900).optional(),
 });
 export type UiLayoutSetStateReq = z.infer<typeof uiLayoutSetStateReqSchema>;
 
@@ -626,7 +623,6 @@ export const uiLayoutSetStateResSchema = z.object({
   bottomHeight: z.number().int(),
   contentHidden: z.boolean(),
   browserViewHidden: z.boolean(),
-  devtoolsWidth: z.number().int(),
 });
 export type UiLayoutSetStateRes = z.infer<typeof uiLayoutSetStateResSchema>;
 
@@ -2700,177 +2696,6 @@ export const logsClientErrorResSchema = z.object({ ok: z.boolean() });
 export type LogsClientErrorRes = z.infer<typeof logsClientErrorResSchema>;
 
 // ============================================================================
-// DevTools 域（M15 一期 · CDP 采集检视面板）
-// ============================================================================
-// 依据：docs/开发者工具增强一期实施规划.md §5、契约 G。
-// 8 个 RPC 通道 + 2 个单向事件通道（devtools:event / devtools:toggle，
-// 事件常量见 events.ts）。本期不开放原始 cdp.send 透传，能力集限定
-// Network/Console 采集 + Runtime.evaluate（DT10）。
-
-/** M15 检视会话状态：attached=正在采集；detached=已停止；unavailable=不可检视 */
-export const devtoolsStateSchema = z.enum(['detached', 'attached', 'unavailable']);
-export type DevtoolsState = z.infer<typeof devtoolsStateSchema>;
-
-/** unavailable 原因：internal-page=urchin://内部页；genoffice-tab=编辑器视图；
- *  already-attached=Electron debugger 已被占用；target-closed=webContents 已销毁 */
-export const devtoolsUnavailableReasonSchema = z.enum([
-  'internal-page',
-  'genoffice-tab',
-  'already-attached',
-  'target-closed',
-]);
-export type DevtoolsUnavailableReason = z.infer<typeof devtoolsUnavailableReasonSchema>;
-
-/** 检视目标标识（DT12：会话绑定 tabId，面板头部显示标题） */
-export const devtoolsTargetSchema = z.object({
-  tabId: tabIdSchema,
-  title: z.string(),
-});
-export type DevtoolsTarget = z.infer<typeof devtoolsTargetSchema>;
-
-// --- devtools.attach（开始检视；幂等——已 attached 直接返回当前状态） ---
-
-export const devtoolsAttachReqSchema = z.object({ tabId: tabIdSchema });
-export type DevtoolsAttachReq = z.infer<typeof devtoolsAttachReqSchema>;
-
-export const devtoolsAttachResSchema = z.object({
-  state: devtoolsStateSchema,
-  reason: devtoolsUnavailableReasonSchema.optional(),
-  target: devtoolsTargetSchema.optional(),
-});
-export type DevtoolsAttachRes = z.infer<typeof devtoolsAttachResSchema>;
-
-// --- devtools.detach（停止检视；flush 尾批后 detach） ---
-
-export const devtoolsDetachReqSchema = z.object({ tabId: tabIdSchema });
-export type DevtoolsDetachReq = z.infer<typeof devtoolsDetachReqSchema>;
-
-export const devtoolsDetachResSchema = z.object({ ok: z.literal(true) });
-export type DevtoolsDetachRes = z.infer<typeof devtoolsDetachResSchema>;
-
-// --- devtools.status（状态查询） ---
-
-export const devtoolsStatusReqSchema = z.object({ tabId: tabIdSchema });
-export type DevtoolsStatusReq = z.infer<typeof devtoolsStatusReqSchema>;
-
-export const devtoolsStatusResSchema = z.object({
-  state: devtoolsStateSchema,
-  reason: devtoolsUnavailableReasonSchema.optional(),
-  target: devtoolsTargetSchema.optional(),
-});
-export type DevtoolsStatusRes = z.infer<typeof devtoolsStatusResSchema>;
-
-/** 网络请求条目（CDP Network 域聚合后的最终态；同一 requestId 的多次状态演进合并） */
-export const networkEntrySchema = z.object({
-  /** 会话内单调递增序号（条目创建时分配；用于渲染层排序与批内去重） */
-  seq: z.number().int().nonnegative(),
-  requestId: z.string(),
-  url: z.string(),
-  method: z.string(),
-  status: z.number().int().optional(),
-  mimeType: z.string().optional(),
-  resourceType: z.string().optional(),
-  size: z.number().int().nonnegative().optional(),
-  durationMs: z.number().int().nonnegative().optional(),
-  startedAt: z.number().int().nonnegative(),
-  finishedAt: z.number().int().nonnegative().optional(),
-  errorText: z.string().optional(),
-  /** 响应头（已剔除 Set-Cookie，累计 ≤16KB 截断后置 headersTruncated） */
-  responseHeaders: z.record(z.string(), z.string()).optional(),
-  headersTruncated: z.boolean().optional(),
-});
-export type NetworkEntry = z.infer<typeof networkEntrySchema>;
-
-/** 控制台条目（console-api / exception / network 等多来源） */
-export const consoleEntrySchema = z.object({
-  seq: z.number().int().nonnegative(),
-  level: z.enum(['error', 'warning', 'info', 'log', 'debug']),
-  text: z.string(),
-  source: z.enum(['console-api', 'exception', 'network', 'other']),
-  url: z.string().optional(),
-  lineNumber: z.number().int().nonnegative().optional(),
-  timestamp: z.number().int().nonnegative(),
-  stackTrace: z
-    .array(
-      z.object({
-        functionName: z.string().optional(),
-        url: z.string().optional(),
-        lineNumber: z.number().int().nonnegative().optional(),
-        columnNumber: z.number().int().nonnegative().optional(),
-      }),
-    )
-    .max(10)
-    .optional(),
-});
-export type ConsoleEntry = z.infer<typeof consoleEntrySchema>;
-
-// --- devtools.network.list（全量快照；无会话返回空数组，不报错） ---
-
-export const devtoolsNetworkListReqSchema = z.object({ tabId: tabIdSchema });
-export type DevtoolsNetworkListReq = z.infer<typeof devtoolsNetworkListReqSchema>;
-
-export const devtoolsNetworkListResSchema = z.object({
-  entries: z.array(networkEntrySchema),
-  /** 会话内累计被环形缓冲淘汰的条目数 */
-  dropped: z.number().int().nonnegative(),
-});
-export type DevtoolsNetworkListRes = z.infer<typeof devtoolsNetworkListResSchema>;
-
-// --- devtools.network.clear ---
-
-export const devtoolsNetworkClearReqSchema = z.object({ tabId: tabIdSchema });
-export type DevtoolsNetworkClearReq = z.infer<typeof devtoolsNetworkClearReqSchema>;
-
-export const devtoolsNetworkClearResSchema = z.object({ ok: z.literal(true) });
-export type DevtoolsNetworkClearRes = z.infer<typeof devtoolsNetworkClearResSchema>;
-
-// --- devtools.console.list ---
-
-export const devtoolsConsoleListReqSchema = z.object({ tabId: tabIdSchema });
-export type DevtoolsConsoleListReq = z.infer<typeof devtoolsConsoleListReqSchema>;
-
-export const devtoolsConsoleListResSchema = z.object({
-  entries: z.array(consoleEntrySchema),
-  dropped: z.number().int().nonnegative(),
-});
-export type DevtoolsConsoleListRes = z.infer<typeof devtoolsConsoleListResSchema>;
-
-// --- devtools.console.clear ---
-
-export const devtoolsConsoleClearReqSchema = z.object({ tabId: tabIdSchema });
-export type DevtoolsConsoleClearReq = z.infer<typeof devtoolsConsoleClearReqSchema>;
-
-export const devtoolsConsoleClearResSchema = z.object({ ok: z.literal(true) });
-export type DevtoolsConsoleClearRes = z.infer<typeof devtoolsConsoleClearResSchema>;
-
-// --- devtools.evaluate（Runtime.evaluate，returnByValue） ---
-
-/** 表达式上限 8KB（防 IPC 滥用） */
-export const DEVTOOLS_EVALUATE_MAX_BYTES = 8192;
-/** 返回值序列化截断上限 256KB（防巨型对象阻塞 IPC） */
-export const DEVTOOLS_EVALUATE_RESULT_MAX_BYTES = 256 * 1024;
-
-export const devtoolsEvaluateReqSchema = z.object({
-  tabId: tabIdSchema,
-  expression: z.string().min(1).max(DEVTOOLS_EVALUATE_MAX_BYTES),
-  awaitPromise: z.boolean().optional(),
-});
-export type DevtoolsEvaluateReq = z.infer<typeof devtoolsEvaluateReqSchema>;
-
-export const devtoolsEvaluateResSchema = z.object({
-  ok: z.boolean(),
-  /** 成功时 returnByValue 的结果（已 JSON 序列化截断） */
-  result: z.unknown().optional(),
-  /** 失败时异常描述 */
-  exception: z.string().optional(),
-  /** 基础设施错误（attach 丢失、tab 不存在等） */
-  error: z.string().optional(),
-  /** 结果被截断 */
-  truncated: z.boolean().optional(),
-});
-export type DevtoolsEvaluateRes = z.infer<typeof devtoolsEvaluateResSchema>;
-
-// ============================================================================
 // IPC Schema 总表
 // ============================================================================
 
@@ -3173,22 +2998,6 @@ export const ipcSchema = {
   'logs.read': { req: logsReadReqSchema, res: logsReadResSchema },
   'logs.info': { req: logsInfoReqSchema, res: logsInfoResSchema },
   'logs.clientError': { req: logsClientErrorReqSchema, res: logsClientErrorResSchema },
-  // DevTools 域（M15 一期 · CDP 采集检视面板）：见 events.ts 的事件通道
-  // devtools:event / devtools:toggle。本期不开放原始 cdp.send（DT10）。
-  'devtools.attach': { req: devtoolsAttachReqSchema, res: devtoolsAttachResSchema },
-  'devtools.detach': { req: devtoolsDetachReqSchema, res: devtoolsDetachResSchema },
-  'devtools.status': { req: devtoolsStatusReqSchema, res: devtoolsStatusResSchema },
-  'devtools.network.list': { req: devtoolsNetworkListReqSchema, res: devtoolsNetworkListResSchema },
-  'devtools.network.clear': {
-    req: devtoolsNetworkClearReqSchema,
-    res: devtoolsNetworkClearResSchema,
-  },
-  'devtools.console.list': { req: devtoolsConsoleListReqSchema, res: devtoolsConsoleListResSchema },
-  'devtools.console.clear': {
-    req: devtoolsConsoleClearReqSchema,
-    res: devtoolsConsoleClearResSchema,
-  },
-  'devtools.evaluate': { req: devtoolsEvaluateReqSchema, res: devtoolsEvaluateResSchema },
 } as const;
 
 /** IPC schema 的类型推导工具：取 channel 名联合。 */

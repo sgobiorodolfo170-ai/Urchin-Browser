@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Urchin Browser · 根组件
  *
  * 布局：左侧栏 | 中间列(ContentArea + 下侧地址栏) | 右侧栏
@@ -25,8 +25,6 @@ import { resolveDroppedFilePath } from './transit/file-path';
 import { useBookmark, isBookmarkable } from './omnibox/use-bookmark';
 import { useTabDrag } from './tabs/use-tab-drag';
 import { useModuleOpeners } from './lib/use-module-openers';
-import { DevToolsPanel } from './devtools/DevToolsPanel';
-import { useDevtoolsColumn } from './devtools/use-devtools-column';
 import {
   getEditGuardSession,
   closeNeedsGuard,
@@ -134,9 +132,6 @@ export function App() {
   const titlebarBookmarks = useTitlebarBookmarks();
   const bookmarksBarHeight = titlebarBookmarks.enabled && titlebarBookmarks.expanded ? 36 : 0;
   const contentAreaRef = useRef<HTMLDivElement>(null);
-  // M15 DevTools 检视列开合/宽度（真源仍归 App：width 驱动主进程 BrowserView
-  // bounds；hook 收拢状态与 F12 订阅，见 devtools/use-devtools-column.ts）
-  const { devtoolsOpen, devtoolsWidth, setDevtoolsWidth } = useDevtoolsColumn();
 
   /** 每工作区最近一次激活的标签（切回该工作区时恢复）。 */
   const lastActiveByWorkspaceRef = useRef<Record<string, number>>({});
@@ -775,7 +770,7 @@ export function App() {
 
   // 通知主进程布局变化
   const notifyLayout = useCallback(
-    async (left: number, right: number, dtw?: number) => {
+    async (left: number, right: number) => {
       try {
         await window.urchin.invoke('ui.layout.setState', {
           leftWidth: left,
@@ -783,13 +778,12 @@ export function App() {
           bottomHeight: BOTTOM_HEIGHT,
           bookmarksBarHeight,
           browserViewHidden: workspaceManagerTarget !== null,
-          devtoolsWidth: dtw ?? devtoolsWidth,
         });
       } catch (e) {
         log.error('Failed to update layout:', e);
       }
     },
-    [devtoolsWidth, bookmarksBarHeight, workspaceManagerTarget],
+    [bookmarksBarHeight, workspaceManagerTarget],
   );
 
   const handleToggleLeft = useCallback(() => {
@@ -800,9 +794,8 @@ export function App() {
     void notifyLayout(
       next ? LEFT_EXPANDED : LEFT_COLLAPSED,
       rightExpanded ? rightExpandedWidth : RIGHT_COLLAPSED,
-      devtoolsOpen ? devtoolsWidth : 0,
     );
-  }, [leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout, devtoolsOpen, devtoolsWidth]);
+  }, [leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout]);
 
   const handleToggleRight = useCallback(() => {
     const next = !rightExpanded;
@@ -813,17 +806,8 @@ export function App() {
     void notifyLayout(
       leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED,
       next ? rightExpandedWidth : RIGHT_COLLAPSED,
-      devtoolsOpen ? devtoolsWidth : 0,
     );
-  }, [
-    leftExpanded,
-    leftHovered,
-    rightExpanded,
-    rightExpandedWidth,
-    notifyLayout,
-    devtoolsOpen,
-    devtoolsWidth,
-  ]);
+  }, [leftExpanded, leftHovered, rightExpanded, rightExpandedWidth, notifyLayout]);
 
   // 双击右侧边栏空白处：展开/折叠切换（替代已移除的底部折叠/展开按钮）
   // 与悬停自动展开/自动折叠互斥（右侧栏自动展开开关控制后者）
@@ -857,7 +841,6 @@ export function App() {
       void notifyLayout(
         leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED,
         rightExpandedWidth,
-        devtoolsOpen ? devtoolsWidth : 0,
       );
     };
     if (sidebarHoverDelay <= 0) {
@@ -876,8 +859,6 @@ export function App() {
     rightExpandedWidth,
     notifyLayout,
     sidebarHoverDelay,
-    devtoolsOpen,
-    devtoolsWidth,
   ]);
 
   // 右侧栏离开回弹：折叠状态下鼠标离开时收起，使用带过冲的弹性缓动
@@ -894,19 +875,10 @@ export function App() {
     void notifyLayout(
       leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED,
       RIGHT_COLLAPSED,
-      devtoolsOpen ? devtoolsWidth : 0,
     );
     // 回弹动画结束后清除标记（300ms 对应回弹时长）
     window.setTimeout(() => setRightRetracting(false), 320);
-  }, [
-    rightExpanded,
-    rightHovered,
-    leftExpanded,
-    leftHovered,
-    notifyLayout,
-    devtoolsOpen,
-    devtoolsWidth,
-  ]);
+  }, [rightExpanded, rightHovered, leftExpanded, leftHovered, notifyLayout]);
 
   const handleLeftDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -931,7 +903,6 @@ export function App() {
       void notifyLayout(
         LEFT_EXPANDED,
         rightExpanded || rightHovered ? rightExpandedWidth : RIGHT_COLLAPSED,
-        devtoolsOpen ? devtoolsWidth : 0,
       );
     };
     if (sidebarHoverDelay <= 0) {
@@ -950,8 +921,6 @@ export function App() {
     rightExpandedWidth,
     notifyLayout,
     sidebarHoverDelay,
-    devtoolsOpen,
-    devtoolsWidth,
   ]);
 
   const handleLeftMouseLeave = useCallback(() => {
@@ -965,19 +934,9 @@ export function App() {
     void notifyLayout(
       LEFT_COLLAPSED,
       rightExpanded || rightHovered ? rightExpandedWidth : RIGHT_COLLAPSED,
-      devtoolsOpen ? devtoolsWidth : 0,
     );
     window.setTimeout(() => setLeftRetracting(false), 320);
-  }, [
-    leftExpanded,
-    leftHovered,
-    rightExpanded,
-    rightHovered,
-    rightExpandedWidth,
-    notifyLayout,
-    devtoolsOpen,
-    devtoolsWidth,
-  ]);
+  }, [leftExpanded, leftHovered, rightExpanded, rightHovered, rightExpandedWidth, notifyLayout]);
 
   // 右侧边栏宽度拖拽调节：鼠标在网页与右侧边栏的边界线上按住拖动，实时调宽。
   // 展开态下于栏左缘内侧渲染拖拽手柄（避免与 BrowserView 重叠导致无法 hover/点击）。
@@ -1006,13 +965,9 @@ export function App() {
         Math.max(RIGHT_MIN, drag.startWidth + (drag.startX - e.clientX)),
       );
       setRightExpandedWidth(next);
-      void notifyLayout(
-        leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED,
-        next,
-        devtoolsOpen ? devtoolsWidth : 0,
-      );
+      void notifyLayout(leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED, next);
     },
-    [leftExpanded, leftHovered, notifyLayout, devtoolsOpen, devtoolsWidth],
+    [leftExpanded, leftHovered, notifyLayout],
   );
 
   const handleRightResizeEnd = useCallback(() => {
@@ -1040,11 +995,9 @@ export function App() {
   const effectiveRightExpanded = rightExpanded || rightHovered;
   const rightWidth = effectiveRightExpanded ? rightExpandedWidth : RIGHT_COLLAPSED;
 
-  // M15 DevTools 检视列开合/宽度变化 → 同步主进程 BrowserView bounds（扣减右侧区域）。
-  // 放在此处确保 leftWidth/rightWidth 已定义；devtoolsOpen=false 传 0（折叠）。
   useEffect(() => {
-    void notifyLayout(leftWidth, rightWidth, devtoolsOpen ? devtoolsWidth : 0);
-  }, [devtoolsOpen, devtoolsWidth, leftWidth, rightWidth, notifyLayout]);
+    void notifyLayout(leftWidth, rightWidth);
+  }, [leftWidth, rightWidth, notifyLayout]);
 
   // 中区内容页判断（供整窗快照叠加判定 / 状态栏导航禁用判定；
   // 内容分支渲染已迁至 ContentArea，两处各自做纯派生、无状态真源）
@@ -1200,7 +1153,7 @@ export function App() {
         lastLeft = left;
         lastRight = right;
         stableCount = 0;
-        void notifyLayout(left, right, devtoolsOpen ? devtoolsWidth : 0);
+        void notifyLayout(left, right);
       } else {
         stableCount += 1;
       }
@@ -1225,8 +1178,6 @@ export function App() {
     rightExpandedWidth,
     notifyLayout,
     useCustomChrome,
-    devtoolsOpen,
-    devtoolsWidth,
   ]);
 
   // ── 底部悬浮状态栏：状态同步 + 动作分发 ──
@@ -1434,7 +1385,6 @@ export function App() {
               <BookmarksBar
                 pageTabId={isInternalPage ? null : activeTabId}
                 pageUrl={activeTab?.url ?? ''}
-                addressBarExtraWidth={devtoolsOpen ? devtoolsWidth : 0}
                 onNavigate={(url) => void handleNavigate(url)}
               />
             )}
@@ -1455,17 +1405,6 @@ export function App() {
               onGuardDismiss={() => setEditorGuardAsk(null)}
             />
           </div>
-
-          {/* M15 DevTools 检视列（F12 开关；右侧栏左侧的第三列）。
-           *  开合/宽度真源在 App（useDevtoolsColumn：width 驱动主进程
-           *  BrowserView bounds），派生逻辑在 DevToolsPanel 内部。 */}
-          {devtoolsOpen && (
-            <DevToolsPanel
-              activeTab={activeTab}
-              onWidthChange={setDevtoolsWidth}
-              width={devtoolsWidth}
-            />
-          )}
 
           {/* === 右侧栏 ===
            *  展示组件见 sidebar/RightSidebar.tsx（refactor-plan-p2 §2.3 步骤 3）；

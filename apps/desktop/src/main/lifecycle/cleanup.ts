@@ -117,15 +117,7 @@ export async function performCleanup(ctx: AppContext): Promise<void> {
       ctx.dshLauncher = null;
     }
 
-    // 0.65 卸载 DevTools 管理器（CDP 会话清理）+ F12 快捷键监听——dev.121
-    if (ctx.disposeDevtoolsManager) {
-      try {
-        ctx.disposeDevtoolsManager();
-      } catch (e) {
-        log.error('Failed to dispose devtools manager on quit', { error: String(e) });
-      }
-      ctx.disposeDevtoolsManager = null;
-    }
+    // 卸载原生 F12 控制器。
     if (ctx.disposeDevtoolsShortcuts) {
       try {
         ctx.disposeDevtoolsShortcuts();

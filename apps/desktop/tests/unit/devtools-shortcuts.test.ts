@@ -218,6 +218,17 @@ describe('native F12 ownership and lifecycle', () => {
     tool.press();
     expect(f.a.opened).toBe(false);
   });
+  it('accepts a fresh page press after the tool consumed the previous keyUp', () => {
+    const f = setup();
+    f.a.key('keyDown');
+    f.a.devToolsWebContents!.press();
+    expect(f.a.opened).toBe(false);
+    f.a.key('keyDown', true);
+    expect(f.a.opened).toBe(false);
+    f.a.key('keyDown');
+    expect(f.a.opened).toBe(true);
+    f.dispose();
+  });
   it('native F12 closes its bound A while B is active; never retargets or closes B', () => {
     const f = setup();
     f.shell.press();

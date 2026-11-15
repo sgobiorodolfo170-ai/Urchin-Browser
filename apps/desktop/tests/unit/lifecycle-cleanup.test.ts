@@ -62,7 +62,6 @@ function makeFakeCtx(overrides: Partial<Record<keyof AppContext, unknown>> = {})
       status: () => ({ state: 'running', pid: 4321 }),
       dispose: dshDispose,
     },
-    disposeDevtoolsManager: null,
     disposeDevtoolsShortcuts: null,
     orchestrator: {
       listActiveProviderPids: () => [8765],

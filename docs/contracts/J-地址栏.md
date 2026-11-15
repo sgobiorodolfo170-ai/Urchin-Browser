@@ -93,8 +93,8 @@ function validateUrlBeforeNavigation(input: string): { valid: boolean; url: stri
 FR-BROWSE-12 / FR-SET-04 要求命令面板（Ctrl+Shift+P）。**OM10 决策：命令面板归属 M4**——与地址栏共享渲染层输入框组件与模糊匹配管线，仅把数据源从「历史 + 书签」替换为「命令注册表」。
 
 - 触发：`Ctrl+Shift+P`；`Esc` 关闭；`Enter` 执行选中命令。
-- 命令注册表：扁平列表 `{ id, title, shortcut?, run() }`。v0.1 内置命令：新建/关闭标签、刷新、切换主题、打开设置、Toggle DevTools Enhancement（G DT8）、摘要当前页（M13）等。
-- 数据源去重：DevTools 增强、Side Panel 等模块向注册表注册各自命令，命令面板只做统一入口，不各自实现。
+- 命令注册表：扁平列表 `{ id, title, shortcut?, run() }`。v0.1 内置命令：新建/关闭标签、刷新、切换主题、打开设置、摘要当前页（M13）等。M15 入口按 [ADR-022 DT15](../decisions/ADR-022-原生DevTools与专属调试增强.md) 执行，取消其命令面板入口待办；OM10 的全局命令面板决策不变。
+- 数据源去重：Side Panel 等参与模块向注册表注册各自命令，命令面板只做统一入口，不各自实现。
 - v0.2+：支持自定义快捷键绑定（FR-SET-01）与最近使用排序。
 
 ## 7. 决策记录

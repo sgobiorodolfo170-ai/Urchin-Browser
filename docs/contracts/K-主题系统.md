@@ -94,6 +94,8 @@
 
 **TH5 决策落地**：浏览器特有组件（TabBar / Omnibox / SidePanel / DevToolsPanel）自研，不依赖 Radix UI——因为浏览器 UI 无现成组件库可用，Radix 的 Tabs 等组件限制太多。
 
+> M15 范围修订（2026-11-15）：表中的 DevToolsPanel 指旧 React 面板；按 [ADR-022](../decisions/ADR-022-原生DevTools与专属调试增强.md) 迁移原生后退出。原生前端不套用本 React 组件规则，不以主题统一为由重写或 fork DevTools。其余 TH5 组件约定不变。
+
 ## 5. 图标方案（TH8 决策）
 
 选用 **Lucide Icons** 作为图标库。理由：

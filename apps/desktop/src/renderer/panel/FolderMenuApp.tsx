@@ -29,7 +29,9 @@ export function FolderMenuApp() {
     const refresh = async () => {
       try {
         const res = await invoke<{ bookmarks: Bookmark[] }>('bookmark.list', {});
-        if (!disposed) setItems([...res.bookmarks].sort((a, b) => a.position - b.position));
+        // 菜单展示按加入时间从新到旧（用户约定：新加入的标签自动排最前）；
+        // 只影响菜单渲染顺序，不改 position 存储顺序（收藏夹面板内仍按原序管理）。
+        if (!disposed) setItems([...res.bookmarks].sort((a, b) => b.createdAt - a.createdAt));
       } catch {
         if (!disposed) setItems([]);
       }

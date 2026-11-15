@@ -80,7 +80,7 @@ beforeEach(() => {
 });
 
 describe('FolderMenuApp', () => {
-  it('renders only the folder children with favicons', async () => {
+  it('renders only the folder children with favicons, newest first', async () => {
     render(<FolderMenuApp />);
     await screen.findByText('子页甲');
     expect(screen.getByText('子页乙')).toBeInTheDocument();
@@ -88,6 +88,11 @@ describe('FolderMenuApp', () => {
     for (const row of screen.getAllByRole('listitem')) {
       expect(row.querySelector('img')).toBeTruthy();
     }
+    // 从新到旧：createdAt 大（乙，createdAt 2）排在甲（createdAt 1）之前
+    const titles = screen.getAllByRole('listitem').map((row) => row.textContent ?? '');
+    expect(titles.findIndex((t) => t.includes('子页乙'))).toBeLessThan(
+      titles.findIndex((t) => t.includes('子页甲')),
+    );
   });
 
   it('opens clicked bookmark in active tab and closes itself', async () => {

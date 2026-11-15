@@ -4,6 +4,63 @@
 
 **当前阶段**：v0.1.0 里程碑（2026-07-29，MVP 最小闭环 + per-provider 强隔离架构）后持续迭代；代码版本以 [CHANGELOG.md](./CHANGELOG.md) 表尾为准（本行更新于 2026-11-11，时点 v0.3.0-dev.184），v0.2.0 dev 线推进中，首个 GitHub stable 计划 v0.2.0。已交付 GenOffice 六编辑器融合、pi-web、网页翻译（M24）、网页剪藏（M26）、笔记/便利贴（M27）、本地文件查看/编辑、应用内自动更新、M15 DevTools 检视面板、M25 邮箱、多工作区（TP7）等能力，逐条记录见 [CHANGELOG.md](./CHANGELOG.md)。安装包见 [GitHub Releases](https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases)。
 
+## 界面预览
+
+### 从清爽主页开始
+
+常用网站、最近浏览与书签栏集中呈现，功能入口分布在两侧，为网页内容留出空间。
+
+![顽童浏览器主页：常用网站、最近浏览与书签栏](./docs/screenshots/01-home.png)
+
+### 多个工作区，一屏切换
+
+用缩略图总览区分工作、学习和开发场景，随时回到各自的浏览环境。
+
+![多工作区总览：以网页缩略图呈现不同工作区](./docs/screenshots/02-workspaces.png)
+
+### AI 助手与日常工具
+
+<table>
+  <tr>
+    <td width="50%">
+      <strong>Pi 编程工作台</strong><br />
+      提示词模板、项目、终端与 Git 等工具集中在一个标签页。
+      <a href="./docs/screenshots/03-pi-workbench.png"><img src="./docs/screenshots/03-pi-workbench.png" alt="Pi 编程工作台，地址栏访问令牌已遮盖" width="100%" /></a>
+    </td>
+    <td width="50%">
+      <strong>DeepSeek Harness</strong><br />
+      在浏览器内打开 DSH，管理工作区、会话、插件与自动化任务。
+      <a href="./docs/screenshots/04-deepseek-harness.png"><img src="./docs/screenshots/04-deepseek-harness.png" alt="DeepSeek Harness 新会话与工作区界面" width="100%" /></a>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>速记与画布</strong><br />
+      笔记本、Markdown 编辑和便利贴画布并排，随手记录与整理想法。
+      <a href="./docs/screenshots/05-notebook-canvas.png"><img src="./docs/screenshots/05-notebook-canvas.png" alt="速记三栏布局：笔记本、Markdown 编辑器与便利贴画布" width="100%" /></a>
+    </td>
+    <td width="50%">
+      <strong>浏览与中转区</strong><br />
+      阅读网页时，将链接、文字、文件及音视频素材集中到左侧中转区。
+      <a href="./docs/screenshots/06-transit-panel.png"><img src="./docs/screenshots/06-transit-panel.png" alt="网页阅读与左侧中转区，包含链接、文字和音视频条目" width="100%" /></a>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <strong>多服务商邮箱</strong><br />
+      从服务商选择到账户配置，在浏览器内连接常用邮箱。
+      <a href="./docs/screenshots/07-mail.png"><img src="./docs/screenshots/07-mail.png" alt="邮箱连接页：服务商列表与账户配置表单" width="100%" /></a>
+    </td>
+    <td width="50%">
+      <strong>按习惯调整浏览器</strong><br />
+      语言、搜索、启动恢复、托盘和网页翻译等选项集中设置。
+      <a href="./docs/screenshots/08-settings.png"><img src="./docs/screenshots/08-settings.png" alt="浏览器通用设置页：语言、搜索引擎、启动恢复与翻译选项" width="100%" /></a>
+    </td>
+  </tr>
+</table>
+
+截图摄于 2026-11-15；点击图片可查看原尺寸。
+
 ## 项目定位
 
 - **内核**：Electron 内置完整 Chromium（Blink + V8）

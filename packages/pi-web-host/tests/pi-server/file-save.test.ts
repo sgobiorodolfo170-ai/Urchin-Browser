@@ -114,7 +114,7 @@ describe('saveFilePreservingMetadata', () => {
   it('should report and retain native replacement recovery data on failure', async () => {
     const { root, dest } = await fixture();
     faults.command = true;
-    faults.recovery = true;
+    faults.recovery = isWin;
 
     if (isWin) {
       await expect(saveFilePreservingMetadata(dest, 'replacement')).rejects.toThrow(

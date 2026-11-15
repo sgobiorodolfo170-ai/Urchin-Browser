@@ -44,6 +44,7 @@ const PI_ENV_KEYS = [
 
 let argvBackup: string[];
 let envBackup: NodeJS.ProcessEnv;
+let signalListenersBefore: Record<'SIGINT' | 'SIGTERM', Set<NodeJS.SignalsListener>>;
 let tempDirs: string[] = [];
 const exitSpy = vi.spyOn(process, 'exit');
 const writeSpy = vi.spyOn(process.stdout, 'write');
@@ -67,6 +68,10 @@ async function flush(times = 8): Promise<void> {
 }
 
 beforeEach(() => {
+  signalListenersBefore = {
+    SIGINT: new Set(process.listeners('SIGINT')),
+    SIGTERM: new Set(process.listeners('SIGTERM')),
+  };
   vi.resetModules();
   startMock.mockReset();
   closeMock.mockReset();
@@ -83,6 +88,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    for (const listener of process.listeners(signal)) {
+      if (!signalListenersBefore[signal].has(listener)) process.removeListener(signal, listener);
+    }
+  }
   setArgv(argvBackup);
   for (const key of PI_ENV_KEYS) {
     const original = envBackup[key];

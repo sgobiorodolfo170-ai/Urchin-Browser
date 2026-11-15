@@ -7,7 +7,7 @@
  */
 import { readdir, readFile, stat, mkdir, rm, writeFile } from 'node:fs/promises';
 import { type Dirent } from 'node:fs';
-import { join, isAbsolute } from 'node:path';
+import { join, isAbsolute, win32 } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -214,7 +214,7 @@ export function parseInstallSpec(source: string): {
     return { kind: 'npm', pkg: s };
   }
 
-  if (isAbsolute(s)) {
+  if (isAbsolute(s) || win32.isAbsolute(s)) {
     return { kind: 'path' };
   }
 

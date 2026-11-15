@@ -41,8 +41,9 @@ describe('parseInstallSpec', () => {
     expect(parseInstallSpec('https://example.com/plugin')).toEqual({ kind: 'url' });
   });
 
-  it('should classify absolute path', () => {
+  it('should classify Windows absolute path on every host platform', () => {
     expect(parseInstallSpec('C:\\plugins\\my-plugin').kind).toBe('path');
+    expect(parseInstallSpec('\\\\server\\plugins\\my-plugin').kind).toBe('path');
   });
 
   it('should classify empty string as invalid', () => {

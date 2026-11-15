@@ -55,6 +55,10 @@ it('收藏夹按站点展示，单页直接导航，多页弹窗按时间倒序�
   expect(navigate).toHaveBeenCalledWith('https://single.test/path');
   fireEvent.click(screen.getByTitle('example.com'));
   const list = screen.getByRole('dialog');
+  // 弹窗每行（书签条目）前显示网站图标。
+  for (const row of within(list).getAllByRole('listitem')) {
+    expect(row.querySelector('img')).toBeTruthy();
+  }
   expect(
     within(list)
       .getAllByRole('listitem')
@@ -316,7 +320,7 @@ it('长按超过120ms但未移动仍可点击打开网页', async () => {
   vi.unstubAllGlobals();
 });
 
-it('常用区域仅显示图标，列表逐页取消收藏且删除最后一页后移除站点', async () => {
+it('常用区域图标下方显示网站名称，列表逐页取消收藏且删除最后一页后移除站点', async () => {
   let bookmarks = [
     { id: 'a1', type: 'bookmark', url: 'https://a.test/one', title: '第一页', createdAt: 1 },
     { id: 'a2', type: 'bookmark', url: 'https://a.test/two', title: '第二页', createdAt: 2 },
@@ -341,7 +345,7 @@ it('常用区域仅显示图标，列表逐页取消收藏且删除最后一页�
   const navigate = vi.fn();
   render(<NewTabPage onNavigate={navigate} />);
   const site = await screen.findByTitle('a.test');
-  expect(screen.getByTestId('frequent-sites').textContent).toBe('');
+  expect(screen.getByTestId('frequent-sites').textContent).toBe('a.testb.test');
   expect(site).toHaveAccessibleName('a.test');
   fireEvent.click(site);
   fireEvent.click(screen.getByRole('button', { name: '取消收藏：第二页' }));

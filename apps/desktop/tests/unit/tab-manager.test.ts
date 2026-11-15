@@ -591,6 +591,25 @@ describe('TabManager webContents events', () => {
     expect(mgr.getTab(tab.id)?.title).toBe('新标题');
   });
 
+  it('retains the requested bookmark URL across redirects and replaces it for a new navigation', () => {
+    const { wc, mgr, tab } = setup();
+    mgr.loadUrl(tab.id, 'https://saved.test/entry');
+    wc._emitEvent('did-start-navigation', {}, 'https://saved.test/entry', false, true);
+    wc._emitEvent('did-redirect-navigation', {}, 'https://final.test/page', false, true);
+    wc._emitEvent('did-navigate', {}, 'https://final.test/page');
+    expect(mgr.getTab(tab.id)?.navigationSourceUrl).toBe('https://saved.test/entry');
+    wc._emitEvent('did-start-navigation', {}, 'https://frame.test/', false, false);
+    expect(mgr.getTab(tab.id)?.navigationSourceUrl).toBe('https://saved.test/entry');
+    wc._emitEvent('did-start-navigation', {}, 'https://script-redirect.test/', false, true);
+    expect(mgr.getTab(tab.id)?.navigationSourceUrl).toBe('https://saved.test/entry');
+    wc._emitEvent('before-mouse-event', {}, { type: 'mouseMove' });
+    expect(mgr.getTab(tab.id)?.navigationSourceUrl).toBe('https://saved.test/entry');
+    wc._emitEvent('before-mouse-event', {}, { type: 'mouseDown' });
+    wc._emitEvent('did-start-navigation', {}, 'https://other.test/', false, true);
+    expect(mgr.getTab(tab.id)?.navigationSourceUrl).toBe('https://other.test/');
+    expect(mgr.query({ windowId: 1 })[0]).not.toHaveProperty('navigationSourceUrl');
+  });
+
   it('should update favicon on page-favicon-updated', () => {
     const { wc, mgr, tab } = setup();
     wc._emitEvent('page-favicon-updated', undefined, ['https://a.com/fav.ico']);

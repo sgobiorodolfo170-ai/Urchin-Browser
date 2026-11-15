@@ -61,6 +61,7 @@ export interface StickyNote {
 
 /** 画布图片对象：直接放置在画布上的图片，不包裹便利贴 */
 export interface CanvasImage {
+  readonly mediaKind?: 'audio' | 'video';
   readonly id: string;
   readonly notebookId: string;
   readonly filePath: string;

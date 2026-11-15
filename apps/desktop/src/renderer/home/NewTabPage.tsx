@@ -1,38 +1,14 @@
 /** 主页：收藏夹与最近浏览按网站归集，保留完整网页地址。 */
 import { useEffect, useRef, useState } from 'react';
 import type { BookmarkCreateRes, BookmarkListRes, HistoryListRes } from '@urchin/ipc-contract';
-import { Loader2, Trash2 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { Loader2 } from 'lucide-react';
+import { BookmarkListDialog, BROWSER_ICON, SiteFavicon } from '../components/bookmark-list-dialog';
 import { displayNameForLocale } from '../../shared/brand';
 import { lookupBuiltinSite } from './site-directory-lookup';
 import { groupSitePages, type SiteGroup } from './site-groups';
 
 export interface NewTabPageProps {
   readonly onNavigate: (url: string) => void;
-}
-const BROWSER_ICON = './browser-icon.png';
-/** 主页复用浏览记录中的本地图标，避免向第三方服务发送浏览站点。 */
-function SiteFavicon({
-  url,
-  favicon,
-  className,
-}: {
-  url: string;
-  favicon?: string;
-  className?: string;
-}) {
-  const [srcIndex, setSrcIndex] = useState(0);
-  const sources = [...(favicon ? [favicon] : []), BROWSER_ICON];
-  useEffect(() => setSrcIndex(0), [url, favicon]);
-  return (
-    <img
-      src={sources[Math.min(srcIndex, sources.length - 1)]}
-      alt=""
-      draggable={false}
-      className={cn(className, srcIndex >= sources.length - 1 && 'opacity-40')}
-      onError={() => setSrcIndex((i) => Math.min(i + 1, sources.length - 1))}
-    />
-  );
 }
 
 /**
@@ -70,13 +46,10 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
     timer: ReturnType<typeof setTimeout>;
   } | null>(null);
   const suppressClick = useRef(false);
-  const [deletingUrl, setDeletingUrl] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState<{ key: string; recent: boolean } | null>(null);
-  const dialog = useRef<HTMLDialogElement>(null);
   const active =
     selected && (selected.recent ? recent : frequent).find((s) => s.key === selected.key);
 
@@ -158,11 +131,6 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
       window.removeEventListener('focus', onFocus);
     };
   }, []);
-
-  useEffect(() => {
-    if (active) dialog.current?.showModal();
-    else dialog.current?.close();
-  }, [active]);
 
   const ordered = (sites: SiteGroup[], isRecent: boolean) => {
     const order = orders[isRecent ? 'home.recentSiteOrder' : 'home.frequentSiteOrder'] ?? [];
@@ -252,11 +220,8 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
     }
   };
 
-  const deleteBookmark = async (url: string) => {
-    if (saving.current) return;
-    saving.current = true;
-    setDeletingUrl(url);
-    setDeleteError('');
+  /** 取消收藏该页面：同一地址的全部收藏一并删除；失败也回读真源，再抛错由弹窗展示。 */
+  const deleteBookmarksByUrl = async (url: string): Promise<void> => {
     try {
       const res = (await window.urchin.invoke('bookmark.list', {})) as BookmarkListRes;
       for (const bookmark of res.bookmarks) {
@@ -264,14 +229,11 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
           await window.urchin.invoke('bookmark.delete', { id: bookmark.id });
         }
       }
+    } catch (err) {
       await refreshRef.current();
-    } catch {
-      setDeleteError('取消收藏失败，请重试');
-      await refreshRef.current();
-    } finally {
-      setDeletingUrl(null);
-      saving.current = false;
+      throw err;
     }
+    await refreshRef.current();
   };
 
   const renderSites = (sites: SiteGroup[], isRecent: boolean) =>
@@ -334,7 +296,6 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
           }
           if (!isRecent && site.pages.length === 1 && site.pages[0]) onNavigate(site.pages[0].url);
           else {
-            setDeleteError('');
             setSelected({ key: site.key, recent: isRecent });
           }
         }}
@@ -348,11 +309,9 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
           favicon={site.favicon}
           className="h-10 w-10 rounded-lg bg-white shadow-sm"
         />
-        {isRecent && (
-          <span className="w-full truncate text-center text-xs text-text-secondary group-hover:text-text">
-            {siteDisplayName(site.url, site.title)}
-          </span>
-        )}
+        <span className="w-full truncate text-center text-xs text-text-secondary group-hover:text-text">
+          {siteDisplayName(site.url, site.title)}
+        </span>
       </button>
     ));
 
@@ -401,70 +360,29 @@ export function NewTabPage({ onNavigate }: NewTabPageProps) {
           )}
         </div>
       </section>
-      <dialog
-        ref={dialog}
-        onCancel={() => setSelected(null)}
+      <BookmarkListDialog
+        open={!!active}
+        heading={
+          active
+            ? `${siteDisplayName(active.url, active.title)} · ${selected?.recent ? '最近浏览' : '书签列表'}`
+            : ''
+        }
+        entries={
+          active
+            ? active.pages.map((page) => ({
+                id: page.url,
+                parentId: null,
+                type: 'bookmark' as const,
+                url: page.url,
+                title: page.title || page.url,
+                favicon: page.favicon,
+              }))
+            : []
+        }
         onClose={() => setSelected(null)}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            const r = e.currentTarget.getBoundingClientRect();
-            if (
-              e.clientX < r.left ||
-              e.clientX > r.right ||
-              e.clientY < r.top ||
-              e.clientY > r.bottom
-            )
-              setSelected(null);
-          }
-        }}
-        aria-label={selected?.recent ? '最近浏览列表' : '书签列表'}
-        className="m-auto w-[min(560px,90vw)] rounded-xl border border-border bg-surface p-5 text-text shadow-xl backdrop:bg-black/30"
-      >
-        <div className="mb-3 flex items-center justify-between gap-4">
-          <h2 className="truncate font-medium">
-            {active && siteDisplayName(active.url, active.title)} ·{' '}
-            {selected?.recent ? '最近浏览' : '书签列表'}
-          </h2>
-          <button onClick={() => setSelected(null)} aria-label="关闭列表">
-            关闭
-          </button>
-        </div>
-        {deleteError && (
-          <p role="alert" className="mb-2 text-sm text-red-500">
-            {deleteError}
-          </p>
-        )}
-        <ul className="max-h-[60vh] overflow-y-auto">
-          {active?.pages.map((page) => (
-            <li key={page.url} className="flex items-center gap-2">
-              <button
-                className="min-w-0 flex-1 rounded-lg p-3 text-left hover:bg-surface-secondary"
-                onClick={() => {
-                  setSelected(null);
-                  onNavigate(page.url);
-                }}
-              >
-                <span className="block truncate">{page.title || page.url}</span>
-                <span className="block truncate text-xs text-text-secondary">{page.url}</span>
-              </button>
-              {!selected?.recent && (
-                <button
-                  type="button"
-                  aria-label={`取消收藏：${page.title || page.url}`}
-                  title="取消收藏"
-                  disabled={deletingUrl !== null}
-                  onClick={() => {
-                    void deleteBookmark(page.url);
-                  }}
-                  className="shrink-0 rounded-lg p-2 text-text-secondary hover:bg-surface-secondary hover:text-red-500 disabled:opacity-40"
-                >
-                  <Trash2 aria-hidden="true" className="h-4 w-4" />
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      </dialog>
+        onNavigate={onNavigate}
+        onDelete={selected && !selected.recent ? deleteBookmarksByUrl : undefined}
+      />
     </div>
   );
 }

@@ -11,6 +11,11 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BookmarkPanelApp } from './BookmarkPanelApp';
+import { FolderMenuApp } from './FolderMenuApp';
+// folder-menu 模式复用主页同款组件（BookmarkListPanel 的 Tailwind 类与
+// --color-* token），故先引入主入口全局样式；panel.css 在其后加载以保证
+// 既有面板手写样式优先（同特异性后者胜）。
+import '../styles/globals.css';
 import './panel.css';
 
 const rootEl = document.getElementById('root');
@@ -18,8 +23,9 @@ if (!rootEl) {
   throw new Error('Root element #root not found');
 }
 
+/** folder-menu 模式：收藏栏文件夹菜单子窗口（与收藏夹面板同入口、不同模式）。 */
+const isFolderMenu = new URLSearchParams(location.search).get('mode') === 'folder-menu';
+
 createRoot(rootEl).render(
-  <StrictMode>
-    <BookmarkPanelApp />
-  </StrictMode>,
+  <StrictMode>{isFolderMenu ? <FolderMenuApp /> : <BookmarkPanelApp />}</StrictMode>,
 );

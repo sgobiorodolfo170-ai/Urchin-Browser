@@ -272,6 +272,9 @@ export function normalizeNotebookState(raw: unknown, now = Date.now()): Notebook
     imageIds.add(id);
     const createdAt = asInt(item.createdAt, now);
     images.push({
+      ...(item.mediaKind === 'audio' || item.mediaKind === 'video'
+        ? { mediaKind: item.mediaKind }
+        : {}),
       id,
       notebookId,
       filePath,

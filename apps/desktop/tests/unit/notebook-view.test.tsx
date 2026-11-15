@@ -4,7 +4,7 @@
  * 覆盖：默认状态加载、笔记/任务切换、任务勾选、笔记编辑、新建笔记、
  * 三区分割线拖拽与持久化。
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NotebookView } from '../../src/renderer/notebook/NotebookView';
 import { NOTEBOOK_STATE_KEY } from '../../src/renderer/notebook/types';
@@ -30,6 +30,7 @@ function renderView() {
 
 describe('NotebookView', () => {
   let invoke: ReturnType<typeof vi.fn>;
+  afterEach(() => vi.unstubAllGlobals());
 
   beforeEach(() => {
     invoke = vi.fn((channel: string) => {
@@ -173,5 +174,94 @@ describe('NotebookView', () => {
       },
       { timeout: 2000 },
     );
+  });
+  it('inserts a transit text file at the note selection without creating another note', async () => {
+    invoke.mockImplementation((channel: string) => {
+      if (channel === 'file.read') return Promise.resolve({ content: '插入文字' });
+      if (channel === 'settings.get') return Promise.resolve({ value: null });
+      return Promise.resolve({ ok: true });
+    });
+    renderView();
+    await screen.findByText('我的笔记本');
+    fireEvent.click(screen.getAllByText('欢迎使用笔记')[0]!);
+    const body = await screen.findByLabelText<HTMLTextAreaElement>('笔记正文');
+    fireEvent.change(body, { target: { value: '前后' } });
+    body.setSelectionRange(1, 1);
+    fireEvent.drop(body, {
+      dataTransfer: {
+        getData: () =>
+          JSON.stringify({
+            id: 'file-1',
+            kind: 'file',
+            title: 'sample.txt',
+            filePath: 'C:\\sample.txt',
+            createdAt: Date.now(),
+          }),
+      },
+    });
+    await waitFor(() => expect(body.value).toBe('前插入文字后'));
+    expect(invoke).toHaveBeenCalledWith('file.read', { path: 'C:\\sample.txt', maxBytes: 800000 });
+  });
+
+  it('allows placing a cursor in task text after double click', async () => {
+    renderView();
+    await screen.findByText('我的笔记本');
+    fireEvent.click(screen.getByLabelText('切换到任务清单'));
+    fireEvent.change(screen.getByLabelText('新任务'), { target: { value: '可选择的任务' } });
+    fireEvent.keyDown(screen.getByLabelText('新任务'), { key: 'Enter' });
+    fireEvent.doubleClick(await screen.findByText('可选择的任务'));
+    expect(screen.getByLabelText('任务内容')).toHaveValue('可选择的任务');
+  });
+  it('renders transit audio and video files with playback controls on the canvas', async () => {
+    vi.stubGlobal('PointerEvent', MouseEvent);
+    vi.stubGlobal('DragEvent', MouseEvent);
+    renderView();
+    await screen.findByText('我的笔记本');
+    const canvas = screen.getByLabelText('便利贴画布');
+    for (const [name, mimeType] of [
+      ['clip.mp4', 'video/mp4'],
+      ['song.mp3', 'audio/mpeg'],
+    ]) {
+      fireEvent.drop(canvas, {
+        clientX: 300,
+        clientY: 200,
+        dataTransfer: {
+          files: [],
+          getData: () =>
+            JSON.stringify({
+              id: name,
+              kind: 'file',
+              title: name,
+              filePath: 'C:\\' + name,
+              mimeType,
+              createdAt: Date.now(),
+            }),
+        },
+      });
+    }
+    expect(canvas.querySelector('video')).toHaveAttribute('controls');
+    expect(canvas.querySelector('audio')).toHaveAttribute('controls');
+    expect(screen.getByText('画布')).toBeInTheDocument();
+    const audioCard = screen.getByLabelText('画布音频');
+    const beforeLeft = parseFloat(audioCard.style.left);
+    fireEvent.pointerDown(screen.getByText('song.mp3'), {
+      button: 0,
+      pointerId: 1,
+      clientX: 300,
+      clientY: 200,
+    });
+    fireEvent.pointerMove(audioCard, { pointerId: 1, clientX: 360, clientY: 240 });
+    fireEvent.pointerUp(audioCard, { pointerId: 1 });
+    expect(parseFloat(audioCard.style.left)).toBeGreaterThan(beforeLeft);
+    const afterLeft = audioCard.style.left;
+    fireEvent.pointerDown(audioCard.querySelector('audio')!, {
+      button: 0,
+      pointerId: 2,
+      clientX: 300,
+      clientY: 200,
+    });
+    fireEvent.pointerMove(audioCard, { pointerId: 2, clientX: 400, clientY: 200 });
+    fireEvent.pointerUp(audioCard, { pointerId: 2 });
+    expect(audioCard.style.left).toBe(afterLeft);
   });
 });

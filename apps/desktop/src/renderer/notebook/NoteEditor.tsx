@@ -19,6 +19,7 @@ import { formatNoteText, type NoteFormat } from './note-format';
 import { renderNoteMarkdown, safeNoteUrl } from './note-markdown';
 import { NOTEBOOK_TEXT_MAX, type NotePage } from './types';
 import './note-editor.css';
+import { parseTransitDrag } from '../transit/drag-utils';
 
 const TOOL_BUTTON =
   'flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-30';
@@ -116,6 +117,36 @@ export function NoteEditor({
   return (
     <div
       className="m-3 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-sm"
+      onDrop={(event) => {
+        const item = parseTransitDrag(event.dataTransfer);
+        if (!item) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const start = bodyRef.current?.selectionStart ?? note.content.length;
+        const end = bodyRef.current?.selectionEnd ?? start;
+        void (async () => {
+          try {
+            const text =
+              item.filePath &&
+              /\.(txt|md|markdown|csv|json|log|xml|html|css|js|ts)$/i.test(item.filePath)
+                ? (
+                    (await window.urchin.invoke('file.read', {
+                      path: item.filePath,
+                      maxBytes: 800000,
+                    })) as { content: string }
+                  ).content
+                : (item.text ?? item.url ?? item.filePath ?? item.title);
+            const inserted = text.slice(0, NOTEBOOK_TEXT_MAX - note.content.length + end - start);
+            selectionRef.current = { start: start + inserted.length, end: start + inserted.length };
+            setReading(false);
+            onChange({
+              content: note.content.slice(0, start) + inserted + note.content.slice(end),
+            });
+          } catch {
+            setMessage('文字文件读取失败，请确认文件仍然存在。');
+          }
+        })();
+      }}
       onKeyDown={(event) => {
         if (
           event.nativeEvent.isComposing ||

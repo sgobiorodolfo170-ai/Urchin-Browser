@@ -121,7 +121,6 @@ export function BookmarksBar({
     return () => bar.removeEventListener('wheel', scroll);
   }, []);
   const [items, setItems] = useState<Bookmark[]>([]);
-  const [openFolderId, setOpenFolderId] = useState<string | null>(null);
   const [error, setError] = useState(false);
   useEffect(() => {
     let disposed = false;
@@ -146,21 +145,19 @@ export function BookmarksBar({
     };
   }, []);
   const children = items.filter((b) => b.parentId === null).sort((a, b) => a.position - b.position);
-  const openFolder = async (item: Bookmark, button: HTMLButtonElement) => {
-    const bounds = button.getBoundingClientRect();
-    setOpenFolderId(item.id);
-    try {
-      const res = (await window.urchin.invoke('bookmark.openFolderMenu', {
+  /**
+   * 打开文件夹菜单：主进程独立子窗口（渲染层浮层会被网页视图遮挡），
+   * 定位在按钮正下方（主流浏览器做法）。锚点为按钮左下角（视口坐标）。
+   */
+  const openFolderMenu = (item: Bookmark, button: HTMLButtonElement) => {
+    const rect = button.getBoundingClientRect();
+    void window.urchin
+      .invoke('bookmark.openFolderMenuWindow', {
         folderId: item.id,
-        x: Math.round(bounds.left),
-        y: Math.round(bounds.bottom),
-      })) as { url: string | null };
-      if (res.url) onNavigate(res.url);
-    } catch {
-      setError(true);
-    } finally {
-      setOpenFolderId(null);
-    }
+        anchorX: Math.round(rect.left),
+        anchorY: Math.round(rect.bottom),
+      })
+      .catch(() => setError(true));
   };
   return (
     <div
@@ -192,10 +189,9 @@ export function BookmarksBar({
                 type="button"
                 title={item.url ?? item.title}
                 aria-haspopup={item.type === 'folder' ? 'menu' : undefined}
-                aria-expanded={item.type === 'folder' ? openFolderId === item.id : undefined}
                 className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-1 hover:bg-surface-secondary"
                 onClick={(event) => {
-                  if (item.type === 'folder') void openFolder(item, event.currentTarget);
+                  if (item.type === 'folder') openFolderMenu(item, event.currentTarget);
                   else if (item.url) onNavigate(item.url);
                 }}
               >

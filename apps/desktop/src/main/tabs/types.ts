@@ -148,6 +148,8 @@ export interface Tab {
    * page-favicon-updated 不再覆盖（仅主进程持有，不进 TabSnapshot）。
    */
   piIconPinned?: boolean;
+  /** 本次主框架导航的入口地址，重定向后仍用于回填原收藏的图标。 */
+  navigationSourceUrl?: string;
   /** 是否激活（每窗口仅一个 active tab） */
   active: boolean;
   /** 是否加载中 */

@@ -43,6 +43,7 @@ function previewOf(note: NotePage): string {
 }
 
 export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps) {
+  const [selectingTask, setSelectingTask] = useState<string | null>(null);
   const [taskDraft, setTaskDraft] = useState('');
   const [pendingDeleteNote, setPendingDeleteNote] = useState<NotePage | null>(null);
 
@@ -340,7 +341,8 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
               tasks.map((task) => (
                 <div
                   key={task.id}
-                  draggable
+                  draggable={selectingTask !== task.id}
+                  onDoubleClick={() => setSelectingTask(task.id)}
                   onDragStart={(e) => {
                     e.dataTransfer.effectAllowed = 'copy';
                     e.dataTransfer.setData('text/plain', task.text);
@@ -367,7 +369,18 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
                       task.done ? 'text-text-secondary line-through' : 'text-text',
                     )}
                   >
-                    {task.text}
+                    {selectingTask === task.id ? (
+                      <textarea
+                        autoFocus
+                        readOnly
+                        aria-label="任务内容"
+                        value={task.text}
+                        className="w-full resize-none bg-transparent text-inherit outline-none"
+                        onBlur={() => setSelectingTask(null)}
+                      />
+                    ) : (
+                      task.text
+                    )}
                   </span>
                   <button
                     type="button"

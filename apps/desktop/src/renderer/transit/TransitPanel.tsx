@@ -283,7 +283,7 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
     return (
       <div
         className={cn(
-          'flex flex-col items-center gap-1 px-1 py-2',
+          'flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto px-1 py-2',
           dragOverSelf && 'bg-primary/10',
         )}
         tabIndex={0}

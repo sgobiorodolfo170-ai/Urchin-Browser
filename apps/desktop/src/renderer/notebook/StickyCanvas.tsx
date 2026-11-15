@@ -251,7 +251,11 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
     update((prev) => ({ ...prev, stickies: prev.stickies.filter((sticky) => sticky.id !== id) }));
   };
 
-  const addImage = (filePath: string, at?: { x: number; y: number }) => {
+  const addImage = (
+    filePath: string,
+    at?: { x: number; y: number },
+    mediaKind?: 'audio' | 'video',
+  ) => {
     const element = containerRef.current;
     const current = viewRef.current;
     const rect = element?.getBoundingClientRect();
@@ -263,6 +267,7 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
     const now = Date.now();
     const image: CanvasImage = {
       id: makeNotebookId('image'),
+      ...(mediaKind ? { mediaKind } : {}),
       notebookId,
       filePath,
       x: point.x - CANVAS_IMAGE_DEFAULT_WIDTH / 2,
@@ -274,6 +279,7 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
       updatedAt: now,
     };
     update((prev) => ({ ...prev, images: [...prev.images, image] }));
+    if (mediaKind) return;
     const probe = new Image();
     probe.onload = () => {
       if (!probe.naturalWidth) return;
@@ -397,13 +403,21 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
       }}
       onDrop={(e) => {
         const imageFile = Array.from(e.dataTransfer.files ?? []).find((file) =>
-          file.type.startsWith('image/'),
+          /^(image|audio|video)\//.test(file.type),
         );
         if (imageFile) {
           const path = resolveDroppedFilePath(imageFile);
           if (path) {
             e.preventDefault();
-            addImage(path, screenToWorld(e.clientX, e.clientY));
+            addImage(
+              path,
+              screenToWorld(e.clientX, e.clientY),
+              imageFile.type.startsWith('audio/')
+                ? 'audio'
+                : imageFile.type.startsWith('video/')
+                  ? 'video'
+                  : undefined,
+            );
             return;
           }
         }
@@ -411,6 +425,21 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
         if (!transitItem) return;
         e.preventDefault();
         const point = screenToWorld(e.clientX, e.clientY);
+        if (
+          transitItem.filePath &&
+          (/^(audio|video)\//.test(transitItem.mimeType ?? '') ||
+            /\.(mp3|wav|ogg|m4a|flac|mp4|webm|mov)$/i.test(transitItem.filePath))
+        ) {
+          addImage(
+            transitItem.filePath,
+            point,
+            (transitItem.mimeType ?? '').startsWith('audio/') ||
+              /\.(mp3|wav|ogg|m4a|flac)$/i.test(transitItem.filePath)
+              ? 'audio'
+              : 'video',
+          );
+          return;
+        }
         const isImage =
           transitItem.kind === 'screenshot' ||
           (transitItem.kind === 'file' && (transitItem.mimeType ?? '').startsWith('image/'));
@@ -523,7 +552,7 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
       <div className="absolute left-3 right-3 top-3 z-20 flex w-fit max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-1 rounded-xl border border-border bg-surface/95 p-1.5 shadow-md backdrop-blur">
         <span className="mr-1 flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-text">
           <StickyNoteIcon className="h-3.5 w-3.5" />
-          便利贴
+          画布
         </span>
         <button
           type="button"
@@ -656,7 +685,8 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
           <div className="mx-4 max-w-xs rounded-2xl border border-border bg-surface/90 px-6 py-6 text-center text-xs leading-relaxed text-text-secondary shadow-sm">
             <StickyNoteIcon className="mx-auto mb-3 h-9 w-9 text-primary/60" />
             <p className="mb-2 text-sm font-medium text-text">给灵感留个位置</p>
-            双击空白处、点击 + 或 Ctrl+V 粘贴文本，添加第一张便利贴；也可把图片拖入画布。
+            双击空白处、点击 + 或 Ctrl+V
+            粘贴文本，添加第一张便利贴；也可把图片、音频或视频拖入画布。
           </div>
         </div>
       )}
@@ -921,7 +951,13 @@ function CanvasImageCard({
       data-canvas-image
       role="group"
       tabIndex={0}
-      aria-label="画布图片"
+      aria-label={
+        image.mediaKind === 'audio'
+          ? '画布音频'
+          : image.mediaKind === 'video'
+            ? '画布视频'
+            : '画布图片'
+      }
       title="悬停滚轮可放大图片；双击恢复 100%"
       className="group pointer-events-auto absolute select-none rounded-md border border-black/10 bg-surface shadow-md outline-none focus:ring-2 focus:ring-primary/50"
       style={{
@@ -935,6 +971,8 @@ function CanvasImageCard({
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.stopPropagation();
+        // 原生播放器内部控件自行处理指针，标题和空白区域用于移动卡片。
+        if ((e.target as HTMLElement).closest('audio, video, button')) return;
         e.currentTarget.setPointerCapture(e.pointerId);
         dragRef.current = {
           startX: e.clientX,
@@ -966,13 +1004,41 @@ function CanvasImageCard({
         onResetScale();
       }}
     >
-      <img
-        src={`file:///${image.filePath.replace(/\\/g, '/')}`}
-        alt=""
-        draggable={false}
-        className="h-full w-full object-contain"
-        onDragStart={(e) => e.preventDefault()}
-      />
+      {image.mediaKind ? (
+        <div className="flex h-full flex-col" onDoubleClick={(e) => e.stopPropagation()}>
+          <span
+            className={cn(
+              'cursor-grab truncate px-3 py-2 text-xs text-text-secondary active:cursor-grabbing',
+              image.mediaKind === 'audio' ? 'flex-1' : 'shrink-0',
+            )}
+          >
+            {image.filePath.split(/[\\/]/).pop()}
+          </span>
+          {image.mediaKind === 'audio' ? (
+            <audio
+              controls
+              preload="metadata"
+              className="block w-full shrink-0"
+              src={`urchin://file-resource/${encodeURIComponent(image.filePath)}`}
+            />
+          ) : (
+            <video
+              controls
+              preload="metadata"
+              className="block min-h-0 w-full flex-1"
+              src={`urchin://file-resource/${encodeURIComponent(image.filePath)}`}
+            />
+          )}
+        </div>
+      ) : (
+        <img
+          src={`file:///${image.filePath.replace(/\\/g, '/')}`}
+          alt=""
+          draggable={false}
+          className="h-full w-full object-contain"
+          onDragStart={(e) => e.preventDefault()}
+        />
+      )}
 
       <div className="absolute -top-7 right-0 hidden items-center gap-1 rounded-md border border-border bg-surface/95 px-1.5 py-0.5 text-[10px] text-text-secondary shadow-sm backdrop-blur group-hover:flex group-focus-within:flex">
         <span>{Math.round(image.scale * 100)}%</span>

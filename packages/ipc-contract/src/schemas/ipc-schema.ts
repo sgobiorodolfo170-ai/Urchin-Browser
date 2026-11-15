@@ -2950,13 +2950,14 @@ export const ipcSchema = {
   'history.delete': { req: historyDeleteReqSchema, res: historyDeleteResSchema },
   'history.clear': { req: historyClearReqSchema, res: historyClearResSchema },
   'bookmark.create': { req: bookmarkCreateReqSchema, res: bookmarkCreateResSchema },
-  'bookmark.openFolderMenu': {
+  /** 收藏栏文件夹菜单子窗口：锚点为主窗口内容区坐标（DIP），主进程换算屏幕定位。 */
+  'bookmark.openFolderMenuWindow': {
     req: z.object({
       folderId: z.string().min(1),
-      x: z.number().int().min(0),
-      y: z.number().int().min(0),
+      anchorX: z.number().int().min(0),
+      anchorY: z.number().int().min(0),
     }),
-    res: z.object({ url: urlSchema.nullable() }),
+    res: z.object({ ok: z.literal(true) }),
   },
   'bookmark.list': { req: bookmarkListReqSchema, res: bookmarkListResSchema },
   'bookmark.search': { req: bookmarkSearchReqSchema, res: bookmarkSearchResSchema },

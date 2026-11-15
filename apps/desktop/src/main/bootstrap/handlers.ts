@@ -37,7 +37,6 @@ import { registerTabHandlers, getLayoutState, setLayoutState, type BrowserViewLi
 import { TabDetachDragSupervisor } from '../tabs/tab-detach-drag';
 import { registerHistoryHandlers } from '../history';
 import { registerBookmarkHandlers } from '../bookmarks';
-import { openBookmarkFolderMenu } from '../bookmarks/folder-menu';
 import { registerSettingsHandlers } from '../settings';
 import { registerDownloadHandlers } from '../downloads';
 import { registerImportHandlers } from '../import';
@@ -376,9 +375,23 @@ export function registerIpcHandlers(ctx: AppContext): void {
       return { color: null };
     }
   });
-  registerHandler(ipcMain, 'bookmark.openFolderMenu', (req, callCtx) =>
-    openBookmarkFolderMenu(ctx.bookmarkManager, callCtx.event.sender as WebContents, req),
-  );
+  // 收藏栏文件夹菜单子窗口：渲染层浮层会被 BrowserView 遮挡，由主进程开
+  // 独立子窗口定位在按钮下方（folder-menu-window.ts）。锚点为主窗口内容区坐标。
+  registerHandler(ipcMain, 'bookmark.openFolderMenuWindow', (req, callCtx) => {
+    const senderWindow = BrowserWindow.fromWebContents(callCtx.event.sender as WebContents);
+    if (!senderWindow || !ctx.folderMenuWindow) return { ok: true as const };
+    const all = ctx.bookmarkManager.list();
+    if (!all.some((item) => item.id === req.folderId && item.type === 'folder'))
+      return { ok: true as const };
+    const bounds = senderWindow.getContentBounds();
+    const childCount = all.filter((item) => item.parentId === req.folderId).length;
+    ctx.folderMenuWindow.open(
+      req.folderId,
+      { x: bounds.x + req.anchorX, y: bounds.y + req.anchorY },
+      childCount,
+    );
+    return { ok: true as const };
+  });
   registerBookmarkHandlers(ipcMain, ctx.bookmarkManager, {
     getFavicon: (url) => {
       const tabs = ctx.tabManager.query({});

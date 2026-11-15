@@ -73,6 +73,7 @@ import { FaviconService } from './favicons/favicon-service';
 import { getGenOfficeSchemePrivileges } from './genoffice/loader';
 import { currentThemeBackground } from './theme';
 import { BookmarkPanel } from './panel/bookmark-panel';
+import { FolderMenuWindow } from './bookmarks/folder-menu-window';
 import { StatusBarOverlay, type StatusBarHostWindow } from './status-bar/status-bar-overlay';
 import { StatusBarBall, type StatusBarBallHostWindow } from './status-bar/status-bar-ball';
 import { SelectionCardOverlay } from './translate/selection-card-overlay';
@@ -308,6 +309,7 @@ const ctx: AppContext = {
   genofficeIntegration: null,
   genofficeHomeStore: null,
   bookmarkPanel: null,
+  folderMenuWindow: null,
   bookmarkPickerContext: null,
   statusBarOverlay: null,
   statusBarBall: null,
@@ -1462,6 +1464,26 @@ void app.whenReady().then(async () => {
           const u = new URL(base);
           u.pathname = '/panel.html';
           if (query) Object.entries(query).forEach(([k, v]) => u.searchParams.set(k, v));
+          await win.loadURL(u.toString());
+        } else {
+          await win.loadFile(join(__dirname, '..', 'renderer', 'panel.html'), { query });
+        }
+      },
+    });
+
+    // 初始化收藏栏文件夹菜单子窗口（独立子窗口，定位在文件夹按钮下方，
+    // 悬浮于网页之上；页面复用 panel.html ?mode=folder-menu 入口）。
+    ctx.folderMenuWindow = new FolderMenuWindow({
+      getParentWindow: () => windowManager.getWindow(mainWindow.id)?.browserWindow ?? null,
+      preloadPath: join(__dirname, '..', 'preload', 'index.js'),
+      onLoad: async (win, folderId) => {
+        const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
+        const query = { mode: 'folder-menu', folderId };
+        if (isDev) {
+          const base = process.env.URCHIN_RENDERER_URL ?? 'http://localhost:5173';
+          const u = new URL(base);
+          u.pathname = '/panel.html';
+          Object.entries(query).forEach(([k, v]) => u.searchParams.set(k, v));
           await win.loadURL(u.toString());
         } else {
           await win.loadFile(join(__dirname, '..', 'renderer', 'panel.html'), { query });

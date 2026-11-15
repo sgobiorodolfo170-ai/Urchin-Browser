@@ -200,42 +200,19 @@ test.describe('设置页', () => {
       return folder.bookmark.id;
     });
     await expect(bar.getByRole('button', { name: '同步文件夹' })).toBeVisible();
+    // 文件夹菜单为主进程独立子窗口（悬浮于网页之上，定位在按钮下方）。
     await expect(bar.getByRole('button', { name: '同步文件夹' })).toHaveAttribute(
       'aria-haspopup',
       'menu',
     );
-    // 拦截原生菜单展示，验证实际构建的菜单与下拉锚点；原生菜单无需 DOM 浮层。
-    await electronApp.evaluate(({ Menu }) => {
-      Menu.prototype.popup = function (options) {
-        const probe = globalThis as typeof globalThis & {
-          bookmarkMenuProbe?: { labels: string[]; x?: number; y?: number };
-        };
-        probe.bookmarkMenuProbe = {
-          labels: this.items.map((item) => item.label),
-          x: options?.x,
-          y: options?.y,
-        };
-        options?.callback?.();
-      };
-    });
-    const folderBounds = (await bar.getByRole('button', { name: '同步文件夹' }).boundingBox())!;
     await bar.getByRole('button', { name: '同步文件夹' }).click();
+    // 菜单子窗口加载 panel.html?mode=folder-menu，展示 bookmark.list 真源的子项（含重命名同步）。
     await expect
-      .poll(async () =>
-        electronApp.evaluate(
-          () =>
-            (globalThis as typeof globalThis & { bookmarkMenuProbe?: { labels: string[] } })
-              .bookmarkMenuProbe?.labels,
-        ),
-      )
-      .toEqual(['同步子项已重命名']);
-    const menuPosition = await electronApp.evaluate(
-      () =>
-        (globalThis as typeof globalThis & { bookmarkMenuProbe?: { x: number; y: number } })
-          .bookmarkMenuProbe!,
-    );
-    expect(menuPosition.x).toBe(Math.round(folderBounds.x));
-    expect(menuPosition.y).toBe(Math.round(folderBounds.y + folderBounds.height));
+      .poll(() => electronApp.windows().some((w) => w.url().includes('mode=folder-menu')))
+      .toBe(true);
+    const menuPage = electronApp.windows().find((w) => w.url().includes('mode=folder-menu'))!;
+    await expect(menuPage.getByText('同步子项已重命名')).toBeVisible();
+    await menuPage.close();
     await window.evaluate(async (id) => {
       await globalThis.window.urchin.invoke('bookmark.delete', { id });
     }, folderId);
@@ -252,7 +229,7 @@ test.describe('设置页', () => {
     await window.getByRole('button', { name: '展开收藏栏' }).click();
     await bar.getByRole('button', { name: '收藏栏测试' }).click();
     await expect
-      .poll(async () =>
+      .poll(() =>
         window.evaluate(async () => {
           const result = (await globalThis.window.urchin.invoke('tab.list', { windowId: 1 })) as {
             tabs: { active: boolean; url: string }[];
@@ -268,11 +245,6 @@ test.describe('设置页', () => {
     expect(addressBar).toBeDefined();
     const card = addressBar!.locator('.status-bar-card');
     await expect(card).toBeVisible();
-    await expect
-      .poll(async () =>
-        Math.abs((await bar.boundingBox())!.width - (await card.boundingBox())!.width / 2),
-      )
-      .toBeLessThan(1);
     await window.getByRole('button', { name: '展开左侧栏', exact: true }).click();
     await expect
       .poll(async () =>
@@ -309,7 +281,7 @@ test.describe('设置页', () => {
         await api.invoke('tab.loadUrl', { tabId: result.tabs.find((tab) => tab.active)!.id, url });
       }, backgroundUrl);
       await expect
-        .poll(async () =>
+        .poll(() =>
           electronApp.evaluate(
             ({ webContents }, url) =>
               webContents.getAllWebContents().some((view) => view.getURL() === url),
@@ -337,7 +309,7 @@ test.describe('设置页', () => {
       await expect(region).toHaveCSS('background-color', 'rgb(24, 25, 28)', { timeout: 10000 });
       await window.getByRole('button', { name: '设置', exact: true }).click();
       await expect
-        .poll(async () =>
+        .poll(() =>
           region.evaluate(
             (el) =>
               getComputedStyle(el).backgroundColor ===

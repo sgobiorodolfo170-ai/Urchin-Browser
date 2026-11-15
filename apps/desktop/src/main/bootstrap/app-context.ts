@@ -139,6 +139,12 @@ export interface AppContext {
   bookmarkPanel: BookmarkPanel | null;
 
   /**
+   * 收藏栏文件夹菜单子窗口（独立子窗口，定位在文件夹按钮下方，悬浮于网页之上）。
+   * 2026-11-15 重设计：渲染层浮层会被 BrowserView 遮挡，沿用面板的子窗口机制。
+   */
+  folderMenuWindow: import('../bookmarks/folder-menu-window').FolderMenuWindow | null;
+
+  /**
    * picker 模式待存页面上下文（星标按钮未收藏时 ui.panel.saveBookmarkPicker
    * 写入，面板加载 ?mode=picker 后经 ui.panel.getPickerContext 读取）。
    */

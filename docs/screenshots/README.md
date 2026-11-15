@@ -12,7 +12,7 @@
 | 02-workspaces.png | 工作区总览 | 20261115-231505.png |
 | 03-pi-workbench.png | Pi 编程工作台（已遮盖令牌） | 20261115-230628.png |
 | 04-deepseek-harness.png | DeepSeek Harness | 20261115-230713.png |
-| 05-notebook-canvas.png | 速记与画布 | 20261115-231905.png |
+| 05-notebook-canvas.png | 速记与画布 | 20261115-232421.png |
 | 06-transit-panel.png | 网页阅读与中转区 | 20261115-232701.png |
 | 07-mail.png | 邮箱连接页 | 20261115-232538.png |
 | 08-settings.png | 通用设置 | 20261115-230516.png |

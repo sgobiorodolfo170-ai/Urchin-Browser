@@ -36,8 +36,8 @@
   <tr>
     <td width="50%">
       <strong>速记与画布</strong><br />
-      笔记本、Markdown 编辑和便利贴画布并排，随手记录与整理想法。
-      <a href="./docs/screenshots/05-notebook-canvas.png"><img src="./docs/screenshots/05-notebook-canvas.png" alt="速记三栏布局：笔记本、Markdown 编辑器与便利贴画布" width="100%" /></a>
+      笔记本、任务清单与多媒体画布并排，集中整理文字、图片和音视频素材。
+      <a href="./docs/screenshots/05-notebook-canvas.png"><img src="./docs/screenshots/05-notebook-canvas.png" alt="速记三栏布局：笔记本、任务清单与包含便利贴、图片和音视频的画布" width="100%" /></a>
     </td>
     <td width="50%">
       <strong>浏览与中转区</strong><br />

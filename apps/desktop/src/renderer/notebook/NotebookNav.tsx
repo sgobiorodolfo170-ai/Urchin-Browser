@@ -441,7 +441,40 @@ export function NotebookNav({ state, update }: NotebookNavProps) {
         })}
       </div>
 
-      {calendarOpen && <CalendarDialog onClose={() => setCalendarOpen(false)} />}
+      {calendarOpen && (
+        <CalendarDialog
+          onClose={() => setCalendarOpen(false)}
+          relationOptions={[
+            ...state.notes.map((note) => ({
+              type: 'note' as const,
+              id: note.id,
+              name: note.title || '无标题笔记',
+            })),
+            ...state.tasks.map((task) => ({
+              type: 'task' as const,
+              id: task.id,
+              name: `${task.done ? '✓ ' : ''}${task.text}`,
+            })),
+          ]}
+          onOpenRelation={(type, id) => {
+            const item =
+              type === 'note'
+                ? state.notes.find((note) => note.id === id)
+                : state.tasks.find((task) => task.id === id);
+            if (!item) return;
+            update((previous) => ({
+              ...previous,
+              activeNotebookId: item.notebookId,
+              activeNoteId: type === 'note' ? id : null,
+              middleMode: type === 'note' ? 'notes' : 'tasks',
+              expandedNotebookIds: previous.expandedNotebookIds.includes(item.notebookId)
+                ? previous.expandedNotebookIds
+                : [...previous.expandedNotebookIds, item.notebookId],
+            }));
+            setCalendarOpen(false);
+          }}
+        />
+      )}
       <ConfirmDialog
         open={pendingDelete !== null}
         title={pendingDelete?.kind === 'notebook' ? '删除笔记本？' : '删除笔记？'}

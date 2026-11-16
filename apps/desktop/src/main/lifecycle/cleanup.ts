@@ -290,6 +290,8 @@ export async function performCleanup(ctx: AppContext): Promise<void> {
     }
 
     // 6. 关闭 SQLite 数据库连接（释放 better-sqlite3 原生线程，触发 WAL checkpoint）
+    ctx.disposeCalendarReminders?.();
+    ctx.disposeCalendarReminders = undefined;
     if (ctx.storageLayer) {
       try {
         ctx.storageLayer.close();

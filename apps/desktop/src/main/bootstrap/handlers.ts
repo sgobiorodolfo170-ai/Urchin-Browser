@@ -18,6 +18,7 @@
  */
 import {
   app,
+  Notification,
   type WebContents,
   ipcMain,
   dialog,
@@ -32,6 +33,8 @@ import { dirname, join, resolve } from 'node:path';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createLogger } from '@urchin/logger';
 import { registerHandler } from '@urchin/ipc-contract';
+import { registerCalendarHandlers } from '../calendar/register-handlers';
+import { startCalendarReminders } from '../calendar/reminders';
 import { registerWindowHandlers } from '../windows';
 import { registerTabHandlers, getLayoutState, setLayoutState, type BrowserViewLike } from '../tabs';
 import { TabDetachDragSupervisor } from '../tabs/tab-detach-drag';
@@ -247,6 +250,32 @@ function createWindowWithUrlAt(
  * W1-D3：tab 域完整实现 + window 域完整实现。
  */
 export function registerIpcHandlers(ctx: AppContext): void {
+  if (ctx.storageLayer) {
+    const sendCalendarEvent = (channel: string) => {
+      for (const window of ctx.windowManager.getAllWindows()) {
+        try {
+          window.browserWindow.webContents.send(channel, {});
+        } catch {
+          /* 关闭中的窗口不阻断其他窗口通知。 */
+        }
+      }
+    };
+    const service = registerCalendarHandlers(
+      ipcMain,
+      ctx.storageLayer.mainStore,
+      (sender) =>
+        ctx.windowManager
+          .getAllWindows()
+          .some((window) => window.browserWindow.webContents === sender),
+      () => sendCalendarEvent('calendar.changed'),
+    );
+    ctx.disposeCalendarReminders?.();
+    ctx.disposeCalendarReminders = startCalendarReminders(service, (title, method) => {
+      sendCalendarEvent('calendar.reminder');
+      if (method === 'notification' && Notification.isSupported())
+        new Notification({ title: '日历提醒', body: title }).show();
+    });
+  }
   // 标签拖出窗口拖拽看护器（2026-11-13「拖出可拖回」；单实例：一台机器同时
   // 只有根拖拽指针，二次 start 幂等终止上一会话）。闭包内持有，遵守本文件
   // 「不持有可变模块级状态」约定；会话回调经 ctx 访问 windowManager / tabManager。

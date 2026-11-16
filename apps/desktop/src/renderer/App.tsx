@@ -42,6 +42,7 @@ import type { WorkspaceSwitcherMode } from './workspaces/WorkspaceSwitcher';
 import { useWorkspaces } from './workspaces/use-workspaces';
 import { TabCardContextMenu } from './workspaces/TabCardContextMenu';
 import { WorkspaceManagerDialog } from './workspaces/WorkspaceManagerDialog';
+import { CalendarReminderToast } from './calendar/CalendarReminderToast';
 import type { Workspace } from './workspaces/types';
 import { DEFAULT_WORKSPACE_ID } from './workspaces/types';
 import type { TabEventPayload, TabSnapshot } from './tabs/types';
@@ -1465,6 +1466,7 @@ export function App() {
         )}
 
         {/* 工作区管理对话框（右键工作区选项卡触发，TP7） */}
+        <CalendarReminderToast />
         {workspaceManagerTarget && (
           <WorkspaceManagerDialog
             workspace={workspaceManagerTarget}

@@ -213,8 +213,8 @@
     {
       "spec": "notebook.spec.ts",
       "area": "笔记",
-      "tests": 1,
-      "durationSec": 8,
+      "tests": 3,
+      "durationSec": 70,
       "triggers": [
         "apps/desktop/src/renderer/calendar/**",
         "apps/desktop/src/renderer/notebook/**",

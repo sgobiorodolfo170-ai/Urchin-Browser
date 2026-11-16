@@ -140,6 +140,7 @@ export class StorageLayer {
 
   /** 主库 facade（settings 表 KV） */
   readonly mainStore = {
+    transaction: <T>(fn: () => T): T => this.main.transaction(fn)(),
     get: <T>(key: string): T | null => {
       const row = this.main.prepare('SELECT value FROM settings WHERE key = ?').get(key) as
         { value: string } | undefined;

@@ -7,6 +7,7 @@
  * 防 AI 协作 schema 漂移（AGENTS.md §六 项目特化审查点）。
  */
 import { z } from 'zod';
+import { calendarChannels } from './calendar';
 
 // ============================================================================
 // 基础类型
@@ -2705,6 +2706,7 @@ export type LogsClientErrorRes = z.infer<typeof logsClientErrorResSchema>;
  * 扩展新通道时在此追加，自动通过 TypeScript 推导获得类型化 invoke。
  */
 export const ipcSchema = {
+  ...calendarChannels,
   'tab.create': { req: tabCreateReqSchema, res: tabCreateResSchema },
   'tab.reorder': {
     req: z.object({

@@ -42,6 +42,8 @@ import type { TrayManager } from '../tray';
 
 /** 主进程全局状态：performCleanup / registerIpcHandlers 的闭包变量打包。 */
 export interface AppContext {
+  /** 日历持久提醒扫描器；存储关闭前停止。 */
+  disposeCalendarReminders?: () => void;
   /** 全局 WindowManager 实例（M1）：单例管理所有窗口，保证 windowId 全局唯一。 */
   readonly windowManager: WindowManager;
 

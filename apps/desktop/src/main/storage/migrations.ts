@@ -130,6 +130,30 @@ export const MIGRATIONS_MAIN: readonly Migration[] = [
       ALTER TABLE history ADD COLUMN favicon TEXT;
     `,
   },
+  {
+    version: 5,
+    up: `
+      CREATE TABLE calendar_calendars (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+      CREATE TABLE calendar_requests (key TEXT PRIMARY KEY, payload TEXT NOT NULL);
+      CREATE TABLE calendar_events (
+        id TEXT PRIMARY KEY, calendar_id TEXT NOT NULL REFERENCES calendar_calendars(id),
+        start_at INTEGER NOT NULL, end_at INTEGER NOT NULL, version INTEGER NOT NULL,
+        deleted_at TEXT, payload TEXT NOT NULL, idempotency_key TEXT UNIQUE
+      );
+      CREATE INDEX idx_calendar_range ON calendar_events(calendar_id, start_at, end_at);
+      CREATE TABLE calendar_audit_log (id TEXT PRIMARY KEY, event_id TEXT NOT NULL,
+        action TEXT NOT NULL, at TEXT NOT NULL, version INTEGER NOT NULL, actor TEXT NOT NULL);
+    `,
+  },
+  {
+    version: 6,
+    up: `
+      CREATE TABLE calendar_event_exceptions (series_id TEXT NOT NULL REFERENCES calendar_events(id), occurrence_date TEXT NOT NULL, payload TEXT, deleted_at TEXT, PRIMARY KEY(series_id, occurrence_date));
+      CREATE TABLE calendar_reminder_deliveries (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+      CREATE INDEX idx_calendar_delivery_due ON calendar_reminder_deliveries(json_extract(payload,'$.dismissed'), json_extract(payload,'$.dueAt'));
+      CREATE TABLE calendar_restore_snapshots (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
+    `,
+  },
 ];
 
 /** AI 库迁移列表（conversations/messages/providers/secrets_index） */

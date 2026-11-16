@@ -1,3 +1,4 @@
+import { OAuthLogin } from './OAuthLogin';
 /**
  * M25 邮箱模块 · 账户配置向导
  *
@@ -30,6 +31,7 @@ import {
 } from './provider-presets';
 
 export interface AccountSetupProps {
+  initialAccount?: { id: string; name: string; email: string; authProvider: 'gmail' | 'outlook' };
   onSaved: () => void;
   onCancel: () => void;
 }
@@ -56,14 +58,14 @@ function avatarColor(id: string): string {
   return AVATAR_COLORS[hash % AVATAR_COLORS.length]!;
 }
 
-export function AccountSetup({ onSaved, onCancel }: AccountSetupProps) {
+export function AccountSetup({ onSaved, onCancel, initialAccount }: AccountSetupProps) {
   // ── 向导状态 ──
-  const [presetId, setPresetId] = useState<string | null>('qq');
+  const [presetId, setPresetId] = useState<string | null>(initialAccount?.authProvider ?? 'qq');
   const preset = presetId === 'custom' ? null : presetId ? getPresetById(presetId) : null;
 
   // ── 表单字段 ──
-  const [name, setName] = useState('QQ邮箱');
-  const [email, setEmail] = useState('');
+  const [name, setName] = useState(initialAccount?.name ?? 'QQ邮箱');
+  const [email, setEmail] = useState(initialAccount?.email ?? '');
   const [password, setPassword] = useState('');
   const [imapHost, setImapHost] = useState('imap.qq.com');
   const [imapPort, setImapPort] = useState('993');
@@ -71,6 +73,7 @@ export function AccountSetup({ onSaved, onCancel }: AccountSetupProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   // ── 操作状态 ──
+  const [oauthBusy, setOauthBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -109,8 +112,9 @@ export function AccountSetup({ onSaved, onCancel }: AccountSetupProps) {
     handleSelectPreset(detected, detected.id);
   };
 
-  const busy = testing || saving;
+  const busy = testing || saving || oauthBusy;
   const valid =
+    !initialAccount &&
     preset?.authType !== 'oauth2' &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) &&
     password.length > 0 &&
@@ -204,6 +208,7 @@ export function AccountSetup({ onSaved, onCancel }: AccountSetupProps) {
               key={p.id}
               aria-pressed={presetId === p.id}
               className={`flex min-w-0 items-center gap-2 rounded-xl border px-3 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${presetId === p.id ? 'border-blue-500 bg-blue-500/10 text-text' : 'border-border text-text-secondary hover:bg-surface-secondary hover:text-text'}`}
+              disabled={Boolean(initialAccount)}
               onClick={() => handleSelectPreset(p, p.id)}
             >
               <span
@@ -216,6 +221,7 @@ export function AccountSetup({ onSaved, onCancel }: AccountSetupProps) {
           ))}
           <button
             type="button"
+            disabled={Boolean(initialAccount)}
             aria-pressed={presetId === 'custom'}
             onClick={() => handleSelectPreset(null, 'custom')}
             className={`rounded-xl border border-dashed px-3 py-3 text-sm ${presetId === 'custom' ? 'border-blue-500 bg-blue-500/10 text-text' : 'border-border text-text-secondary hover:bg-surface-secondary'}`}
@@ -277,6 +283,7 @@ export function AccountSetup({ onSaved, onCancel }: AccountSetupProps) {
             邮箱地址
           </label>
           <input
+            disabled={Boolean(initialAccount)}
             id="mail-account-email"
             className={inputClass}
             autoComplete="username"
@@ -301,23 +308,35 @@ export function AccountSetup({ onSaved, onCancel }: AccountSetupProps) {
           )}
         </div>
 
-        <div>
-          <label htmlFor="mail-account-password" className={labelClass}>
-            {preset?.authType === 'app-password' ? '授权码 / 应用专用密码' : '密码'}
-          </label>
-          <input
-            className={inputClass}
-            id="mail-account-password"
-            autoComplete="current-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={
-              preset?.authType === 'app-password' ? '粘贴授权码' : '邮箱密码或应用专用密码'
-            }
+        {(preset?.id === 'gmail' || preset?.id === 'outlook') && (
+          <OAuthLogin
+            key={preset.id}
+            provider={preset.id}
+            email={email}
+            name={name}
+            accountId={initialAccount?.id}
+            onSaved={onSaved}
+            onBusy={setOauthBusy}
           />
-        </div>
-
+        )}
+        {!initialAccount && preset?.id !== 'outlook' && (
+          <div>
+            <label htmlFor="mail-account-password" className={labelClass}>
+              {preset?.authType === 'app-password' ? '授权码 / 应用专用密码' : '密码'}
+            </label>
+            <input
+              className={inputClass}
+              id="mail-account-password"
+              autoComplete="current-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={
+                preset?.authType === 'app-password' ? '粘贴授权码' : '邮箱密码或应用专用密码'
+              }
+            />
+          </div>
+        )}
         {/* 高级设置（可折叠）：IMAP 服务器参数 */}
         <div>
           <button

@@ -51,10 +51,11 @@ export class MailStorage implements MailPersistence {
         smtpSecure: number | null;
       }
     >(
-      'SELECT id, name, email, imap_host AS imapHost, imap_port AS imapPort, imap_secure AS imapSecure, smtp_host AS smtpHost, smtp_port AS smtpPort, smtp_secure AS smtpSecure, created_at AS createdAt FROM mail_accounts ORDER BY created_at ASC',
+      'SELECT id, name, email, imap_host AS imapHost, imap_port AS imapPort, imap_secure AS imapSecure, smtp_host AS smtpHost, smtp_port AS smtpPort, smtp_secure AS smtpSecure, created_at AS createdAt, auth_provider AS authProvider FROM mail_accounts ORDER BY created_at ASC',
     );
     return rows.map((r) => ({
       ...r,
+      authProvider: r.authProvider ?? undefined,
       imapSecure: r.imapSecure === 1,
       smtpSecure: r.smtpSecure === null ? null : r.smtpSecure === 1,
     }));
@@ -62,8 +63,8 @@ export class MailStorage implements MailPersistence {
 
   insertAccount(account: MailAccountRecord): void {
     this.run(
-      `INSERT INTO mail_accounts (id, name, email, imap_host, imap_port, imap_secure, smtp_host, smtp_port, smtp_secure, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO mail_accounts (id, name, email, imap_host, imap_port, imap_secure, smtp_host, smtp_port, smtp_secure, created_at, auth_provider)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       account.id,
       account.name,
       account.email,
@@ -74,6 +75,7 @@ export class MailStorage implements MailPersistence {
       account.smtpPort,
       account.smtpSecure === null ? null : account.smtpSecure ? 1 : 0,
       account.createdAt,
+      account.authProvider ?? null,
     );
   }
 

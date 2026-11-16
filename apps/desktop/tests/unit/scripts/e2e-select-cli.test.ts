@@ -59,7 +59,7 @@ describe('e2e-select CLI · 会话内选择契约', () => {
     expect(data.recommended.map((entry: RecommendedEntry) => entry.spec)).toContain(
       'launch.spec.ts',
     );
-    expect(data.all).toHaveLength(24);
+    expect(data.all).toHaveLength(25);
     expect(
       data.recommended.every(
         (entry: RecommendedEntry) => Array.isArray(entry.reasons) && entry.reasons.length > 0,
@@ -85,10 +85,10 @@ describe('e2e-select CLI · 会话内选择契约', () => {
     expect(stderr).toContain('pnpm e2e');
   });
 
-  it('should list all 24 specs', () => {
+  it('should list all 25 specs', () => {
     const { status, stdout } = run(['--list']);
     expect(status).toBe(0);
-    expect(stdout.split(/\r?\n/).filter((line) => line.includes('.spec.ts'))).toHaveLength(24);
+    expect(stdout.split(/\r?\n/).filter((line) => line.includes('.spec.ts'))).toHaveLength(25);
   });
 
   it('should fail unknown specs and point to the fallback command', () => {

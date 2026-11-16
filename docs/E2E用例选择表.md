@@ -128,6 +128,8 @@ pnpm check:e2e-manifest                                      # G20：manifest �
 | `workspaces.spec.ts` | 工作区 | 4 | 55s | 无 | 是 | 命中即跑 | `main/workspaces/**` · `renderer/workspaces/**` · `renderer/sidebar/**` · `main/tabs/**` |
 
 > 路径前缀省略了 `apps/desktop/src/`；完整 glob 以 manifest 为准。`CI 真实执行 = 否` 表示该 spec 在 CI 会 **skip**（依赖不入版本控制或缺 key），而不是「CI 不运行它」。
+| `mail-oauth.spec.ts` | 邮箱 | 1 | 8s | 无 | 是 | 命中即跑 | `main/mail/**` · `renderer/mail/**` · `tests/unit/mail*` |
+
 
 ## 8. 依赖与跳过说明
 

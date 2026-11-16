@@ -2209,6 +2209,7 @@ export type MailUid = z.infer<typeof mailUidSchema>;
 
 /** 邮箱账户（返回渲染层时不含密码——密码仅存 safeStorage） */
 export const mailAccountSchema = z.object({
+  authProvider: z.enum(['gmail', 'outlook']).optional(),
   id: mailAccountIdSchema,
   name: z.string(),
   email: z.string().email(),
@@ -2223,6 +2224,23 @@ export const mailAccountSchema = z.object({
   hasPassword: z.boolean(),
 });
 export type MailAccount = z.infer<typeof mailAccountSchema>;
+
+// OAuth 仅传递应用配置与授权动作，令牌永不返回渲染层。
+export const mailOAuthConfigGetReqSchema = z.object({ provider: z.enum(['gmail', 'outlook']) });
+export const mailOAuthConfigGetResSchema = z.object({
+  clientId: z.string(),
+  hasClientSecret: z.boolean(),
+});
+export const mailOAuthConfigSetReqSchema = mailOAuthConfigGetReqSchema.extend({
+  clientId: z.string().trim().min(1).max(512),
+  clientSecret: z.string().max(2048).optional(),
+});
+export const mailOAuthOkSchema = z.object({ ok: z.literal(true) });
+export const mailOAuthLoginReqSchema = mailOAuthConfigGetReqSchema.extend({
+  email: z.string().email(),
+  name: z.string().min(1).max(256),
+  accountId: mailAccountIdSchema.optional(),
+});
 
 // --- mail.account.list ---
 
@@ -2959,6 +2977,9 @@ export const ipcSchema = {
   // 划词结果卡尺寸自适应：渲染层实测文本尺寸回报（seq 关联结果，过期测量忽略）
   'translate.cardResize': { req: translateCardResizeReqSchema, res: translateCardResizeResSchema },
   // Mail 域（M25 邮箱模块）
+  'mail.oauth.config.get': { req: mailOAuthConfigGetReqSchema, res: mailOAuthConfigGetResSchema },
+  'mail.oauth.config.set': { req: mailOAuthConfigSetReqSchema, res: mailOAuthOkSchema },
+  'mail.oauth.login': { req: mailOAuthLoginReqSchema, res: mailOAuthOkSchema },
   'mail.account.list': { req: mailAccountListReqSchema, res: mailAccountListResSchema },
   'mail.account.add': { req: mailAccountAddReqSchema, res: mailAccountAddResSchema },
   'mail.account.setPassword': {

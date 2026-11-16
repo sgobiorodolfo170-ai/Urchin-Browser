@@ -154,6 +154,7 @@ export const MIGRATIONS_MAIN: readonly Migration[] = [
       CREATE TABLE calendar_restore_snapshots (id TEXT PRIMARY KEY, payload TEXT NOT NULL);
     `,
   },
+  { version: 7, up: `ALTER TABLE mail_accounts ADD COLUMN auth_provider TEXT;` },
 ];
 
 /** AI 库迁移列表（conversations/messages/providers/secrets_index） */

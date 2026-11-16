@@ -383,6 +383,21 @@
       "ciRuns": true,
       "alwaysRecommend": false,
       "note": "工作区会话 cookie 隔离 + 切换恢复 + 总览页卡片模式"
+    },
+    {
+      "spec": "mail-oauth.spec.ts",
+      "area": "邮箱",
+      "tests": 1,
+      "durationSec": 8,
+      "triggers": [
+        "apps/desktop/src/main/mail/**",
+        "apps/desktop/src/renderer/mail/**",
+        "apps/desktop/tests/unit/mail*"
+      ],
+      "deps": "none",
+      "ciRuns": true,
+      "alwaysRecommend": false,
+      "note": "隔离真实邮箱页：OAuth应用配置入口、密码登录保留、空账号返回；不连接外部账号"
     }
   ]
 }

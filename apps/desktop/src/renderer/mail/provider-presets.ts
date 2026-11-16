@@ -95,7 +95,7 @@ export const MAIL_PROVIDER_PRESETS: readonly MailProviderPreset[] = [
     smtp: { host: 'smtp.gmail.com', port: 465, secure: true },
     authType: 'app-password',
     authHint: '使用应用专用密码（需开启两步验证）',
-    note: 'Google 已停用「低安全性应用」——须开启两步验证后生成应用专用密码；OAuth2 将于 v0.3 支持',
+    note: 'Google 已停用「低安全性应用」——须开启两步验证后生成应用专用密码；也可使用 Google OAuth2 授权登录（需配置应用）',
     oauth2Supported: true,
   },
   {
@@ -107,7 +107,7 @@ export const MAIL_PROVIDER_PRESETS: readonly MailProviderPreset[] = [
     smtp: { host: 'smtp-mail.outlook.com', port: 587, secure: false },
     authType: 'oauth2',
     authHint: '必须使用 OAuth2 / Modern Auth，不能使用账户密码或应用密码登录',
-    note: '当前客户端尚未实现微软 OAuth2，暂不支持连接；可通过网页版使用。需在 Outlook 网页设置中启用 IMAP。',
+    note: '请配置本项目的 Microsoft Client ID 后授权登录；需在 Outlook 网页设置中启用 IMAP。',
     oauth2Supported: true,
   },
   {

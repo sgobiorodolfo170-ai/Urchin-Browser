@@ -7,6 +7,7 @@
 
 /** 邮箱账户内部表示（含安全敏感字段标记） */
 export interface MailAccountRecord {
+  authProvider?: 'gmail' | 'outlook';
   id: string;
   name: string;
   email: string;
@@ -31,7 +32,8 @@ export interface ImapConnectionConfig {
   secure: boolean;
   auth: {
     user: string;
-    pass: string;
+    pass?: string;
+    accessToken?: string;
   };
 }
 

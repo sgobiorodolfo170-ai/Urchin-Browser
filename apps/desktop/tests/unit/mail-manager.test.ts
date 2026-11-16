@@ -1,3 +1,5 @@
+import { ImapClient } from '../../src/main/mail/imap-client';
+import { mailOAuthKey } from '../../src/main/mail/mail-oauth';
 /**
  * M25 MailManager 单元测试。
  *
@@ -223,7 +225,8 @@ describe('MailManager', () => {
       expect(persistence.accounts).toHaveLength(1);
       await manager.deleteAccount(account.id);
       expect(persistence.accounts).toHaveLength(0);
-      expect(secrets.delete).toHaveBeenCalledTimes(1);
+      expect(secrets.delete).toHaveBeenCalledWith(`mail-account/${account.id}/password`);
+      expect(secrets.delete).toHaveBeenCalledWith(mailOAuthKey(account.id));
     });
 
     it('deleteAccount: should handle non-existent account gracefully', async () => {
@@ -246,5 +249,41 @@ describe('MailManager', () => {
       // this test verifies the setter doesn't throw
       expect(fn).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('MailManager OAuth accounts', () => {
+  it('verifies IMAP token access and stores OAuth credentials separately from passwords', async () => {
+    const persistence = createMockPersistence();
+    const store = createMockSecretStore();
+    const manager = new MailManager(persistence, store);
+    vi.spyOn(manager.oauth, 'authorize').mockResolvedValue({
+      provider: 'gmail',
+      clientId: 'client',
+      accessToken: 'token',
+      refreshToken: 'refresh',
+      expiresAt: Date.now() + 3600000,
+    });
+    const connect = vi.spyOn(ImapClient.prototype, 'connect').mockResolvedValue();
+    const folders = vi.spyOn(ImapClient.prototype, 'listFolders').mockResolvedValue([]);
+    const disconnect = vi.spyOn(ImapClient.prototype, 'disconnect').mockResolvedValue();
+    try {
+      await manager.loginOAuth('gmail', 'me@gmail.com', 'Me', () => Promise.resolve());
+      const account = persistence.accounts[0]!;
+      expect(account.authProvider).toBe('gmail');
+      expect(manager.hasPassword(account.id)).toBe(true);
+      expect(connect).toHaveBeenCalledWith(
+        expect.objectContaining({ auth: { user: 'me@gmail.com', accessToken: 'token' } }),
+      );
+      expect(await store.get(`mail-account/${account.id}/password`)).toBeNull();
+      expect(await store.get(mailOAuthKey(account.id))).toContain('refresh');
+      await expect(manager.setPassword(account.id, 'wrong')).rejects.toThrow('OAuth');
+      await manager.deleteAccount(account.id);
+      expect(store.has(mailOAuthKey(account.id))).toBe(false);
+    } finally {
+      connect.mockRestore();
+      folders.mockRestore();
+      disconnect.mockRestore();
+    }
   });
 });

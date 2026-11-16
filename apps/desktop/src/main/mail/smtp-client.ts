@@ -19,7 +19,8 @@ export interface SmtpConnectionConfig {
   secure: boolean;
   auth: {
     user: string;
-    pass: string;
+    pass?: string;
+    accessToken?: string;
   };
 }
 
@@ -55,10 +56,10 @@ export class SmtpClient {
         host: config.host,
         port: config.port,
         secure: config.secure,
-        auth: {
-          user: config.auth.user,
-          pass: config.auth.pass,
-        },
+        requireTLS: Boolean(config.auth.accessToken && !config.secure),
+        auth: config.auth.accessToken
+          ? { type: 'OAuth2', user: config.auth.user, accessToken: config.auth.accessToken }
+          : { user: config.auth.user, pass: config.auth.pass },
       });
       await this.transporter.verify();
     } catch (err) {

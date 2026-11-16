@@ -21,6 +21,7 @@ afterPack: scripts/after-pack-dsh-peers.cjs
 
 # 入口：electron-builder 会用 main 字段定位主进程
 files:
+  - THIRD-PARTY-NOTICES.txt
   - dist/main/**/*
   - dist/preload/**/*
   - dist/renderer/**/*

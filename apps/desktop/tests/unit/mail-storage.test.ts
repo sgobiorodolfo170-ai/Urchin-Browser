@@ -79,6 +79,7 @@ function createMockStorage() {
         smtpPort: params[7],
         smtpSecure: params[8],
         createdAt: params[9],
+        authProvider: params[10] ?? undefined,
       });
     } else if (s.startsWith('DELETE FROM mail_accounts')) {
       const id = String(params[0]);

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { type MailPreferences } from './preferences';
 interface Account {
+  authProvider?: 'gmail' | 'outlook';
   id: string;
   name: string;
   email: string;
@@ -11,10 +12,19 @@ interface Props {
   preferences: MailPreferences;
   onSave: (value: MailPreferences) => Promise<void>;
   onRefresh: () => Promise<void>;
+  onAuthorize: (account: Account) => void;
   onBack: () => void;
   onAdd: () => void;
 }
-export function MailSettings({ accounts, preferences, onSave, onRefresh, onBack, onAdd }: Props) {
+export function MailSettings({
+  accounts,
+  preferences,
+  onSave,
+  onRefresh,
+  onAuthorize,
+  onBack,
+  onAdd,
+}: Props) {
   const [draft, setDraft] = useState(preferences);
   const [editing, setEditing] = useState('');
   const [password, setPassword] = useState('');
@@ -71,6 +81,7 @@ export function MailSettings({ accounts, preferences, onSave, onRefresh, onBack,
                 >
                   编辑
                 </button>
+                {a.authProvider && <button onClick={() => onAuthorize(a)}>重新授权</button>}
                 <button onClick={() => setDeleting(a.id)}>删除</button>
               </div>
               {editing === a.id && (
@@ -86,10 +97,11 @@ export function MailSettings({ accounts, preferences, onSave, onRefresh, onBack,
                     />
                   </label>
                   <label>
-                    新密码 / 授权码{' '}
+                    {a.authProvider ? 'OAuth账号请使用重新授权' : '新密码 / 授权码'}{' '}
                     <input
                       className={input}
                       type="password"
+                      disabled={Boolean(a.authProvider)}
                       autoComplete="new-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}

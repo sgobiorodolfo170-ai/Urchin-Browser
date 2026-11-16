@@ -1,3 +1,9 @@
+import {
+  MailOAuthService,
+  mailOAuthKey,
+  MAIL_OAUTH_PROVIDERS,
+  type OAuthMailProvider,
+} from './mail-oauth';
 /**
  * M25 邮箱模块 · 业务编排核心（缓存持久化版）
  *
@@ -49,6 +55,7 @@ export type NotifyFoldersUpdated = (accountId: string) => void;
 const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
 
 export class MailManager {
+  readonly oauth: MailOAuthService;
   private readonly persistence: MailPersistence;
   private readonly secrets: SecretStore;
   private readonly connections = new Map<string, ImapClient>();
@@ -64,6 +71,7 @@ export class MailManager {
   private readonly syncingFolders = new Map<string, Promise<void>>();
 
   constructor(persistence: MailPersistence, secrets: SecretStore, contentStore?: MailContentStore) {
+    this.oauth = new MailOAuthService(secrets);
     this.persistence = persistence;
     this.secrets = secrets;
     this.contentStore = contentStore ?? new MailContentStore();
@@ -85,7 +93,9 @@ export class MailManager {
 
   /** 账户密码密文是否存在（同步文件探测；缺失 = 需 UI 重授权） */
   hasPassword(accountId: string): boolean {
-    return this.secrets.has(mailPasswordKey(accountId));
+    return (
+      this.secrets.has(mailPasswordKey(accountId)) || this.secrets.has(mailOAuthKey(accountId))
+    );
   }
 
   /**
@@ -99,6 +109,7 @@ export class MailManager {
     if (!account) {
       throw new IpcError(IpcErrorCode.NOT_FOUND, `账户不存在: ${accountId}`, {});
     }
+    if (account.authProvider) throw new Error('此账号使用 OAuth，请重新授权');
     await this.secrets.set(mailPasswordKey(accountId), password);
   }
 
@@ -133,6 +144,70 @@ export class MailManager {
     return account;
   }
 
+  private async accountAuth(account: MailAccountRecord) {
+    if (account.authProvider)
+      return { user: account.email, accessToken: await this.oauth.accessToken(account.id) };
+    const pass = await this.secrets.get(mailPasswordKey(account.id));
+    if (!pass) throw new IpcError(IpcErrorCode.STATE, `账户密码缺失: ${account.id}`, {});
+    return { user: account.email, pass };
+  }
+
+  async loginOAuth(
+    provider: OAuthMailProvider,
+    email: string,
+    name: string,
+    openExternal: (url: string) => Promise<void>,
+    accountId?: string,
+  ): Promise<void> {
+    const existing = accountId ? this.listAccounts().find((a) => a.id === accountId) : undefined;
+    if (
+      accountId &&
+      (existing?.authProvider !== provider || existing.email.toLowerCase() !== email.toLowerCase())
+    )
+      throw new Error('重新授权账号不匹配');
+    const credential = await this.oauth.authorize(provider, email, openExternal);
+    const preset = MAIL_OAUTH_PROVIDERS[provider];
+    const test = new ImapClient();
+    try {
+      await test.connect({
+        host: preset.host,
+        port: 993,
+        secure: true,
+        auth: { user: email, accessToken: credential.accessToken },
+      });
+      await test.listFolders();
+    } finally {
+      await test.disconnect();
+    }
+    if (existing && !this.listAccounts().some((a) => a.id === existing.id))
+      throw new Error('账号已删除，请重新添加');
+    const id = existing?.id ?? randomUUID();
+    await this.oauth.storeCredential(id, credential);
+    if (!existing) {
+      try {
+        this.persistence.insertAccount({
+          id,
+          name,
+          email,
+          authProvider: provider,
+          imapHost: preset.host,
+          imapPort: 993,
+          imapSecure: true,
+          smtpHost: preset.smtp,
+          smtpPort: preset.smtpPort,
+          smtpSecure: preset.smtpPort === 465,
+          createdAt: Date.now(),
+        });
+      } catch (error) {
+        await this.secrets.delete(mailOAuthKey(id));
+        throw error;
+      }
+    } else {
+      await this.connections.get(id)?.disconnect();
+      this.connections.delete(id);
+    }
+  }
+
   async deleteAccount(accountId: string): Promise<void> {
     const stopper = this.idleStoppers.get(accountId);
     if (stopper) {
@@ -145,6 +220,7 @@ export class MailManager {
       this.connections.delete(accountId);
     }
     await this.secrets.delete(mailPasswordKey(accountId));
+    await this.oauth.removeCredential(accountId);
     this.persistence.deleteAccount(accountId);
   }
 
@@ -310,10 +386,7 @@ export class MailManager {
     if (!account.smtpHost) {
       throw new IpcError(IpcErrorCode.STATE, '该账户未配置 SMTP（请在设置中填写发信服务器）', {});
     }
-    const password = await this.secrets.get(mailPasswordKey(params.accountId));
-    if (!password) {
-      throw new IpcError(IpcErrorCode.STATE, `账户密码缺失: ${params.accountId}`, {});
-    }
+    const auth = await this.accountAuth(account);
 
     const smtp = new SmtpClient();
     try {
@@ -321,7 +394,7 @@ export class MailManager {
         host: account.smtpHost,
         port: account.smtpPort ?? 587,
         secure: account.smtpSecure ?? false,
-        auth: { user: account.email, pass: password },
+        auth,
       });
       const fromAddr = `${account.name} <${account.email}>`;
       const messageId = await smtp.sendMail({
@@ -466,17 +539,14 @@ export class MailManager {
     if (!account) {
       throw new IpcError(IpcErrorCode.NOT_FOUND, `账户不存在: ${accountId}`, {});
     }
-    const password = await this.secrets.get(mailPasswordKey(accountId));
-    if (!password) {
-      throw new IpcError(IpcErrorCode.STATE, `账户密码缺失: ${accountId}`, {});
-    }
+    const auth = await this.accountAuth(account);
 
     conn = new ImapClient();
     await conn.connect({
       host: account.imapHost,
       port: account.imapPort,
       secure: account.imapSecure,
-      auth: { user: account.email, pass: password },
+      auth,
     });
     this.connections.set(accountId, conn);
     this.startHeartbeat();

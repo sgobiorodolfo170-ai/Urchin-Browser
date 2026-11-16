@@ -44,9 +44,8 @@ describe('邮箱单页登录', () => {
     render(<AccountSetup onSaved={onSaved} onCancel={() => undefined} />);
     fireEvent.click(screen.getByRole('button', { name: /Outlook \/ Hotmail/ }));
     fireEvent.change(screen.getByLabelText('邮箱地址'), { target: { value: 'user@hotmail.com' } });
-    fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'secret' } });
     expect(screen.getByRole('button', { name: '登录并添加' })).toBeDisabled();
-    expect(screen.getByText(/当前客户端尚未实现微软 OAuth2/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '使用 Microsoft 授权登录' })).toBeDisabled();
   });
   it('opens registration in a new tab without passing account credentials', async () => {
     render(<AccountSetup onSaved={onSaved} onCancel={() => undefined} />);

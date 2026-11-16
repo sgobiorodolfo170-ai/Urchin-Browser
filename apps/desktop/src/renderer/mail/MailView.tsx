@@ -50,6 +50,7 @@ import {
 } from './layout';
 
 interface MailAccount {
+  authProvider?: 'gmail' | 'outlook';
   id: string;
   name: string;
   email: string;
@@ -97,6 +98,9 @@ export function MailView() {
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
   const accountsRef = useRef<MailAccount[]>([]);
+  const [reauthAccount, setReauthAccount] = useState<
+    (MailAccount & { authProvider: 'gmail' | 'outlook' }) | undefined
+  >();
   const [showSettings, setShowSettings] = useState(false);
   const [emptyHome, setEmptyHome] = useState(false);
   const [copyStatus, setCopyStatus] = useState('');
@@ -507,6 +511,15 @@ export function MailView() {
       <MailSettings
         accounts={accounts}
         preferences={preferences}
+        onAuthorize={(account) => {
+          if (account.authProvider) {
+            const fullAccount = accounts.find((a) => a.id === account.id);
+            if (fullAccount)
+              setReauthAccount({ ...fullAccount, authProvider: account.authProvider });
+            setShowSettings(false);
+            setShowAccountSetup(true);
+          }
+        }}
         onSave={savePreferences}
         onRefresh={refreshAccounts}
         onBack={() => setShowSettings(false)}
@@ -535,12 +548,15 @@ export function MailView() {
       <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
         <div className="flex-1 overflow-y-auto p-4">
           <AccountSetup
+            initialAccount={reauthAccount}
             onSaved={() => {
               setShowAccountSetup(false);
+              setReauthAccount(undefined);
               void refreshAccounts();
             }}
             onCancel={() => {
               setShowAccountSetup(false);
+              setReauthAccount(undefined);
               setEmptyHome(true);
             }}
           />
@@ -610,45 +626,64 @@ export function MailView() {
                 需要重新登录「{selectedAccount.name}」
               </h2>
             </div>
-            <p className="mb-3 text-xs leading-relaxed text-text-secondary">
-              该账户的密码凭据已丢失（可能因卸载重装或数据目录迁移）。请输入 {selectedAccount.email}{' '}
-              的 IMAP 密码 （QQ 邮箱请填写「授权码」，在 QQ 邮箱网页版 设置 → 账号 中生成，不是 QQ
-              密码）。
-            </p>
-            <input
-              type="password"
-              className="mb-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary focus:outline-none"
-              value={reauthPassword}
-              onChange={(e) => setReauthPassword(e.target.value)}
-              placeholder="IMAP 密码 / 授权码"
-              aria-label="IMAP 密码 / 授权码"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && reauthPassword) void handleReauthSave();
-              }}
-            />
-            {reauthError && (
-              <p className="mb-2 text-xs text-red-600 dark:text-red-400">{reauthError}</p>
-            )}
-            <div className="flex items-center justify-end gap-2">
+            {selectedAccount.authProvider ? (
               <button
-                className="rounded-md px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-secondary hover:text-text"
+                className="rounded-md bg-blue-500 px-3 py-2 text-sm text-white"
                 onClick={() => {
-                  setReauthPassword('');
-                  setReauthError(null);
+                  if (selectedAccount.authProvider) {
+                    setReauthAccount({
+                      ...selectedAccount,
+                      authProvider: selectedAccount.authProvider,
+                    });
+                    setShowAccountSetup(true);
+                  }
                 }}
-                disabled={reauthSaving}
               >
-                清空
+                OAuth凭据缺失，点击重新授权
               </button>
-              <button
-                className="rounded-md bg-blue-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
-                onClick={() => void handleReauthSave()}
-                disabled={reauthSaving || !reauthPassword}
-              >
-                {reauthSaving ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : null}
-                保存并重连
-              </button>
-            </div>
+            ) : (
+              <>
+                <p className="mb-3 text-xs leading-relaxed text-text-secondary">
+                  该账户的密码凭据已丢失（可能因卸载重装或数据目录迁移）。请输入{' '}
+                  {selectedAccount.email} 的 IMAP 密码 （QQ 邮箱请填写「授权码」，在 QQ 邮箱网页版
+                  设置 → 账号 中生成，不是 QQ 密码）。
+                </p>
+                <input
+                  type="password"
+                  className="mb-2 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-secondary focus:outline-none"
+                  value={reauthPassword}
+                  onChange={(e) => setReauthPassword(e.target.value)}
+                  placeholder="IMAP 密码 / 授权码"
+                  aria-label="IMAP 密码 / 授权码"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && reauthPassword) void handleReauthSave();
+                  }}
+                />
+                {reauthError && (
+                  <p className="mb-2 text-xs text-red-600 dark:text-red-400">{reauthError}</p>
+                )}
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    className="rounded-md px-3 py-1.5 text-sm text-text-secondary hover:bg-surface-secondary hover:text-text"
+                    onClick={() => {
+                      setReauthPassword('');
+                      setReauthError(null);
+                    }}
+                    disabled={reauthSaving}
+                  >
+                    清空
+                  </button>
+                  <button
+                    className="rounded-md bg-blue-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+                    onClick={() => void handleReauthSave()}
+                    disabled={reauthSaving || !reauthPassword}
+                  >
+                    {reauthSaving ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : null}
+                    保存并重连
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

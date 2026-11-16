@@ -162,7 +162,7 @@ describe('e2e-select-core · manifest 校验', () => {
     const { errors, count } = core.validateManifest(readManifest(), specFiles());
     expect(errors).toEqual([]);
     expect(count).toBe(specFiles().length);
-    expect(count).toBe(24);
+    expect(count).toBe(25);
   });
 
   it('should fail on missing entries, orphan entries and illegal fields', () => {

@@ -10,7 +10,7 @@
  * - 新邮件推送经 WebContents.send 单向事件（不走 registerHandler）
  */
 import type { IpcMain, WebContents } from 'electron';
-import { BrowserWindow, dialog } from 'electron';
+import { BrowserWindow, dialog, shell } from 'electron';
 import { readFileSync } from 'node:fs';
 import { registerHandler } from '@urchin/ipc-contract';
 import { createLogger } from '@urchin/logger';
@@ -95,11 +95,30 @@ export function registerMailHandlers(deps: MailHandlerDeps): void {
     }
   });
 
+  registerHandler(ipcMain, 'mail.oauth.config.get', (req) =>
+    mailManager.oauth.getConfig(req.provider),
+  );
+  registerHandler(ipcMain, 'mail.oauth.config.set', async (req) => {
+    await mailManager.oauth.setConfig(req.provider, req.clientId, req.clientSecret);
+    return { ok: true as const };
+  });
+  registerHandler(ipcMain, 'mail.oauth.login', async (req) => {
+    await mailManager.loginOAuth(
+      req.provider,
+      req.email,
+      req.name,
+      (url) => shell.openExternal(url),
+      req.accountId,
+    );
+    return { ok: true as const };
+  });
+
   // mail.account.list：列出已配置的邮件账户（含密码密文存在性，驱动 UI 重授权卡片）
   registerHandler(ipcMain, 'mail.account.list', () => {
     const accounts = mailManager.listAccounts();
     return {
       accounts: accounts.map((a) => ({
+        authProvider: a.authProvider,
         id: a.id,
         name: a.name,
         email: a.email,

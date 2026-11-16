@@ -1,0 +1,130 @@
+Window: "顽童浏览器", App: electron.exe.
+	0 window (窗口) (disabled) 顽童浏览器 Secondary Actions: Raise
+		190 window (对话框) 开发者工具 Secondary Actions: Raise
+			191 image (图像) MainInstructionIcon ID: MainIcon
+			192 text (文本) 内部页面和 GenOffice 视图暂不支持开发者工具。 ID: ContentText
+			193 button (按钮) 确定 ID: CommandLink_100
+			194 title bar (标题栏) (settable, string) Value: 开发者工具
+				195 button (按钮) 关闭
+		80 pane (窗格) (disabled)
+		81 pane (区域) 顽童浏览器
+			82 pane (区域)
+				83 pane (区域)
+					84 pane (区域)
+						85 pane (区域)
+							86 pane (区域)
+								87 pane (区域)
+									88 document (文档) 顽童浏览器 Value: file:///G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/dist/renderer/index.html ID: RootWebArea
+										89 group (组) ID: root
+											90 group (标题)
+												91 text (文本) 顽童浏览器
+												92 button (按钮) 展开收藏栏 Description: 展开收藏栏
+												93 button (按钮) 最小化窗口 Description: 最小化
+												94 button (按钮) 最大化窗口 Description: 最大化
+												95 button (按钮) 关闭窗口 Description: 关闭
+											96 group (补充) 左侧边栏
+												97 button (按钮) 展开左侧栏
+												98 group (组)
+												99 button (按钮) DeepSeek Harness Description: DeepSeek Harness
+												100 button (按钮) pi Description: pi（未启动）
+												101 button (按钮) 速记 Description: 速记
+												102 button (按钮) GenOffice 文档 Description: GenOffice 文档（Word / PDF / Markdown / HTML）
+												103 button (按钮) 邮箱 Description: 邮箱
+												104 button (按钮) 主页 Description: 主页
+												105 button (按钮) 切换主题 Description: 切换主题
+												106 button (按钮) 设置 Description: 设置
+											107 group (主要)
+												151 group (导航)
+													152 button (按钮) 通用
+													153 button (按钮) 剪藏
+													154 button (按钮) 操作
+													155 button (按钮) AI 助手
+													156 button (按钮) 数据
+													157 button (按钮) 默认应用
+													158 button (按钮) 帮助手册
+													159 button (按钮) 隐私与安全
+													160 button (按钮) 建议与反馈
+													161 button (按钮) 关于
+													162 button (按钮) 运行日志
+													163 button (按钮) 重置默认
+												164 text (标题) 通用
+												165 text (文本) 界面语言
+												166 text (文本) 应用界面显示语言（默认中文）
+												167 combo box (组合框) (settable, string) Value: 简体中文
+												168 text (文本) 搜索引擎
+												169 text (文本) 地址栏搜索使用的引擎（与 parse-input 的 SEARCH_ENGINE_TEMPLATES 表对应）
+												170 combo box (组合框) (settable, string) Value: Google
+												171 text (文本) 在新标签页打开链接
+												172 text (文本) 点击网页内链接时在新标签页打开（关闭则在当前标签页打开）
+												173 button (切换) (settable, string)
+												174 text (文本) 启动时继续浏览上次打开的网页
+												175 text (文本) 关闭浏览器时保存当前打开的标签页，下次启动时自动恢复默认工作区的标签；其他工作区的标签在切换到该工作区时自动恢复
+												176 button (切换) (settable, string)
+												177 text (文本) 关闭窗口时最小化到系统托盘
+												178 text (文本) 开启后点击窗口关闭按钮将隐藏窗口、继续在系统托盘运行（单击托盘图标可重新打开，右键菜单「完全退出」结束程序）；关闭则直接退出程序。默认关闭
+												179 button (切换) (settable, string)
+												180 text (文本) 网页翻译目标语言
+												181 text (文本) 整页翻译与划词翻译的目标语言（默认简体中文）
+												182 combo box (组合框) (settable, string) Value: 简体中文
+												183 text (文本) 翻译引擎
+												184 text (文本) 自动（推荐）：直连网络优先 MyMemory 翻译、走代理优先谷歌翻译，引擎失败自动切换至其他可用引擎（三引擎互为兜底）；也可手动锁定单一引擎。注：微软免费端点已于 2026-09 关闭，保留选项但可能不可用
+												185 combo box (组合框) (settable, string) Value: 自动（推荐）
+												186 text (文本) 自动翻译外语页面
+												187 text (文本) 开启后打开外语网页时自动翻译为目标语言（默认关闭）。隐私提示：翻译时页面文本将发送至所选翻译服务（微软/谷歌）；关闭时仅在手动点击翻译后发送
+												188 button (切换) (settable, string)
+											108 group (补充) 右侧边栏
+												109 button (按钮) 切换工作区：默认工作区 Description: 默认工作区（点击打开工作区总览）
+												110 button (按钮) 新建标签 Description: 新建标签
+												189 button (按钮) 切换到标签 设置 Description: 设置
+												111 button (按钮) 切换到标签 Urchin P0 acceptance fixture Description: Urchin P0 acceptance fixture
+												112 button (按钮) 切换到标签 新标签页 Description: 新标签页
+												113 group (组) Description: 双击展开/折叠右侧边栏
+								114 pane (区域)
+									115 pane (区域)
+			116 window (窗口) Urchin Status Ball Secondary Actions: Raise
+				117 pane (窗格) (disabled)
+				118 pane (区域) Urchin Status Ball
+					119 pane (区域)
+						120 pane (区域)
+							121 pane (区域)
+								122 pane (区域)
+									123 pane (区域)
+										124 pane (区域)
+											125 document (文档) Urchin Status Ball Value: file:///G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/dist/renderer/index.html?view=statusbar-ball ID: RootWebArea
+												126 group (组) ID: root
+													127 button (按钮) 悬浮球 Description: 左键单击展开/隐藏地址栏，左键拖动滚动网页，右键拖动移动位置
+										128 pane (区域)
+			129 window (窗口) Urchin Status Bar Secondary Actions: Raise
+				130 pane (窗格) (disabled)
+				131 pane (区域) Urchin Status Bar
+					132 pane (区域)
+						133 pane (区域)
+							134 pane (区域)
+								135 pane (区域)
+									136 pane (区域)
+										137 pane (区域)
+											138 document (文档) Urchin Status Bar Value: file:///G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/dist/renderer/index.html?view=statusbar ID: RootWebArea
+												139 group (组) ID: root
+													140 button (按钮) (disabled) 后退
+													141 button (按钮) (disabled) 前进
+													142 button (按钮) (disabled) 刷新
+													143 button (按钮) (disabled) 翻译网页 Description: 翻译网页
+													144 text field (编辑) (settable, string) 地址栏 Value: http://127.0.0.1:58512/
+													145 button (按钮) (disabled) 收藏到书签 Description: 收藏到书签
+													146 button (按钮) 收藏夹 Description: 收藏夹
+													147 button (按钮) 截图当前网页 Description: 截图当前网页
+													148 button (按钮) (disabled) 剪藏 Description: 剪藏（Clipper）
+													149 button (按钮) AI 助手（开发中） Description: AI 助手（开发中）
+										150 pane (区域)
+		190 window (对话框) 开发者工具 Secondary Actions: Raise
+			191 image (图像) MainInstructionIcon ID: MainIcon
+			192 text (文本) 内部页面和 GenOffice 视图暂不支持开发者工具。 ID: ContentText
+			193 button (按钮) 确定 ID: CommandLink_100
+			194 title bar (标题栏) (settable, string) Value: 开发者工具
+				195 button (按钮) 关闭
+
+Selected text: ```
+http://127.0.0.1:58512/
+```
+
+Note: Pay special attention to the content selected by the user. If the user asks a question or refers to the content they are looking at on-screen, they might be referring to the selected content (but they might be referring to something else that's visible, too).

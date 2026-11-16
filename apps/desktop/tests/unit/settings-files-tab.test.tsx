@@ -9,7 +9,7 @@
  * 5. 「清除本应用关联」→ ConfirmDialog 确认 → unregister 调用
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { SettingsPage } from '../../src/renderer/settings/SettingsPage';
 
 const mockInvoke = vi.fn();
@@ -268,4 +268,26 @@ describe('FilesTab (默认应用)', () => {
     const clearButtons = screen.queryAllByRole('button', { name: '清除本应用关联' });
     expect(clearButtons).toHaveLength(1);
   });
+});
+
+it('reclaims a visible toast timeout when its settings page is closed', async () => {
+  mockSettingsLoad();
+  const { unmount } = render(<SettingsPage initialTab="files" />);
+  await screen.findAllByText(/设为默认打开方式/);
+  vi.useFakeTimers();
+  try {
+    const baseline = vi.getTimerCount();
+    await act(async () => {
+      fireEvent.click(screen.getAllByText(/设为默认打开方式/)[0]!);
+      await Promise.resolve();
+    });
+    expect(screen.getByText(/已登记 3 种格式/)).toBeDefined();
+    expect(vi.getTimerCount()).toBe(baseline + 1);
+    unmount();
+    expect(vi.getTimerCount()).toBe(baseline);
+    vi.advanceTimersByTime(1500);
+  } finally {
+    unmount();
+    vi.useRealTimers();
+  }
 });

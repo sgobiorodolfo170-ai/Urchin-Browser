@@ -1,0 +1,149 @@
+{
+  "versions": {
+    "platform": "win32",
+    "os": "10.0.26300",
+    "electron": "43.8.8",
+    "chromium": "150.0.7871.250"
+  },
+  "settledSamplesMB": [
+    778.78125,
+    778.5,
+    748.375
+  ],
+  "regressionMemoryMB": 748.375,
+  "baseline": {
+    "counts": {
+      "sessions": 0,
+      "tabInputs": 1,
+      "windowInputs": 1,
+      "extraInputs": 1,
+      "timers": 0
+    },
+    "listeners": {
+      "before-input-event": 2,
+      "devtools-opened": 0,
+      "devtools-closed": 0,
+      "destroyed": 2,
+      "render-process-gone": 2
+    },
+    "memoryMB": 771.94140625,
+    "processes": [
+      {
+        "type": "Browser",
+        "pid": 10144,
+        "memoryMB": 145.78515625
+      },
+      {
+        "type": "GPU",
+        "pid": 23036,
+        "memoryMB": 160.4140625
+      },
+      {
+        "type": "Utility",
+        "pid": 15920,
+        "memoryMB": 51.22265625
+      },
+      {
+        "type": "Tab",
+        "pid": 39948,
+        "memoryMB": 118.234375
+      },
+      {
+        "type": "Tab",
+        "pid": 35960,
+        "memoryMB": 92.69921875
+      },
+      {
+        "type": "Tab",
+        "pid": 40036,
+        "memoryMB": 99.60546875
+      },
+      {
+        "type": "Tab",
+        "pid": 26440,
+        "memoryMB": 104.00390625
+      }
+    ],
+    "toolCount": 0
+  },
+  "final": {
+    "counts": {
+      "sessions": 0,
+      "tabInputs": 1,
+      "windowInputs": 1,
+      "extraInputs": 1,
+      "timers": 0
+    },
+    "listeners": {
+      "before-input-event": 2,
+      "devtools-opened": 0,
+      "devtools-closed": 0,
+      "destroyed": 2,
+      "render-process-gone": 2
+    },
+    "memoryMB": 748.44921875,
+    "processes": [
+      {
+        "type": "Browser",
+        "pid": 10144,
+        "memoryMB": 136.37109375
+      },
+      {
+        "type": "GPU",
+        "pid": 23036,
+        "memoryMB": 150.578125
+      },
+      {
+        "type": "Utility",
+        "pid": 15920,
+        "memoryMB": 51.1953125
+      },
+      {
+        "type": "Tab",
+        "pid": 39948,
+        "memoryMB": 112.06640625
+      },
+      {
+        "type": "Tab",
+        "pid": 35960,
+        "memoryMB": 97.96875
+      },
+      {
+        "type": "Tab",
+        "pid": 40036,
+        "memoryMB": 97.96875
+      },
+      {
+        "type": "Tab",
+        "pid": 26440,
+        "memoryMB": 102.30078125
+      }
+    ],
+    "toolCount": 0
+  },
+  "samplesMB": [
+    772.37890625,
+    773.81640625,
+    795.9140625,
+    798.4453125,
+    791.89453125,
+    788.90625,
+    788.8203125,
+    789.01171875,
+    788.23046875,
+    787.60546875,
+    784.78515625,
+    782.3671875,
+    782.4296875,
+    781.4296875,
+    782.33203125,
+    780.51953125,
+    780.80859375,
+    780.21875,
+    780.98046875,
+    780.8046875
+  ],
+  "slopeMBPerCycle": -0.35501938439849623,
+  "rSquared": 0.10231057122132242,
+  "budgetMB": 800
+}

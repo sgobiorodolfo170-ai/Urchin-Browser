@@ -71,17 +71,18 @@
     {
       "spec": "devtools-native.spec.ts",
       "area": "DevTools",
-      "tests": 1,
-      "durationSec": 45,
+      "tests": 2,
+      "durationSec": 80,
       "triggers": [
         "apps/desktop/src/main/devtools/**",
         "apps/desktop/src/main/index.ts",
-        "apps/desktop/tests/e2e/devtools-native.spec.ts"
+        "apps/desktop/tests/e2e/devtools-native.spec.ts",
+        "apps/desktop/tests/e2e/fixtures/native-devtools/**"
       ],
-      "deps": "none",
+      "deps": "genoffice-artifact",
       "ciRuns": true,
       "alwaysRecommend": false,
-      "note": "原生 F12 三类输入通路、A/B 固定目标、手动关闭与 20 轮开关；不替代 Windows 实机键盘验收"
+      "note": "原生 F12 焦点、A/B/两窗口/工作区、导航/崩溃/销毁、内部页/GenOffice 拒绝、剪藏共存、20 轮计数/监听/内存与失败日志；系统键盘另有 Win11 UI 验收"
     },
     {
       "spec": "dsh-lifecycle.spec.ts",

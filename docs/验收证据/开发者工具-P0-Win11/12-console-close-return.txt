@@ -1,0 +1,87 @@
+Window: "顽童浏览器", App: electron.exe.
+	0 window (窗口) 顽童浏览器 Secondary Actions: Raise
+		1 pane (窗格) (disabled)
+		2 pane (区域) 顽童浏览器
+			3 pane (区域)
+				4 pane (区域)
+					5 pane (区域)
+						6 pane (区域)
+							7 pane (区域)
+								8 pane (区域)
+									9 document (文档) 顽童浏览器 Value: file:///G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/dist/renderer/index.html ID: RootWebArea
+										10 group (组) ID: root
+											11 group (标题)
+												12 text (文本) 顽童浏览器
+												13 button (按钮) 展开收藏栏 Description: 展开收藏栏
+												14 button (按钮) 最小化窗口 Description: 最小化
+												15 button (按钮) 最大化窗口 Description: 最大化
+												16 button (按钮) 关闭窗口 Description: 关闭
+											17 group (补充) 左侧边栏
+												18 button (按钮) 展开左侧栏
+												19 group (组)
+												20 button (按钮) DeepSeek Harness Description: DeepSeek Harness
+												21 button (按钮) pi Description: pi（未启动）
+												22 button (按钮) 速记 Description: 速记
+												23 button (按钮) GenOffice 文档 Description: GenOffice 文档（Word / PDF / Markdown / HTML）
+												24 button (按钮) 邮箱 Description: 邮箱
+												25 button (按钮) 主页 Description: 主页
+												26 button (按钮) 切换主题 Description: 切换主题
+												27 button (按钮) 设置 Description: 设置
+											28 group (主要)
+											29 group (补充) 右侧边栏
+												30 button (按钮) 切换工作区：默认工作区 Description: 默认工作区（点击打开工作区总览）
+												31 button (按钮) 新建标签 Description: 新建标签
+												32 button (按钮) 切换到标签 Urchin P0 acceptance fixture Description: Urchin P0 acceptance fixture
+												33 button (按钮) 切换到标签 新标签页 Description: 新标签页
+												34 group (组) Description: 双击展开/折叠右侧边栏
+								35 pane (区域)
+									36 pane (区域)
+										37 document (文档) Urchin P0 acceptance fixture Value: http://127.0.0.1:58512/ ID: RootWebArea
+											38 text (标题) P0 DOM fixture ID: inspect-me
+											39 button (按钮) Capture request ID: request
+											40 text (文本) P0 network captured
+											41 button (按钮) Hit breakpoint ID: breakpoint
+											42 text (文本) 42
+											43 button (按钮) Run performance workload ID: work
+											44 text (文本) work complete
+			45 window (窗口) Urchin Status Ball Secondary Actions: Raise
+				46 pane (窗格) (disabled)
+				47 pane (区域) Urchin Status Ball
+					48 pane (区域)
+						49 pane (区域)
+							50 pane (区域)
+								51 pane (区域)
+									52 pane (区域)
+										53 pane (区域)
+											54 document (文档) Urchin Status Ball Value: file:///G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/dist/renderer/index.html?view=statusbar-ball ID: RootWebArea
+												55 group (组) ID: root
+													56 button (按钮) 悬浮球 Description: 左键单击展开/隐藏地址栏，左键拖动滚动网页，右键拖动移动位置
+										57 pane (区域)
+			58 window (窗口) Urchin Status Bar Secondary Actions: Raise
+				59 pane (窗格) (disabled)
+				60 pane (区域) Urchin Status Bar
+					61 pane (区域)
+						62 pane (区域)
+							63 pane (区域)
+								64 pane (区域)
+									65 pane (区域)
+										66 pane (区域)
+											67 document (文档) Urchin Status Bar Value: file:///G:/pj/pj--ing/111111/Urchin-Browser/apps/desktop/dist/renderer/index.html?view=statusbar ID: RootWebArea
+												68 group (组) ID: root
+													69 button (按钮) (disabled) 后退
+													70 button (按钮) (disabled) 前进
+													71 button (按钮) 刷新
+													72 button (按钮) 翻译网页 Description: 翻译网页
+													73 text field (编辑) (settable, string) 地址栏 Value: http://127.0.0.1:58512/
+													74 button (按钮) 收藏到书签 Description: 收藏到书签
+													75 button (按钮) 收藏夹 Description: 收藏夹
+													76 button (按钮) 截图当前网页 Description: 截图当前网页
+													77 button (按钮) 剪藏 Description: 剪藏（Clipper）
+													78 button (按钮) AI 助手（开发中） Description: AI 助手（开发中）
+										79 pane (区域)
+
+Selected text: ```
+http://127.0.0.1:58512/
+```
+
+Note: Pay special attention to the content selected by the user. If the user asks a question or refers to the content they are looking at on-screen, they might be referring to the selected content (but they might be referring to something else that's visible, too).

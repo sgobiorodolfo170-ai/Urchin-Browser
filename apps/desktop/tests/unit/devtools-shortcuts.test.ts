@@ -143,7 +143,7 @@ describe('native F12 ownership and lifecycle', () => {
     addressBar.emit('destroyed');
     expect(addressBar.eventNames()).toEqual([]);
   });
-  it('the native frontend adapter consumes F12, ignores repeats and unregisters on release', () => {
+  it('the native frontend adapter replaces listeners without evaluating a closing frontend', () => {
     const f = setup();
     f.shell.press();
     const tool = f.a.devToolsWebContents!;
@@ -166,10 +166,13 @@ describe('native F12 ownership and lifecycle', () => {
       method: 'closeWindow',
       params: [],
     });
-    f.dispose();
-    runInContext(tool.executeJavaScript.mock.calls[1]![0], context);
+    // A reused frontend replaces the old listener instead of stacking handlers.
+    runInContext(tool.executeJavaScript.mock.calls[0]![0], context);
     target.dispatchEvent(new KeyboardEvent('keydown', { key: 'F12' }));
-    expect(send).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledTimes(2);
+    f.dispose();
+    expect(tool.executeJavaScript).toHaveBeenCalledOnce();
+    expect(tool.listenerCount('before-input-event')).toBe(0);
   });
   it('closes a tool if its native frontend bridge is missing', async () => {
     const f = setup();
@@ -194,7 +197,7 @@ describe('native F12 ownership and lifecycle', () => {
     expect(f.report).toHaveBeenCalledWith(1, expect.stringContaining('快捷键'));
     f.a.finishOpen = finish;
   });
-  it('toggles the current owner page from shell and page; swallows down/up only for F12', () => {
+  it('toggles the current owner page from shell and page; swallows down/up only for F12', async () => {
     const f = setup();
     expect(f.shell.key().preventDefault).toHaveBeenCalledOnce();
     f.shell.key('keyUp');
@@ -202,13 +205,14 @@ describe('native F12 ownership and lifecycle', () => {
     expect(f.c.openDevTools).not.toHaveBeenCalled();
     f.a.press();
     expect(f.a.opened).toBe(false);
+    await new Promise<void>((resolve) => setImmediate(resolve));
     expect(f.a.focus).toHaveBeenCalledOnce();
     expect(f.shell.key('keyDown', false, 'F11').preventDefault).not.toHaveBeenCalled();
   });
   it('ignores held/repeated keys, including repeat after focus moves to native tools', () => {
     const f = setup();
     f.shell.key();
-    f.shell.key();
+    f.shell.key('keyDown', true);
     f.shell.key('keyDown', true);
     const tool = f.a.devToolsWebContents!;
     tool.key('keyDown', true);
@@ -229,7 +233,7 @@ describe('native F12 ownership and lifecycle', () => {
     expect(f.a.opened).toBe(true);
     f.dispose();
   });
-  it('native F12 closes its bound A while B is active; never retargets or closes B', () => {
+  it('native F12 closes its bound A while B is active; never retargets or closes B', async () => {
     const f = setup();
     f.shell.press();
     const aTool = f.a.devToolsWebContents!;
@@ -240,6 +244,7 @@ describe('native F12 ownership and lifecycle', () => {
     aTool.press();
     expect(f.a.opened).toBe(false);
     expect(f.b.opened).toBe(true);
+    await new Promise<void>((resolve) => setImmediate(resolve));
     expect(f.tabs.getTab(11)?.active).toBe(true);
     expect(aTool.listenerCount('before-input-event')).toBe(0);
   });
@@ -254,7 +259,7 @@ describe('native F12 ownership and lifecycle', () => {
     expect(f.c.opened).toBe(true);
     expect(f.shell.listenerCount('before-input-event')).toBe(0);
   });
-  it('does not cross workspaces when returning focus', () => {
+  it('returns to the bound page and workspace when its native tool closes', async () => {
     const f = setup();
     f.shell.press();
     const tool = f.a.devToolsWebContents!;
@@ -262,10 +267,30 @@ describe('native F12 ownership and lifecycle', () => {
     f.tabs.setActive(12);
     f.tabs.setActive.mockClear();
     tool.press();
-    expect(f.tabs.setActive).not.toHaveBeenCalled();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(f.tabs.setActive).toHaveBeenCalledWith(11);
+    expect(f.a.focus).toHaveBeenCalledOnce();
     expect(f.owners[0]!.browserWindow.focus).toHaveBeenCalledOnce();
   });
-  it.each(['urchin://newtab', 'urchin://settings', 'data:text/html,test'])(
+  it('returns to the owner if the target disappears before deferred focus restoration', async () => {
+    const f = setup();
+    f.shell.press();
+    f.a.devToolsWebContents!.press();
+    f.tabList.splice(0, 1);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(f.owners[0]!.browserWindow.focus).toHaveBeenCalledOnce();
+    expect(f.a.focus).not.toHaveBeenCalled();
+  });
+  it('keeps focus on the owner if the former target became an internal page', async () => {
+    const f = setup();
+    f.shell.press();
+    f.a.devToolsWebContents!.press();
+    f.tabList[0]!.url = 'urchin://settings';
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(f.owners[0]!.browserWindow.focus).toHaveBeenCalledOnce();
+    expect(f.a.focus).not.toHaveBeenCalled();
+  });
+  it.each(['urchin://newtab', 'urchin://settings', 'about:blank', 'data:text/html,test'])(
     'rejects internal/unapproved target %s with a reason',
     (url) => {
       const f = setup();
@@ -275,6 +300,16 @@ describe('native F12 ownership and lifecycle', () => {
       expect(f.report).toHaveBeenCalledWith(1, expect.any(String));
     },
   );
+  it('accepts a new non-repeat press after an unsupported target consumed keyUp', () => {
+    const f = setup();
+    f.tabList[0]!.url = 'urchin://settings';
+    f.shell.key('keyDown');
+    f.shell.key('keyDown', true);
+    expect(f.report).toHaveBeenCalledOnce();
+    f.tabList[0]!.url = 'https://fixture.test/';
+    f.shell.key('keyDown');
+    expect(f.a.opened).toBe(true);
+  });
   it('rejects GenOffice, missing, crashed and not-yet-loaded targets', () => {
     const f = setup();
     f.tabList[0]!.viewKind = 'genoffice';
@@ -310,6 +345,7 @@ describe('native F12 ownership and lifecycle', () => {
     expect(f.a.openDevTools).toHaveBeenCalledTimes(2);
     expect(vi.getTimerCount()).toBe(1);
     f.a.emit('devtools-closed');
+    vi.runAllTimers();
     expect(vi.getTimerCount()).toBe(0);
   });
   it('recovers from a thrown open without stale listeners or timers', () => {
@@ -366,17 +402,27 @@ describe('native F12 ownership and lifecycle', () => {
   it('returns listeners/timers to baseline after 20 switches and idempotent disposal', () => {
     vi.useFakeTimers();
     const f = setup();
+    const counts = f.dispose.getDiagnostics();
     const baseline = f.a.eventNames().map((name) => [name, f.a.listenerCount(name)]);
     for (let i = 0; i < 20; i++) {
       f.shell.press();
       f.a.devToolsWebContents!.press();
     }
+    vi.runAllTimers();
     expect(f.a.eventNames().map((name) => [name, f.a.listenerCount(name)])).toEqual(baseline);
     expect(vi.getTimerCount()).toBe(0);
+    expect(f.dispose.getDiagnostics()).toEqual(counts);
     f.shell.press();
     f.dispose();
     f.dispose();
     expect(f.a.opened).toBe(false);
+    expect(f.dispose.getDiagnostics()).toEqual({
+      sessions: 0,
+      tabInputs: 0,
+      windowInputs: 0,
+      extraInputs: 0,
+      timers: 0,
+    });
     expect(f.a.eventNames()).toEqual([]);
     expect(f.shell.eventNames()).toEqual([]);
     expect(f.tabs.eventNames()).toEqual([]);

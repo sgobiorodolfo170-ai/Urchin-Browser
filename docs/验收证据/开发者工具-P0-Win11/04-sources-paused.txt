@@ -1,0 +1,295 @@
+Window: "Developer Tools - http://127.0.0.1:58512/", App: electron.exe.
+	0 window (窗口) Developer Tools - http://127.0.0.1:58512/ Secondary Actions: Raise
+		1 pane (窗格) (disabled)
+		2 pane (区域) Developer Tools - http://127.0.0.1:58512/
+			3 pane (区域)
+				4 pane (区域)
+					5 pane (区域)
+						6 document (文档) DevTools Value: devtools://devtools/bundled/devtools_app.html?remoteBase=https://chrome-devtools-frontend.appspot.com/serve_file/@c2bc4a343d758df5a4d7e640313d9d41aae3ab13/&can_dock=&toolbarColor=rgba(223,223,223,1)&textColor=rgba(0,0,0,1)&experiments=true ID: RootWebArea
+							7 group (组) DevTools is now available in Chinese
+								8 text (警报)
+									9 text (文本) DevTools is now available in Chinese
+								10 button (按钮) Don't show again
+								11 button (按钮) Always match Chrome's language
+								12 button (按钮) Switch DevTools to Chinese
+								13 group (组)
+									14 group (组) Close Description: Close
+										15 button (按钮) Close Description: Close
+							16 group (组)
+								17 group (导航) Main toolbar
+									18 toolbar (工具栏)
+										19 group (组) Select an element in the page to inspect it Description: Select an element in the page to inspect it - Ctrl + Shift + C
+											20 button (切换按钮) Select an element in the page to inspect it - Ctrl + Shift + C Description: Select an element in the page to inspect it - Ctrl + Shift + C
+									21 tab (选项卡) Panels
+										22 tab item (选项卡项目) (selectable) Elements ID: tab-elements
+										23 tab item (选项卡项目) (selectable) Console ID: tab-console
+										24 tab item (选项卡项目) (selectable) Sources ID: tab-sources
+										25 tab item (选项卡项目) (selectable) Network ID: tab-network
+										26 tab item (选项卡项目) (selectable) Performance ID: tab-timeline
+										27 tab item (选项卡项目) (selectable) Memory ID: tab-heap-profiler
+										28 tab item (选项卡项目) (selectable) Application ID: tab-resources
+										29 tab item (选项卡项目) (selectable) Security ID: tab-security
+									30 button (按钮) More tabs Description: More tabs
+									31 toolbar (工具栏)
+										32 group (组) Open Console to view 1 warning Description: Open Console to view 1 warning
+											33 button (按钮) Open Console to view 1 warning
+										34 group (组) Settings Description: Settings - F1 - Shift + ?
+											35 button (按钮) Settings - F1 - Shift + ? Description: Settings - F1 - Shift + ?
+										36 button (按钮) Customize and control DevTools Description: Customize and control DevTools
+											37 button (按钮) Customize and control DevTools Description: Customize and control DevTools
+								220 pane (选项卡面板) Sources panel
+									221 group (组) sources
+										222 group (组)
+											223 tab (选项卡)
+												224 tab item (选项卡项目) (selectable) Page ID: tab-navigator-network
+												225 tab item (选项卡项目) (selectable) Workspace ID: tab-navigator-files
+											226 button (按钮) More tabs Description: More tabs
+											227 toolbar (工具栏)
+												228 group (组) More options Description: More options
+													229 button (按钮) More options Description: More options
+											230 pane (选项卡面板) Page panel
+												458 tree (树)
+													459 tree item (树项目) top, frame Description: top
+													460 group (组)
+														461 tree item (树项目) 127.0.0.1:58512, domain Description: 127.0.0.1:58512
+														462 group (组)
+															463 tree item (树项目) , file Description: http://127.0.0.1:58512/
+															464 tree item (树项目) (selectable) p0-fixture.js, file Description: http://127.0.0.1:58512/p0-fixture.js
+										231 group (组)
+											232 toolbar (工具栏)
+												233 group (组) Hide navigator Description: Hide navigator
+													234 button (按钮) Hide navigator Description: Hide navigator
+											235 tab (选项卡)
+												293 tab item (选项卡项目) (selectable) p0-fixture.js ID: tab-tab-0
+													294 group (组) Description: http://127.0.0.1:58512/p0-fixture.js
+													295 group (组) Close p0-fixture.js Description: Close p0-fixture.js
+														296 button (按钮) Close p0-fixture.js Description: Close p0-fixture.js
+											236 toolbar (工具栏)
+												237 group (组) Hide debugger Description: Hide debugger
+													238 button (按钮) (disabled) Hide debugger Description: Hide debugger
+											297 group (组)
+												239 group (组)
+												240 group (组)
+													241 text field (编辑) (settable, string) Code editor Value: window.expressionValue = 42; window.runBreakpoint = function runBreakpoint() { const before = 40; debugger; document.querySelector('#result').textContent = String(before + 2); }; window.runRequest = async function runRequest() { const response = await fetch('/probe?case=p0'); document.querySelector('#network-result').textContent = await response.text(); }; window.runWork = function runWork() { performance.mark('p0-start'); const start = performance.now(); while (performance.now() - start < 250) Math.sqrt(Math.random()); performance.mark('p0-end'); performance.measure('P0 fixture workload', 'p0-start', 'p0-end'); document.querySelector('#work-result').textContent = 'work complete'; }; //# sourceURL=p0-fixture.js
+														298 text (文本) window
+														299 text (文本) .
+														300 text (文本) expressionValue
+														301 text (文本) =
+														302 text (文本) 42
+														303 text (文本) ;
+														304 text (文本) window
+														305 text (文本) .
+														306 text (文本) runBreakpoint
+														307 text (文本) =
+														308 text (文本) function
+														309 text (文本) 
+														310 text (文本) runBreakpoint
+														311 text (文本) () {
+														312 text (文本) 
+														313 text (文本) const
+														314 text (文本) 
+														315 text (文本) before
+														316 text (文本) =
+														317 text (文本) 40
+														318 text (文本) ;
+														319 text (文本) 
+														320 text (文本) debugger
+														321 text (文本) ;
+														322 text (文本) 
+														323 text (文本) document
+														324 text (文本) .
+														325 text (文本) querySelector
+														326 text (文本) (
+														327 text (文本) '#result'
+														328 text (文本) ).
+														329 text (文本) textContent
+														330 text (文本) =
+														331 text (文本) String
+														332 text (文本) (
+														333 text (文本) before
+														334 text (文本) +
+														335 text (文本) 2
+														336 text (文本) );
+														337 text (文本) };
+														338 text (文本) window
+														339 text (文本) .
+														340 text (文本) runRequest
+														341 text (文本) =
+														342 text (文本) async
+														343 text (文本) 
+														344 text (文本) function
+														345 text (文本) 
+														346 text (文本) runRequest
+														347 text (文本) () {
+														348 text (文本) 
+														349 text (文本) const
+														350 text (文本) 
+														351 text (文本) response
+														352 text (文本) =
+														353 text (文本) await
+														354 text (文本) 
+														355 text (文本) fetch
+														356 text (文本) (
+														357 text (文本) '/probe?case=p0'
+														358 text (文本) );
+														359 text (文本) 
+														360 text (文本) document
+														361 text (文本) .
+														362 text (文本) querySelector
+														363 text (文本) (
+														364 text (文本) '#network-result'
+														365 text (文本) ).
+														366 text (文本) textContent
+														367 text (文本) =
+														368 text (文本) await
+														369 text (文本) 
+														370 text (文本) response
+														371 text (文本) .
+														372 text (文本) text
+														373 text (文本) ();
+														374 text (文本) };
+														375 text (文本) window
+														376 text (文本) .
+														377 text (文本) runWork
+														378 text (文本) =
+														379 text (文本) function
+														380 text (文本) 
+														381 text (文本) runWork
+														382 text (文本) () {
+														383 text (文本) 
+														384 text (文本) performance
+														385 text (文本) .
+														386 text (文本) mark
+														387 text (文本) (
+														388 text (文本) 'p0-start'
+														389 text (文本) );
+														390 text (文本) 
+														391 text (文本) const
+														392 text (文本) 
+														393 text (文本) start
+														394 text (文本) =
+														395 text (文本) performance
+														396 text (文本) .
+														397 text (文本) now
+														398 text (文本) ();
+														399 text (文本) 
+														400 text (文本) while
+														401 text (文本) (
+														402 text (文本) performance
+														403 text (文本) .
+														404 text (文本) now
+														405 text (文本) () -
+														406 text (文本) start
+														407 text (文本) <
+														408 text (文本) 250
+														409 text (文本) )
+														410 text (文本) Math
+														411 text (文本) .
+														412 text (文本) sqrt
+														413 text (文本) (
+														414 text (文本) Math
+														415 text (文本) .
+														416 text (文本) random
+														417 text (文本) ());
+														418 text (文本) 
+														419 text (文本) performance
+														420 text (文本) .
+														421 text (文本) mark
+														422 text (文本) (
+														423 text (文本) 'p0-end'
+														424 text (文本) );
+														425 text (文本) 
+														426 text (文本) performance
+														427 text (文本) .
+														428 text (文本) measure
+														429 text (文本) (
+														430 text (文本) 'P0 fixture workload'
+														431 text (文本) ,
+														432 text (文本) 'p0-start'
+														433 text (文本) ,
+														434 text (文本) 'p0-end'
+														435 text (文本) );
+														436 text (文本) 
+														437 text (文本) document
+														438 text (文本) .
+														439 text (文本) querySelector
+														440 text (文本) (
+														441 text (文本) '#work-result'
+														442 text (文本) ).
+														443 text (文本) textContent
+														444 text (文本) =
+														445 text (文本) 'work complete'
+														446 text (文本) ;
+														447 text (文本) };
+														448 text (文本) //# sourceURL=p0-fixture.js
+										250 toolbar (工具栏)
+											251 group (组) Pretty print Description: Pretty print
+												252 button (切换按钮) Pretty print Description: Pretty print
+											449 text (文本) Line 5, Column 3
+											450 group (组) Click to show Coverage Panel Description: Click to show Coverage Panel
+												451 button (按钮) Click to show Coverage Panel Description: Click to show Coverage Panel
+										256 toolbar (工具栏)
+										257 toolbar (工具栏)
+											258 group (组) Resume script execution Description: Resume script execution - F8 - Ctrl + \
+												259 button (切换按钮) Resume script execution - F8 - Ctrl + \ Description: Resume script execution - F8 - Ctrl + \
+											260 group (组) Step over next function call Description: Step over next function call - F10 - Ctrl + '
+												261 button (按钮) Step over next function call - F10 - Ctrl + ' Description: Step over next function call - F10 - Ctrl + '
+											262 group (组) Step into next function call Description: Step into next function call - F11 - Ctrl + ;
+												263 button (按钮) Step into next function call - F11 - Ctrl + ; Description: Step into next function call - F11 - Ctrl + ;
+											264 group (组) Step out of current function Description: Step out of current function - Shift + F11 - Ctrl + Shift + ;
+												265 button (按钮) Step out of current function - Shift + F11 - Ctrl + Shift + ; Description: Step out of current function - Shift + F11 - Ctrl + Shift + ;
+											266 group (组) Step Description: Step - F9
+												267 button (按钮) Step - F9 Description: Step - F9
+											268 group (组) Deactivate breakpoints Description: Deactivate breakpoints - Ctrl + F8
+												269 button (切换按钮) Deactivate breakpoints - Ctrl + F8 Description: Deactivate breakpoints - Ctrl + F8
+										270 tree (树)
+											271 group (组)
+												272 text (文本) Debugger paused
+											273 tree item (树项目) (selectable) Watch
+											274 tree item (树项目) (selectable) Breakpoints
+											275 checkbox (复选框) (settable, string) Pause on uncaught exceptions
+												276 checkbox (复选框) (settable, string) Pause on uncaught exceptions
+											277 checkbox (复选框) (settable, string) Pause on caught exceptions
+												278 checkbox (复选框) (settable, string) Pause on caught exceptions
+											279 tree (树)
+											280 tree item (树项目) (selectable) Scope
+											452 tree (树)
+												453 tree item (树项目) (selectable) Local
+												454 group (组)
+													465 tree item (树项目) (selectable) this : Window
+													466 tree item (树项目) (selectable) before : 40
+												455 tree item (树项目) (selectable) Global
+											283 tree item (树项目) (selectable) Call Stack
+											285 list (列表) (settable, string)
+												456 list item (选项) (selectable) runBreakpoint p0-fixture.js:5
+												457 list item (选项) (selectable) onclick (index):7
+											288 tree item (树项目) (selectable) XHR/fetch Breakpoints
+											289 tree item (树项目) (selectable) DOM Breakpoints
+											290 tree item (树项目) (selectable) Global Listeners
+											291 tree item (树项目) (selectable) Event Listener Breakpoints
+											292 tree item (树项目) (selectable) CSP Violation Breakpoints
+							77 text (警报)
+								219 text (文本) Network Data Available
+							79 status bar (状态)
+
+Document text: ```
+window.expressionValue = 42;
+window.runBreakpoint = function runBreakpoint() {  
+const before = 40;  
+debugger;  
+document.querySelector('#result').textContent = String(before + 2);
+};
+window.runRequest = async function runRequest() {  
+const response = await fetch('/probe?case=p0');  
+document.querySelector('#network-result').textContent = await response.text();
+};
+window.runWork = function runWork() {  
+performance.mark('p0-start');  
+const start = performance.now();  
+while (performance.now() - start < 250) Math.sqrt(Math.random());  
+performance.mark('p0-end');  
+performance.measure('P0 fixture workload', 'p0-start', 'p0-end');  
+document.querySelector('#work-result').textContent = 'work complete';
+};
+//# sourceURL=p0-fixture.js
+```

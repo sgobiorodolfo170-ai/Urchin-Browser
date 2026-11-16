@@ -1,0 +1,449 @@
+[
+  {
+    "versions": {
+      "platform": "win32",
+      "os": "10.0.26300",
+      "electron": "43.8.8",
+      "chromium": "150.0.7871.250"
+    },
+    "settledSamplesMB": [
+      790.71875,
+      776.6953125,
+      749.140625
+    ],
+    "regressionMemoryMB": 749.140625,
+    "baseline": {
+      "counts": {
+        "sessions": 0,
+        "tabInputs": 1,
+        "windowInputs": 1,
+        "extraInputs": 1,
+        "timers": 0
+      },
+      "listeners": {
+        "before-input-event": 2,
+        "devtools-opened": 0,
+        "devtools-closed": 0,
+        "destroyed": 2,
+        "render-process-gone": 2
+      },
+      "memoryMB": 794.44140625,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 7552,
+          "memoryMB": 145.52734375
+        },
+        {
+          "type": "GPU",
+          "pid": 34712,
+          "memoryMB": 171.6640625
+        },
+        {
+          "type": "Utility",
+          "pid": 25584,
+          "memoryMB": 51.3828125
+        },
+        {
+          "type": "Tab",
+          "pid": 15600,
+          "memoryMB": 117.82421875
+        },
+        {
+          "type": "Tab",
+          "pid": 29544,
+          "memoryMB": 104.0625
+        },
+        {
+          "type": "Tab",
+          "pid": 19708,
+          "memoryMB": 100.0546875
+        },
+        {
+          "type": "Tab",
+          "pid": 25000,
+          "memoryMB": 103.94140625
+        }
+      ],
+      "toolCount": 0
+    },
+    "final": {
+      "counts": {
+        "sessions": 0,
+        "tabInputs": 1,
+        "windowInputs": 1,
+        "extraInputs": 1,
+        "timers": 0
+      },
+      "listeners": {
+        "before-input-event": 2,
+        "devtools-opened": 0,
+        "devtools-closed": 0,
+        "destroyed": 2,
+        "render-process-gone": 2
+      },
+      "memoryMB": 749.140625,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 7552,
+          "memoryMB": 138.16796875
+        },
+        {
+          "type": "GPU",
+          "pid": 34712,
+          "memoryMB": 151.03515625
+        },
+        {
+          "type": "Utility",
+          "pid": 25584,
+          "memoryMB": 51.453125
+        },
+        {
+          "type": "Tab",
+          "pid": 15600,
+          "memoryMB": 112.48828125
+        },
+        {
+          "type": "Tab",
+          "pid": 29544,
+          "memoryMB": 99.19921875
+        },
+        {
+          "type": "Tab",
+          "pid": 19708,
+          "memoryMB": 96.61328125
+        },
+        {
+          "type": "Tab",
+          "pid": 25000,
+          "memoryMB": 100.18359375
+        }
+      ],
+      "toolCount": 0
+    },
+    "samplesMB": [
+      802.8359375,
+      800.6484375,
+      797.55078125,
+      793.1015625,
+      792.19921875,
+      790.86328125,
+      791.44921875,
+      792.81640625,
+      792.73046875,
+      792.95703125,
+      789.09375,
+      789.16796875,
+      789.4140625,
+      790.2578125,
+      789.640625,
+      790.46484375,
+      790.73828125,
+      790.7421875,
+      790.7890625,
+      792.62890625
+    ],
+    "slopeMBPerCycle": -0.4243450422932331,
+    "rSquared": 0.45696297457030577,
+    "budgetMB": 800
+  },
+  {
+    "versions": {
+      "platform": "win32",
+      "os": "10.0.26300",
+      "electron": "43.8.8",
+      "chromium": "150.0.7871.250"
+    },
+    "settledSamplesMB": [
+      780.31640625,
+      780.03515625,
+      750.33984375
+    ],
+    "regressionMemoryMB": 750.33984375,
+    "baseline": {
+      "counts": {
+        "sessions": 0,
+        "tabInputs": 1,
+        "windowInputs": 1,
+        "extraInputs": 1,
+        "timers": 0
+      },
+      "listeners": {
+        "before-input-event": 2,
+        "devtools-opened": 0,
+        "devtools-closed": 0,
+        "destroyed": 2,
+        "render-process-gone": 2
+      },
+      "memoryMB": 775.5078125,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 11028,
+          "memoryMB": 145.66796875
+        },
+        {
+          "type": "GPU",
+          "pid": 14016,
+          "memoryMB": 157.77734375
+        },
+        {
+          "type": "Utility",
+          "pid": 28884,
+          "memoryMB": 51.48046875
+        },
+        {
+          "type": "Tab",
+          "pid": 31500,
+          "memoryMB": 118.2421875
+        },
+        {
+          "type": "Tab",
+          "pid": 18204,
+          "memoryMB": 96.26953125
+        },
+        {
+          "type": "Tab",
+          "pid": 33424,
+          "memoryMB": 102.69921875
+        },
+        {
+          "type": "Tab",
+          "pid": 27248,
+          "memoryMB": 103.4140625
+        }
+      ],
+      "toolCount": 0
+    },
+    "final": {
+      "counts": {
+        "sessions": 0,
+        "tabInputs": 1,
+        "windowInputs": 1,
+        "extraInputs": 1,
+        "timers": 0
+      },
+      "listeners": {
+        "before-input-event": 2,
+        "devtools-opened": 0,
+        "devtools-closed": 0,
+        "destroyed": 2,
+        "render-process-gone": 2
+      },
+      "memoryMB": 750.40234375,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 11028,
+          "memoryMB": 137.34765625
+        },
+        {
+          "type": "GPU",
+          "pid": 14016,
+          "memoryMB": 148.0703125
+        },
+        {
+          "type": "Utility",
+          "pid": 28884,
+          "memoryMB": 51.5390625
+        },
+        {
+          "type": "Tab",
+          "pid": 31500,
+          "memoryMB": 114.40234375
+        },
+        {
+          "type": "Tab",
+          "pid": 18204,
+          "memoryMB": 96.4375
+        },
+        {
+          "type": "Tab",
+          "pid": 33424,
+          "memoryMB": 101.0078125
+        },
+        {
+          "type": "Tab",
+          "pid": 27248,
+          "memoryMB": 101.59765625
+        }
+      ],
+      "toolCount": 0
+    },
+    "samplesMB": [
+      785.16015625,
+      784.59375,
+      785.7578125,
+      782.8515625,
+      783.06640625,
+      781.828125,
+      782.890625,
+      781.41796875,
+      780.82421875,
+      780.6328125,
+      780.30078125,
+      780.5703125,
+      780.96875,
+      781.4453125,
+      783.12890625,
+      782.40625,
+      781.83203125,
+      782.08203125,
+      781.3125,
+      782.0625
+    ],
+    "slopeMBPerCycle": -0.14439027255639098,
+    "rSquared": 0.31476097449903045,
+    "budgetMB": 800
+  },
+  {
+    "versions": {
+      "platform": "win32",
+      "os": "10.0.26300",
+      "electron": "43.8.8",
+      "chromium": "150.0.7871.250"
+    },
+    "settledSamplesMB": [
+      778.78125,
+      778.5,
+      748.375
+    ],
+    "regressionMemoryMB": 748.375,
+    "baseline": {
+      "counts": {
+        "sessions": 0,
+        "tabInputs": 1,
+        "windowInputs": 1,
+        "extraInputs": 1,
+        "timers": 0
+      },
+      "listeners": {
+        "before-input-event": 2,
+        "devtools-opened": 0,
+        "devtools-closed": 0,
+        "destroyed": 2,
+        "render-process-gone": 2
+      },
+      "memoryMB": 771.94140625,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 10144,
+          "memoryMB": 145.78515625
+        },
+        {
+          "type": "GPU",
+          "pid": 23036,
+          "memoryMB": 160.4140625
+        },
+        {
+          "type": "Utility",
+          "pid": 15920,
+          "memoryMB": 51.22265625
+        },
+        {
+          "type": "Tab",
+          "pid": 39948,
+          "memoryMB": 118.234375
+        },
+        {
+          "type": "Tab",
+          "pid": 35960,
+          "memoryMB": 92.69921875
+        },
+        {
+          "type": "Tab",
+          "pid": 40036,
+          "memoryMB": 99.60546875
+        },
+        {
+          "type": "Tab",
+          "pid": 26440,
+          "memoryMB": 104.00390625
+        }
+      ],
+      "toolCount": 0
+    },
+    "final": {
+      "counts": {
+        "sessions": 0,
+        "tabInputs": 1,
+        "windowInputs": 1,
+        "extraInputs": 1,
+        "timers": 0
+      },
+      "listeners": {
+        "before-input-event": 2,
+        "devtools-opened": 0,
+        "devtools-closed": 0,
+        "destroyed": 2,
+        "render-process-gone": 2
+      },
+      "memoryMB": 748.44921875,
+      "processes": [
+        {
+          "type": "Browser",
+          "pid": 10144,
+          "memoryMB": 136.37109375
+        },
+        {
+          "type": "GPU",
+          "pid": 23036,
+          "memoryMB": 150.578125
+        },
+        {
+          "type": "Utility",
+          "pid": 15920,
+          "memoryMB": 51.1953125
+        },
+        {
+          "type": "Tab",
+          "pid": 39948,
+          "memoryMB": 112.06640625
+        },
+        {
+          "type": "Tab",
+          "pid": 35960,
+          "memoryMB": 97.96875
+        },
+        {
+          "type": "Tab",
+          "pid": 40036,
+          "memoryMB": 97.96875
+        },
+        {
+          "type": "Tab",
+          "pid": 26440,
+          "memoryMB": 102.30078125
+        }
+      ],
+      "toolCount": 0
+    },
+    "samplesMB": [
+      772.37890625,
+      773.81640625,
+      795.9140625,
+      798.4453125,
+      791.89453125,
+      788.90625,
+      788.8203125,
+      789.01171875,
+      788.23046875,
+      787.60546875,
+      784.78515625,
+      782.3671875,
+      782.4296875,
+      781.4296875,
+      782.33203125,
+      780.51953125,
+      780.80859375,
+      780.21875,
+      780.98046875,
+      780.8046875
+    ],
+    "slopeMBPerCycle": -0.35501938439849623,
+    "rSquared": 0.10231057122132242,
+    "budgetMB": 800
+  }
+]

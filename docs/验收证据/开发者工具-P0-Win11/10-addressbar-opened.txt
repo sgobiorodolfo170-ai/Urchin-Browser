@@ -1,0 +1,285 @@
+Window: "Developer Tools - http://127.0.0.1:58512/", App: electron.exe.
+	0 window (窗口) Developer Tools - http://127.0.0.1:58512/ Secondary Actions: Raise
+		1 pane (窗格) (disabled)
+		2 pane (区域) Developer Tools - http://127.0.0.1:58512/
+			3 pane (区域)
+				4 pane (区域)
+					5 pane (区域)
+						6 document (文档) DevTools Value: devtools://devtools/bundled/devtools_app.html?remoteBase=https://chrome-devtools-frontend.appspot.com/serve_file/@c2bc4a343d758df5a4d7e640313d9d41aae3ab13/&can_dock=&toolbarColor=rgba(223,223,223,1)&textColor=rgba(0,0,0,1)&experiments=true ID: RootWebArea
+							7 group (组) DevTools is now available in Chinese
+								8 text (警报)
+									9 text (文本) DevTools is now available in Chinese
+								10 button (按钮) Don't show again
+								11 button (按钮) Always match Chrome's language
+								12 button (按钮) Switch DevTools to Chinese
+								13 group (组)
+									14 group (组) Close Description: Close
+										15 button (按钮) Close Description: Close
+							16 group (组)
+								17 group (导航) Main toolbar
+									18 toolbar (工具栏)
+										19 group (组) Select an element in the page to inspect it Description: Select an element in the page to inspect it - Ctrl + Shift + C
+											20 button (切换按钮) Select an element in the page to inspect it - Ctrl + Shift + C Description: Select an element in the page to inspect it - Ctrl + Shift + C
+									21 tab (选项卡) Panels
+										22 tab item (选项卡项目) (selectable) Elements ID: tab-elements
+										62 tab item (选项卡项目) (selectable) Console ID: tab-console
+										63 tab item (选项卡项目) (selectable) Sources ID: tab-sources
+										64 tab item (选项卡项目) (selectable) Network ID: tab-network
+										65 tab item (选项卡项目) (selectable) Performance ID: tab-timeline
+										66 tab item (选项卡项目) (selectable) Memory ID: tab-heap-profiler
+										67 tab item (选项卡项目) (selectable) Application ID: tab-resources
+										68 tab item (选项卡项目) (selectable) Security ID: tab-security
+									23 button (按钮) More tabs Description: More tabs
+									24 toolbar (工具栏)
+										94 group (组) Open Console to view 1 warning Description: Open Console to view 1 warning
+											95 button (按钮) Open Console to view 1 warning
+										26 group (组) Settings Description: Settings - F1 - Shift + ?
+											27 button (按钮) Settings - F1 - Shift + ? Description: Settings - F1 - Shift + ?
+										28 button (按钮) Customize and control DevTools Description: Customize and control DevTools
+											29 button (按钮) Customize and control DevTools Description: Customize and control DevTools
+								30 pane (选项卡面板) Elements panel
+									31 group (组) elements
+										32 group (主要) DOM tree explorer ID: elements-content
+											33 tree (树) Page DOM
+												69 tree item (树项目) <!DOCTYPE html>
+													70 group (组)
+												71 tree item (树项目) <html lang=​"en"> ​ View source code
+													72 group (组) <html lang=​"en">
+													73 group (组)
+													74 group (组) View source code
+												75 group (组)
+													76 tree item (树项目) <head> ​ Expand …​ </head> ​
+														77 group (组) <head>
+														78 button (按钮) Expand
+														79 group (组) </head>
+														80 group (组)
+													81 tree item (树项目) (selectable) <body> ​
+														96 group (组) <body>
+														83 group (组)
+													84 group (组)
+														97 tree item (树项目) <h1 id=​"inspect-me"> ​P0 DOM fixture​ </h1> ​
+															98 group (组) <h1 id=​"inspect-me">
+															99 group (组) </h1>
+															100 group (组)
+														101 tree item (树项目) <button id=​"request" onclick=​"runRequest()​"> ​Capture request​ </button> ​
+															102 group (组) <button id=​"request" onclick=​"runRequest()​">
+															103 group (组) </button>
+															104 group (组)
+														105 tree item (树项目) <p id=​"network-result"> ​P0 network captured​ </p> ​
+															106 group (组) <p id=​"network-result">
+															107 group (组) </p>
+															108 group (组)
+														109 tree item (树项目) <button id=​"breakpoint" onclick=​"runBreakpoint()​"> ​Hit breakpoint​ </button> ​
+															110 group (组) <button id=​"breakpoint" onclick=​"runBreakpoint()​">
+															111 group (组) </button>
+															112 group (组)
+														113 tree item (树项目) <p id=​"result"> ​42​ </p> ​
+															114 group (组) <p id=​"result">
+															115 group (组) </p>
+															116 group (组)
+														117 tree item (树项目) <button id=​"work" onclick=​"runWork()​"> ​Run performance workload​ </button> ​
+															118 group (组) <button id=​"work" onclick=​"runWork()​">
+															119 group (组) </button>
+															120 group (组)
+														121 tree item (树项目) <p id=​"work-result"> ​work complete​ </p> ​
+															122 group (组) <p id=​"work-result">
+															123 group (组) </p>
+															124 group (组)
+														125 tree item (树项目) <script> ​ Expand …​ </script> ​
+															126 group (组) <script>
+															127 button (按钮) Expand
+															128 group (组) </script>
+															129 group (组)
+														130 tree item (树项目) <> ​
+															131 group (组) <>
+															132 group (组)
+													85 tree item (树项目) <> ​
+														86 group (组) <>
+														87 group (组)
+										34 group (导航) DOM tree breadcrumbs
+											35 list (列表)
+												88 list item (列表项目) html
+													89 hyperlink (链接) html Value: devtools://devtools/bundled/devtools_app.html?remoteBase=https://chrome-devtools-frontend.appspot.com/serve_file/@c2bc4a343d758df5a4d7e640313d9d41aae3ab13/&can_dock=&toolbarColor=rgba(223,223,223,1)&textColor=rgba(0,0,0,1)&experiments=true#
+												90 list item (列表项目) body
+													91 hyperlink (链接) body Value: devtools://devtools/bundled/devtools_app.html?remoteBase=https://chrome-devtools-frontend.appspot.com/serve_file/@c2bc4a343d758df5a4d7e640313d9d41aae3ab13/&can_dock=&toolbarColor=rgba(223,223,223,1)&textColor=rgba(0,0,0,1)&experiments=true#
+										36 group (组)
+											37 group (导航) Side panel toolbar
+												38 tab (选项卡)
+													39 tab item (选项卡项目) (selectable) Styles ID: tab-styles
+													40 tab item (选项卡项目) (selectable) Computed ID: tab-computed
+													41 tab item (选项卡项目) (selectable) Layout ID: tab-elements.layout
+													92 tab item (选项卡项目) (selectable) Event Listeners ID: tab-elements.event-listeners
+												42 button (按钮) More tabs Description: More tabs
+											43 group (补充) Side panel content
+												44 pane (选项卡面板) Styles panel
+													45 group (组)
+														46 group (组)
+															47 toolbar (工具栏)
+																48 text field (编辑) (settable, string) Filter Description: Filter Value: Filter
+																	133 text (文本) Filter
+																50 group (组) Use regular expression Description: Use regular expression
+																	51 button (切换按钮) Use regular expression Description: Use regular expression
+																52 group (组) Toggle Element State Description: Toggle Element State
+																	53 button (切换按钮) Toggle Element State Description: Toggle Element State
+																54 group (组) Element Classes Description: Element Classes
+																	55 button (切换按钮) Element Classes Description: Element Classes
+																56 group (组) New Style Rule Description: New Style Rule
+																	57 button (按钮) New Style Rule Description: New Style Rule
+																134 group (组) Toggle common rendering emulations Description: Toggle common rendering emulations
+																	135 button (切换按钮) Toggle common rendering emulations Description: Toggle common rendering emulations
+																136 group (组) Show Computed Styles sidebar Description: Show Computed Styles sidebar
+																	137 button (按钮) Show Computed Styles sidebar Description: Show Computed Styles sidebar
+															58 list (列表)
+																138 list item (列表项目) element.style, css selector
+																	139 group (组) CSS selector
+																		140 text (文本) element.style
+																	141 text (文本) {
+																	142 tree (树)
+																	143 text (文本) }
+																144 list item (列表项目) body, css selector
+																	145 text (文本) user agent stylesheet
+																	146 group (组) CSS selector
+																		147 group (组)
+																			148 text (文本) body
+																	149 text (文本) {
+																	150 tree (树)
+																		151 tree item (树项目) (selectable) CSS property name: display : CSS property value: block ;
+																			152 group (组) CSS property name: display
+																			153 group (组) CSS property value: block
+																			154 group (组)
+																		155 tree item (树项目) (selectable) CSS property name: margin : CSS property value: 8px ;
+																			156 group (组) CSS property name: margin
+																			157 group (组) CSS property value: 8px
+																			158 group (组)
+																	159 text (文本) }
+														160 text (文本) margin
+														161 text (文本) 8
+														162 text (文本) 
+														163 text (文本) 8
+														164 text (文本) border
+														165 text (文本) 0
+														166 text (文本) 
+														167 text (文本) 0
+														168 text (文本) padding
+														169 text (文本) 0
+														170 text (文本) 
+														171 text (文本) 0
+														172 text (文本) 1160
+														173 text (文本) ×
+														174 text (文本) 294.438
+														175 text (文本) 0
+														176 text (文本) 
+														177 text (文本) 0
+														178 text (文本) 0
+														179 text (文本) 
+														180 text (文本) 0
+														181 text (文本) 8
+														182 text (文本) 
+														183 text (文本) 8
+							59 text (警报)
+								60 text (文本) DevTools is undocked
+							61 status bar (状态)
+
+Document text: ```
+DevTools is now available in Chinese
+Don't show again
+Always match Chrome's language
+Switch DevTools to Chinese
+Close
+Select an element in the page to inspect it - Ctrl + Shift + C
+￼
+￼
+Elements
+Console
+Sources
+Network
+Performance
+Memory
+Application
+Security
+￼
+More tabs
+1
+￼
+Settings - F1 - Shift + ?
+Customize and control DevTools
+<!DOCTYPE html>
+￼
+<html lang=​"en">​
+￼
+view-source  
+<head>​
+Expand
+…​</head>​
+￼  
+<body>​
+￼
+￼
+<h1 id=​"inspect-me">​P0 DOM fixture​</h1>​
+￼
+<button id=​"request" onclick=​"runRequest()​">​Capture request​</button>​
+￼
+<p id=​"network-result">​P0 network captured​</p>​
+￼
+<button id=​"breakpoint" onclick=​"runBreakpoint()​">​Hit breakpoint​</button>​
+￼
+<p id=​"result">​42​</p>​
+￼
+<button id=​"work" onclick=​"runWork()​">​Run performance workload​</button>​
+￼
+<p id=​"work-result">​work complete​</p>​
+￼  
+<script>​
+Expand
+…​</script>​
+￼
+</body>​
+￼
+</html>​
+￼
+html
+body
+Styles
+Computed
+Layout
+Event Listeners
+￼
+More tabs
+Filter
+Use regular expression
+Toggle Element State
+Element Classes
+New Style Rule
+Toggle common rendering emulations
+Show Computed Styles sidebar
+￼
+￼
+element.style {
+￼
+￼
+}
+user agent stylesheet
+￼
+body
+ {    
+display: block;    
+margin: 
+8px;
+￼
+}
+margin
+8
+8
+border
+0
+0
+padding
+0
+01160×294.4380
+00
+08
+8
+￼
+DevTools is undocked
+￼
+```

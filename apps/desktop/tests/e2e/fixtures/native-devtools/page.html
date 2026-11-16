@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Urchin P0 acceptance fixture</title>
+  </head>
+  <body>
+    <h1 id="inspect-me">P0 DOM fixture</h1>
+    <button id="request" onclick="runRequest()">Capture request</button>
+    <p id="network-result">no request</p>
+    <button id="breakpoint" onclick="runBreakpoint()">Hit breakpoint</button>
+    <p id="result">not resumed</p>
+    <button id="work" onclick="runWork()">Run performance workload</button>
+    <p id="work-result">not run</p>
+    <script>
+      window.expressionValue = 42;
+      window.runBreakpoint = function runBreakpoint() {
+        const before = 40;
+        debugger;
+        document.querySelector('#result').textContent = String(before + 2);
+      };
+      window.runRequest = async function runRequest() {
+        const response = await fetch('/probe?case=p0');
+        document.querySelector('#network-result').textContent = await response.text();
+      };
+      window.runWork = function runWork() {
+        performance.mark('p0-start');
+        const start = performance.now();
+        while (performance.now() - start < 250) Math.sqrt(Math.random());
+        performance.mark('p0-end');
+        performance.measure('P0 fixture workload', 'p0-start', 'p0-end');
+        document.querySelector('#work-result').textContent = 'work complete';
+      };
+      //# sourceURL=p0-fixture.js
+    </script>
+  </body>
+</html>

@@ -25,7 +25,16 @@ export interface NativeDevtoolsOptions {
   allowTestPages?: boolean;
   onUnavailable?: (windowId: number, reason: string) => void;
 }
+export interface NativeDevtoolsDiagnostics {
+  sessions: number;
+  tabInputs: number;
+  windowInputs: number;
+  extraInputs: number;
+  timers: number;
+}
 export type NativeDevtoolsInstallation = (() => void) & {
+  /** 主进程只读诊断；不经 preload/IPC 暴露给网页。 */
+  getDiagnostics(): NativeDevtoolsDiagnostics;
   /** 主进程显式登记有 owner 的壳子窗口（如独立地址栏），不按 URL 猜测归属。 */
   registerOwnerInput(windowId: number, source: unknown): void;
 };
@@ -58,7 +67,6 @@ const TOOL_F12_INSTALL = `(() => {
   };
   return true;
 })()`;
-const TOOL_F12_REMOVE = 'globalThis.__urchinDisposeF12?.()';
 function eventSource(value: unknown): value is EventSource {
   const source = value as Partial<EventSource> | null;
   return !!source && typeof source.on === 'function' && typeof source.removeListener === 'function';
@@ -78,32 +86,14 @@ function listen(source: EventSource, event: string, listener: Listener): () => v
 }
 /** 吃掉 F12 down/up；焦点转移后仍以 autoRepeat 抑制长按。 */
 function keyboard(source: EventSource, action: () => void): () => void {
-  let pressed = false;
-  const offInput = listen(source, 'before-input-event', (event, raw) => {
+  // Electron reports OS repeat state on every keyDown. Keeping a second pressed
+  // latch is unsafe: native tools/dialogs may consume keyUp after focus changes.
+  return listen(source, 'before-input-event', (event, raw) => {
     const input = raw as { key?: string; type?: string; isAutoRepeat?: boolean } | undefined;
     if (input?.key !== 'F12') return;
     (event as { preventDefault(): void }).preventDefault();
-    if (input.type === 'keyUp') {
-      pressed = false;
-      return;
-    }
-    if (input.type !== 'keyDown' || input.isAutoRepeat || pressed) return;
-    pressed = true;
-    action();
+    if (input.type === 'keyDown' && !input.isAutoRepeat) action();
   });
-  // Native tools can take focus before keyUp reaches the page. Closing the
-  // tool starts a fresh press sequence; OS autoRepeat remains suppressed.
-  const offClosed = listen(source, 'devtools-closed', () => {
-    pressed = false;
-  });
-  const offBlur = listen(source, 'blur', () => {
-    pressed = false;
-  });
-  return () => {
-    offInput();
-    offClosed();
-    offBlur();
-  };
 }
 
 export function installDevtoolsShortcuts(
@@ -116,6 +106,9 @@ export function installDevtoolsShortcuts(
   const windowInputs = new Map<number, () => void>();
   const extraInputs = new Map<EventSource, { windowId: number; dispose: () => void }>();
   let disposed = false;
+  const focusTasks = new Set<ReturnType<typeof setImmediate>>();
+  const supported = (url: string): boolean =>
+    /^(https?:|file:)/i.test(url) || (!!options.allowTestPages && /^data:/i.test(url));
   const report = (
     windowId: number,
     tabId: number | undefined,
@@ -130,10 +123,15 @@ export function installDevtoolsShortcuts(
     const owner = windows.getWindow(session.windowId)?.browserWindow;
     if (!owner || owner.isDestroyed()) return;
     owner.focus?.();
-    const active = tabs.query({ windowId: session.windowId }).find((tab) => tab.active);
     const target = tabs.getTab(session.tabId);
-    // 同工作区回到工具绑定的网页；不通过关闭工具偷偷切换工作区。
-    if (target && active?.workspaceId === target.workspaceId && !session.target.isDestroyed()) {
+    const currentContents: unknown = target?.webContents;
+    // Closing a tool returns to its bound page, including its workspace.
+    if (
+      target?.viewKind === 'browser' &&
+      supported(target.url) &&
+      currentContents === session.target &&
+      !session.target.isDestroyed()
+    ) {
       tabs.setActive(session.tabId);
       session.target.focus();
     }
@@ -150,7 +148,15 @@ export function installDevtoolsShortcuts(
         /* 目标关闭中，仍释放所有权。 */
       }
     }
-    if (focus && !disposed) restoreFocus(session);
+    if (focus && !disposed) {
+      // Let Chromium finish closing its native frontend before changing views.
+      const task = setImmediate(() => {
+        focusTasks.delete(task);
+        if (!disposed) restoreFocus(session);
+      });
+      focusTasks.add(task);
+      task.unref?.();
+    }
   };
   const deadline = (session: Session): void => {
     clearTimeout(session.timer);
@@ -188,8 +194,6 @@ export function installDevtoolsShortcuts(
       return;
     }
     const wc = tab.webContents;
-    const supported = (url: string): boolean =>
-      /^(https?:|file:)/i.test(url) || (!!options.allowTestPages && /^data:/i.test(url));
     if (tab.viewKind !== 'browser' || !supported(tab.url)) {
       report(windowId, tab.id, 'target', '内部页面和 GenOffice 视图暂不支持开发者工具。');
       return;
@@ -224,16 +228,18 @@ export function installDevtoolsShortcuts(
         session.phase = 'open';
         // 闭包绑定打开时的目标，不查询另一个窗口/当前标签。
         session.dispose.push(keyboard(tool, () => close(session)));
-        session.dispose.push(() => {
-          if (!tool.isDestroyed())
-            void tool.executeJavaScript(TOOL_F12_REMOVE).catch(() => undefined);
-        });
+        // The native frontend owns its DOM listeners until destruction. Never
+        // evaluate cleanup JS while Chromium is tearing this webContents down.
+        // Reinstalling the adapter replaces its old listener if a frontend is reused.
         void tool
           .executeJavaScript(TOOL_F12_INSTALL)
           .then((ready) => {
             if (sessions.get(tab.id) !== session) return;
             if (ready !== true) throw new Error('native-keyboard-bridge-unavailable');
-            if (session.phase === 'open') clearTimeout(session.timer);
+            if (session.phase === 'open') {
+              clearTimeout(session.timer);
+              session.timer = undefined;
+            }
           })
           .catch(() => {
             if (sessions.get(tab.id) !== session) return;
@@ -315,7 +321,7 @@ export function installDevtoolsShortcuts(
     const session = sessions.get(snapshot.id);
     if (
       session &&
-      (snapshot.crashed || snapshot.viewKind !== 'browser' || /^urchin:/i.test(snapshot.url))
+      (snapshot.crashed || snapshot.viewKind !== 'browser' || !supported(snapshot.url))
     ) {
       release(session, true);
     }
@@ -330,6 +336,8 @@ export function installDevtoolsShortcuts(
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
+    for (const task of focusTasks) clearImmediate(task);
+    focusTasks.clear();
     tabs.off('created', installTab);
     tabs.off('removed', removeTab);
     tabs.off('updated', updateTab);
@@ -343,5 +351,16 @@ export function installDevtoolsShortcuts(
     for (const entry of extraInputs.values()) entry.dispose();
     extraInputs.clear();
   };
-  return Object.assign(dispose, { registerOwnerInput });
+  return Object.assign(dispose, {
+    registerOwnerInput,
+    getDiagnostics: (): NativeDevtoolsDiagnostics => ({
+      sessions: sessions.size,
+      tabInputs: tabInputs.size,
+      windowInputs: windowInputs.size,
+      extraInputs: extraInputs.size,
+      timers:
+        [...sessions.values()].filter((session) => session.timer !== undefined).length +
+        focusTasks.size,
+    }),
+  });
 }

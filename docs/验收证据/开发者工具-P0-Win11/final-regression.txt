@@ -1,0 +1,84 @@
+
+> urchin-browser@0.1.0 e2e:select G:\pj\pj--ing\111111\Urchin-Browser
+> node scripts/e2e-select.mjs "--specs=devtools-native.spec.ts,dsh-lifecycle.spec.ts,homepage-memory-measure.spec.ts,launch.spec.ts,perf.spec.ts,pi-web-host.spec.ts,session-restore.spec.ts,settings-page.spec.ts,tab-close-activation.spec.ts,tab-order-repro.spec.ts,workspaces.spec.ts"
+
+
+[e2e-select] 执行 11 个 spec / 23 例（预估 3m48s）：
+  devtools-native.spec.ts
+  dsh-lifecycle.spec.ts
+  homepage-memory-measure.spec.ts
+  launch.spec.ts
+  perf.spec.ts
+  pi-web-host.spec.ts
+  session-restore.spec.ts
+  settings-page.spec.ts
+  tab-close-activation.spec.ts
+  tab-order-repro.spec.ts
+  workspaces.spec.ts
+
+
+Running 24 tests using 1 worker
+
+(node:28704) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+DevTools resource evidence {"versions":{"platform":"win32","os":"10.0.26300","electron":"43.8.8","chromium":"150.0.7871.250"},"settledSamplesMB":[768.37109375,744.2109375,740.87890625],"regressionMemoryMB":740.87890625,"baseline":{"counts":{"sessions":0,"tabInputs":1,"windowInputs":1,"extraInputs":1,"timers":0},"listeners":{"before-input-event":2,"devtools-opened":0,"devtools-closed":0,"destroyed":2,"render-process-gone":2},"memoryMB":768.7109375,"processes":[{"type":"Browser","pid":4616,"memoryMB":145.7734375},{"type":"GPU","pid":10648,"memoryMB":155.36328125},{"type":"Utility","pid":20104,"memoryMB":51.421875},{"type":"Tab","pid":18988,"memoryMB":121.01953125},{"type":"Tab","pid":14608,"memoryMB":88.62109375},{"type":"Tab","pid":28344,"memoryMB":102.62890625},{"type":"Tab","pid":22380,"memoryMB":103.89453125}],"toolCount":0},"final":{"counts":{"sessions":0,"tabInputs":1,"windowInputs":1,"extraInputs":1,"timers":0},"listeners":{"before-input-event":2,"devtools-opened":0,"devtools-closed":0,"destroyed":2,"render-process-gone":2},"memoryMB":740.87890625,"processes":[{"type":"Browser","pid":4616,"memoryMB":137.1953125},{"type":"GPU","pid":10648,"memoryMB":145.0546875},{"type":"Utility","pid":20104,"memoryMB":51.4140625},{"type":"Tab","pid":18988,"memoryMB":115.640625},{"type":"Tab","pid":14608,"memoryMB":91.95703125},{"type":"Tab","pid":28344,"memoryMB":99.2109375},{"type":"Tab","pid":22380,"memoryMB":100.40625}],"toolCount":0},"samplesMB":[765.53125,764.35546875,766.04296875,768.94140625,768.44921875,767.75,765.33984375,766.99609375,768.27734375,769.2734375,768.7265625,769.6640625,769.4375,768.828125,768.28125,768.296875,769.2109375,769.1015625,770.13671875,769.85546875],"slopeMBPerCycle":0.20538945018796992,"rSquared":0.552944087301472,"budgetMB":800}
+  ok  1 [electron] › tests\e2e\devtools-native.spec.ts:124:1 › native F12: shell/page/tool, fixed targets, manual close and 20 cycles (33.9s)
+  ok  2 [electron] › tests\e2e\devtools-native.spec.ts:355:1 › native ownership, workspaces, navigation, unsupported targets and teardown (7.5s)
+  ok  3 [electron] › tests\e2e\dsh-lifecycle.spec.ts:119:3 › DSH 生命周期（§7.1 修复固化） › 入口启动 → 303 干净 URL → 二次点击不重复开 → 关标签停后端 (8.5s)
+=== 初始(含默认标签) === 总进程 6 | 渲染进程(Tab) 3 | 渲染进程总 324.8 MB | 全部进程总 645.3 MB
+   Tab PID 2120: 124.2 MB
+   Tab PID 35436: 98.7 MB
+   Tab PID 37404: 101.8 MB
+=== 新建 1 个主页标签后 === 总进程 6 | 渲染进程(Tab) 3 | 渲染进程总 329.3 MB | 全部进程总 666.3 MB
+   Tab PID 2120: 128.4 MB
+   Tab PID 35436: 99.0 MB
+   Tab PID 37404: 101.8 MB
+=== 共 3 个主页标签时 === 总进程 6 | 渲染进程(Tab) 3 | 渲染进程总 332.0 MB | 全部进程总 669.6 MB
+   Tab PID 2120: 130.8 MB
+   Tab PID 35436: 99.1 MB
+   Tab PID 37404: 102.1 MB
+=== 全部关闭主页标签后 === 总进程 6 | 渲染进程(Tab) 3 | 渲染进程总 335.5 MB | 全部进程总 679.0 MB
+   Tab PID 2120: 133.3 MB
+   Tab PID 35436: 99.1 MB
+   Tab PID 37404: 103.0 MB
+  ok  4 [electron] › tests\e2e\homepage-memory-measure.spec.ts:88:1 › 测量主页标签内存 (15.1s)
+  ok  5 [electron] › tests\e2e\launch.spec.ts:65:3 › v0.1 关键路径 › 启动 Electron 并显示主窗口 (1.8s)
+  ok  6 [electron] › tests\e2e\launch.spec.ts:83:3 › v0.1 关键路径 › 新建标签 (1.8s)
+  ok  7 [electron] › tests\e2e\launch.spec.ts:101:3 › v0.1 关键路径 › 导航到 URL (2.4s)
+  ok  8 [electron] › tests\e2e\launch.spec.ts:181:3 › v0.1 关键路径 › 关闭标签 (2.0s)
+  ok  9 [electron] › tests\e2e\launch.spec.ts:209:1 › 地址栏原生粘贴并转到菜单确实发出导航 (2.2s)
+  ok 10 [electron] › tests\e2e\launch.spec.ts:251:1 › 截图覆盖整个显示器，窗口预选与背景保持相同坐标 (3.9s)
+[e2e] Electron 关闭超时或失败，回收本测试 PID 34688
+  ok 11 [electron] › tests\e2e\launch.spec.ts:270:1 › 主线程无响应时关闭有期限且不遗留本测试进程 (4.4s)
+
+[perf] 10 标签内存: 643.3 MB (6 processes, min of 3)
+  Browser (pid=34852): 129.3 MB
+  GPU (pid=12828): 133.8 MB
+  Utility (pid=31376): 50.8 MB
+  Tab (pid=40148): 127.2 MB
+  Tab (pid=27400): 99.3 MB
+  Tab (pid=37580): 102.9 MB
+
+[perf] 回归线 800MB（本机环境线）；目标线 500MB 仅告警
+
+[perf] ⚠ 超出 ADR-008 v0.1 目标线 500MB（实测 643.3MB）。当前按回归线 800MB 判定；目标线是否重新校准需产品决策。
+  ok 12 [electron] › tests\e2e\perf.spec.ts:20:1 › 内存：10 标签场景 ≤ 回归线（CI 750MB / 本机 800MB） (11.2s)
+  ok 13 [electron] › tests\e2e\pi-web-host.spec.ts:108:3 › pi 阶段 2 自研托管服务（M2A 骨架） › launch → 鉴权 URL → 前端加载 + WS 握手 → 退出杀进程 (3.0s)
+  ok 14 [electron] › tests\e2e\pi-web-host.spec.ts:182:3 › pi 阶段 2 自研托管服务（M2A 骨架） › π 按钮 → 服务启动 → pi 页面渲染 → 无凭据仍可 WS 握手 (3.5s)
+[e2e] Electron 关闭超时或失败，回收本测试 PID 39132
+  ok 15 [electron] › tests\e2e\session-restore.spec.ts:102:3 › 重启恢复（TP4 / TP7） › should restore workspaces and open tabs after restart (7.1s)
+[e2e] Electron 关闭超时或失败，回收本测试 PID 39900
+  ok 16 [electron] › tests\e2e\settings-page.spec.ts:44:3 › 设置页 › should render tabs, switch between them and auto-save a toggle (11.3s)
+  ok 17 [electron] › tests\e2e\tab-close-activation.spec.ts:54:1 › 关闭激活标签后激活相邻的下一个标签而非最底部标签 (2.0s)
+=== 右侧栏标签文本 === ["新标签页","Example Domain"]
+[e2e] Electron 关闭超时或失败，回收本测试 PID 13420
+  ok 18 [electron] › tests\e2e\tab-order-repro.spec.ts:46:1 › 新建标签后旧标签保持原状态且置顶新标签 (6.4s)
+  ok 19 [electron] › tests\e2e\tab-order-repro.spec.ts:91:1 › 侧栏激活样式、拖动排序与固定留白在两种状态均可用 (3.3s)
+  ok 20 [electron] › tests\e2e\tab-order-repro.spec.ts:135:1 › 拖拽死区落点：末卡下方空白追加、卡片间隙、首卡上方置顶 (2.4s)
+[e2e] Electron 关闭超时或失败，回收本测试 PID 31592
+  ok 21 [electron] › tests\e2e\workspaces.spec.ts:145:3 › 工作区（TP7） › should isolate cookies between workspaces and restore last active tab on switch (5.7s)
+  ok 22 [electron] › tests\e2e\workspaces.spec.ts:252:3 › 工作区（TP7） › should open workspaces overview page and switch via cards in cards mode (3.4s)
+  ok 23 [electron] › tests\e2e\workspaces.spec.ts:396:3 › 工作区（TP7） › should cap the overview at 9 cards per screen with the add card last and scroll the rest (3.1s)
+  ok 24 [electron] › tests\e2e\workspaces.spec.ts:496:3 › 工作区（TP7） › should reorder cards by drag with default and add cards pinned (2.7s)
+
+  24 passed (2.5m)

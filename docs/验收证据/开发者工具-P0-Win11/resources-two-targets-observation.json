@@ -1,0 +1,69 @@
+{
+  "versions": {
+    "platform": "win32",
+    "os": "10.0.26300",
+    "electron": "43.8.8",
+    "chromium": "150.0.7871.250"
+  },
+  "baseline": {
+    "counts": {
+      "sessions": 0,
+      "tabInputs": 2,
+      "windowInputs": 1,
+      "extraInputs": 1,
+      "timers": 0
+    },
+    "listeners": {
+      "before-input-event": 2,
+      "devtools-opened": 0,
+      "devtools-closed": 1,
+      "destroyed": 2,
+      "render-process-gone": 2
+    },
+    "memoryMB": 868.203125,
+    "toolCount": 0
+  },
+  "final": {
+    "counts": {
+      "sessions": 0,
+      "tabInputs": 2,
+      "windowInputs": 1,
+      "extraInputs": 1,
+      "timers": 0
+    },
+    "listeners": {
+      "before-input-event": 2,
+      "devtools-opened": 0,
+      "devtools-closed": 1,
+      "destroyed": 2,
+      "render-process-gone": 2
+    },
+    "memoryMB": 872.40625,
+    "toolCount": 0
+  },
+  "samplesMB": [
+    870.28515625,
+    871.109375,
+    871.67578125,
+    872.30078125,
+    874.859375,
+    874.328125,
+    874.91015625,
+    876.56640625,
+    877.25390625,
+    870.88671875,
+    872.6328125,
+    871.88671875,
+    871.94140625,
+    871.9140625,
+    872.671875,
+    871.74609375,
+    871.7734375,
+    872.625,
+    872.86328125,
+    872.3515625
+  ],
+  "slopeMBPerCycle": -0.023416940789473685,
+  "rSquared": 0.005680664089290004,
+  "budgetMB": 800
+}

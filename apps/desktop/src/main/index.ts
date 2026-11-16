@@ -1796,3 +1796,8 @@ function safeUrl(contents: { getURL?: () => string }): string {
     return '';
   }
 }
+
+/** 主进程诊断快照：只有计数，无目标内容、URL 或操作入口。 */
+export function getNativeDevtoolsDiagnostics() {
+  return ctx.disposeDevtoolsShortcuts?.getDiagnostics() ?? null;
+}

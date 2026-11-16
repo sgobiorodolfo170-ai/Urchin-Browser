@@ -67,34 +67,34 @@
 - **首版平台**：Windows
 - **差异化双定位**：
   - AI 原生——Side Panel 始终在侧，理解当前页面上下文，无需复制粘贴到外部 LLM
-  - 开发者友好——F12 已接入原生 DevTools 独立窗口（Linux 定向验证通过，Windows 与完整验收待完成）；旧链路退出进度见[开发规划](./docs/开发者工具开发规划.md)，路线见 [ADR-022](./docs/decisions/ADR-022-原生DevTools与专属调试增强.md)
+  - 开发者友好——F12 打开完整原生 DevTools 独立窗口，本机 Win11 P0 已验收；Win10 延期候补；见[验收报告](./docs/开发者工具P0验收-Win11-2026-11-16.md)，路线见 [ADR-022](./docs/decisions/ADR-022-原生DevTools与专属调试增强.md)
 - **Provider 中立**：用户自带 API key 或本地 LLM，浏览器不绑定任何提供方
 
 ## v0.1 功能概览
 
-| 模块                       | 范围                                                                                                     |
-| -------------------------- | -------------------------------------------------------------------------------------------------------- |
-| M1 Window Lifecycle        | 完整（多窗口管理 + 单实例锁 + 窗口尺寸记忆）                                                             |
-| M2 Tab Manager             | 完整（BrowserView + GenOffice WebContentsView 混挂 + 事件同步 + 持久化）                                 |
-| M3 Navigation Stack        | 完整（loadUrl/stop/back/forward/reload）                                                                 |
-| M4 Omnibox                 | 完整（URL 解析 + 历史/书签合并补全 + 安全协议拦截 + 本地路径识别）                                       |
-| M5 Bookmarks               | 完整（CRUD + 收藏夹面板）                                                                                |
-| M6 History                 | 完整（查询 + 去重 + 访问计数）                                                                           |
-| M7 Settings                | 完整（分层默认值 + 跨进程同步 + 数据目录/默认应用等设置页）                                              |
-| M8 Storage Layer           | SQLite WAL + safeStorage 加密 + LRU 连接池 + 数据目录可配置（pi 数据独立）                               |
-| M10-lite Extension Loader  | 基础（MV3 manifest 校验 + 目录加载 + 生命周期）                                                          |
-| M11 AI Orchestrator        | 完整（per-provider 子进程隔离 + 心跳 + 限流 + 重试 + 流式）                                              |
-| M12 Provider Plugin API    | 完整契约 v1                                                                                              |
-| M13 AI Side Panel          | demo（流式对话 + 页面上下文注入；`urchin://ai` 入口现由 pi-web 启动器承载）                              |
-| M14 Page Context Extractor | demo（Readability 正文抽取）                                                                             |
-| M15 DevTools Enhancement   | 当前为一期 CDP/React 检视面板；原生 F12 路线已确定、待迁移，见[需求与规划](./docs/开发者工具开发规划.md) |
-| M17 IPC Protocol           | 完整（类型化 RPC + MessagePort 流式 + 事件推送）                                                         |
-| M18 Permission/Sandbox     | 完整（sandbox + contextIsolation + preload）                                                             |
-| M19 Theme/UI System        | 基础（暗色/亮色 + Radix + Tailwind）                                                                     |
-| M23 Download Manager       | 完整（will-download 接管 + 保存对话框 + 进度 + 暂停/取消）                                               |
-| M24 网页翻译               | 完整（谷歌/微软双引擎兜底 + 整页替换/恢复 + 划词翻译 + 自动翻译开关）                                    |
-| M20 Update Service         | 完整（dev.114 提前：electron-updater + GitHub dev 预发布通道 + dev→stable 两段检查）                     |
-| M25 邮箱                   | 基础（2026-09-29 交付：IMAP 收信 + SMTP 发信 + MIME 解析 + 自建 UI）                                     |
+| 模块                       | 范围                                                                                                                              |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| M1 Window Lifecycle        | 完整（多窗口管理 + 单实例锁 + 窗口尺寸记忆）                                                                                      |
+| M2 Tab Manager             | 完整（BrowserView + GenOffice WebContentsView 混挂 + 事件同步 + 持久化）                                                          |
+| M3 Navigation Stack        | 完整（loadUrl/stop/back/forward/reload）                                                                                          |
+| M4 Omnibox                 | 完整（URL 解析 + 历史/书签合并补全 + 安全协议拦截 + 本地路径识别）                                                                |
+| M5 Bookmarks               | 完整（CRUD + 收藏夹面板）                                                                                                         |
+| M6 History                 | 完整（查询 + 去重 + 访问计数）                                                                                                    |
+| M7 Settings                | 完整（分层默认值 + 跨进程同步 + 数据目录/默认应用等设置页）                                                                       |
+| M8 Storage Layer           | SQLite WAL + safeStorage 加密 + LRU 连接池 + 数据目录可配置（pi 数据独立）                                                        |
+| M10-lite Extension Loader  | 基础（MV3 manifest 校验 + 目录加载 + 生命周期）                                                                                   |
+| M11 AI Orchestrator        | 完整（per-provider 子进程隔离 + 心跳 + 限流 + 重试 + 流式）                                                                       |
+| M12 Provider Plugin API    | 完整契约 v1                                                                                                                       |
+| M13 AI Side Panel          | demo（流式对话 + 页面上下文注入；`urchin://ai` 入口现由 pi-web 启动器承载）                                                       |
+| M14 Page Context Extractor | demo（Readability 正文抽取）                                                                                                      |
+| M15 DevTools Enhancement   | 原生 F12 与旧链路退出完成，本机 Win11 P0 已验收；Win10 候补，P1 未启动，见[验收报告](./docs/开发者工具P0验收-Win11-2026-11-16.md) |
+| M17 IPC Protocol           | 完整（类型化 RPC + MessagePort 流式 + 事件推送）                                                                                  |
+| M18 Permission/Sandbox     | 完整（sandbox + contextIsolation + preload）                                                                                      |
+| M19 Theme/UI System        | 基础（暗色/亮色 + Radix + Tailwind）                                                                                              |
+| M23 Download Manager       | 完整（will-download 接管 + 保存对话框 + 进度 + 暂停/取消）                                                                        |
+| M24 网页翻译               | 完整（谷歌/微软双引擎兜底 + 整页替换/恢复 + 划词翻译 + 自动翻译开关）                                                             |
+| M20 Update Service         | 完整（dev.114 提前：electron-updater + GitHub dev 预发布通道 + dev→stable 两段检查）                                              |
+| M25 邮箱                   | 基础（2026-09-29 交付：IMAP 收信 + SMTP 发信 + MIME 解析 + 自建 UI）                                                              |
 
 ### dev 系列交付的其他能力（M 编号之外）
 

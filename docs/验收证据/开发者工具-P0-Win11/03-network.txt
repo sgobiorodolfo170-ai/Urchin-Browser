@@ -1,0 +1,138 @@
+Window: "Developer Tools - http://127.0.0.1:58512/", App: electron.exe.
+	0 window (窗口) Developer Tools - http://127.0.0.1:58512/ Secondary Actions: Raise
+		1 pane (窗格) (disabled)
+		2 pane (区域) Developer Tools - http://127.0.0.1:58512/
+			3 pane (区域)
+				4 pane (区域)
+					5 pane (区域)
+						6 document (文档) DevTools Value: devtools://devtools/bundled/devtools_app.html?remoteBase=https://chrome-devtools-frontend.appspot.com/serve_file/@c2bc4a343d758df5a4d7e640313d9d41aae3ab13/&can_dock=&toolbarColor=rgba(223,223,223,1)&textColor=rgba(0,0,0,1)&experiments=true ID: RootWebArea
+							7 group (组) DevTools is now available in Chinese
+								8 text (警报)
+									9 text (文本) DevTools is now available in Chinese
+								10 button (按钮) Don't show again
+								11 button (按钮) Always match Chrome's language
+								12 button (按钮) Switch DevTools to Chinese
+								13 group (组)
+									14 group (组) Close Description: Close
+										15 button (按钮) Close Description: Close
+							16 group (组)
+								17 group (导航) Main toolbar
+									18 toolbar (工具栏)
+										19 group (组) Select an element in the page to inspect it Description: Select an element in the page to inspect it - Ctrl + Shift + C
+											20 button (切换按钮) Select an element in the page to inspect it - Ctrl + Shift + C Description: Select an element in the page to inspect it - Ctrl + Shift + C
+									21 tab (选项卡) Panels
+										22 tab item (选项卡项目) (selectable) Elements ID: tab-elements
+										23 tab item (选项卡项目) (selectable) Console ID: tab-console
+										24 tab item (选项卡项目) (selectable) Sources ID: tab-sources
+										25 tab item (选项卡项目) (selectable) Network ID: tab-network
+										26 tab item (选项卡项目) (selectable) Performance ID: tab-timeline
+										27 tab item (选项卡项目) (selectable) Memory ID: tab-heap-profiler
+										28 tab item (选项卡项目) (selectable) Application ID: tab-resources
+										29 tab item (选项卡项目) (selectable) Security ID: tab-security
+									30 button (按钮) More tabs Description: More tabs
+									31 toolbar (工具栏)
+										32 group (组) Open Console to view 1 warning Description: Open Console to view 1 warning
+											33 button (按钮) Open Console to view 1 warning
+										34 group (组) Settings Description: Settings - F1 - Shift + ?
+											35 button (按钮) Settings - F1 - Shift + ? Description: Settings - F1 - Shift + ?
+										36 button (按钮) Customize and control DevTools Description: Customize and control DevTools
+											37 button (按钮) Customize and control DevTools Description: Customize and control DevTools
+								97 pane (选项卡面板) Network panel
+									98 group (组) network
+										99 toolbar (工具栏)
+											100 group (组) Stop recording network log Description: Stop recording network log - Ctrl + E
+												101 button (切换按钮) Stop recording network log - Ctrl + E Description: Stop recording network log - Ctrl + E
+											102 group (组) Clear network log Description: Clear network log - Ctrl + L
+												103 button (按钮) Clear network log - Ctrl + L Description: Clear network log - Ctrl + L
+											104 group (组) Filter Description: Filter
+												105 button (切换按钮) Filter Description: Filter
+											106 group (组) Search Description: Search
+												107 button (切换按钮) Search Description: Search
+											108 checkbox (复选框) (settable, string) Preserve log Description: Do not clear log on page reload / navigation ID: ui-checkbox-label28
+											109 group (组)
+												110 text (文本) Preserve log
+											111 checkbox (复选框) (settable, string) Disable cache Description: Disable cache while DevTools is open ID: ui-checkbox-label29
+											112 group (组)
+												113 text (文本) Disable cache
+											114 combo box (组合框) (settable, string) Throttling Value: Disabled: No throttling
+											115 group (组) More network conditions… Description: More network conditions…
+												116 button (按钮) More network conditions… Description: More network conditions…
+											117 group (组) Import HAR file… Description: Import HAR file…
+												118 button (按钮) Import HAR file… Description: Import HAR file…
+											119 group (组) Export HAR (sanitized)… Description: Export HAR (sanitized)…
+												120 button (按钮) Export HAR (sanitized)… Description: Export HAR (sanitized)…
+											121 group (组) Network settings Description: Network settings
+												122 button (切换按钮) Network settings Description: Network settings
+										123 toolbar (工具栏)
+											124 group (组) Description: e.g. /small[d]+/ url:a.com/b
+												125 text field (编辑) (settable, string) Filter Description: Filter Value: Filter
+													181 text (文本) Filter
+										127 group (组) Description: Inverts the search filter
+											128 checkbox (复选框) (settable, string) Invert Description: Invert ID: ui-checkbox-label27
+											129 group (组)
+												130 text (文本) Invert
+										131 group (组) Show only/hide requests dropdown
+											132 button (按钮) Show only/hide requests Description: Show only/hide requests
+												133 text (文本) More filters
+										134 list (列表) (settable, string) Request types to include Description: Ctrl + Click to select multiple types
+											135 list item (选项) (selectable) All
+											136 list item (选项) (selectable) Fetch/XHR Description: Fetch and XHR
+											137 list item (选项) (selectable) Doc Description: Document
+											138 list item (选项) (selectable) CSS Description: CSS
+											139 list item (选项) (selectable) JS Description: JavaScript
+											140 list item (选项) (selectable) Font Description: Font
+											141 list item (选项) (selectable) Img Description: Image
+											142 list item (选项) (selectable) Media Description: Media
+											143 list item (选项) (selectable) Manifest Description: Manifest
+											144 list item (选项) (selectable) Socket Description: WebSocket | WebTransport | DirectSocket
+											145 list item (选项) (selectable) Wasm Description: WebAssembly
+											146 list item (选项) (selectable) Other Description: Other
+										147 group (组) Overview grid window ID: network-overview-container
+											182 text (文本) 0 ms
+											183 text (文本) 10 ms
+											184 text (文本) 20 ms
+											185 text (文本) 30 ms
+											186 text (文本) 40 ms
+											187 text (文本) 50 ms
+											188 text (文本) 60 ms
+											189 text (文本) 70 ms
+											190 text (文本) 80 ms
+											191 text (文本) 90 ms
+											192 text (文本) 100 ms
+											193 text (文本) 110 ms
+											160 slider (滑块) (settable, float) Left Resizer Value: 0
+											161 slider (滑块) (settable, float) Right Resizer Value: 100
+											162 image (图像)
+										163 group (组) ID: network-container
+											194 group (组)
+												195 pane (应用程序)
+													196 table (表格)
+														197 data item (行)
+															198 data item (列标题) Name - Sortable column. Press enter to apply sorting filter
+															199 data item (列标题) Status - Sortable column. Press enter to apply sorting filter
+															200 data item (列标题) Type - Sortable column. Press enter to apply sorting filter
+															201 data item (列标题) Initiator - Sortable column. Press enter to apply sorting filter
+															202 data item (列标题) Size - Sortable column. Press enter to apply sorting filter
+															203 data item (列标题) Time - Sortable column. Press enter to apply sorting filter
+														204 data item (行)
+															205 data item (项) probe?case=p0 Description: http://127.0.0.1:58512/probe?case=p0
+															206 data item (项) 200 Description: 200 OK
+															207 data item (项) fetch Description: fetch
+															208 data item (项) p0-fixture.js:9
+																209 hyperlink (链接) p0-fixture.js:9 Description: http://127.0.0.1:58512/p0-fixture.js:9
+															210 data item (项) 0.2 kB Description: 0.2 kB transferred over network, resource size: 0.0 kB
+															211 data item (项) 22 ms Description: 22 ms
+											212 status bar (状态)
+												213 group (组) 1 requests Description: 1 requests
+													214 text (文本) 1 requests
+												215 group (组) 168 B transferred over network Description: 168 B transferred over network
+													216 text (文本) 168 B transferred
+												217 group (组) 19 B resources loaded by the page Description: 19 B resources loaded by the page
+													218 text (文本) 19 B resources
+							77 text (警报)
+								219 text (文本) Network Data Available
+							79 status bar (状态)
+
+Document text: ```
+Filter
+```

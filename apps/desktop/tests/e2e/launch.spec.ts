@@ -162,7 +162,9 @@ test.describe('v0.1 关键路径', () => {
           ),
         )
         .toBe(true);
-      await address.fill('example.com');
+      // Retype as a real user edit; fill(sameValue) may not emit React onChange.
+      await address.fill('');
+      await address.pressSequentially('example.com');
       const suggestion = statusBar
         .getByRole('button')
         .filter({ hasText: 'https://example.com' })

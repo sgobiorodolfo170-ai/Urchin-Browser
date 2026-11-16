@@ -8,7 +8,7 @@
  *
  * 通过主窗口已有的 window.urchin.invoke('settings.*') 读写设置。
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../components/ui/button';
 import { cn } from '../lib/utils';
 import { useSettings } from './use-settings';
@@ -77,9 +77,24 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
   );
   const [toast, setToast] = useState<string | null>(null);
 
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (toastTimer.current !== null) clearTimeout(toastTimer.current);
+      toastTimer.current = null;
+    };
+  }, []);
   const showToast = useCallback((msg: string) => {
+    if (!mounted.current) return;
+    if (toastTimer.current !== null) clearTimeout(toastTimer.current);
     setToast(msg);
-    setTimeout(() => setToast(null), 1500);
+    toastTimer.current = setTimeout(() => {
+      toastTimer.current = null;
+      setToast(null);
+    }, 1500);
   }, []);
 
   // 设置加载 / 自动保存（debounce 800ms）/ 重置默认值收拢于 settings/use-settings.ts

@@ -1,0 +1,98 @@
+Window: "Developer Tools - http://127.0.0.1:58512/", App: electron.exe.
+	0 window (窗口) Developer Tools - http://127.0.0.1:58512/ Secondary Actions: Raise
+		1 pane (窗格) (disabled)
+		2 pane (区域) Developer Tools - http://127.0.0.1:58512/
+			3 pane (区域)
+				4 pane (区域)
+					5 pane (区域)
+						6 document (文档) DevTools Value: devtools://devtools/bundled/devtools_app.html?remoteBase=https://chrome-devtools-frontend.appspot.com/serve_file/@c2bc4a343d758df5a4d7e640313d9d41aae3ab13/&can_dock=&toolbarColor=rgba(223,223,223,1)&textColor=rgba(0,0,0,1)&experiments=true ID: RootWebArea
+							7 group (组) DevTools is now available in Chinese
+								8 text (警报)
+									9 text (文本) DevTools is now available in Chinese
+								10 button (按钮) Don't show again
+								11 button (按钮) Always match Chrome's language
+								12 button (按钮) Switch DevTools to Chinese
+								13 group (组)
+									14 group (组) Close Description: Close
+										15 button (按钮) Close Description: Close
+							16 group (组)
+								17 group (导航) Main toolbar
+									18 toolbar (工具栏)
+										19 group (组) Select an element in the page to inspect it Description: Select an element in the page to inspect it - Ctrl + Shift + C
+											20 button (切换按钮) Select an element in the page to inspect it - Ctrl + Shift + C Description: Select an element in the page to inspect it - Ctrl + Shift + C
+									21 tab (选项卡) Panels
+										22 tab item (选项卡项目) (selectable) Elements ID: tab-elements
+										23 tab item (选项卡项目) (selectable) Console ID: tab-console
+										24 tab item (选项卡项目) (selectable) Sources ID: tab-sources
+										25 tab item (选项卡项目) (selectable) Network ID: tab-network
+										26 tab item (选项卡项目) (selectable) Performance ID: tab-timeline
+										27 tab item (选项卡项目) (selectable) Memory ID: tab-heap-profiler
+										28 tab item (选项卡项目) (selectable) Application ID: tab-resources
+										29 tab item (选项卡项目) (selectable) Security ID: tab-security
+									30 button (按钮) More tabs Description: More tabs
+									31 toolbar (工具栏)
+										32 group (组) Open Console to view 1 warning Description: Open Console to view 1 warning
+											33 button (按钮) Open Console to view 1 warning
+										34 group (组) Settings Description: Settings - F1 - Shift + ?
+											35 button (按钮) Settings - F1 - Shift + ? Description: Settings - F1 - Shift + ?
+										36 button (按钮) Customize and control DevTools Description: Customize and control DevTools
+											37 button (按钮) Customize and control DevTools Description: Customize and control DevTools
+								38 pane (选项卡面板) Console panel
+									39 group (组) console
+										40 toolbar (工具栏)
+											41 group (组) Show console sidebar Description: Show console sidebar
+												42 button (按钮) Show console sidebar Description: Show console sidebar
+											43 group (组) Clear console Description: Clear console - Ctrl + L
+												44 button (按钮) Clear console - Ctrl + L Description: Clear console - Ctrl + L
+											45 group (组) Expand all Description: Expand all
+												46 button (按钮) Expand all Description: Expand all
+											47 button (按钮) JavaScript context: top Description: JavaScript context: top
+											48 group (组) Create live expression Description: Create live expression
+												49 button (按钮) Create live expression Description: Create live expression
+											50 group (组) Description: e.g. /eventd/ -cdn url:a.com
+												51 text field (编辑) (settable, string) Filter Description: Filter Value: Filter
+													85 text (文本) Filter
+											53 button (按钮) Log level: Default levels Description: Log level: Default levels
+												54 text (文本) Default levels
+											55 group (组) Some problems no longer generate console messages, but are surfaced in the issues tab. Click to go to the issues tab Description: Some problems no longer generate console messages, but are surfaced in the issues tab. Click to go to the issues tab ID: console-issues-counter
+												56 button (按钮) Some problems no longer generate console messages, but are surfaced in the issues tab. Click to go to the issues tab
+											57 group (组) Console settings Description: Console settings
+												58 button (切换按钮) Console settings Description: Console settings
+											59 group (组) 1 messages in console
+										60 group (组) ID: console-messages
+											61 group (组)
+												62 group (日志) %cElectron Security Warning (Insecure Content-Security-Policy)
+													63 group (组) Warning
+													64 group (组) Electron Security Warning (Insecure Content-Security-Policy) This renderer process has either no Content Security Policy set or a policy with "unsafe-eval" enabled. This exposes users of this app to unnecessary security risks. For more information and help, consult https://electronjs.org/docs/tutorial/security. This warning will not show up once the app is packaged. Stack table collapsed
+														65 group (组)
+															66 hyperlink (链接) VM4 sandbox_bundle:2 Description: debugger:///VM4 sandbox_bundle:2
+															67 text (文本) 
+															68 text (文本) Electron Security Warning (Insecure Content-Security-Policy)
+															69 text (文本) 
+															70 text (文本) This renderer process has either no Content Security Policy set or a policy with "unsafe-eval" enabled. This exposes users of this app to unnecessary security risks. For more information and help, consult
+															71 hyperlink (链接) https://electronjs.org/docs/tutorial/security
+															72 text (文本) . This warning will not show up once the app is packaged.
+												80 group (日志) Warning: Don’t paste code into the DevTools Console that you don’t understand or haven’t reviewed yourself. This could allow attackers to steal your identity or take control of your computer. Please type “allow pasting” below and press Enter to allow pasting.
+													81 group (组) Warning
+													82 group (组) Warning: Don’t paste code into the DevTools Console that you don’t understand or haven’t reviewed yourself. This could allow attackers to steal your identity or take control of your computer. Please type “allow pasting” below and press Enter to allow pasting. Stack table collapsed
+														83 group (组)
+															84 text (文本) Warning: Don’t paste code into the DevTools Console that you don’t understand or haven’t reviewed yourself. This could allow attackers to steal your identity or take control of your computer. Please type “allow pasting” below and press Enter to allow pasting.
+												89 group (组)
+													90 text (文本) 1
+													91 text (文本) +
+													92 text (文本) 1
+												93 group (组)
+													94 group (组) 2 Stack table collapsed
+														95 group (组)
+															96 text (文本) 2
+											73 group (组)
+											74 group (组)
+												75 text field (编辑) (settable, string) Console prompt Value: 
+													88 text (文本) 
+							77 text (警报)
+								78 text (文本) DevTools is undocked
+							79 status bar (状态)
+
+Document text: ```
+Filter
+```

@@ -1,3 +1,4 @@
+import type { NativeDevtoolsInstallation } from '../devtools';
 /**
  * AppContext · 主进程全局状态容器
  *
@@ -118,7 +119,7 @@ export interface AppContext {
   translateManagerRef: TranslateManager | null;
 
   /** M15 DevTools F12 快捷键卸载句柄（dev.121）。 */
-  disposeDevtoolsShortcuts: (() => void) | null;
+  disposeDevtoolsShortcuts: NativeDevtoolsInstallation | null;
 
   /** GenOffice 编辑器集成（阶段 2）：tab.create 分流 / tab.close 与窗口关闭守卫。 */
   genofficeIntegration: GenOfficeIntegration | null;

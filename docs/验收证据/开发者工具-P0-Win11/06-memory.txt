@@ -1,0 +1,142 @@
+Window: "Developer Tools - http://127.0.0.1:58512/", App: electron.exe.
+	0 window (窗口) Developer Tools - http://127.0.0.1:58512/ Secondary Actions: Raise
+		1 pane (窗格) (disabled)
+		2 pane (区域) Developer Tools - http://127.0.0.1:58512/
+			3 pane (区域)
+				4 pane (区域)
+					5 pane (区域)
+						6 document (文档) DevTools Value: devtools://devtools/bundled/devtools_app.html?remoteBase=https://chrome-devtools-frontend.appspot.com/serve_file/@c2bc4a343d758df5a4d7e640313d9d41aae3ab13/&can_dock=&toolbarColor=rgba(223,223,223,1)&textColor=rgba(0,0,0,1)&experiments=true ID: RootWebArea
+							704 group (组) DevTools is now available in Chinese
+								705 text (警报)
+									706 text (文本) DevTools is now available in Chinese
+								707 button (按钮) Don't show again
+								708 button (按钮) Always match Chrome's language
+								709 button (按钮) Switch DevTools to Chinese
+								710 group (组)
+									711 group (组) Close Description: Close
+										712 button (按钮) Close Description: Close
+							713 group (组)
+								714 group (导航) Main toolbar
+									715 toolbar (工具栏)
+										716 group (组) Select an element in the page to inspect it Description: Select an element in the page to inspect it - Ctrl + Shift + C
+											717 button (切换按钮) Select an element in the page to inspect it - Ctrl + Shift + C Description: Select an element in the page to inspect it - Ctrl + Shift + C
+									718 tab (选项卡) Panels
+										719 tab item (选项卡项目) (selectable) Elements ID: tab-elements
+										720 tab item (选项卡项目) (selectable) Console ID: tab-console
+										721 tab item (选项卡项目) (selectable) Sources ID: tab-sources
+										722 tab item (选项卡项目) (selectable) Network ID: tab-network
+										723 tab item (选项卡项目) (selectable) Performance ID: tab-timeline
+										724 tab item (选项卡项目) (selectable) Memory ID: tab-heap-profiler
+										725 tab item (选项卡项目) (selectable) Application ID: tab-resources
+										726 tab item (选项卡项目) (selectable) Security ID: tab-security
+									727 button (按钮) More tabs Description: More tabs
+									728 toolbar (工具栏)
+										729 group (组) Settings Description: Settings - F1 - Shift + ?
+											730 button (按钮) Settings - F1 - Shift + ? Description: Settings - F1 - Shift + ?
+										731 button (按钮) Customize and control DevTools Description: Customize and control DevTools
+											732 button (按钮) Customize and control DevTools Description: Customize and control DevTools
+								874 pane (选项卡面板) Memory panel
+									875 group (组) heap-profiler
+										876 toolbar (工具栏)
+											877 group (组) Take heap snapshot Description: Take heap snapshot
+												878 button (切换按钮) Take heap snapshot Description: Take heap snapshot
+											879 group (组) Clear all profiles Description: Clear all profiles
+												880 button (按钮) Clear all profiles Description: Clear all profiles
+											881 group (组) Load profile… Description: Load profile… - Ctrl + O
+												882 button (按钮) Load profile… - Ctrl + O Description: Load profile… - Ctrl + O
+											883 group (组) Save profile… Description: Save profile… - Ctrl + S
+												884 button (按钮) (disabled) Save profile… - Ctrl + S Description: Save profile… - Ctrl + S
+											885 group (组) Collect garbage Description: Collect garbage
+												886 button (按钮) Collect garbage Description: Collect garbage
+										887 tree (树)
+											888 tree item (树项目) (selectable) Profiles
+										889 text (标题) Select profiling type
+										890 group (单选按钮组) (settable, string) Select profiling type
+											891 radio button (单选按钮) (selectable, settable, string) Heap snapshot
+											892 text (文本) See the memory distribution of JavaScript objects and related DOM nodes
+											893 radio button (单选按钮) (selectable, settable, string) Allocations on timeline
+											894 text (文本) Record memory allocations over time and isolate memory leaks by selecting intervals with allocations that are still alive
+											895 group (组)
+												896 checkbox (复选框) (disabled) Allocation stack traces (more overhead) Description: Allocation stack traces (more overhead) ID: ui-checkbox-label55
+												897 group (组)
+													898 text (文本) Allocation stack traces (more overhead)
+											899 radio button (单选按钮) (selectable, settable, string) Allocation sampling
+											900 text (文本) Approximate memory allocations by sampling long operations with minimal overhead and get a breakdown by JavaScript execution stack
+											901 group (组)
+												902 checkbox (复选框) (disabled) Sampling heap profiler timeline Description: Sampling heap profiler timeline ID: ui-checkbox-label56
+												903 group (组)
+													904 text (文本) Sampling heap profiler timeline
+											905 radio button (单选按钮) (selectable, settable, string) Detached elements
+											906 text (文本) Detached elements shows objects that are retained by a JS reference.
+										907 text (标题) Select JavaScript VM instance
+										908 list (列表) (settable, string) JavaScript VM instances
+											909 list item (选项) (selectable) 2.7 MB Main ID: ariaElement23
+												910 group (组) Description: Heap size in use by live JS objects.
+												911 group (组) Description: Heap size change trend over the last 2 minutes.
+										912 group (组) Description: Total page JS heap size across all VM instances.
+											926 text (文本) 2.7 MB
+										914 group (组) Description: Total page JS heap size change trend over the last 2 minutes.
+										915 text (文本) Total JS heap size
+										916 button (按钮) Load profile
+										917 button (按钮) Take snapshot
+							870 text (警报)
+								873 text (文本) Drawer hidden
+							872 status bar (状态)
+
+Document text: ```
+DevTools is now available in Chinese
+Don't show again
+Always match Chrome's language
+Switch DevTools to Chinese
+Close
+Select an element in the page to inspect it - Ctrl + Shift + C
+￼
+￼
+Elements
+Console
+Sources
+Network
+Performance
+Memory
+Application
+Security
+￼
+More tabs
+￼
+Settings - F1 - Shift + ?
+Customize and control DevTools
+Take heap snapshot
+Clear all profiles
+￼
+Load profile… - Ctrl + O
+Save profile… - Ctrl + S
+￼
+Collect garbage
+￼
+Profiles
+Select profiling type
+￼
+See the memory distribution of JavaScript objects and related DOM nodes
+￼
+Record memory allocations over time and isolate memory leaks by selecting intervals with allocations that are still alive
+￼
+Allocation stack traces (more overhead)
+￼
+Approximate memory allocations by sampling long operations with minimal overhead and get a breakdown by JavaScript execution stack
+￼
+Sampling heap profiler timeline
+￼
+Detached elements shows objects that are retained by a JS reference.
+Select JavaScript VM instance
+2.7 MB
+￼
+Main
+2.7 MB
+￼
+Total JS heap size
+Load profile
+Take snapshot
+￼
+Drawer hidden
+￼
+```

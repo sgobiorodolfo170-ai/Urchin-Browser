@@ -58,6 +58,27 @@ test.describe('M27 笔记 / 便利贴', () => {
     await title.fill('E2E 新建笔记');
     await expect(title).toHaveValue('E2E 新建笔记');
 
+    // 日历覆盖打开，不重挂载笔记现场；Esc 关闭后恢复入口焦点。
+    const calendarEntry = window.getByRole('button', { name: '打开日历', exact: true });
+    const addNotebook = window.getByRole('button', { name: '新建笔记本', exact: true });
+    expect((await calendarEntry.boundingBox())!.x).toBeLessThan(
+      (await addNotebook.boundingBox())!.x,
+    );
+    await calendarEntry.click();
+    const calendar = window.getByRole('dialog', { name: '日历', exact: true });
+    await expect(calendar).toBeVisible();
+    await expect(calendar.getByRole('button', { pressed: true })).toHaveCount(1);
+    await calendar.getByRole('button', { name: '下个月', exact: true }).click();
+    await calendar.getByRole('button', { name: '今天', exact: true }).click();
+    await expect(calendar.locator('[aria-current="date"]')).toHaveAttribute('aria-pressed', 'true');
+    await calendar.press('Escape');
+    await expect(calendar).toHaveCount(0);
+    await expect(calendarEntry).toBeFocused();
+    await expect(title).toHaveValue('E2E 新建笔记');
+    await calendarEntry.click();
+    await calendar.getByRole('button', { name: '关闭日历', exact: true }).click();
+    await expect(calendar).toHaveCount(0);
+
     const body = window.getByLabel('笔记正文');
     const source = '## 本周计划\n\n优先完成编辑器\n\n- [ ] 阅读体验';
     await body.fill(source);

@@ -9,6 +9,7 @@
  */
 import { useState } from 'react';
 import {
+  CalendarDays,
   ChevronDown,
   ChevronRight,
   FileText,
@@ -19,6 +20,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { CalendarDialog } from '../calendar/CalendarDialog';
 import { cn } from '../lib/utils';
 import { makeNotebookId } from './normalize';
 import type { NotebookMeta, NotebookState } from './types';
@@ -53,6 +55,7 @@ function notebookTodoCount(state: NotebookState, notebookId: string): number {
 }
 
 export function NotebookNav({ state, update }: NotebookNavProps) {
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [draft, setDraft] = useState('');
   const [pendingDelete, setPendingDelete] = useState<DeleteTarget | null>(null);
@@ -208,15 +211,27 @@ export function NotebookNav({ state, update }: NotebookNavProps) {
             <p className="text-[10px] text-text-secondary">随手记下，留住灵感</p>
           </div>
         </div>
-        <button
-          type="button"
-          className={ICON_BUTTON}
-          onClick={addNotebook}
-          aria-label="新建笔记本"
-          title="新建笔记本"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            className={ICON_BUTTON}
+            onClick={() => setCalendarOpen(true)}
+            aria-label="打开日历"
+            title="打开日历"
+            aria-haspopup="dialog"
+          >
+            <CalendarDays className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className={ICON_BUTTON}
+            onClick={addNotebook}
+            aria-label="新建笔记本"
+            title="新建笔记本"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
@@ -426,6 +441,7 @@ export function NotebookNav({ state, update }: NotebookNavProps) {
         })}
       </div>
 
+      {calendarOpen && <CalendarDialog onClose={() => setCalendarOpen(false)} />}
       <ConfirmDialog
         open={pendingDelete !== null}
         title={pendingDelete?.kind === 'notebook' ? '删除笔记本？' : '删除笔记？'}

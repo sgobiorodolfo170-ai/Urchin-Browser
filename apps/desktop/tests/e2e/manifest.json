@@ -216,6 +216,7 @@
       "tests": 1,
       "durationSec": 8,
       "triggers": [
+        "apps/desktop/src/renderer/calendar/**",
         "apps/desktop/src/renderer/notebook/**",
         "apps/desktop/src/renderer/sidebar/**",
         "apps/desktop/src/main/settings/**"

@@ -93,9 +93,9 @@ export const MAIL_PROVIDER_PRESETS: readonly MailProviderPreset[] = [
     domains: ['gmail.com', 'googlemail.com'],
     imap: { host: 'imap.gmail.com', port: 993, secure: true },
     smtp: { host: 'smtp.gmail.com', port: 465, secure: true },
-    authType: 'app-password',
-    authHint: '使用应用专用密码（需开启两步验证）',
-    note: 'Google 已停用「低安全性应用」——须开启两步验证后生成应用专用密码；也可使用 Google OAuth2 授权登录（需配置应用）',
+    authType: 'oauth2',
+    authHint: '使用 Google OAuth2 授权登录',
+    note: '填写本项目的 Google 桌面应用配置后，通过浏览器授权；无需输入邮箱密码或应用专用密码',
     oauth2Supported: true,
   },
   {

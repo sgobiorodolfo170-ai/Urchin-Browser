@@ -40,12 +40,23 @@ describe('邮箱单页登录', () => {
       }),
     );
   });
-  it('blocks password submission for Outlook requiring OAuth2', () => {
+  it.each([
+    ['Gmail', '使用 Google 授权登录'],
+    ['Outlook / Hotmail', '使用 Microsoft 授权登录'],
+  ])('shows only OAuth login controls for %s', async (provider, action) => {
     render(<AccountSetup onSaved={onSaved} onCancel={() => undefined} />);
-    fireEvent.click(screen.getByRole('button', { name: /Outlook \/ Hotmail/ }));
-    fireEvent.change(screen.getByLabelText('邮箱地址'), { target: { value: 'user@hotmail.com' } });
-    expect(screen.getByRole('button', { name: '登录并添加' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '使用 Microsoft 授权登录' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(provider) }));
+    await waitFor(() => expect(screen.getByLabelText('OAuth Client ID')).toBeEnabled());
+    expect(screen.getByRole('button', { name: action })).toBeDisabled();
+    expect(screen.queryByLabelText('授权码 / 应用专用密码')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('密码')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '登录并添加' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '测试连接' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '高级设置（IMAP 服务器）' }),
+    ).not.toBeInTheDocument();
+    fireEvent.submit(screen.getByRole('form', { name: '邮箱登录' }));
+    expect(invoke).not.toHaveBeenCalledWith('mail.account.add', expect.anything());
   });
   it('opens registration in a new tab without passing account credentials', async () => {
     render(<AccountSetup onSaved={onSaved} onCancel={() => undefined} />);

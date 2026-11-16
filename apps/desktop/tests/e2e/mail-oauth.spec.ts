@@ -29,13 +29,22 @@ test('mail login renders configurable OAuth providers and preserves password pro
     await window.getByRole('button', { name: /Outlook \/ Hotmail/ }).click();
     await expect(window.getByLabel('OAuth Client ID')).toHaveValue('');
     await expect(window.getByLabel('密码', { exact: true })).toHaveCount(0);
+    await expect(window.getByRole('button', { name: '测试连接' })).toHaveCount(0);
+    await expect(window.getByRole('button', { name: '登录并添加' })).toHaveCount(0);
+    await expect(window.getByRole('button', { name: '高级设置（IMAP 服务器）' })).toHaveCount(0);
     await expect(window.getByRole('button', { name: '使用 Microsoft 授权登录' })).toBeDisabled();
     await window.getByLabel('邮箱地址').fill('me@hotmail.com');
     await window.getByLabel('OAuth Client ID').fill('test-client');
     await expect(window.getByRole('button', { name: '使用 Microsoft 授权登录' })).toBeEnabled();
     await window.getByRole('button', { name: /Gmail/ }).click();
     await expect(window.getByLabel('Google 桌面应用 Client Secret')).toBeVisible();
+    await expect(window.getByLabel('授权码 / 应用专用密码')).toHaveCount(0);
+    await expect(window.getByRole('button', { name: '测试连接' })).toHaveCount(0);
+    await expect(window.getByRole('button', { name: '登录并添加' })).toHaveCount(0);
+    await expect(window.getByRole('button', { name: '高级设置（IMAP 服务器）' })).toHaveCount(0);
+    await window.getByRole('button', { name: /QQ邮箱/ }).click();
     await expect(window.getByLabel('授权码 / 应用专用密码')).toBeVisible();
+    await expect(window.getByRole('button', { name: '登录并添加' })).toBeVisible();
     await window.getByRole('button', { name: '返回邮箱主页' }).click();
     await expect(window.getByText('请登录', { exact: true })).toBeVisible();
   } finally {

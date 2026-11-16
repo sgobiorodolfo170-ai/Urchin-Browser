@@ -62,6 +62,8 @@ export function AccountSetup({ onSaved, onCancel, initialAccount }: AccountSetup
   // ── 向导状态 ──
   const [presetId, setPresetId] = useState<string | null>(initialAccount?.authProvider ?? 'qq');
   const preset = presetId === 'custom' ? null : presetId ? getPresetById(presetId) : null;
+  const oauthProvider = preset?.id === 'gmail' || preset?.id === 'outlook' ? preset.id : null;
+  const passwordLogin = !oauthProvider && !initialAccount;
 
   // ── 表单字段 ──
   const [name, setName] = useState(initialAccount?.name ?? 'QQ邮箱');
@@ -114,8 +116,7 @@ export function AccountSetup({ onSaved, onCancel, initialAccount }: AccountSetup
 
   const busy = testing || saving || oauthBusy;
   const valid =
-    !initialAccount &&
-    preset?.authType !== 'oauth2' &&
+    passwordLogin &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) &&
     password.length > 0 &&
     imapHost.trim().length > 0 &&
@@ -308,10 +309,10 @@ export function AccountSetup({ onSaved, onCancel, initialAccount }: AccountSetup
           )}
         </div>
 
-        {(preset?.id === 'gmail' || preset?.id === 'outlook') && (
+        {oauthProvider && (
           <OAuthLogin
-            key={preset.id}
-            provider={preset.id}
+            key={oauthProvider}
+            provider={oauthProvider}
             email={email}
             name={name}
             accountId={initialAccount?.id}
@@ -319,7 +320,7 @@ export function AccountSetup({ onSaved, onCancel, initialAccount }: AccountSetup
             onBusy={setOauthBusy}
           />
         )}
-        {!initialAccount && preset?.id !== 'outlook' && (
+        {passwordLogin && (
           <div>
             <label htmlFor="mail-account-password" className={labelClass}>
               {preset?.authType === 'app-password' ? '授权码 / 应用专用密码' : '密码'}
@@ -338,63 +339,65 @@ export function AccountSetup({ onSaved, onCancel, initialAccount }: AccountSetup
           </div>
         )}
         {/* 高级设置（可折叠）：IMAP 服务器参数 */}
-        <div>
-          <button
-            type="button"
-            className="flex items-center gap-1 text-xs text-text-secondary hover:text-text"
-            aria-expanded={showAdvanced}
-            onClick={() => setShowAdvanced((v) => !v)}
-          >
-            {showAdvanced ? (
-              <ChevronUp className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronDown className="h-3.5 w-3.5" />
+        {passwordLogin && (
+          <div>
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs text-text-secondary hover:text-text"
+              aria-expanded={showAdvanced}
+              onClick={() => setShowAdvanced((v) => !v)}
+            >
+              {showAdvanced ? (
+                <ChevronUp className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" />
+              )}
+              高级设置（IMAP 服务器）
+            </button>
+            {showAdvanced && (
+              <div className="mt-2 space-y-3 rounded-md border border-border p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="mail-imap-host" className={labelClass}>
+                      IMAP 服务器
+                    </label>
+                    <input
+                      id="mail-imap-host"
+                      className={inputClass}
+                      value={imapHost}
+                      onChange={(e) => setImapHost(e.target.value)}
+                      placeholder="imap.example.com"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="mail-imap-port" className={labelClass}>
+                      端口
+                    </label>
+                    <input
+                      id="mail-imap-port"
+                      className={inputClass}
+                      type="number"
+                      value={imapPort}
+                      onChange={(e) => setImapPort(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="imap-secure"
+                    checked={imapSecure}
+                    onChange={(e) => setImapSecure(e.target.checked)}
+                    className="h-4 w-4 rounded"
+                  />
+                  <label htmlFor="imap-secure" className="text-sm text-text">
+                    SSL/TLS 加密连接
+                  </label>
+                </div>
+              </div>
             )}
-            高级设置（IMAP 服务器）
-          </button>
-          {showAdvanced && (
-            <div className="mt-2 space-y-3 rounded-md border border-border p-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="mail-imap-host" className={labelClass}>
-                    IMAP 服务器
-                  </label>
-                  <input
-                    id="mail-imap-host"
-                    className={inputClass}
-                    value={imapHost}
-                    onChange={(e) => setImapHost(e.target.value)}
-                    placeholder="imap.example.com"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="mail-imap-port" className={labelClass}>
-                    端口
-                  </label>
-                  <input
-                    id="mail-imap-port"
-                    className={inputClass}
-                    type="number"
-                    value={imapPort}
-                    onChange={(e) => setImapPort(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="imap-secure"
-                  checked={imapSecure}
-                  onChange={(e) => setImapSecure(e.target.checked)}
-                  className="h-4 w-4 rounded"
-                />
-                <label htmlFor="imap-secure" className="text-sm text-text">
-                  SSL/TLS 加密连接
-                </label>
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {testResult && (
           <div
@@ -419,20 +422,24 @@ export function AccountSetup({ onSaved, onCancel, initialAccount }: AccountSetup
           <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
             取消
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => void handleTest()}
-            disabled={busy || !valid}
-          >
-            {testing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
-            测试连接
-          </Button>
-          <Button variant="primary" size="sm" type="submit" disabled={busy || !valid}>
-            {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
-            登录并添加
-          </Button>
+          {passwordLogin && (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => void handleTest()}
+                disabled={busy || !valid}
+              >
+                {testing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+                测试连接
+              </Button>
+              <Button variant="primary" size="sm" type="submit" disabled={busy || !valid}>
+                {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+                登录并添加
+              </Button>
+            </>
+          )}
         </div>
         <div className="border-t border-border pt-4 text-xs leading-relaxed text-text-secondary">
           {preset ? (

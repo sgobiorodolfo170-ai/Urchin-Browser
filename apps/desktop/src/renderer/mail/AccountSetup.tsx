@@ -13,6 +13,7 @@ import { useMemo, useState } from 'react';
 import { getCurrentWindowId } from '../lib/current-window';
 import { Button } from '../components/ui/button';
 import {
+  ArrowLeft,
   Loader2,
   CheckCircle,
   XCircle,
@@ -110,6 +111,7 @@ export function AccountSetup({ onSaved, onCancel }: AccountSetupProps) {
 
   const busy = testing || saving;
   const valid =
+    preset?.authType !== 'oauth2' &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) &&
     password.length > 0 &&
     imapHost.trim().length > 0 &&
@@ -162,6 +164,9 @@ export function AccountSetup({ onSaved, onCancel }: AccountSetupProps) {
         imapPort: Number(imapPort),
         imapSecure,
         password,
+        smtpHost: preset?.smtp?.host,
+        smtpPort: preset?.smtp?.port,
+        smtpSecure: preset?.smtp?.secure,
       });
       onSaved();
     } catch (e) {
@@ -232,7 +237,18 @@ export function AccountSetup({ onSaved, onCancel }: AccountSetupProps) {
         className="min-w-0 space-y-4 self-start rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-6"
       >
         <div>
-          <h2 className="text-lg font-semibold text-text">登录邮箱</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-text">登录邮箱</h2>
+            <button
+              type="button"
+              aria-label="返回邮箱主页"
+              title="返回邮箱主页"
+              onClick={onCancel}
+              className="rounded-md p-2 text-text-secondary hover:bg-surface-secondary"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          </div>
           <p className="mt-1 text-sm text-text-secondary">{preset?.name ?? '自定义 IMAP 邮箱'}</p>
         </div>
         {/* 认证提示（服务商差异化） */}

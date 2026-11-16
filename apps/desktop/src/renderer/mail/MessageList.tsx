@@ -14,6 +14,7 @@ interface MailMessageSummary {
 }
 
 export interface MessageListProps {
+  density?: 'comfortable' | 'compact';
   messages: MailMessageSummary[];
   total: number;
   folderName?: string;
@@ -44,6 +45,7 @@ function isUnread(flags: string[]): boolean {
 }
 
 export function MessageList({
+  density = 'comfortable',
   messages,
   total,
   folderName = '收件箱',
@@ -82,7 +84,7 @@ export function MessageList({
           return (
             <button
               key={msg.uid}
-              className={`mb-1 flex w-full min-w-0 flex-col gap-2 rounded-lg border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+              className={`mb-1 flex w-full min-w-0 flex-col gap-2 rounded-lg border px-3 ${density === 'compact' ? 'py-1' : 'py-3'} text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                 selected
                   ? 'border-blue-500/30 bg-blue-500/10'
                   : 'border-transparent hover:bg-surface-secondary/70'

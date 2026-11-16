@@ -104,10 +104,10 @@ export const MAIL_PROVIDER_PRESETS: readonly MailProviderPreset[] = [
     name: 'Outlook / Hotmail',
     domains: ['outlook.com', 'hotmail.com', 'live.com', 'msn.com'],
     imap: { host: 'outlook.office365.com', port: 993, secure: true },
-    smtp: { host: 'smtp.office365.com', port: 587, secure: false },
-    authType: 'app-password',
-    authHint: '微软已停用基本认证——如密码不可用，请使用 OAuth2（v0.3）',
-    note: 'Microsoft 365 已全面停用基本认证（2026），个人账户密码可能失效',
+    smtp: { host: 'smtp-mail.outlook.com', port: 587, secure: false },
+    authType: 'oauth2',
+    authHint: '必须使用 OAuth2 / Modern Auth，不能使用账户密码或应用密码登录',
+    note: '当前客户端尚未实现微软 OAuth2，暂不支持连接；可通过网页版使用。需在 Outlook 网页设置中启用 IMAP。',
     oauth2Supported: true,
   },
   {
@@ -138,7 +138,7 @@ export const MAIL_PROVIDER_PRESETS: readonly MailProviderPreset[] = [
     imap: { host: 'imap.139.com', port: 993, secure: true },
     smtp: { host: 'smtp.139.com', port: 465, secure: true },
     authType: 'app-password',
-    authHint: '使用授权码（非登录密码）',
+    authHint: '使用授权码（非登录密码），需开启协议服务；授权码有效期90天',
   },
   {
     id: '189',
@@ -147,7 +147,8 @@ export const MAIL_PROVIDER_PRESETS: readonly MailProviderPreset[] = [
     domains: ['189.cn'],
     imap: { host: 'imap.189.cn', port: 993, secure: true },
     smtp: { host: 'smtp.189.cn', port: 465, secure: true },
-    authType: 'password',
+    authType: 'app-password',
+    authHint: '使用189邮箱客户端专用密码，先在网页版启用客户端服务',
   },
   {
     id: 'aliyun',
@@ -187,7 +188,7 @@ export const MAIL_PROVIDER_PRESETS: readonly MailProviderPreset[] = [
     smtp: { host: 'smtp.mail.me.com', port: 587, secure: false },
     authType: 'app-password',
     authHint: '使用 App 专用密码（appleid.apple.com 生成）',
-    note: '需开启 Apple ID 两步验证后生成 App 专用密码',
+    note: '需开启 Apple 账户双重认证后生成 App 专用密码',
   },
   {
     id: 'yahoo',
@@ -207,7 +208,8 @@ export const MAIL_PROVIDER_PRESETS: readonly MailProviderPreset[] = [
     imap: { host: 'imap.zoho.com', port: 993, secure: true },
     smtp: { host: 'smtp.zoho.com', port: 465, secure: true },
     authType: 'password',
-    note: '部分地区数据中心为 imap.zoho.eu / imap.zoho.in，连接失败时改用自定义配置',
+    authHint: '开启多因素认证或使用 SAML 时须使用应用专用密码',
+    note: '需启用 IMAP；部分免费套餐不提供 IMAP，服务器以账户的数据中心和套餐为准',
   },
   {
     id: 'aol',

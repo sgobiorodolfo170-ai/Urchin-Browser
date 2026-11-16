@@ -16,6 +16,8 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  ArrowLeft,
+  Copy,
   Mail,
   RefreshCw,
   AlertTriangle,
@@ -24,6 +26,14 @@ import {
   KeyRound,
 } from 'lucide-react';
 import { folderDisplayName } from './folder-names';
+import { MailSettings } from './MailSettings';
+import {
+  MAIL_PREFERENCES_KEY,
+  defaultMailPreferences,
+  mailPreferencesSchema,
+  isBlockedMail,
+  type MailPreferences,
+} from './preferences';
 import { AccountSetup } from './AccountSetup';
 import { FolderList } from './FolderList';
 import { MessageList } from './MessageList';
@@ -83,6 +93,43 @@ interface MailMessageBody {
 type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
 export function MailView() {
+  const [preferences, setPreferences] = useState(defaultMailPreferences);
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
+  const accountsRef = useRef<MailAccount[]>([]);
+  const [showSettings, setShowSettings] = useState(false);
+  const [emptyHome, setEmptyHome] = useState(false);
+  const [copyStatus, setCopyStatus] = useState('');
+  useEffect(() => {
+    void window.urchin
+      .invoke('settings.get', { key: MAIL_PREFERENCES_KEY })
+      .then((res) => {
+        const parsed = mailPreferencesSchema.safeParse((res as { value?: unknown }).value ?? {});
+        if (parsed.success) {
+          preferencesRef.current = parsed.data;
+          setPreferences(parsed.data);
+          setSelectedAccount(
+            (prev) =>
+              accountsRef.current.find((a) => a.id === parsed.data.defaultAccountId) ?? prev,
+          );
+        }
+      })
+      .catch(console.error);
+  }, []);
+  const savePreferences = async (value: MailPreferences) => {
+    await window.urchin.invoke('settings.set', { key: MAIL_PREFERENCES_KEY, value });
+    setPreferences(value);
+  };
+  const copyAccount = async () => {
+    try {
+      if (selectedAccount) {
+        await navigator.clipboard.writeText(selectedAccount.email);
+        setCopyStatus('账号已复制');
+      }
+    } catch {
+      setCopyStatus('复制失败，请重试');
+    }
+  };
   const bodyRequest = useRef(0);
   const folderRequest = useRef(0);
   const listRequest = useRef(0);
@@ -159,7 +206,8 @@ export function MailView() {
     };
   }, []);
 
-  const showThreePane = !loadingAccounts && !showAccountSetup && accounts.length > 0;
+  const showThreePane =
+    !loadingAccounts && !showAccountSetup && !showSettings && accounts.length > 0;
 
   // 测量三区容器宽度（窗口缩放跟随；showThreePane 变化时 grid 才挂载，需重跑）
   useLayoutEffect(() => {
@@ -240,14 +288,21 @@ export function MailView() {
       const res = (await window.urchin.invoke('mail.account.list', {})) as {
         accounts: MailAccount[];
       };
+      accountsRef.current = res.accounts;
       setAccounts(res.accounts);
       // 选中态同步：保持当前选择（按 id 映射到新列表，刷新 hasPassword 等字段）；
       // 无选择时回落首个账户。首次加载后 hasPassword 变化不再依赖此回调重建。
       if (res.accounts.length > 0) {
         setSelectedAccount((prev) => {
-          if (!prev) return res.accounts[0]!;
+          if (!prev)
+            return (
+              res.accounts.find((a) => a.id === preferencesRef.current.defaultAccountId) ??
+              res.accounts[0]!
+            );
           return res.accounts.find((a) => a.id === prev.id) ?? res.accounts[0]!;
         });
+      } else {
+        setSelectedAccount(null);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -447,6 +502,34 @@ export function MailView() {
     );
   }
 
+  if (showSettings)
+    return (
+      <MailSettings
+        accounts={accounts}
+        preferences={preferences}
+        onSave={savePreferences}
+        onRefresh={refreshAccounts}
+        onBack={() => setShowSettings(false)}
+        onAdd={() => {
+          setShowSettings(false);
+          setShowAccountSetup(true);
+        }}
+      />
+    );
+  if (accounts.length === 0 && emptyHome && !showAccountSetup)
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 bg-surface text-text">
+        <p>请登录</p>
+        <button
+          onClick={() => {
+            setEmptyHome(false);
+            setShowAccountSetup(true);
+          }}
+        >
+          登录邮箱
+        </button>
+      </div>
+    );
   if (showAccountSetup || accounts.length === 0) {
     return (
       <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
@@ -456,7 +539,10 @@ export function MailView() {
               setShowAccountSetup(false);
               void refreshAccounts();
             }}
-            onCancel={() => setShowAccountSetup(false)}
+            onCancel={() => {
+              setShowAccountSetup(false);
+              setEmptyHome(true);
+            }}
           />
         </div>
       </div>
@@ -469,6 +555,13 @@ export function MailView() {
       <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
         {/* 顶栏（与主视图一致）：账户选择 + 刷新 + 设置 */}
         <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
+          <button
+            aria-label="返回登录页"
+            title="返回登录页"
+            onClick={() => setShowAccountSetup(true)}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
           <Mail className="h-5 w-5 shrink-0 text-blue-500" />
           <select
             aria-label="邮箱账户"
@@ -488,15 +581,22 @@ export function MailView() {
           >
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.name} ({a.email}){!a.hasPassword ? ' — 需重新登录' : ''}
+                {preferences.names[a.id] ?? a.name} ({a.email})
+                {!a.hasPassword ? ' — 需重新登录' : ''}
               </option>
             ))}
           </select>
+          <button aria-label="复制邮箱账号" title="复制邮箱账号" onClick={() => void copyAccount()}>
+            <Copy className="h-4 w-4" />
+          </button>
+          <span role="status" className="text-xs text-text-secondary">
+            {copyStatus}
+          </span>
           <div className="flex-1" />
           <button
             className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-            onClick={() => setShowAccountSetup(true)}
-            title="添加账户"
+            onClick={() => setShowSettings(true)}
+            title="邮箱设置"
           >
             <SettingsIcon className="h-4 w-4" />
           </button>
@@ -562,6 +662,13 @@ export function MailView() {
     <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
       {/* 顶栏：账户选择 + 刷新 + 设置 */}
       <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
+        <button
+          aria-label="返回登录页"
+          title="返回登录页"
+          onClick={() => setShowAccountSetup(true)}
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
         <Mail className="h-5 w-5 shrink-0 text-blue-500" />
         <select
           aria-label="邮箱账户"
@@ -581,10 +688,16 @@ export function MailView() {
         >
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.name} ({a.email})
+              {preferences.names[a.id] ?? a.name} ({a.email})
             </option>
           ))}
         </select>
+        <button aria-label="复制邮箱账号" title="复制邮箱账号" onClick={() => void copyAccount()}>
+          <Copy className="h-4 w-4" />
+        </button>
+        <span role="status" className="text-xs text-text-secondary">
+          {copyStatus}
+        </span>
         <button
           className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
           onClick={() => {
@@ -607,8 +720,8 @@ export function MailView() {
         {connStatus === 'error' && <AlertTriangle className="h-4 w-4 text-red-500" />}
         <button
           className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
-          onClick={() => setShowAccountSetup(true)}
-          title="添加账户"
+          onClick={() => setShowSettings(true)}
+          title="邮箱设置"
         >
           <SettingsIcon className="h-4 w-4" />
         </button>
@@ -655,7 +768,10 @@ export function MailView() {
 
         {/* 中：邮件列表 */}
         <MessageList
-          messages={messages}
+          messages={messages.filter(
+            (m) => !isBlockedMail(m.envelope.from, m.envelope.subject, preferences),
+          )}
+          density={preferences.density}
           total={messageTotal}
           folderName={folderDisplayName(
             folders.find((f) => f.path === selectedFolder) ?? {

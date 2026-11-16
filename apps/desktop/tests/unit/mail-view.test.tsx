@@ -68,6 +68,42 @@ describe('MailView 三区布局', () => {
     });
   });
 
+  it('navigates between login, home and settings', async () => {
+    render(<MailView />);
+    fireEvent.click(await screen.findByRole('button', { name: '返回登录页' }));
+    expect(screen.getByRole('heading', { name: '登录邮箱' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '返回邮箱主页' }));
+    fireEvent.click(screen.getByTitle('邮箱设置'));
+    expect(screen.getByRole('heading', { name: '邮箱设置' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '返回邮箱主页' }));
+    expect(screen.getByRole('button', { name: '复制邮箱账号' })).toBeInTheDocument();
+  });
+
+  it('shows please login when returning without any accounts', async () => {
+    const base = invoke.getMockImplementation()! as Invoke;
+    invoke.mockImplementation((channel: string, req: unknown) =>
+      channel === 'mail.account.list' ? Promise.resolve({ accounts: [] }) : base(channel, req),
+    );
+    render(<MailView />);
+    fireEvent.click(await screen.findByRole('button', { name: '返回邮箱主页' }));
+    expect(screen.getByText('请登录')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '登录邮箱' }));
+    expect(screen.getByRole('heading', { name: '登录邮箱' })).toBeInTheDocument();
+  });
+  it('persists default account and appearance preferences from settings', async () => {
+    render(<MailView />);
+    fireEvent.click(await screen.findByTitle('邮箱设置'));
+    fireEvent.click(screen.getByLabelText('默认账号'));
+    fireEvent.change(screen.getByLabelText('邮件列表密度'), { target: { value: 'compact' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存设置' }));
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('settings.set', {
+        key: 'mail.preferences',
+        value: expect.objectContaining({ defaultAccountId: 'a1', density: 'compact' }) as unknown,
+      }),
+    );
+  });
+
   it('shows the active folder title and hides invalid dates', () => {
     render(
       <MessageList

@@ -101,14 +101,16 @@ export function BookmarkPanelApp() {
     <>
       <div className="tabs">
         {TABS.map((t) => (
-          <div
+          <button
+            type="button"
             key={t.key}
             className={'tab' + (activeTab === t.key ? ' active' : '')}
             data-tab={t.key}
+            aria-pressed={activeTab === t.key}
             onClick={() => setActiveTab(t.key)}
           >
             {t.label}
-          </div>
+          </button>
         ))}
       </div>
       <div

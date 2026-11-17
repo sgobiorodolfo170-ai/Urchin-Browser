@@ -191,12 +191,33 @@ body {
   overflow: hidden;
   white-space: nowrap;
 }
+.bm-toolbar .crumb {
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  padding: 2px 4px;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 18px;
+}
 .crumb {
   color: var(--text-secondary);
   cursor: pointer;
   max-width: 96px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.bm-toolbar .crumb[aria-current='location'] {
+  color: var(--primary);
+  font-weight: 500;
+}
+.bm-toolbar .crumb:focus-visible,
+.new-folder-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.bm-toolbar .crumb:hover {
+  background: var(--bg-secondary);
 }
 .crumb:hover {
   color: var(--text);
@@ -208,7 +229,8 @@ body {
   flex-shrink: 0;
 }
 /* 根目录面包屑：仅 ⌂ 图标不带文字（2026-11-07 用户需求），略放大保证可点性 */
-.crumb-home {
+.crumb-home,
+.bm-toolbar .crumb-home {
   font-size: 14px;
   max-width: none;
   flex-shrink: 0;

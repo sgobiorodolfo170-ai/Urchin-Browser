@@ -382,19 +382,34 @@ export function BookmarksTab({ active, pickerMode }: { active: boolean; pickerMo
       <div className="bm-toolbar">
         <div className="breadcrumb" id="bm-breadcrumb">
           {/* 根目录仅显示 ⌂ 图标不带文字（2026-11-07 用户需求）；名称经 title 提示保留 */}
-          <span className="crumb crumb-home" title="收藏夹" onClick={() => jumpToFolder(null)}>
+          <button
+            type="button"
+            className="crumb crumb-home"
+            title="收藏夹"
+            aria-label="收藏夹根目录"
+            aria-current={atRoot ? 'location' : undefined}
+            onClick={() => jumpToFolder(null)}
+          >
             ⌂
-          </span>
+          </button>
           {trail.map((seg) => (
             <Fragment key={seg.id}>
               <span className="crumb-sep">›</span>
-              <span className="crumb" data-id={seg.id} onClick={() => jumpToFolder(seg.id)}>
+              <button
+                type="button"
+                className="crumb"
+                data-id={seg.id}
+                title={seg.title || '未命名文件夹'}
+                aria-current={seg.id === trail[trail.length - 1]?.id ? 'location' : undefined}
+                onClick={() => jumpToFolder(seg.id)}
+              >
                 {seg.title || '未命名文件夹'}
-              </span>
+              </button>
             </Fragment>
           ))}
         </div>
         <button
+          type="button"
           className="new-folder-btn"
           id="bm-new-folder"
           title="新建文件夹"

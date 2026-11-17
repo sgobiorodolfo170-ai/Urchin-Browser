@@ -13,6 +13,7 @@ import { test, electron } from './helpers/electron-test';
  * 由单元测试（provider-e2e.test.ts）验证 Orchestrator ↔ Provider SDK 集成。
  */
 import { expect, type ElectronApplication, type Page } from '@playwright/test';
+import { createServer } from 'node:http';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdtempSync } from 'node:fs';
@@ -99,8 +100,19 @@ test.describe('v0.1 关键路径', () => {
   });
 
   test('导航到 URL', async () => {
+    const fixture = createServer((_req, res) => {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end('<!doctype html><title>导航测试页面</title><p>Navigation fixture</p>');
+    });
     const { electronApp, window } = await launchApp();
     try {
+      await new Promise<void>((resolve, reject) => {
+        fixture.once('error', reject);
+        fixture.listen(0, '127.0.0.1', resolve);
+      });
+      const addressInfo = fixture.address();
+      if (!addressInfo || typeof addressInfo === 'string') throw new Error('导航测试服务未就绪');
+      const fixtureUrl = `http://127.0.0.1:${addressInfo.port}/fixture`;
       // 等待应用就绪
       await expect(window.getByRole('button', { name: '新建标签' })).toBeVisible({
         timeout: 15_000,
@@ -109,14 +121,26 @@ test.describe('v0.1 关键路径', () => {
       // 在地址栏输入 URL 并提交（内部页地址栏在主窗口；导航到外部页后状态栏悬浮层出现）
       const omniboxPage = await getOmniboxPage(electronApp, window);
       const omniboxInput = omniboxPage.getByRole('textbox', { name: '地址栏' });
-      await omniboxInput.fill('https://example.com');
+      await omniboxInput.fill(fixtureUrl);
       await omniboxInput.press('Enter');
 
       // 验证地址栏更新为新 URL（导航完成后悬浮层地址栏显示新 URL）
       const statusBar = await getStatusBarPage(electronApp);
-      await expect(statusBar.getByRole('textbox', { name: '地址栏' })).toHaveValue(/example\.com/, {
+      await expect(statusBar.getByRole('textbox', { name: '地址栏' })).toHaveValue(fixtureUrl, {
         timeout: 15_000,
       });
+      // 建议仅来自历史/书签：地址变更并不等于加载完成或历史已入库。
+      await expect
+        .poll(() =>
+          statusBar.evaluate(async (url) => {
+            const result = (await globalThis.window.urchin.invoke('history.search', {
+              query: url,
+              limit: 10,
+            })) as { entries: { url: string }[] };
+            return result.entries.some((entry) => entry.url === url);
+          }, fixtureUrl),
+        )
+        .toBe(true);
       const address = statusBar.getByRole('textbox', { name: '地址栏' });
       await address.click({ position: { x: 20, y: 10 } });
       await expect
@@ -164,17 +188,19 @@ test.describe('v0.1 关键路径', () => {
         .toBe(true);
       // Retype as a real user edit; fill(sameValue) may not emit React onChange.
       await address.fill('');
-      await address.pressSequentially('example.com');
-      const suggestion = statusBar
-        .getByRole('button')
-        .filter({ hasText: 'https://example.com' })
-        .first();
+      await address.pressSequentially(new URL(fixtureUrl).host);
+      const suggestion = statusBar.getByRole('button').filter({ hasText: fixtureUrl }).first();
       await expect(suggestion).toBeVisible();
       await suggestion.click();
       await expect(address).not.toBeFocused();
-      await expect(address).toHaveValue(/https:\/\/example\.com/);
+      await expect(address).toHaveValue(fixtureUrl);
     } finally {
-      await electronApp.close();
+      try {
+        await electronApp.close();
+      } finally {
+        fixture.closeAllConnections();
+        if (fixture.listening) await new Promise<void>((resolve) => fixture.close(() => resolve()));
+      }
     }
   });
 

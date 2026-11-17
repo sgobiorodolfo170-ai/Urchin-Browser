@@ -1,3 +1,4 @@
+import '../styles/productivity.css';
 /**
  * M25 邮箱模块 · 主视图（urchin://mail 标签页内容）
  *
@@ -545,7 +546,7 @@ export function MailView() {
     );
   if (showAccountSetup || accounts.length === 0) {
     return (
-      <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
+      <div className="ui-mail-page flex h-full min-h-0 min-w-0 flex-col bg-surface">
         <div className="flex-1 overflow-y-auto p-4">
           <AccountSetup
             initialAccount={reauthAccount}
@@ -568,7 +569,7 @@ export function MailView() {
   // 密码密文缺失 → 重授权卡片（顶栏保留可切换/添加账户；2026-11-10）
   if (selectedAccount && !selectedAccount.hasPassword) {
     return (
-      <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
+      <div className="ui-mail-page flex h-full min-h-0 min-w-0 flex-col bg-surface">
         {/* 顶栏（与主视图一致）：账户选择 + 刷新 + 设置 */}
         <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
           <button
@@ -694,7 +695,7 @@ export function MailView() {
   const widths = live ?? restoreWidths(persisted, containerWidth);
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col bg-surface">
+    <div className="ui-mail-page flex h-full min-h-0 min-w-0 flex-col bg-surface">
       {/* 顶栏：账户选择 + 刷新 + 设置 */}
       <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
         <button

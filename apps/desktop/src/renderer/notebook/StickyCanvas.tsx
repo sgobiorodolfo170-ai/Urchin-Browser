@@ -590,7 +590,7 @@ export function StickyCanvas({ state, notebookId, update }: StickyCanvasProps) {
         >
           <RotateCcw className="h-4 w-4" />
         </button>
-        <span className="ml-1 rounded-lg bg-surface-secondary px-2 py-1 text-[10px] tabular-nums text-text-secondary">
+        <span className="ml-1 rounded-lg bg-surface-secondary px-2 py-1 text-[11px] tabular-nums text-text-secondary">
           {Math.round(view.zoom * 100)}%
         </span>
       </div>
@@ -818,6 +818,7 @@ function StickyCard({
               }}
               onClick={() => onColorChange(color)}
               aria-label={`切换为 ${color} 色`}
+              aria-pressed={sticky.color === color}
               title="切换颜色"
             />
           ))}
@@ -825,7 +826,7 @@ function StickyCard({
         <div className="flex items-center gap-0.5">
           <button
             type="button"
-            className="flex h-5 w-5 items-center justify-center rounded text-[10px] font-semibold opacity-50 hover:bg-black/10 hover:opacity-100"
+            className="flex h-5 w-5 items-center justify-center rounded text-[11px] font-semibold opacity-50 hover:bg-black/10 hover:opacity-100"
             onPointerDown={(e) => {
               if (e.button !== 1) e.stopPropagation();
             }}
@@ -837,7 +838,7 @@ function StickyCard({
           </button>
           <button
             type="button"
-            className="flex h-5 w-5 items-center justify-center rounded text-[10px] font-semibold opacity-50 hover:bg-black/10 hover:opacity-100"
+            className="flex h-5 w-5 items-center justify-center rounded text-[11px] font-semibold opacity-50 hover:bg-black/10 hover:opacity-100"
             onPointerDown={(e) => {
               if (e.button !== 1) e.stopPropagation();
             }}
@@ -1040,7 +1041,7 @@ function CanvasImageCard({
         />
       )}
 
-      <div className="absolute -top-7 right-0 hidden items-center gap-1 rounded-md border border-border bg-surface/95 px-1.5 py-0.5 text-[10px] text-text-secondary shadow-sm backdrop-blur group-hover:flex group-focus-within:flex">
+      <div className="absolute -top-7 right-0 hidden items-center gap-1 rounded-md border border-border bg-surface/95 px-1.5 py-0.5 text-[11px] text-text-secondary shadow-sm backdrop-blur group-hover:flex group-focus-within:flex">
         <span>{Math.round(image.scale * 100)}%</span>
         <button
           type="button"

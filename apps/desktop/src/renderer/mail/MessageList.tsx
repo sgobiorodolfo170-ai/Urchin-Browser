@@ -69,7 +69,7 @@ export function MessageList({
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {loading && (
           <div className="flex items-center justify-center py-4">
-            <Loader2 className="h-4 w-4 animate-spin text-text-secondary" />
+            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none text-text-secondary" />
           </div>
         )}
         {!loading && messages.length === 0 && (
@@ -83,17 +83,19 @@ export function MessageList({
           const selected = msg.uid === selectedUid;
           return (
             <button
+              type="button"
               key={msg.uid}
-              className={`mb-1 flex w-full min-w-0 flex-col gap-2 rounded-lg border px-3 ${density === 'compact' ? 'py-1' : 'py-3'} text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+              className={`mb-1 flex w-full min-w-0 flex-col gap-2 rounded-lg border px-3 ${density === 'compact' ? 'py-1' : 'py-3'} text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                 selected
-                  ? 'border-blue-500/30 bg-blue-500/10'
+                  ? 'border-primary/30 bg-primary/10'
                   : 'border-transparent hover:bg-surface-secondary/70'
               }`}
+              title={`${msg.envelope.from || '未知发件人'}：${msg.envelope.subject || '无主题'}`}
               aria-current={selected ? 'true' : undefined}
               onClick={() => onSelect(msg)}
             >
               <div className="flex w-full min-w-0 items-center gap-2">
-                {unread && <span className="h-2 w-2 shrink-0 rounded-full bg-blue-500" />}
+                {unread && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
                 <span
                   className={`flex-1 truncate text-sm ${
                     unread ? 'font-semibold text-text' : 'text-text'

@@ -79,7 +79,8 @@ export function FolderList({
       {/* 写邮件按钮 */}
       {onCompose && (
         <button
-          className="m-3 flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-blue-500 px-3 py-3 shadow-sm text-sm font-medium text-white hover:bg-blue-600"
+          type="button"
+          className="m-3 flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-3 py-3 shadow-sm text-sm font-medium text-white hover:bg-primary/90"
           onClick={onCompose}
         >
           <PenSquare className="h-4 w-4" />
@@ -100,10 +101,11 @@ export function FolderList({
         )}
         {sorted.map((f) => (
           <button
+            type="button"
             key={f.path}
-            className={`mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+            className={`mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
               f.path === selectedFolder
-                ? 'bg-blue-500/10 font-medium text-blue-600 dark:text-blue-400'
+                ? 'bg-primary/10 font-medium text-primary'
                 : 'text-text-secondary hover:bg-surface-secondary/50 hover:text-text'
             }`}
             aria-current={f.path === selectedFolder ? 'true' : undefined}
@@ -113,7 +115,7 @@ export function FolderList({
             <Inbox className="h-3.5 w-3.5 shrink-0" />
             <span className="flex-1 truncate text-left">{folderDisplayName(f)}</span>
             {f.unseen > 0 && (
-              <span className="shrink-0 rounded-full bg-blue-500 px-1.5 text-xs text-white">
+              <span className="shrink-0 rounded-full bg-primary px-1.5 text-xs text-white">
                 {f.unseen}
               </span>
             )}

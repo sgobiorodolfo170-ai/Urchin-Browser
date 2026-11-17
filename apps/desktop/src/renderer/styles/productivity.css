@@ -1,0 +1,122 @@
+/* 只作用于原生效率工具，保留各分区尺寸和业务行为。 */
+.ui-mail-page {
+  container-type: inline-size;
+}
+.ui-mail-setup {
+  gap: 32px;
+  padding: 16px 8px;
+}
+.ui-mail-setup form {
+  background: var(--color-surface);
+  box-shadow: var(--shadow-dropdown);
+}
+.ui-mail-setup [aria-pressed='true'],
+.ui-mail-page [data-testid='mail-message-list'] [aria-current] {
+  border-color: var(--color-selected-border);
+  background: var(--color-selected);
+}
+.ui-mail-page :is(button, input, select, summary):focus-visible,
+.ui-notebook-page :is(button, input, textarea):focus-visible,
+.ui-calendar :is(button, input, select, textarea, summary, a):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.ui-notebook-page [aria-label='便利贴画布'] button:focus-visible {
+  outline-color: currentColor;
+}
+.ui-notebook-page [aria-label='笔记导航'] > div:first-child,
+.ui-notebook-page [aria-label='笔记内容'] > header {
+  background: var(--color-surface);
+}
+.ui-notebook-page [aria-label='笔记内容'] button[aria-pressed='true'] {
+  background: var(--color-selected);
+  color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-selected-border);
+}
+.ui-notebook-page [aria-label='笔记导航'] {
+  background: var(--color-surface-secondary);
+}
+.ui-calendar > div > header {
+  background: var(--color-surface-secondary);
+}
+.ui-calendar button[aria-pressed='true'] {
+  background: var(--color-selected);
+  color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-selected-border);
+}
+.ui-calendar .ui-calendar-create {
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+}
+.ui-calendar .ui-calendar-create:disabled {
+  opacity: 0.5;
+}
+.ui-calendar .ui-calendar-day {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 5px;
+  padding: 8px;
+  border-radius: 8px;
+  transition: background-color 120ms;
+}
+.ui-calendar .ui-calendar-day:hover {
+  background: var(--color-hover);
+}
+.ui-calendar .ui-calendar-day[aria-selected='true'] {
+  background: var(--color-selected);
+  border-color: var(--color-selected-border);
+}
+.ui-calendar .ui-calendar-day[aria-current='date'] {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.ui-calendar aside {
+  border-left: 1px solid var(--color-border);
+  padding-left: 16px;
+}
+.ui-calendar aside > h3 {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+.ui-calendar aside > p {
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  padding: 20px 12px;
+  font-size: 13px;
+  text-align: center;
+}
+@container (max-width: 900px) {
+  .ui-mail-page .ui-mail-setup {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .ui-mail-setup form {
+    width: 100%;
+  }
+}
+@media (max-width: 639px) {
+  .ui-calendar aside {
+    border-left: 0;
+    border-top: 1px solid var(--color-border);
+    padding-left: 0;
+  }
+  .ui-calendar .ui-calendar-day {
+    padding: 4px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-calendar .ui-calendar-day {
+    transition: none;
+  }
+}
+
+/* 为发件人保留可读宽度，工具栏在窄阅读区自然换行。 */
+.ui-mail-page .ui-mail-sender {
+  flex-basis: 200px;
+}

@@ -208,7 +208,7 @@ export function NotebookNav({ state, update }: NotebookNavProps) {
           </span>
           <div>
             <h1 className="text-sm font-semibold text-text">速记</h1>
-            <p className="text-[10px] text-text-secondary">随手记下，留住灵感</p>
+            <p className="text-[11px] text-text-secondary">随手记下，留住灵感</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -341,7 +341,7 @@ export function NotebookNav({ state, update }: NotebookNavProps) {
                     <ListTodo className="h-4 w-4 shrink-0" />
                     <span className="flex-1 truncate">任务清单</span>
                     {todoCount > 0 && (
-                      <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] text-primary">
+                      <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[11px] text-primary">
                         {todoCount}
                       </span>
                     )}

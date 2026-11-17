@@ -1,3 +1,4 @@
+import '../styles/productivity.css';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
@@ -243,7 +244,7 @@ export function CalendarDialog({
             close();
         }
       }}
-      className="m-auto h-[86vh] max-h-[900px] w-[92vw] max-w-[1280px] overflow-hidden rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-black/50"
+      className="ui-calendar m-auto h-[86vh] max-h-[900px] w-[92vw] max-w-[1280px] overflow-hidden rounded-xl border border-border bg-surface p-0 text-text shadow-xl backdrop:bg-black/50"
     >
       <div className="flex h-full min-h-0 flex-col">
         <header className="flex flex-wrap items-center gap-2 border-b border-border p-4">
@@ -332,7 +333,7 @@ export function CalendarDialog({
           </label>
           <button
             type="button"
-            className={cn(button, 'ml-auto text-primary')}
+            className={cn(button, 'ui-calendar-create ml-auto text-primary')}
             disabled={dirty || busy || catalogDirty || catalogBusy || !calendars.length}
             onClick={() => startEditing('new')}
           >
@@ -406,7 +407,7 @@ export function CalendarDialog({
                   aria-current={sameDay(day, today) ? 'date' : undefined}
                   className={cn(
                     button,
-                    'border border-border text-left text-sm',
+                    'ui-calendar-day border border-border text-left text-sm',
                     day.getMonth() !== month.getMonth() && 'text-text-secondary',
                     sameDay(day, today) && 'font-bold text-primary',
                     sameDay(day, selected) && 'bg-primary/15 ring-1 ring-primary',

@@ -1,3 +1,4 @@
+import '../styles/productivity.css';
 /**
  * 笔记 / 便利贴页（urchin://notebook，M27）
  *
@@ -130,7 +131,7 @@ export function NotebookView() {
     <div
       ref={containerRef}
       data-notebook-page
-      className="grid h-full min-h-0 w-full min-w-0 overflow-hidden bg-surface-secondary/40"
+      className="ui-notebook-page grid h-full min-h-0 w-full min-w-0 overflow-hidden bg-surface-secondary/40"
       style={{
         gridTemplateColumns: `${widths.left}px ${SPLITTER_WIDTH}px ${widths.middle}px ${SPLITTER_WIDTH}px ${widths.right}px`,
       }}

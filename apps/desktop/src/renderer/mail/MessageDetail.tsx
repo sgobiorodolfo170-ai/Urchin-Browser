@@ -183,7 +183,7 @@ export function MessageDetail({ message, body, loading, accountId }: MessageDeta
           >
             {sender.name.slice(0, 1).toUpperCase()}
           </span>
-          <div className="min-w-0 flex-1">
+          <div className="ui-mail-sender min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
               <span className="truncate text-sm font-medium text-text">{sender.name}</span>
               <span className="truncate text-xs text-text-secondary">&lt;{sender.addr}&gt;</span>
@@ -196,7 +196,7 @@ export function MessageDetail({ message, body, loading, accountId }: MessageDeta
             </div>
           </div>
           {/* 操作按钮（回复/转发/删除 W2 接线；翻译已启用） */}
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="ui-mail-actions flex shrink-0 items-center gap-1">
             <button
               className={`flex h-8 items-center gap-1 rounded-md px-2 text-xs ${
                 translate.status === 'done' && translate.showingTranslated

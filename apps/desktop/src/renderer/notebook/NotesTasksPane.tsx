@@ -291,7 +291,7 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
                   <div className="mt-2 line-clamp-2 text-xs leading-relaxed text-text-secondary">
                     {previewOf(note) || '空白笔记'}
                   </div>
-                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-2 text-[10px] text-text-secondary">
+                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-2 text-[11px] text-text-secondary">
                     <span>笔记</span>
                     <time dateTime={new Date(note.updatedAt).toISOString()}>
                       {new Date(note.updatedAt).toLocaleDateString('zh-CN', {

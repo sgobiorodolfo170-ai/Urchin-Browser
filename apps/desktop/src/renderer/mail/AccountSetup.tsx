@@ -188,7 +188,7 @@ export function AccountSetup({ onSaved, onCancel, initialAccount }: AccountSetup
   return (
     <fieldset
       disabled={busy}
-      className="mx-auto grid w-full max-w-5xl min-w-0 gap-6 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)] lg:gap-8"
+      className="ui-mail-setup mx-auto grid w-full max-w-5xl min-w-0 gap-6 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)] lg:gap-8"
     >
       <section className="min-w-0" aria-label="选择邮箱服务商">
         <div className="mb-5">

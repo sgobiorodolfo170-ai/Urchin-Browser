@@ -35,6 +35,16 @@ describe('notebook layout', () => {
     expect(widths.right / usableWidth(total)).toBeCloseTo(0.4);
   });
 
+  it.each([320, 604, 611.5])(
+    'should keep all three panes visible inside a %spx container',
+    (total) => {
+      const widths = widthsFromLayout(defaultLayout(), total);
+      expect(widths.left + widths.middle + widths.right + SPLITTER_WIDTH * 2).toBeCloseTo(total);
+      expect(widths.left).toBeGreaterThanOrEqual(160);
+      expect(widths.middle / widths.right).toBeCloseTo(1);
+    },
+  );
+
   it('should normalize legacy pixel layout to ratios', () => {
     const normalized = normalizeLayout({ left: 200, middle: 400, right: 400, custom: true });
     expect(normalized.left).toBeCloseTo(0.2);

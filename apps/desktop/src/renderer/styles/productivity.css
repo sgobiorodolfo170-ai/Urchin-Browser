@@ -120,3 +120,47 @@
 .ui-mail-page .ui-mail-sender {
   flex-basis: 200px;
 }
+
+.ui-notebook-page [aria-label='笔记导航'] {
+  container-type: inline-size;
+}
+/* 窄导航的快捷操作浮在行尾，平时不占标题空间；键盘聚焦行后同样可操作。 */
+@container (max-width: 180px) {
+  .ui-notebook-page [aria-label='笔记导航'] .group {
+    position: relative;
+  }
+  .ui-notebook-page
+    [aria-label='笔记导航']
+    .group
+    > button:is(
+      [aria-label='重命名笔记本'],
+      [aria-label='删除笔记本'],
+      [aria-label='重命名笔记'],
+      [aria-label='删除笔记']
+    ) {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    right: 28px;
+    background: var(--color-surface);
+    pointer-events: none;
+  }
+  .ui-notebook-page
+    [aria-label='笔记导航']
+    .group
+    > button:is([aria-label='删除笔记本'], [aria-label='删除笔记']) {
+    right: 2px;
+  }
+  .ui-notebook-page
+    [aria-label='笔记导航']
+    .group:is(:hover, :focus-within)
+    > button:is(
+      [aria-label='重命名笔记本'],
+      [aria-label='删除笔记本'],
+      [aria-label='重命名笔记'],
+      [aria-label='删除笔记']
+    ) {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}

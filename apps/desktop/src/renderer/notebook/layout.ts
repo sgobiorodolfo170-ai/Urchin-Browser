@@ -53,13 +53,20 @@ export function widthsFromLayout(
   layout: NotebookLayout,
   totalWidth: number,
 ): { left: number; middle: number; right: number } {
-  const usable = usableWidth(totalWidth);
+  // 窄容器内保留导航可读宽度，其余空间按原中/右比例分配，不裁掉画布。
+  const usable = Math.max(0, totalWidth - SPLITTER_WIDTH * 2);
   const ratios = normalizeLayout(layout);
-  return {
-    left: ratios.left * usable,
-    middle: ratios.middle * usable,
-    right: ratios.right * usable,
-  };
+  if (ratios.left * usable >= MIN_LEFT) {
+    return {
+      left: ratios.left * usable,
+      middle: ratios.middle * usable,
+      right: ratios.right * usable,
+    };
+  }
+  const left = Math.min(usable, Math.max(MIN_LEFT, ratios.left * usable));
+  const remaining = usable - left;
+  const middle = remaining * (ratios.middle / (ratios.middle + ratios.right));
+  return { left, middle, right: remaining - middle };
 }
 
 /** 拖拽左分割线：左侧增减、中区反向、右区铺满余量 */

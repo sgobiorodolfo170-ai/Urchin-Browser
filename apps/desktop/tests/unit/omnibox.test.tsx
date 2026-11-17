@@ -82,17 +82,20 @@ describe('Omnibox', () => {
   });
 
   it('should navigate with search-engine fallback for bare words', () => {
-    renderOmnibox();
+    // 显式传 google：断言不依赖默认引擎（默认值见 parse-input.ts DEFAULT_ENGINE），
+    // 同时验证 searchEngine prop 已正确接入 parseInput
+    renderOmnibox({ searchEngine: 'google' });
     const input = screen.getByRole<HTMLInputElement>('textbox');
     fireEvent.change(input, { target: { value: 'hello world' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     // parseInput 将裸词解析为搜索引擎 URL
-    const called = onNavigateMock.mock.calls[0]?.[0] as string;
-    expect(called).toContain('search');
+    expect(onNavigateMock).toHaveBeenCalledWith(
+      `https://www.google.com/search?q=${encodeURIComponent('hello world')}`,
+    );
   });
 
   it('should not navigate to dangerous protocols (javascript:)', () => {
-    renderOmnibox();
+    renderOmnibox({ searchEngine: 'google' });
     const input = screen.getByRole<HTMLInputElement>('textbox');
     fireEvent.change(input, { target: { value: 'javascript:alert(1)' } });
     fireEvent.keyDown(input, { key: 'Enter' });

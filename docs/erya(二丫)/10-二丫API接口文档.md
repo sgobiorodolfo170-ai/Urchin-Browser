@@ -1,10 +1,10 @@
 # 10 二丫 API 接口文档
 
-> 状态：草稿（v0.6 评审草案） · 建立：2026-11-16 · 最近更新：2026-11-17
+> 状态：草稿（v0.7 评审草案） · 建立：2026-11-16 · 最近更新：2026-11-17
 > 关联：[开发准备总览](./00-二丫AI助手开发准备总览.md) · [仓库文档索引](../文档索引.md)
-> 来源：[ChatGPT Pages 原文](https://chatgpt.com/space/page_3943f0d108fc819194a79c6afb388454) · 本地落盘：2026-11-17。初次落盘保留来源稿；2026-11-17本地增量纳入dsh-pet借鉴要求，来源与取舍见00。以下仍为待实施方案，不代表功能已实现；Pages来源稿未同步本地增量；v0.6全能力补充见13。
+> 来源：[ChatGPT Pages 原文](https://chatgpt.com/space/page_3943f0d108fc819194a79c6afb388454) · 本地落盘：2026-11-17。初次落盘保留来源稿；2026-11-17本地增量纳入dsh-pet借鉴要求，来源与取舍见00。以下仍为待实施方案，不代表功能已实现；Pages来源稿未同步本地增量；v0.6全能力补充见13，v0.7用户选定的地址栏双气泡方案见05/07。
 
-版本：v0.6 评审草案，2026-11-17。二丫通过浏览器内部 IPC 接收任务，通过受控工具接口操作模块。本方案规定请求、授权、事件、错误与恢复语义；所有 `erya.*` 通道和下述 DTO 均为建议新增，尚未实现。关联 ER-001 至 ER-018。
+版本：v0.7 评审草案，2026-11-17。二丫通过浏览器内部 IPC 接收任务，通过受控工具接口操作模块。本方案规定请求、授权、事件、错误与恢复语义；所有 `erya.*` 通道和下述 DTO 均为建议新增，尚未实现。关联 ER-001 至 ER-018。
 
 ## 接口范围与现有代码
 
@@ -322,3 +322,26 @@ CUT-01 合同验证另覆盖旧7个点式IPC通道及其生产者/消费者、�
 原生截图完整工具还需区分captureMode=window/viewport/region、目标引用、区域DIP坐标及screen/displayRevision；界面框选是人工接管模式，不能把screenshot.capture已打开框选层当成自动截图完成。回执包含实际尺寸、受控imageRef/摘要与保存结果；多屏/DPI或窗口移动后旧区域失效，截图外发单独授权。
 
 标签排序/跨窗口移动需明确源、目标、前后位置及预期顺序；目前tab.reorder不等于已有跨窗口移动领域合同，ALL-01应拆动作并由NAT-01补缺口。设置键、Home方法和原生UI枚举的完整展开见13，未支持分支不能通过native.*名字存在就显示可用。
+
+## 地址栏 双气泡与配置合同（v0.7）
+
+05为交互/配置数值真源，07为持久化目录与表结构真源；以下为UX-OMNI/BUBBLE/PREF和DATA-ERYA的拟新增zod合同，尚未实现。仅可信宿主界面可调用，按profile/workspace/会话及窗口注册校验，普通网页不能调用或伪造位置/审批。
+
+| 拟通道/DTO | 输入与返回 | 必要约束 |
+| --- | --- | --- |
+| erya.messages.send | conversationId可空、clientMessageId、content、contextRefs/attachmentRefs、expectedConversationRevision、modelPolicy/预算引用、idempotencyKey → accepted、messageId、conversationId、taskId、queued、revision | 同键同规范化请求返回原回执，同键异内容冲突；消息与本地任务入队同事务/可恢复outbox，不能先显示成功后丢任务 |
+| erya.conversations.list / erya.messages.list | 当前范围、conversationId、afterSequence/cursor、limit → 授权摘要或分页可见消息 | 不返回其他工作区/无痕或隐藏工具秘密；消息保留期与自动隐藏分开 |
+| erya.uiSnapshot.get | conversationId、已登记layoutSlotId → 两角色布局、消息摘要/未读、配置revision、任务状态 | 几何与内容均按真实sender裁剪，不接受任意windowId跨窗读取 |
+| erya.bubbles.layout.update | layoutSlotId、bubbleRole、anchor、xRatio/yRatio、expectedRevision、idempotencyKey → 宿主夹取后的布局/revision | 仅user/assistant，坐标合法且属于当前窗口槽，拖动结束保存；无痕仅内存 |
+| erya.bubbles.layout.reset | layoutSlotId、bubbleRole或both、expectedRevisions、idempotencyKey → 默认布局 | 只重置位置，不改尺寸设置或删除内容；跨角色重置先检查相应revision集合 |
+| erya.uiSettings.get / erya.uiSettings.update | 读取无秘密配置；写入05允许的气泡字段patch、expectedRevision、idempotencyKey → 生效配置/revision | 类型、范围及未知键严格校验；不兼作模型/权限/记忆或密钥通用写入口 |
+| BubbleProjection | conversationId、bubbleRole、latestSequence、visibleMessageIds、displayState、unreadCount、pendingAction、taskRefs | 由可信事实投影，隐藏不是任务state；不把每个token当新消息 |
+| ContextDraft | originTab/documentRef、显式contextRefs、受控attachmentRefs及显示元数据 | 草稿默认内存；选入不自动读内容或外发；切页不自动改目标 |
+
+暂停/取消/审批沿用erya.tasks.pause/cancel、erya.approvals.decide，不新增“关闭气泡即取消”的API。UI配置更新事件只带schemaVersion、配置revision和允许字段/变更通知，不能混入消息正文或密钥。messages事件增加message.accepted/started/delta/finalized/failed，携带conversationId/messageId、角色、状态/内容revision及任务信封sequence；接收/入队持久，delta可短缓冲，缺口取快照，不因重放重显或重复消费审批。
+
+消息send中的expectedConversationRevision在新会话时按空/初始版本合同明确，服务端原子建会话、写用户消息与outbox；重复clientMessageId必须比对摘要，消息ID和任务键分别持久关联。send返回accepted只证明已受理，不证明模型或工具成功。UI重试沿用原键直到得到确定回执，用户明确再次发相同文字生成新键。附件验证失败不部分接收未说明的消息，上传/拷贝任务有独立进度与失败回执。
+
+未实现delete会话/保留期配置合同前，设置页不能展示假按钮；DATA-ERYA需补erya.conversations.delete及消息保留策略管理，输入会话/作用域、expectedRevision、删除范围与操作键，返回清理状态/受影响附件和派生项；消息清理不自动删除用户独立产物。所有二丫设置由同页调用各专属合同，不能用uiSettings.update修改Grant或模型凭据。
+
+前端字段navigationDraft/eryaDraft、inputMode、IME composing及显隐计时为受控UI状态；导航提交与messages.send完全分离。原文档settings/消息布局配置提到的主窗口限制仍有效；新增overlay若有独立sender须按06注册最小白名单，不能放开全部窗口调用审批。

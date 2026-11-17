@@ -1,10 +1,10 @@
 # 10 二丫 API 接口文档
 
-> 状态：草稿（v0.4 评审草案） · 建立：2026-11-16 · 最近更新：2026-11-16
+> 状态：草稿（v0.5 评审草案） · 建立：2026-11-16 · 最近更新：2026-11-17
 > 关联：[开发准备总览](./00-二丫AI助手开发准备总览.md) · [仓库文档索引](../文档索引.md)
-> 来源：[ChatGPT Pages 原文](https://chatgpt.com/space/page_3943f0d108fc819194a79c6afb388454) · 本地落盘：2026-11-17。正文保留来源稿内容，仅调整标题层级、文档间链接与原型引用；不代表功能已实现或方案已获批准。
+> 来源：[ChatGPT Pages 原文](https://chatgpt.com/space/page_3943f0d108fc819194a79c6afb388454) · 本地落盘：2026-11-17。初次落盘保留来源稿；2026-11-17本地增量纳入dsh-pet借鉴要求，来源与取舍见00。以下仍为待实施方案，不代表功能已实现；Pages来源稿未同步本轮增量。
 
-版本：v0.4 评审草案，2026-11-16。二丫通过浏览器内部 IPC 接收任务，通过受控工具接口操作模块。本方案规定请求、授权、事件、错误与恢复语义；所有 `erya.*` 通道和下述 DTO 均为建议新增，尚未实现。关联 ER-001 至 ER-018。
+版本：v0.5 评审草案，2026-11-17。二丫通过浏览器内部 IPC 接收任务，通过受控工具接口操作模块。本方案规定请求、授权、事件、错误与恢复语义；所有 `erya.*` 通道和下述 DTO 均为建议新增，尚未实现。关联 ER-001 至 ER-018。
 
 ## 接口范围与现有代码
 
@@ -261,6 +261,27 @@ Evidence最小信封包括evidenceId/captureId/sourceKind/targetRef/documentRevi
 工程建议初值：单次最多60秒、500条且总量≤1MiB，单条≤8KiB，分页≤100条且单次返回≤64KiB，长文本以受控证据引用分页读取；采用服务端硬上限，哪项先到先停止并说明原因，缺省值不能表示无限。值为待压测初值，不是性能保证。captureId需同时校验task、grant与document范围，stop可重复消费；导航/撤权后read也须重检，不能用已缓存数据绕过撤权。
 
 新增规范错误：TARGET_CHANGED、TARGET_UNSUPPORTED、CAPTURE_BUSY、CAPTURE_DETACHED、EVIDENCE_EXPIRED、NODE_STALE、PREVIEW_UNSAFE，映射到暂停/范围重选/人工路径。容量达到上限为正常停止原因；CDP断开不自动重连。采集不是修改页面，创建隔离副本仍经L2审批；工具能力未验收时capabilities不登记或标不可用。
+
+## 展示 召回与通知合同增量（v0.5）
+
+下列为UX-STATE、MEM-GUARD、MEM-RECALL和UX-NOTIFY的拟定内部DTO，实施时在erya-contract中定义zod输入输出校验；不新增公开HTTP接口，不改变九态任务协议。来源与适配理由见00。
+
+| 对象                | 必要字段与边界                                                                                                                                                                                            |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TaskPresentation    | profileId、workspaceId、taskId、taskRevision、latestSequence、state、reasonCode、activeStepIds、completedStepCount、totalStepCount、messageCode、safeParams、resultRefs；来自可信快照，不接受模型直接写入 |
+| MemoryRecallRequest | profileId、scope、workspaceId、taskId、query、limits、deadlineAt、grantRevision、policyRevision；身份由可信链路补齐，不由请求值自行授权                                                                   |
+| MemoryEvidence      | memoryId、contentVersion、scopeRef、mutationEpoch、kind、content、sourceRefs、capturedAt、expiresAt可空；仅当前许可可见且有效记录                                                                         |
+| MemoryRecallResult  | status=ok/unavailable、items、truncated、reasonCode可空；失败时items为空，不返回替换system/history的对象                                                                                                  |
+| MemoryJobGuard      | jobId、scopeRef、epochAtStart、sourceVersions、grantRevision、policyRevision、idempotencyKey；只在受控运行时/存储worker流转                                                                               |
+| TaskNotification    | notificationId、profileId、workspaceId、taskId、taskRevision、eventSequence、kind、messageCode、createdAt、expiresAt；无正文、任意URL或审批票据                                                           |
+
+scopeRef显式区分profile/workspace并绑定真实资源范围；字段可空不能表示无限权限。MemoryEvidence的sourceRefs携带可验证来源与版本，任务引用同样经解析器检查。RecallRequest中的query与返回content均为不可信资料，不在日志记录，也不能修改系统规则。limits包含maxItems/maxBytes/maxTokens，均为正且受宿主上限约束；deadlineAt为总截止时间，取消信号由进程内AbortSignal及跨进程取消协议传递。
+
+MEM-RECALL建议先试总召回500ms、最多5条、内容合计8KiB及2000 tokens，均为待实测初值，不是服务保证；同时服从09单次记忆上下文预算。按排名加入整条证据，保留ID与版本；超限丢弃末尾条目并标记truncated，不切断来源字段。token预算由所用模型计量器检查，缺计量能力时采用保守上界或拒绝注入，不能用汉字数冒充token。查询改写首版不启用，后续若引入也共用总deadline与预算，不额外无限等待。超时取消、异常或形状非法返回unavailable；迟到响应丢弃。
+
+TaskPresentation是TaskSnapshot/步骤的派生视图，不另建可写事实源。messageCode及safeParams由受控模板渲染；activeStepIds为空不代表完成，完成依据仍是业务状态和核验。展示更新消费已有erya:event信封，按每任务sequence去重；缺口请求快照，不能仅凭更高序号忽略中间授权变化。撤权停止敏感推送并清理界面缓存。
+
+通知kind暂限approval_required/completed/failed/paused；notificationId由持久事件生成并在多窗口/重启间去重，重放不补弹陈旧通知。通知点击只提交不透明目标引用到主进程，经当前身份与任务可见性校验后导航；不直接传任意URL、不批准、不重试工具。任务事件订阅不等于系统通知许可，许可、焦点、勿扰与内容策略在发布前再检查。
 
 ## 合同验证与源码依据
 

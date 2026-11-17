@@ -258,8 +258,8 @@ export function App() {
   /** 左侧边栏悬停自动展开开关（设置 ui.leftSidebarAutoExpand，默认关闭） */
   const [leftSidebarAutoExpand, setLeftSidebarAutoExpand] = useState<boolean>(false);
 
-  /** 当前搜索引擎（设置 searchEngine，供地址栏搜索词生成搜索 URL；默认 google） */
-  const [searchEngine, setSearchEngine] = useState<string>('google');
+  /** 当前搜索引擎（设置 searchEngine，供地址栏搜索词生成搜索 URL；默认 baidu） */
+  const [searchEngine, setSearchEngine] = useState<string>('baidu');
 
   // 右侧栏悬停展开延迟定时器（未触发前可取消）
   const rightHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1401,8 +1401,11 @@ export function App() {
           useCustomChrome && 'app-window-shell',
         )}
         style={{
+          backgroundColor: theme === 'dark' ? 'var(--color-surface)' : undefined,
           backgroundImage:
-            'radial-gradient(ellipse 92% 42% at 50% 18%, color-mix(in srgb, var(--color-primary) 8%, transparent) 0%, transparent 72%), linear-gradient(180deg, var(--color-titlebar) 0%, color-mix(in srgb, var(--color-titlebar) 60%, var(--color-surface)) 26%, var(--color-surface) 66%, var(--color-surface-secondary) 100%)',
+            theme === 'dark'
+              ? 'none'
+              : 'radial-gradient(ellipse 92% 42% at 50% 18%, color-mix(in srgb, var(--color-primary) 8%, transparent) 0%, transparent 72%), linear-gradient(180deg, var(--color-titlebar) 0%, color-mix(in srgb, var(--color-titlebar) 60%, var(--color-surface)) 26%, var(--color-surface) 66%, var(--color-surface-secondary) 100%)',
         }}
       >
         {useCustomChrome && (

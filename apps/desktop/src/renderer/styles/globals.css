@@ -22,7 +22,7 @@ html[data-theme='dark'] {
 
 /* ===== 自绘窗口 chrome（Windows frameless） =====
  * 结构：.app-window-frame（8px #F6F2F0 外框）→ .app-window-shell（圆角悬浮层）→ 标题栏 + 内容。
- * 外框固定为 #F6F2F0，亮/暗主题共用；shell 的投影/内侧高光营造 3D 悬浮层次。
+ * 外框亮色为 #F6F2F0，暗色跟随卡片 surface；shell 的投影/内侧高光营造 3D 悬浮层次。
  * 注意：BrowserView 不参与 CSS 裁剪，主进程 view-integration.ts 必须按同样的
  * 外框宽度与标题栏高度内缩网页区域，否则网页会盖住边框/标题栏。 */
 .app-window-frame {

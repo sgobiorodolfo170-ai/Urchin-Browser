@@ -117,7 +117,7 @@ export function SettingsSection({
   return (
     <section className="ui-settings-section">
       {headingBelowDivider ? (
-        <h2 className="mt-6 border-t border-border pt-4 pb-2 text-sm font-semibold">{title}</h2>
+        <h2 className="mt-6 border-t border-border pt-4 pb-2 text-lg font-semibold">{title}</h2>
       ) : (
         <h1 className="mb-6 text-2xl font-semibold">{title}</h1>
       )}

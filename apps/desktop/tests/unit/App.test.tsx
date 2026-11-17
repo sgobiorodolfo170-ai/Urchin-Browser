@@ -1278,11 +1278,11 @@ describe('App left sidebar double-click / hover expand', () => {
 
     const sidebar = screen.getByLabelText('左侧边栏');
     fireEvent.mouseEnter(sidebar);
-    // 展开态标题为「中转区 · N」（dev.259 起带条目计数），折叠态只有迷你图标无此文本
-    await waitFor(() => expect(screen.getByText(/^中转区 · /)).toBeInTheDocument());
+    // 展开态标题为「中转区」（不带计数），折叠态只有迷你图标无此文本
+    await waitFor(() => expect(screen.getByText(/^中转区$/)).toBeInTheDocument());
 
     fireEvent.mouseLeave(sidebar);
-    await waitFor(() => expect(screen.queryByText(/^中转区 · /)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/^中转区$/)).toBeNull());
   });
 
   it('should not auto-expand on hover when setting disabled', async () => {

@@ -21,7 +21,7 @@ export interface SettingsEntry {
 /** 默认值（用于重置） */
 const DEFAULTS: Record<string, unknown> = {
   language: 'zh-CN',
-  searchEngine: 'google',
+  searchEngine: 'baidu',
   downloadsPath: '',
   blockTrackers: true,
   doNotTrack: true,

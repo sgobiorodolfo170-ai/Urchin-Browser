@@ -9,33 +9,40 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '../../components/ui/button';
 import { SettingsSection, type SettingField } from '../settings-form';
 
-const OPS_FIELDS: readonly SettingField[] = [
+const SIDEBAR_FIELDS: readonly SettingField[] = [
   {
     key: 'ui.rightSidebarAutoExpand',
     label: '右侧边栏展开方式',
-    desc: '切换展开方式：双击展开（默认）/ 悬停自动展开。开启=悬停自动展开，关闭=双击展开',
+    desc: '手动展开：双击右侧边栏空白处可固定展开或折叠。悬停自动展开：折叠时移入鼠标临时展开，移出后收起；双击仍可固定展开或折叠。',
     type: 'select',
     options: [
-      { value: 'false', label: '双击展开' },
+      { value: 'false', label: '手动展开' },
       { value: 'true', label: '悬停自动展开' },
     ],
   },
   {
     key: 'ui.leftSidebarAutoExpand',
-    label: '左侧边栏悬停自动展开',
-    desc: '开启后，左侧栏折叠时鼠标停留即可自动展开（默认关闭）；双击左侧栏空白处始终可展开/折叠。',
-    type: 'toggle',
+    label: '左侧边栏展开方式',
+    desc: '手动展开：点击顶部按钮或双击左侧边栏空白处可固定展开或折叠。悬停自动展开：折叠时移入鼠标临时展开，移出后收起；按钮和双击仍可固定展开或折叠。',
+    type: 'select',
+    options: [
+      { value: 'false', label: '手动展开' },
+      { value: 'true', label: '悬停自动展开' },
+    ],
   },
   {
     key: 'debug.sidebarHoverDelay',
     label: '侧边栏悬停展开延迟',
-    desc: '右侧栏折叠时，鼠标停留多久后自动展开（毫秒，0 = 立即展开，范围 0–3000）。仅在「展开方式=悬停自动展开」时生效',
+    desc: '左右侧边栏共用的悬停等待时间（默认 60ms，0 = 立即展开，范围 0–3000ms）；仅对选择了「悬停自动展开」的侧边栏生效。',
     type: 'number',
     min: 0,
     max: 3000,
     step: 10,
     unit: 'ms',
   },
+];
+
+const WORKSPACE_FIELDS: readonly SettingField[] = [
   {
     key: 'ui.workspaceSwitcherMode',
     label: '折叠态工作区切换',
@@ -154,9 +161,17 @@ export function OpsTab({
         onChange={onChange}
       />
       <SettingsSection
-        title="侧栏与工作区"
+        title="侧边栏"
         headingBelowDivider
-        fields={OPS_FIELDS}
+        fields={SIDEBAR_FIELDS}
+        entries={entries}
+        onChange={onChange}
+      />
+
+      <SettingsSection
+        title="工作区"
+        headingBelowDivider
+        fields={WORKSPACE_FIELDS}
         entries={entries}
         onChange={onChange}
       />

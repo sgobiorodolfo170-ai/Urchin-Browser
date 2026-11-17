@@ -193,7 +193,11 @@ describe('SettingsPage', () => {
     // 操作选项卡：右侧边栏展开方式 + 悬停展开延迟（由调试选项卡迁入）
     clickTab('操作');
     expect(screen.getByText('右侧边栏展开方式')).toBeTruthy();
-    expect(screen.getByText('左侧边栏悬停自动展开')).toBeTruthy();
+    expect(screen.getByText('左侧边栏展开方式')).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '左侧边栏展开方式' })).toBeTruthy();
+    for (const name of ['标题栏', '侧边栏', '工作区']) {
+      expect(screen.getByRole('heading', { name }).tagName).toBe('H2');
+    }
     expect(screen.getByText('侧边栏悬停展开延迟')).toBeTruthy();
   });
 
@@ -262,6 +266,10 @@ describe('SettingsPage', () => {
     // 等待重置循环完成（多个 await settings.set）
     await waitFor(() => expect(screen.getByText('已重置为默认值')).toBeTruthy());
     expect(mockInvoke).toHaveBeenCalledWith('settings.set', { key: 'language', value: 'zh-CN' });
+    expect(mockInvoke).toHaveBeenCalledWith('settings.set', {
+      key: 'searchEngine',
+      value: 'baidu',
+    });
     expect(mockInvoke).toHaveBeenCalledWith('settings.set', { key: 'blockTrackers', value: true });
   });
 

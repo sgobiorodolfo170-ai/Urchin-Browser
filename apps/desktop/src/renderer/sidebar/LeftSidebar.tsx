@@ -146,7 +146,7 @@ export function LeftSidebar({
       <div
         aria-label="功能入口"
         className={cn(
-          'mt-auto shrink-0 border-t border-border',
+          'mt-auto shrink-0 select-none border-t border-border [&_img]:pointer-events-none',
           effectiveExpanded
             ? 'grid grid-cols-2 [&>button]:h-auto [&>button]:w-full [&>button]:aspect-square [&>button]:rounded-none [&>button>svg]:h-[var(--entry-icon)] [&>button>svg]:w-[var(--entry-icon)] [&>button>img]:h-[var(--entry-icon)] [&>button>img]:w-[var(--entry-icon)]'
             : 'flex flex-col items-center gap-1 p-1',

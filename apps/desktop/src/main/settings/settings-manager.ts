@@ -57,7 +57,7 @@ export interface SettingsPiOptions {
 /** 默认设置项：构造时预填充。 */
 const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   ['language', 'zh-CN'],
-  ['searchEngine', 'google'],
+  ['searchEngine', 'baidu'],
   ['downloadsPath', ''],
   ['blockTrackers', true],
   ['doNotTrack', true],

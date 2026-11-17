@@ -13,7 +13,7 @@
  *
  * 设计理由（OM1 决策）：输入识别在渲染进程本地执行（纯字符串匹配），无需 IPC 调用，避免延迟。
  * 搜索引擎（OM6 决策）：搜索 URL 由 SEARCH_ENGINE_TEMPLATES 表按 searchEngine 设置生成
- * （见设置页 searchEngine 字段），未知引擎回退 Google——保证设置与行为一致。
+ * （见设置页 searchEngine 字段），未知引擎回退百度——保证设置与行为一致。
  * 本地路径识别（本地文件网页化打开）：Windows 绝对路径输入直接以 file:// URL 打开，
  * 与 file: 显式前缀、拖放、Ctrl+O 共用同一套文件打开机制。
  */
@@ -44,7 +44,7 @@ const SEARCH_ENGINE_TEMPLATES: Readonly<Record<SearchEngineId, string>> = {
 };
 
 /** 默认搜索引擎。 */
-const DEFAULT_ENGINE: SearchEngineId = 'google';
+const DEFAULT_ENGINE: SearchEngineId = 'baidu';
 
 /** URL 协议前缀列表。 */
 const URL_PROTOCOLS = ['http://', 'https://', 'ftp://'];
@@ -81,7 +81,7 @@ function toFileUrl(input: string): string | null {
  * 识别用户输入类型并生成导航 URL。
  *
  * @param input 用户输入的原始文本
- * @param searchEngine 当前搜索引擎（来自 searchEngine 设置；未知值回退 google）
+ * @param searchEngine 当前搜索引擎（来自 searchEngine 设置；未知值回退 baidu）
  * @returns 解析结果，包含类型和规范化 URL
  */
 export function parseInput(input: string, searchEngine?: string): ParseResult {
@@ -133,7 +133,7 @@ export function parseInput(input: string, searchEngine?: string): ParseResult {
  * 构建搜索引擎 URL。
  *
  * @param query 搜索词
- * @param engine 搜索引擎标识（未知值回退 google）
+ * @param engine 搜索引擎标识（未知值回退 baidu）
  * @returns 编码后的搜索引擎 URL
  */
 export function buildSearchUrl(query: string, engine?: string): string {

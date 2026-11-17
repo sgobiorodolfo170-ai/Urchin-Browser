@@ -16,10 +16,10 @@ import { SettingsManager } from '../../src/main/settings';
 describe('SettingsManager', () => {
   // ===== 默认设置预填充 =====
 
-  it('default settings: searchEngine is "google"', () => {
+  it('default settings: searchEngine is "baidu"', () => {
     const mgr = new SettingsManager();
 
-    expect(mgr.get('searchEngine')).toBe('google');
+    expect(mgr.get('searchEngine')).toBe('baidu');
   });
 
   it('default settings: downloadsPath is empty string', () => {

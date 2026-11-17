@@ -327,7 +327,7 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-3 py-2">
         <span className="text-xs font-medium text-text-secondary">
-          {selectMode ? `已选 ${selectedIds.size} 项` : `中转区 · ${items.length}`}
+          {selectMode ? `已选 ${selectedIds.size} 项` : '中转区'}
         </span>
         <div className="flex items-center gap-1">
           {/* 图钉按钮：点击进入多选 / 再次点击确认定住 */}

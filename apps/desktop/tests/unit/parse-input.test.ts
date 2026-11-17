@@ -46,7 +46,7 @@ describe('parseInput', () => {
   it('should parse text with spaces as search', () => {
     const result = parseInput('hello world');
     expect(result.type).toBe('search');
-    expect(result.url).toContain('google.com/search');
+    expect(result.url).toContain('baidu.com/s');
     expect(result.url).toContain('hello%20world');
   });
 
@@ -59,7 +59,7 @@ describe('parseInput', () => {
   it('should parse text without dot as search', () => {
     const result = parseInput('searchterm');
     expect(result.type).toBe('search');
-    expect(result.url).toContain('google.com/search');
+    expect(result.url).toContain('baidu.com/s');
   });
 
   it('should parse empty string as empty type', () => {
@@ -107,14 +107,14 @@ describe('parseInput', () => {
     expect(parseInput('a', 'so360').url).toBe(`https://www.so.com/s?q=${encodeURIComponent('a')}`);
   });
 
-  it('should fall back to google for unknown engine id', () => {
+  it('should fall back to baidu for unknown engine id', () => {
     const result = parseInput('term', 'unknown-engine');
-    expect(result.url).toBe(`https://www.google.com/search?q=${encodeURIComponent('term')}`);
+    expect(result.url).toBe(`https://www.baidu.com/s?wd=${encodeURIComponent('term')}`);
   });
 
-  it('should keep google default when engine omitted', () => {
+  it('should use baidu by default when engine omitted', () => {
     const result = parseInput('term');
-    expect(result.url).toBe(`https://www.google.com/search?q=${encodeURIComponent('term')}`);
+    expect(result.url).toBe(`https://www.baidu.com/s?wd=${encodeURIComponent('term')}`);
   });
 
   // ===== Windows 本地路径识别（本地文件网页化打开）=====

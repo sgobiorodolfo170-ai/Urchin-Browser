@@ -43,6 +43,7 @@ import { HistoryManager, type HistoryPersistence } from './history';
 import { BookmarkManager, type BookmarkPersistence } from './bookmarks';
 import { initStartupLog, markStartup } from './startup-log';
 import { SettingsManager } from './settings';
+import { SujiPersistence } from './settings/suji-persistence';
 import { DownloadManager } from './downloads';
 import type { ProviderConfigStore } from './ai';
 import { parseOpenArgs } from './file-association';
@@ -840,26 +841,30 @@ void app.whenReady().then(async () => {
   // 初始化 SettingsManager，注入 StorageLayer 持久化（设置变更自动写入 SQLite）。
   // DD1 决策：pi 键（pi.*）持久化到 pi 库 + pi 密钥存储，
   // 其余（书签/历史/普通设置）走主库。启动时迁移旧主库残留的 pi 键到 pi 库。
-  ctx.settingsManager = new SettingsManager(sl.mainStore, sl.secrets, {
-    piPersistence: sl.aiStore,
-    piSecretStore: sl.secrets,
-    legacyPiKeysScan: () => {
-      const rows = sl.mainStore.query<{ key: string; value: string }>(
-        'SELECT key, value FROM settings WHERE key LIKE ?',
-        'settings:ai.%',
-      );
-      return rows
-        .map((row) => {
-          try {
-            return { key: row.key, value: JSON.parse(row.value) as unknown };
-          } catch {
-            log.warn('skip malformed setting during legacy scan', { key: row.key });
-            return null;
-          }
-        })
-        .filter((r): r is { key: string; value: unknown } => r !== null);
+  ctx.settingsManager = new SettingsManager(
+    new SujiPersistence(sl.mainStore, dataDir),
+    sl.secrets,
+    {
+      piPersistence: sl.aiStore,
+      piSecretStore: sl.secrets,
+      legacyPiKeysScan: () => {
+        const rows = sl.mainStore.query<{ key: string; value: string }>(
+          'SELECT key, value FROM settings WHERE key LIKE ?',
+          'settings:ai.%',
+        );
+        return rows
+          .map((row) => {
+            try {
+              return { key: row.key, value: JSON.parse(row.value) as unknown };
+            } catch {
+              log.warn('skip malformed setting during legacy scan', { key: row.key });
+              return null;
+            }
+          })
+          .filter((r): r is { key: string; value: unknown } => r !== null);
+      },
     },
-  });
+  );
 
   // TP7：工作区注册表（元数据存 Settings，非敏感）＋ session 分区管理器。
   // 持久化记录形状 { version, workspaces }；cookies 由 Chromium 分区自动落盘

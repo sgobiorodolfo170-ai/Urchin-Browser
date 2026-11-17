@@ -6,7 +6,8 @@
  * - 页面（NotePage）：笔记本下的笔记页；任务清单为每笔记本固定视图，不单独建页面
  * - 便利贴（StickyNote）：右区无限画布上的绝对定位卡片
  *
- * 持久化：整体作为一个版本化 JSON 写入 settings 键 `notebook.state`，
+ * 持久化：通过 settings 键 `notebook.state` 传递版本化状态，主进程写入
+ * <数据目录>/documents/suji/state.json，笔记正文以 nootbook/<笔记本名>/*.md 保存；
  * 与右侧栏宽度等 UI 状态使用同一套 settings.* IPC，不新增 IPC 通道。
  */
 

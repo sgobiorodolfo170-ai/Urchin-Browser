@@ -161,7 +161,7 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
     ].join('\n'),
   ],
   ['clipper.content', '{{content}}'],
-  // M27 笔记 / 便利贴（urchin://notebook）：整体状态 JSON（笔记本/页面/任务/便利贴/
+  // M27 笔记 / 便利贴（urchin://notebook）：状态经 SujiPersistence 写入 documents/suji（笔记本/页面/任务/便利贴/
   // 画布视口/三区分割位置）。默认 null = 首次运行由渲染层种下默认笔记本。
   // 该键必须登记在此处，SettingsManager 构造时才会从 SQLite 加载已保存状态。
   ['notebook.state', null],
@@ -334,6 +334,13 @@ export class SettingsManager {
    * @param value 设置值
    */
   set(key: string, value: unknown): void {
+    // 速记文件必须成功写入后才更新内存并回复 IPC，避免失败后误报保存成功。
+    if (key === 'notebook.state' && this.persistence) {
+      this.persistence.set(`settings:${key}`, value);
+      this.entries.set(key, value);
+      this.emit('changed', key, value);
+      return;
+    }
     this.entries.set(key, value);
     // 持久化（同步写入）：pi 键（pi.*）优先 pi 库，未注入时回退主库
     // （DD1 决策 + 向后兼容）；其余键始终走主库。

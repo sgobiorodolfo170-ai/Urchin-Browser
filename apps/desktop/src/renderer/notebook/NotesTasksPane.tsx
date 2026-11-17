@@ -264,20 +264,25 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
                     }))
                   }
                 >
-                  <div className="truncate text-sm font-medium text-text">
-                    {note.title || '无标题笔记'}
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate text-sm font-medium text-text">
+                      {note.title || '无标题笔记'}
+                    </span>
+                    <time
+                      className="shrink-0 text-[11px] tabular-nums text-text-secondary"
+                      dateTime={new Date(note.updatedAt).toISOString()}
+                    >
+                      {new Date(note.updatedAt).toLocaleString('zh-CN', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false,
+                      })}
+                    </time>
                   </div>
                   <div className="mt-2 line-clamp-2 text-xs leading-relaxed text-text-secondary">
                     {previewOf(note) || '空白笔记'}
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-2 text-[11px] text-text-secondary">
-                    <span>笔记</span>
-                    <time dateTime={new Date(note.updatedAt).toISOString()}>
-                      {new Date(note.updatedAt).toLocaleDateString('zh-CN', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </time>
                   </div>
                 </button>
               ))

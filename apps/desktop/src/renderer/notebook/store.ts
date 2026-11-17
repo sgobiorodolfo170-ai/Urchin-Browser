@@ -1,13 +1,10 @@
 /**
  * 笔记 / 便利贴模块 · 状态加载与持久化
  *
- * 状态存放在 settings 键 `notebook.state`（SQLite settings 表）：
- * - 与右侧栏宽度等 UI 偏好一致，复用 settings.get / settings.set
- * - 写入防抖 400ms，避免每次按键都落盘
- * - 组件卸载时 flush 未写入的变更
- *
- * 主进程 SettingsManager 构造时只加载 DEFAULT_SETTINGS 中登记的键，
- * 因此 `notebook.state` 必须同步加入其默认列表，否则重启会读不到。
+ * 复用 settings 键 `notebook.state` 与 settings.get / settings.set IPC。
+ * 主进程 SujiPersistence 将状态保存到 <数据目录>/documents/suji/state.json，
+ * 正文保存为 nootbook/<笔记本名>/*.md；首次启动从旧 SQLite 键迁移。
+ * 写入防抖 400ms，组件卸载时 flush 未写入的变更。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { normalizeNotebookState } from './normalize';

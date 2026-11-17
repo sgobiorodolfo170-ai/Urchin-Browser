@@ -1,10 +1,10 @@
 # 10 二丫 API 接口文档
 
-> 状态：草稿（v0.5 评审草案） · 建立：2026-11-16 · 最近更新：2026-11-17
+> 状态：草稿（v0.6 评审草案） · 建立：2026-11-16 · 最近更新：2026-11-17
 > 关联：[开发准备总览](./00-二丫AI助手开发准备总览.md) · [仓库文档索引](../文档索引.md)
-> 来源：[ChatGPT Pages 原文](https://chatgpt.com/space/page_3943f0d108fc819194a79c6afb388454) · 本地落盘：2026-11-17。初次落盘保留来源稿；2026-11-17本地增量纳入dsh-pet借鉴要求，来源与取舍见00。以下仍为待实施方案，不代表功能已实现；Pages来源稿未同步本轮增量。
+> 来源：[ChatGPT Pages 原文](https://chatgpt.com/space/page_3943f0d108fc819194a79c6afb388454) · 本地落盘：2026-11-17。初次落盘保留来源稿；2026-11-17本地增量纳入dsh-pet借鉴要求，来源与取舍见00。以下仍为待实施方案，不代表功能已实现；Pages来源稿未同步本地增量；v0.6全能力补充见13。
 
-版本：v0.5 评审草案，2026-11-17。二丫通过浏览器内部 IPC 接收任务，通过受控工具接口操作模块。本方案规定请求、授权、事件、错误与恢复语义；所有 `erya.*` 通道和下述 DTO 均为建议新增，尚未实现。关联 ER-001 至 ER-018。
+版本：v0.6 评审草案，2026-11-17。二丫通过浏览器内部 IPC 接收任务，通过受控工具接口操作模块。本方案规定请求、授权、事件、错误与恢复语义；所有 `erya.*` 通道和下述 DTO 均为建议新增，尚未实现。关联 ER-001 至 ER-018。
 
 ## 接口范围与现有代码
 
@@ -298,3 +298,27 @@ CUT-01 合同验证另覆盖旧7个点式IPC通道及其生产者/消费者、�
 - [页面提取处理器](https://github.com/sgobiorodolfo170-ai/Urchin-Browser/blob/7f9f59af29c641ae5900849ee685dc3570a443b6/apps/desktop/src/main/page-context/register-handlers.ts)
 
 - [当前 Provider 消息结构](https://github.com/sgobiorodolfo170-ai/Urchin-Browser/blob/7f9f59af29c641ae5900849ee685dc3570a443b6/packages/ai-provider-contract/src/messages.ts)
+
+## 全能力工具和控制合同（v0.6）
+
+[13 全能力接入设计](./13-二丫全能力接入设计.md)维护逐通道接入决定、V-T/D/F/J/S/M/U核验模板及web.*专用schema；原生请求复用领域req/res，在外围绑定ToolInvocation和资源/审批。新增工具在ALL-02建立zod合同与兼容测试前不得暴露；不提供通用invoke/evaluate端点。
+
+| 拟控制通道/对象 | 最小输入与返回 | 关键语义 |
+| --- | --- | --- |
+| erya.capabilities.get增量 | taskId可选、cursor/limit → manifestRevision、actionId/toolId、input/outputSchema、adapterVersion、调用模式、平台/限制与不可用原因 | 按真实身份过滤；参数分支可分页，不泄露秘密资源，未知不可调用 |
+| erya.tasks.pause | taskId、expectedRevision、idempotencyKey → accepted、TaskSnapshot、在途步骤状态 | 先禁止新派发，再请求取消；已提交副作用核验，不能假装撤回 |
+| erya.handoffs.get | handoffId → 原因、脱敏目标、过期时间及允许下一步 | 仅当前主体可见，不返回凭据/原生窗口秘密 |
+| erya.handoffs.resume | handoffId、expectedTaskRevision、idempotencyKey → 重检后的TaskSnapshot | 用户明确继续；旧审批/元素引用不复用，不把点击恢复当批准新提交 |
+| DomainJobRef | operationId、domainJobId、state、cancelMode、receiptLookup、resultRefs | accepted/running/succeeded/failed/cancel_requested/cancelled/outcome_unknown为异步操作状态，非新增任务状态；取消请求不等于取消成功 |
+| PageTarget/ElementRef | profile/workspace/window/tab、实际origin、frameRef、documentRevision、captureId；element引用不透明且限时 | 身份由主进程生成；导航/frame变化使引用失效，禁止任意webContentsId |
+| WorkbenchHandoff | sourceTaskId、目标工作台、targetTaskId可空、资源/预算/版本、expiresAt、argsHash、operationId | 两侧分别授权；仅FUT立项及专属协议实现后开放，无原始供应商方法代理 |
+
+错误增补CAPABILITY_UNAVAILABLE、MANIFEST_CHANGED、TARGET_STALE、ELEMENT_AMBIGUOUS、ELEMENT_NOT_INTERACTABLE、ORIGIN_NOT_ALLOWED、HANDOFF_REQUIRED、HANDOFF_EXPIRED、SUBMISSION_UNKNOWN；错误码到暂停/重观察/可信接管的映射由适配器明确，不能仅依retryable自动重试写操作。计划/manifest语义改变后重新规划和审批，不沿用旧参数摘要。
+
+原生适配样例：download.pause输入授权downloadId与期望状态，回读领域状态；file.saveAs输入fileRef/目标目录引用/内容摘要及覆盖审批，返回文件版本/摘要；settings.updateAllowed输入具体已登记键、expectedRevision与新值，返回实际生效值。每个工具还须绑定13中的具体actionId、原schema和验证器；这些样例不代表领域已经支持CAS/幂等，缺失部分由NAT/SYS任务补齐。
+
+所有新增控制请求保持可信UI sender限制、幂等/版本与既有事件恢复规则。网页/工作台观察信息也只推送获准窗口，撤权后停止并清除未发出缓存；审批仍通过erya.approvals.decide处理，不由网页或供应商界面直写二丫授权。
+
+原生截图完整工具还需区分captureMode=window/viewport/region、目标引用、区域DIP坐标及screen/displayRevision；界面框选是人工接管模式，不能把screenshot.capture已打开框选层当成自动截图完成。回执包含实际尺寸、受控imageRef/摘要与保存结果；多屏/DPI或窗口移动后旧区域失效，截图外发单独授权。
+
+标签排序/跨窗口移动需明确源、目标、前后位置及预期顺序；目前tab.reorder不等于已有跨窗口移动领域合同，ALL-01应拆动作并由NAT-01补缺口。设置键、Home方法和原生UI枚举的完整展开见13，未支持分支不能通过native.*名字存在就显示可用。

@@ -99,6 +99,26 @@ test.describe('v0.1 关键路径', () => {
     }
   });
 
+  test('外部链接逐个新建标签并保留原标签', async () => {
+    const { electronApp, window } = await launchApp();
+    try {
+      const tabs = window.locator('[aria-label="关闭标签"]');
+      const initialTabs = await tabs.count();
+      // 直接触发主进程的第二实例入口，避免操作系统默认浏览器关联影响日常实例。
+      for (const count of [1, 2]) {
+        await electronApp.evaluate(({ app }, count) => {
+          app.emit('second-instance', {}, [
+            process.execPath,
+            `https://example.com/?external=${count}`,
+          ]);
+        }, count);
+        await expect(tabs).toHaveCount(initialTabs + count);
+      }
+    } finally {
+      await electronApp.close();
+    }
+  });
+
   test('导航到 URL', async () => {
     const fixture = createServer((_req, res) => {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');

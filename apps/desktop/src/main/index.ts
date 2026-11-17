@@ -493,7 +493,7 @@ export function openInGenOffice(windowId: number, path: string): boolean {
 /**
  * 处理命令行打开请求（Windows 文件关联 / 默认浏览器启动，首启与第二实例共用）。
  *
- * - URL：首条复用当前激活标签（保持「热启动」语义），其余新开标签
+ * - URL：每条都新建并激活标签，保留当前页面（含首启恢复的会话）
  * - 文件：逐个 routeLocalFile（资源管理器多选文件一次启动 → 多标签）
  * - 失败：routeLocalFile 返回 false 时弹系统错误框——文件关联场景下用户
  *   没有浏览器窗口上下文，静默失败会表现为「双击没反应」
@@ -507,15 +507,7 @@ function openFromCommandLine(windowId: number, argv: readonly string[]): number 
   const { urls, files } = parseOpenArgs(argv, app.getAppPath());
   let opened = 0;
 
-  urls.forEach((url, index) => {
-    if (index === 0) {
-      const active = tabManager.query({ windowId }).find((tab) => tab.active);
-      if (active) {
-        tabManager.loadUrl(active.id, url);
-        opened += 1;
-        return;
-      }
-    }
+  urls.forEach((url) => {
     tabManager.create({ windowId, url, active: true });
     opened += 1;
   });

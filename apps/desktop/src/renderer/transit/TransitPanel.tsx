@@ -1,3 +1,4 @@
+import '../styles/utilities.css';
 /**
  * 中转区 · 容器面板
  *
@@ -284,9 +285,11 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
     return (
       <div
         className={cn(
-          'flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto px-1 py-2',
+          'ui-transit flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto px-1 py-2',
           dragOverSelf && 'bg-primary/10',
         )}
+        aria-label="中转区"
+        role="region"
         tabIndex={0}
         onDragOver={handlePanelDragOver}
         onDragLeave={handlePanelDragLeave}
@@ -315,14 +318,16 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
   // ── 展开态：标题 + 列表 ──
   return (
     <div
-      className={cn('flex min-h-0 flex-1 flex-col', dragOverSelf && 'bg-primary/5')}
+      className={cn('ui-transit flex min-h-0 flex-1 flex-col', dragOverSelf && 'bg-primary/5')}
+      aria-label="中转区"
+      role="region"
       tabIndex={0}
       onPaste={handlePaste}
     >
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-3 py-2">
         <span className="text-xs font-medium text-text-secondary">
-          {selectMode ? `已选 ${selectedIds.size} 项` : '中转区'}
+          {selectMode ? `已选 ${selectedIds.size} 项` : `中转区 · ${items.length}`}
         </span>
         <div className="flex items-center gap-1">
           {/* 图钉按钮：点击进入多选 / 再次点击确认定住 */}
@@ -333,6 +338,8 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
               items.length === 0 && 'pointer-events-none opacity-0',
               selectMode && 'bg-primary/20 text-primary',
             )}
+            disabled={items.length === 0}
+            aria-pressed={selectMode}
             onClick={handlePinButtonClick}
             aria-label={selectMode ? '确认定住选中项' : '批量固定'}
             title={selectMode ? '确认定住选中项' : '批量固定'}
@@ -346,6 +353,7 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
               'rounded p-1 text-text-secondary hover:bg-surface-secondary hover:text-text',
               (items.length === 0 || selectMode) && 'pointer-events-none opacity-0',
             )}
+            disabled={items.length === 0 || selectMode}
             onClick={handleClear}
             aria-label="清空中转区"
             title="清空中转区"
@@ -369,7 +377,7 @@ export function TransitPanel({ expanded }: TransitPanelProps): React.ReactElemen
         {loaded && items.length === 0 ? (
           <div className="flex flex-col items-center gap-1 px-2 py-6 text-center">
             <Inbox className="h-6 w-6 text-text-secondary opacity-30" />
-            <p className="text-[11px] leading-tight text-text-secondary opacity-60">
+            <p className="text-xs leading-relaxed text-text-secondary">
               拖入文件、文字、截图
               <br />
               或网页链接到此

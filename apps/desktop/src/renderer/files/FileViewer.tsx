@@ -1,3 +1,4 @@
+import '../styles/utilities.css';
 /**
  * 本地文件查看器 / 文件夹浏览器（urchin://file-viewer）
  *
@@ -574,7 +575,7 @@ function FileViewerInner({
   const canNext = seqIndex >= 0 && seqIndex < sequence.length - 1;
 
   return (
-    <div className="relative flex h-full flex-col bg-surface text-text">
+    <div className="ui-file-viewer relative flex h-full min-h-0 min-w-0 flex-col bg-surface text-text">
       {/* 编辑模式动作按钮（保存/另存为/完成）；showEditToggle 限定文本家族。
        * GF4 退役：Markdown 不再用 Tiptap 2 独立工具条——所有文本编辑统一走
        * PlainTextEditor，动作按钮在此头部行（与 .txt/.json 等一致）。 */}
@@ -734,8 +735,10 @@ function FileViewerInner({
       {/* 底部工具栏：文件名 + 类型徽标 + 大小 + 同目录序列导航。
        * 固定于内容区下方（地址栏上方），不受内容上下滑动影响。 */}
       <div className="flex shrink-0 items-center gap-2 border-t border-border bg-surface-secondary px-4 py-2">
-        <span className="truncate text-sm font-medium">{meta?.name ?? path}</span>
-        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
+        <span title={path ?? undefined} className="min-w-0 flex-1 truncate text-sm font-medium">
+          {meta?.name ?? path}
+        </span>
+        <span className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
           {KIND_LABELS[kind]}
         </span>
         {meta && (
@@ -846,7 +849,7 @@ function DirBrowser({
   );
 
   return (
-    <div className="flex h-full flex-col bg-surface text-text">
+    <div className="ui-file-viewer flex h-full min-h-0 min-w-0 flex-col bg-surface text-text">
       {/* 工具栏：返回上一级 + 当前目录名 */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface-secondary px-4 py-2">
         <button
@@ -858,7 +861,9 @@ function DirBrowser({
         >
           <ArrowUp className="h-4 w-4" />
         </button>
-        <span className="truncate text-sm font-medium">{dir}</span>
+        <span title={dir} className="min-w-0 flex-1 truncate text-sm font-medium">
+          {dir}
+        </span>
       </div>
 
       {/* 目录内容 */}
@@ -881,7 +886,7 @@ function DirBrowser({
             {entries.map((entry) => (
               <button
                 key={entry.path}
-                className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-left hover:border-primary hover:bg-surface-secondary"
+                className="ui-file-entry flex min-w-0 items-center gap-2 rounded-md border border-border px-3 py-2 text-left hover:border-primary hover:bg-surface-secondary"
                 onClick={() => handleOpenEntry(entry)}
                 title={entry.path}
               >

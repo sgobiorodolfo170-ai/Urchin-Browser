@@ -1,3 +1,4 @@
+import '../styles/utilities.css';
 /**
  * M26 剪藏 · 面板 UI（独立窗口 ?view=clipper&tabId=<id>）
  *
@@ -69,6 +70,17 @@ function readTabId(): number {
 }
 
 export function ClipperPanelApp() {
+  // 独立窗口首次主题由 config 提供；打开期间继续跟随主界面主题变化。
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const syncTheme = () => {
+      document.documentElement.dataset.theme = media.matches ? 'dark' : 'light';
+    };
+    media.addEventListener('change', syncTheme);
+    return () => media.removeEventListener('change', syncTheme);
+  }, []);
+
   const tabId = readTabId();
   const [config, setConfig] = useState<ClipperConfigRes | null>(null);
   const [page, setPage] = useState<ClipperPageRes | null>(null);
@@ -325,7 +337,7 @@ export function ClipperPanelApp() {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center gap-2 bg-surface text-sm text-text-secondary">
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
         正在提取页面正文…
       </div>
     );
@@ -344,7 +356,7 @@ export function ClipperPanelApp() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-surface text-text">
+    <div className="ui-clipper flex h-screen flex-col bg-surface text-text">
       <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3 [-webkit-app-region:drag]">
         <div className="min-w-0 pr-3 [-webkit-app-region:drag]">
           <h1 className="text-base font-semibold">剪藏（Clipper）</h1>
@@ -381,7 +393,7 @@ export function ClipperPanelApp() {
           </div>
         )}
 
-        <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-3 text-sm">
+        <div className="ui-clipper-fields grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-3 text-sm">
           <label className="text-xs text-text-secondary" htmlFor="clipper-format">
             保存格式
           </label>
@@ -471,6 +483,7 @@ export function ClipperPanelApp() {
                       ? 'border-primary bg-primary/10 text-primary'
                       : 'border-border text-text-secondary',
                   )}
+                  aria-pressed={selectionPriority}
                   onClick={() => handleSelectionPriorityChange(true)}
                   disabled={!extraction?.selectionMarkdown.trim()}
                 >
@@ -484,6 +497,7 @@ export function ClipperPanelApp() {
                       ? 'border-primary bg-primary/10 text-primary'
                       : 'border-border text-text-secondary',
                   )}
+                  aria-pressed={!selectionPriority}
                   onClick={() => handleSelectionPriorityChange(false)}
                 >
                   整页正文
@@ -580,7 +594,7 @@ export function ClipperPanelApp() {
 
       <footer className="shrink-0 border-t border-border px-4 py-3">
         {savedPath && (
-          <div className="mb-2 truncate text-xs text-success" title={savedPath}>
+          <div role="status" className="mb-2 truncate text-xs text-success" title={savedPath}>
             {savedPath.startsWith('已复制') ? savedPath : `已保存：${savedPath}`}
           </div>
         )}
@@ -616,7 +630,7 @@ export function ClipperPanelApp() {
               disabled={saving || format === 'ocr'}
             >
               {saving ? (
-                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
               ) : (
                 <Save className="mr-1 h-3.5 w-3.5" />
               )}

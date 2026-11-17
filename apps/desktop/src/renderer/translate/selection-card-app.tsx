@@ -92,7 +92,11 @@ export function SelectionCardRoot() {
       >
         {/* 结果区：仅显示译文（翻译失败时显示错误信息）；窗口已按实测尺寸设定，
             超高度上限时由主进程夹边、此处内部滚动兜底 */}
-        <div className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-text">
+        <div
+          role={data.error ? 'alert' : 'status'}
+          className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed [overflow-wrap:anywhere]"
+          style={{ color: data.error ? 'var(--color-danger-strong)' : 'var(--color-text)' }}
+        >
           {data.error ?? data.result}
         </div>
       </div>
@@ -101,7 +105,7 @@ export function SelectionCardRoot() {
       <div
         ref={measureRef}
         aria-hidden
-        className="absolute left-0 top-0 whitespace-pre-wrap text-sm leading-relaxed"
+        className="absolute left-0 top-0 whitespace-pre-wrap text-sm leading-relaxed [overflow-wrap:anywhere]"
         style={{ visibility: 'hidden', pointerEvents: 'none', maxWidth: MAX_TEXT_WIDTH }}
       />
     </div>

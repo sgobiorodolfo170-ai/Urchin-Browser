@@ -1,0 +1,68 @@
+/* 仅限浏览器原生中转区、剪藏与内置查看器。 */
+.ui-transit :is(button, [tabindex]):focus-visible,
+.ui-transit:focus-visible,
+.ui-clipper :is(button, input, select, textarea):focus-visible,
+.ui-file-viewer :is(button, a, textarea):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.ui-transit [data-transit-item] {
+  min-width: 0;
+}
+.ui-transit [data-transit-item] > span:first-of-type {
+  min-width: 0;
+}
+.ui-transit [data-transit-item]:focus-within {
+  background: var(--color-hover);
+}
+.ui-transit [data-transit-item] button:hover {
+  background: var(--color-selected);
+}
+.ui-clipper > header {
+  background: var(--color-surface-secondary);
+}
+.ui-clipper-fields {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 14px;
+}
+.ui-clipper-fields label {
+  font-weight: 500;
+}
+.ui-clipper-fields :is(input, select) {
+  min-height: 36px;
+}
+.ui-clipper [aria-pressed='true'] {
+  border-color: var(--color-selected-border);
+  background: var(--color-selected);
+  color: var(--color-primary);
+}
+.ui-clipper > footer {
+  background: var(--color-surface);
+  box-shadow: 0 -3px 12px rgb(0 0 0 / 3%);
+}
+.ui-clipper [role='status'] {
+  border-left: 3px solid var(--color-success);
+  padding: 6px 10px;
+  background: var(--color-surface-secondary);
+}
+.ui-file-viewer .ui-file-entry {
+  min-height: 56px;
+  border-radius: 10px;
+}
+.ui-file-viewer .ui-file-entry:hover {
+  border-color: var(--color-selected-border);
+  background: var(--color-hover);
+}
+.ui-file-viewer :is(pre, .prose-viewer) {
+  line-height: 1.8;
+}
+@media (max-width: 420px) {
+  .ui-clipper-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .ui-clipper-fields label:not(:first-child) {
+    margin-top: 8px;
+  }
+}

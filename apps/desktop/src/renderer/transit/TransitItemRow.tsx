@@ -40,7 +40,7 @@ function TransitItemRowImpl({
     <div
       data-transit-item
       className={cn(
-        'group relative flex cursor-grab items-center gap-2 rounded px-2 py-1.5 text-xs',
+        'group relative flex cursor-grab items-center gap-2 rounded-md px-2 py-2 text-[13px]',
         'hover:bg-surface-secondary',
         item.missing && 'opacity-40',
         selectMode && 'cursor-pointer',
@@ -110,8 +110,8 @@ function TransitItemRowImpl({
       <button
         type="button"
         className={cn(
-          'shrink-0 rounded p-0.5 text-text-secondary opacity-0',
-          'hover:bg-surface hover:text-text group-hover:opacity-100',
+          'shrink-0 rounded p-1 text-text-secondary opacity-0',
+          'hover:bg-surface hover:text-text group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100',
         )}
         onClick={(e) => {
           e.stopPropagation();

@@ -8,6 +8,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { HistoryEntry, HistoryListRes } from '@urchin/ipc-contract';
+import { ChevronDown, ChevronRight, Clock3 } from 'lucide-react';
 import { invoke, openUrlInActiveTab } from './panel-ipc';
 import { FaviconSlot } from './common';
 
@@ -104,18 +105,23 @@ export function HistoryTab({ active }: { active: boolean }) {
         const expanded = !!expandedRef.current[g.key];
         return (
           <div className="date-group" data-key={g.key} key={g.key}>
-            <div
+            <button
+              type="button"
               className="group-header"
+              aria-expanded={expanded}
               onClick={() => {
                 // 组头点击：折叠/展开（React 重渲染整列表，无 IPC；原实现局部重绘）
                 expandedRef.current[g.key] = !expandedRef.current[g.key];
                 bumpVersion((v) => v + 1);
               }}
             >
-              <span className="chevron">{expanded ? '▾' : '▸'}</span>
-              {ICON_HISTORY} <span className="group-label">{g.label}</span>
+              <span className="chevron" aria-hidden="true">
+                {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              </span>
+              <Clock3 className="group-history-icon" size={14} aria-hidden="true" />
+              <span className="group-label">{g.label}</span>
               <span className="group-count">{g.items.length}</span>
-            </div>
+            </button>
             {expanded && (
               <div className="group-body">
                 {g.items.map((h) => (

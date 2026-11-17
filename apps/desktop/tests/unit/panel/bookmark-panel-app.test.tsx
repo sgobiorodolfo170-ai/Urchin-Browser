@@ -489,14 +489,14 @@ describe('BookmarkPanelApp · 历史分组', () => {
     // 组计数徽标
     expect(screen.getByText('2', { selector: '.group-count' })).toBeInTheDocument();
 
-    // 点击「昨天」组头展开（chevron ▸ → ▾）
-    const yesterdayHeader = screen.getByText('昨天').closest('.group-header') as HTMLElement;
-    expect(within(yesterdayHeader).getByText('▸')).toBeInTheDocument();
+    // 按可访问名称定位组头，检查展开状态与内容，避免绑定图标实现。
+    const yesterdayHeader = screen.getByRole('button', { name: /昨天/ });
+    expect(yesterdayHeader).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(yesterdayHeader);
     await waitFor(() => {
       expect(screen.getByText('B1')).toBeInTheDocument();
     });
-    expect(within(yesterdayHeader).getByText('▾')).toBeInTheDocument();
+    expect(yesterdayHeader).toHaveAttribute('aria-expanded', 'true');
 
     // 再点「今天」组头折叠
     fireEvent.click(screen.getByText('今天').closest('.group-header') as HTMLElement);

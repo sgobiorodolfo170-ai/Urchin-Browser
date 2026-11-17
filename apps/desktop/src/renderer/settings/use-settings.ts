@@ -135,7 +135,7 @@ export function useSettings({ onToast }: UseSettingsOptions) {
   }, []);
 
   const handleReset = useCallback(async () => {
-    if (!window.confirm('确定重置所有设置为默认值？')) return;
+    if (!window.confirm('确定恢复基础选项？数据目录、剪藏路径、系统关联和已有数据将保留。')) return;
     try {
       for (const [k, v] of Object.entries(DEFAULTS)) {
         await window.urchin.invoke('settings.set', { key: k, value: v });

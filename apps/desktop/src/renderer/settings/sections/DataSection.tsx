@@ -12,19 +12,19 @@ const DATA_FIELDS: readonly SettingField[] = [
   {
     key: 'data.directory',
     label: '数据存储位置',
-    desc: '书签、历史、设置、截图、下载、网页保存的根目录（留空使用默认位置）。修改后重启生效；pi 对话数据与设置固定存于 userData/pi，不随此目录变动',
+    desc: '书签、历史、设置、速记及保存文件的根目录。留空使用默认位置，修改后重启生效；pi 数据不随此目录迁移。',
     type: 'directory',
   },
   {
     key: 'downloadsPath',
     label: '下载位置',
-    desc: '下载保存目录（留空 = 每次下载询问保存位置，确认时可设为默认）',
+    desc: '指定后直接保存到此目录；留空时每次询问，并可将所选位置设为默认。',
     type: 'directory',
   },
   {
     key: 'clipper.saveDir',
     label: '剪藏保存路径',
-    desc: '剪藏文件（Markdown / MHTML / PDF / 截图）的保存目录，重名自动追加序号（留空使用默认位置 documents/clipper，改后立即生效）',
+    desc: '留空保存到数据目录下的 documents/clipper；修改后用于新剪藏，已有文件不移动，重名自动编号。',
     type: 'directory',
   },
 ];

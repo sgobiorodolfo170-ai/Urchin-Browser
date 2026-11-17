@@ -13,7 +13,7 @@ const SIDEBAR_FIELDS: readonly SettingField[] = [
   {
     key: 'ui.rightSidebarAutoExpand',
     label: '右侧边栏展开方式',
-    desc: '手动展开：双击右侧边栏空白处可固定展开或折叠。悬停自动展开：折叠时移入鼠标临时展开，移出后收起；双击仍可固定展开或折叠。',
+    desc: '手动模式双击空白处展开或折叠；悬停模式移入时临时展开、移出时收起，双击可固定展开。',
     type: 'select',
     options: [
       { value: 'false', label: '手动展开' },
@@ -23,7 +23,7 @@ const SIDEBAR_FIELDS: readonly SettingField[] = [
   {
     key: 'ui.leftSidebarAutoExpand',
     label: '左侧边栏展开方式',
-    desc: '手动展开：点击顶部按钮或双击左侧边栏空白处可固定展开或折叠。悬停自动展开：折叠时移入鼠标临时展开，移出后收起；按钮和双击仍可固定展开或折叠。',
+    desc: '手动模式用顶部按钮或双击空白处展开、折叠；悬停模式移入时临时展开、移出时收起，按钮或双击可固定展开。',
     type: 'select',
     options: [
       { value: 'false', label: '手动展开' },
@@ -33,7 +33,7 @@ const SIDEBAR_FIELDS: readonly SettingField[] = [
   {
     key: 'debug.sidebarHoverDelay',
     label: '侧边栏悬停展开延迟',
-    desc: '左右侧边栏共用的悬停等待时间（默认 60ms，0 = 立即展开，范围 0–3000ms）；仅对选择了「悬停自动展开」的侧边栏生效。',
+    desc: '仅影响悬停展开的侧边栏。默认 60ms，范围 0–3000ms，0 表示立即展开。',
     type: 'number',
     min: 0,
     max: 3000,
@@ -46,7 +46,7 @@ const WORKSPACE_FIELDS: readonly SettingField[] = [
   {
     key: 'ui.workspaceSwitcherMode',
     label: '折叠态工作区切换',
-    desc: '右侧栏折叠时切换工作区的方式：点击图标打开工作区总览页（卡片，默认）或滚轮循环切换；展开态选项条不受影响',
+    desc: '选择点击图标查看工作区卡片，或在图标上滚轮切换；仅影响右侧栏折叠态。',
     type: 'select',
     options: [
       { value: 'cards', label: '点击卡片' },
@@ -108,7 +108,7 @@ function describeUpdateChannel(currentVersion?: string): string {
 function describeUpdateStatus(state: UpdateStateView | null, actionError: string | null): string {
   switch (state?.status ?? 'idle') {
     case 'disabled':
-      return '开发模式下不检查更新（安装版自动连接 GitHub Releases）';
+      return '开发实例不检查更新；请使用安装版。';
     case 'checking':
       return '正在检查更新…';
     case 'up-to-date':
@@ -124,7 +124,7 @@ function describeUpdateStatus(state: UpdateStateView | null, actionError: string
     case 'error':
       return actionError ?? state?.error ?? '更新失败';
     default:
-      return '点击「立即检查」连接 GitHub Releases 获取最新版本';
+      return '点击「立即检查」查询当前通道的新版本。';
   }
 }
 
@@ -153,7 +153,7 @@ export function OpsTab({
           {
             key: 'ui.titlebarBookmarksToggle',
             label: '显示书签栏',
-            desc: '在最小化按钮前显示展开/折叠按钮，点击可显示或隐藏收藏栏。',
+            desc: '在标题栏显示书签栏开关；点击该按钮显示或隐藏书签栏。',
             type: 'toggle',
           },
         ]}
@@ -180,8 +180,7 @@ export function OpsTab({
       <div className="mt-6 rounded-md border border-border bg-surface-secondary px-4 py-3">
         <div className="text-sm font-medium">地址栏悬浮球滚动灵敏度</div>
         <div className="mt-0.5 text-xs text-text-secondary">
-          按住悬浮球拖动滚动网页时的位移倍率（上下/左右独立可调；0.1–5.0，默认
-          1.0）。拖到限位后继续按住，网页仍会持续滚动直到松手。
+          调整拖动悬浮球时的网页滚动速度。上下、左右分别设置，范围 0.1–5.0，默认 1.0。
         </div>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex items-center gap-3">

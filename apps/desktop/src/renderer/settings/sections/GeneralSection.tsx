@@ -10,7 +10,7 @@ const GENERAL_FIELDS: readonly SettingField[] = [
   {
     key: 'language',
     label: '界面语言',
-    desc: '应用界面显示语言（默认中文）',
+    desc: '保存界面语言偏好；当前界面暂未随此选项切换。',
     type: 'select',
     options: [
       { value: 'zh-CN', label: '简体中文' },
@@ -20,7 +20,7 @@ const GENERAL_FIELDS: readonly SettingField[] = [
   {
     key: 'searchEngine',
     label: '搜索引擎',
-    desc: '输入非网址内容时，使用此搜索引擎查找。',
+    desc: '地址栏输入普通文字时使用此搜索引擎，默认百度。',
     type: 'select',
     options: [
       { value: 'google', label: 'Google' },
@@ -34,25 +34,25 @@ const GENERAL_FIELDS: readonly SettingField[] = [
   {
     key: 'links.openInNewTab',
     label: '在新标签页打开链接',
-    desc: '点击网页内链接时在新标签页打开（关闭则在当前标签页打开）',
+    desc: '控制网页内普通链接的打开位置；网页自身的新窗口链接仍可能另开标签。',
     type: 'toggle',
   },
   {
     key: 'startup.restoreTabs',
     label: '启动时继续浏览上次打开的网页',
-    desc: '关闭浏览器时保存当前打开的标签页，下次启动时自动恢复默认工作区的标签；其他工作区的标签在切换到该工作区时自动恢复',
+    desc: '启动时恢复默认工作区的标签；其他工作区在切换进入时恢复。',
     type: 'toggle',
   },
   {
     key: 'ui.minimizeToTray',
     label: '关闭窗口时最小化到系统托盘',
-    desc: '开启后点击窗口关闭按钮将隐藏窗口、继续在系统托盘运行（单击托盘图标可重新打开，右键菜单「完全退出」结束程序）；关闭则直接退出程序。默认关闭',
+    desc: '开启后，点击关闭按钮隐藏窗口并在托盘运行；单击托盘图标恢复，右键选「完全退出」结束程序。默认关闭。',
     type: 'toggle',
   },
   {
     key: 'translate.targetLang',
     label: '网页翻译目标语言',
-    desc: '整页翻译与划词翻译的目标语言（默认简体中文）',
+    desc: '整页翻译和划词翻译使用的目标语言，默认简体中文。',
     type: 'select',
     options: [
       { value: 'zh-CN', label: '简体中文' },
@@ -69,19 +69,19 @@ const GENERAL_FIELDS: readonly SettingField[] = [
   {
     key: 'translate.engine',
     label: '翻译引擎',
-    desc: '自动（推荐）：直连网络优先 MyMemory 翻译、走代理优先谷歌翻译，引擎失败自动切换至其他可用引擎（三引擎互为兜底）；也可手动锁定单一引擎。注：微软免费端点已于 2026-09 关闭，保留选项但可能不可用',
+    desc: '自动模式按网络环境选择引擎；手动选择指定优先引擎。调用失败时均会尝试其他引擎，可用性取决于网络和服务。',
     type: 'select',
     options: [
       { value: 'auto', label: '自动（推荐）' },
-      { value: 'mymemory', label: 'MyMemory 翻译（国内直连可用）' },
-      { value: 'google', label: '谷歌翻译（需代理）' },
-      { value: 'microsoft', label: '微软翻译（端点已关闭，可能不可用）' },
+      { value: 'mymemory', label: 'MyMemory 翻译' },
+      { value: 'google', label: '谷歌翻译' },
+      { value: 'microsoft', label: '微软翻译（兼容选项）' },
     ],
   },
   {
     key: 'translate.autoTranslate',
     label: '自动翻译外语页面',
-    desc: '开启后打开外语网页时自动翻译为目标语言（默认关闭）。隐私提示：翻译时页面文本将发送至所选翻译服务（微软/谷歌）；关闭时仅在手动点击翻译后发送',
+    desc: '页面语言明确且不同于目标语言时自动翻译，默认关闭。翻译文本会发送至实际使用的翻译服务（含故障切换后的引擎）。',
     type: 'toggle',
   },
 ];

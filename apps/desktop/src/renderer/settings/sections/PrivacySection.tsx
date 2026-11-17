@@ -7,12 +7,22 @@
 import { SettingsSection, type SettingField } from '../settings-form';
 
 const PRIVACY_FIELDS: readonly SettingField[] = [
-  { key: 'blockTrackers', label: '拦截追踪器', desc: '阻止第三方追踪脚本', type: 'toggle' },
-  { key: 'doNotTrack', label: '请勿追踪', desc: '发送 DNT 头', type: 'toggle' },
+  {
+    key: 'blockTrackers',
+    label: '拦截追踪器',
+    desc: '此开关尚未接入请求拦截，目前仅保存选项。',
+    type: 'toggle',
+  },
+  {
+    key: 'doNotTrack',
+    label: '请勿追踪',
+    desc: '此开关尚未接入网络请求，目前不会发送「请勿追踪」声明。',
+    type: 'toggle',
+  },
   {
     key: 'blockAds',
     label: '屏蔽广告浮窗',
-    desc: '隐藏网页内悬浮/弹窗类广告（如固定悬浮广告层、弹窗遮罩）',
+    desc: '隐藏识别到的网页浮窗广告；不拦截所有广告，可能误隐藏页面元素。',
     type: 'toggle',
   },
 ];

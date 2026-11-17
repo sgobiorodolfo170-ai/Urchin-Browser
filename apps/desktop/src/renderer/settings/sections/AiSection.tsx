@@ -10,7 +10,10 @@ export function AiSection() {
     <section>
       <h1 className="mb-6 text-2xl font-semibold">AI 助手</h1>
       <div className="rounded-md border border-border bg-surface-secondary px-6 py-12 text-center">
-        <p className="text-sm text-text-secondary">AI 助手功能正在开发中，敬请期待。</p>
+        <p className="text-sm text-text-secondary">
+          此页尚未提供原生 AI 助手设置。使用 pi 或 DeepSeek
+          Harness，请从左侧栏打开并在各自界面中配置。
+        </p>
       </div>
     </section>
   );

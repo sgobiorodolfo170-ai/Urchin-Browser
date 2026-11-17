@@ -5,7 +5,7 @@
  * 1. 挂载后调用 file-association.getStatus，渲染三组卡片（音视频/文档/图片）
  * 2. 三态登记徽标（未登记 / 部分登记 n/m / 已登记 n/m）
  * 3. 登记目标提示：dev 实例 / 指向旧位置 → 警示；提供「打开系统默认应用」
- * 4. 「设为默认打开方式」→ register 调用 + toast + 状态刷新；失败 → 错误 toast
+ * 4. 「登记打开方式」→ register 调用 + toast + 状态刷新；失败 → 错误 toast
  * 5. 「清除本应用关联」→ ConfirmDialog 确认 → unregister 调用
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -164,7 +164,7 @@ describe('FilesTab (默认应用)', () => {
       expect(mockInvoke).toHaveBeenCalledWith('file-association.setDefaultBrowser', {});
     });
     await waitFor(() => {
-      expect(screen.getByText(/已登记默认浏览器/)).toBeDefined();
+      expect(screen.getByText(/已登记浏览器能力/)).toBeDefined();
     });
   });
 
@@ -172,7 +172,7 @@ describe('FilesTab (默认应用)', () => {
     await renderAndOpenFilesTab();
 
     await waitFor(() => {
-      fireEvent.click(screen.getAllByText(/设为默认打开方式/)[0]!);
+      fireEvent.click(screen.getAllByText(/登记打开方式/)[0]!);
     });
 
     await waitFor(() => {
@@ -197,7 +197,7 @@ describe('FilesTab (默认应用)', () => {
     fireEvent.click(checkboxes[0]!);
 
     await waitFor(() => {
-      fireEvent.click(screen.getAllByText(/设为默认打开方式/)[0]!);
+      fireEvent.click(screen.getAllByText(/登记打开方式/)[0]!);
     });
 
     await waitFor(() => {
@@ -226,7 +226,7 @@ describe('FilesTab (默认应用)', () => {
     });
 
     await waitFor(() => {
-      fireEvent.click(screen.getAllByText(/设为默认打开方式/)[0]!);
+      fireEvent.click(screen.getAllByText(/登记打开方式/)[0]!);
     });
 
     await waitFor(() => {
@@ -273,12 +273,12 @@ describe('FilesTab (默认应用)', () => {
 it('reclaims a visible toast timeout when its settings page is closed', async () => {
   mockSettingsLoad();
   const { unmount } = render(<SettingsPage initialTab="files" />);
-  await screen.findAllByText(/设为默认打开方式/);
+  await screen.findAllByText(/登记打开方式/);
   vi.useFakeTimers();
   try {
     const baseline = vi.getTimerCount();
     await act(async () => {
-      fireEvent.click(screen.getAllByText(/设为默认打开方式/)[0]!);
+      fireEvent.click(screen.getAllByText(/登记打开方式/)[0]!);
       await Promise.resolve();
     });
     expect(screen.getByText(/已登记 3 种格式/)).toBeDefined();

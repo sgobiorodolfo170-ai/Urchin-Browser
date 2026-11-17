@@ -39,7 +39,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
     topics: [
       {
         title: '左侧栏',
-        body: '顶部按钮折叠 / 展开左侧栏；折叠时也可双击左侧栏空白处或悬停展开（悬停默认关闭，可在设置「操作」中开启）。折叠按钮下方是「中转区」，用于暂存文件、链接、选中文字与截图。底部从上到下依次是 DeepSeek Harness、pi、速记、GenOffice 文档、邮箱、主页、主题切换与设置入口。',
+        body: '顶部按钮或双击空白处可展开、折叠；拖动右缘可调宽。中转区暂存文件和网页内容。展开时底部四行依次为 pi / DSH、GenOffice / 速记、邮箱 / 主页、主题 / 设置。悬停展开方式在「操作」中设置。',
       },
       {
         title: '中间内容区',
@@ -47,7 +47,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         title: '右侧栏',
-        body: '顶部是工作区色块，下面是当前工作区的标签卡片，底部为「新建标签」。拖拽右侧栏左缘可调整宽度；双击空白处可展开 / 折叠。折叠后只显示工作区图标与标签图标，可在设置「操作」中选择悬停自动展开。',
+        body: '顶部为工作区入口，其下为「新建标签」和标签列表。拖动左缘调宽，双击空白处展开或折叠；折叠时只显示图标。悬停展开方式在「操作」中设置。',
       },
       {
         title: '状态栏悬浮球',
@@ -60,7 +60,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
     topics: [
       {
         title: '新建与切换标签',
-        body: '点击右侧栏底部的「新建标签」创建新标签页；单击标签卡片即可切换。没有打开任何标签时，导航或新建操作会自动补一个标签。',
+        body: '点击右侧栏工作区入口下方的「+」新建标签；单击标签卡片或图标切换页面。',
       },
       {
         title: '关闭与排序标签',
@@ -68,7 +68,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         title: '工作区',
-        body: '每个工作区拥有独立的 Cookie、localStorage、IndexedDB 与 Service Worker，适合同一网站登录多个账号。点击工作区选项卡右侧「+」新建；右键工作区选项卡可重命名、更换颜色、清空数据或删除。折叠态默认用滚轮切换工作区，也可在设置「操作」中改为点击打开工作区总览页。',
+        body: '工作区隔离网站登录与存储数据。展开时点击工作区条的「+」新建，右键可重命名、换色、清空数据或删除。折叠时点击图标查看工作区卡片，也可在「操作」中改为滚轮切换。',
       },
       {
         title: '恢复上次标签',
@@ -97,7 +97,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         title: '链接打开方式',
-        body: '设置「通用」中的「在新标签页打开链接」控制网页内链接在当前标签还是新标签打开。',
+        body: '在「通用」中设置普通网页链接的打开位置；网页自身的新窗口链接仍可能另开标签。',
       },
     ],
   },
@@ -114,7 +114,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         title: '目标语言与引擎',
-        body: '在设置「通用」中设置翻译目标语言与引擎。默认「自动」会按网络环境选择可用引擎，失败时自动切换。开启「自动翻译外语页面」后，打开外语网页会自动翻译（默认关闭；翻译时页面文本会发送至所选翻译服务）。',
+        body: '在「通用」中选择目标语言和优先引擎；引擎失败会尝试其他服务。自动翻译仅处理语言明确且不同于目标语言的网页；翻译文本会发送至实际使用的服务。',
       },
     ],
   },
@@ -148,7 +148,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         title: '笔记本与笔记',
-        body: '左侧可新建、重命名、删除笔记本；每个笔记本内可新建页面。单击选中笔记，在中间区域编辑标题与 Markdown 正文；工具栏可插入标题、加粗、斜体、列表、待办、引用与行内代码。点击「阅读」查看排版结果，正文字号可调。Ctrl/⌘ B、I 分别加粗与斜体，Ctrl/⌘ Shift M 切换编辑与阅读。修改自动保存，删除操作会二次确认。',
+        body: '左侧管理笔记本和页面，中区编辑标题与 Markdown 正文，点击「阅读」预览。修改自动保存；右上角「+」新建笔记并保留当前内容。笔记正文位于数据目录的 documents/suji/nootbook/笔记本名 下。',
       },
       {
         title: '任务清单',
@@ -169,7 +169,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         title: '拖出与排序',
-        body: '中转区条目可拖到 pi 输入框、笔记、GenOffice、邮箱、主页常用网站或网页区域使用。条目之间可拖动排序；悬停后点击叉号移除，也可使用清空按钮。中转区内容会持久保存。',
+        body: '将条目拖到支持接收内容的输入框、笔记或网页中使用；拖动条目可排序。悬停后点叉号移除，或用清空按钮；被固定的条目拖出后保留。',
       },
     ],
   },
@@ -186,7 +186,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         title: 'GenOffice 编辑器',
-        body: 'GenOffice 文档主页支持 Word（.docx）、Excel（.xlsx）、PowerPoint（.pptx）、PDF、Markdown 与 HTML。文件只在本机打开与保存。GenOffice 内置 AI 使用它自己的模型与密钥，与浏览器 pi 完全隔离。',
+        body: '从 GenOffice 主页打开支持的文档格式并在本机保存。AI 模型和密钥在 GenOffice 中单独配置；使用 AI 时相关内容可能发送至所配置的服务。',
       },
     ],
   },
@@ -195,7 +195,7 @@ const HELP_SECTIONS: readonly HelpSection[] = [
     topics: [
       {
         title: '打开与使用',
-        body: '按 F12 打开或关闭当前网页的原生开发者工具。面板提供 Network、Console 与 Runtime.evaluate（执行 JavaScript）。拖拽面板左缘可调整宽度。内部页与 GenOffice 标签不支持检视。',
+        body: '按 F12 打开或关闭当前网页的独立开发者工具窗口，可使用元素检查、Console 和 Network 等工具。内部页不支持检视。',
       },
     ],
   },
@@ -221,11 +221,11 @@ const HELP_SECTIONS: readonly HelpSection[] = [
     topics: [
       {
         title: 'pi',
-        body: '点击左侧栏 π 按钮会确保本地 pi 服务运行，并打开 pi 聊天页标签。按钮右下角状态灯表示运行 / 启动中 / 故障 / 未启动。关闭 pi 标签不会停止服务，再次点击即可回到聊天页；pi 的 Provider 与模型在 pi 设置中配置。',
+        body: '点击 π 按钮启动或打开 pi 聊天页，模型与提供商在 pi 中配置。右上角状态灯：绿色运行中、黄色启动中、红色故障、熄灭未启动。关闭标签不会停止服务。',
       },
       {
         title: 'DeepSeek Harness',
-        body: '点击左侧栏 π 上方的 DeepSeek Harness 按钮会启动本地 dsh 服务并打开其前端标签。与 pi 不同，关闭该标签会停止 dsh 后端。',
+        body: '点击 DSH 按钮启动或打开本地服务页面，状态灯含义与 pi 相同。关闭最后一个 DSH 标签后，服务自动停止。',
       },
     ],
   },
@@ -247,11 +247,11 @@ const HELP_SECTIONS: readonly HelpSection[] = [
     topics: [
       {
         title: '数据存储位置',
-        body: '在设置「数据」中修改数据存储根目录与下载位置。数据根目录影响书签、历史、设置、截图、下载与网页保存，修改后需重启生效；pi 对话数据与设置固定保存在 userData/pi。',
+        body: '在「数据」中设置存储根目录，重启生效；pi 数据单独保存，不随之迁移。速记保存在数据目录的 documents/suji，剪藏默认保存在 documents/clipper。自定义下载或剪藏目录不随根目录自动改变。',
       },
       {
         title: '导入收藏夹与 Cookie',
-        body: '设置「数据」底部可从书签 HTML 文件导入，或检测本机 Chrome / Edge / Firefox 并导入收藏夹。导入的文件夹与书签会直接放入收藏夹根目录，完整保留原目录结构。勾选「同时导入 Cookie」会一并导入登录状态：Firefox 可完整导入；Chrome / Edge 若已启用应用级加密（ABE），只能导入旧版 Cookie，无法导入的部分会明确提示。导入前请关闭源浏览器；Cookie 导入不保证所有站点保持登录。',
+        body: '在「数据」中从书签 HTML 文件或检测出的浏览器导入，保留文件夹层级。Cookie 需另行勾选，只写入默认工作区；先关闭源浏览器，不支持的加密数据会跳过，导入不保证保持登录。',
       },
       {
         title: '检查更新',
@@ -276,15 +276,15 @@ const HELP_SECTIONS: readonly HelpSection[] = [
       },
       {
         title: '剪藏与操作',
-        body: '「剪藏」配置默认保存格式与 Markdown 模板；「操作」配置右侧栏展开方式、悬停延迟与折叠态工作区切换方式。',
+        body: '「剪藏」设置保存格式、正文处理和 Markdown 模板；「操作」设置书签栏按钮、左右侧栏展开方式、工作区切换和悬浮球灵敏度。',
       },
       {
         title: '数据、默认应用与隐私',
-        body: '「数据」配置存储位置与下载目录；「默认应用」注册文件关联；「隐私与安全」控制拦截追踪器、请勿追踪与屏蔽广告浮窗。',
+        body: '「数据」管理保存位置与导入；「默认应用」登记文件打开方式；「隐私与安全」提供广告浮窗屏蔽，另有尚未接入的追踪器和请勿追踪选项。',
       },
       {
         title: '其他',
-        body: '「AI 助手」为后续原生助手预留；「帮助手册」即本页；「建议与反馈」与「关于」提供反馈、更新与运行时信息。',
+        body: '「AI 助手」尚未提供原生设置；「建议与反馈」打开 GitHub；「关于」显示版本、更新与运行时信息；「运行日志」提供日志筛选和查询。',
       },
     ],
   },
@@ -295,7 +295,7 @@ export function HelpTab() {
     <section>
       <h1 className="mb-2 text-2xl font-semibold">帮助手册</h1>
       <p className="mb-6 text-sm text-text-secondary">
-        本页汇总顽童浏览器的全部操作说明。按功能域分组，可在此查阅界面入口、常用操作与设置项位置。
+        按功能查阅常用操作、界面入口与设置位置；具体可选项以各设置页为准。
       </p>
 
       <div className="mb-4 rounded-md border border-border bg-surface-secondary px-4 py-4">

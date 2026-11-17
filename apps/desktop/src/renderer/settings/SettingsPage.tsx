@@ -150,11 +150,13 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
         ))}
         <div className="flex-1" />
         <div className="px-4">
+          <p className="mb-2 text-center text-xs text-text-secondary">设置自动保存</p>
           <Button
             variant="secondary"
             size="sm"
             onClick={() => void handleReset()}
             className="w-full"
+            title="恢复基础选项；保留数据目录、剪藏路径、系统关联及已有数据。"
           >
             重置默认
           </Button>

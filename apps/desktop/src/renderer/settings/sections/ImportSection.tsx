@@ -140,8 +140,8 @@ export function ImportSection({ onToast }: ImportSectionProps) {
     <section className="mt-8">
       <h2 className="mb-2 text-lg font-semibold">从其他浏览器导入</h2>
       <p className="mb-4 text-sm text-text-secondary">
-        导入 Chrome / Edge / Firefox 的收藏夹，或从书签 HTML 文件导入。导入的文件夹与书签会直接放入
-        收藏夹根目录，完整保留原目录结构。
+        从 Chrome、Edge、Firefox 或书签 HTML
+        文件导入收藏夹；导入内容加入收藏夹根目录，并保留文件夹层级。
       </p>
 
       <label className="mb-4 flex cursor-pointer items-start gap-2 text-sm">
@@ -154,10 +154,8 @@ export function ImportSection({ onToast }: ImportSectionProps) {
         <span>
           <span className="font-medium">同时导入 Cookie（登录状态）</span>
           <span className="mt-0.5 block text-xs text-text-secondary">
-            仅对下方「检测本机浏览器」的导入生效，写入默认工作区。Firefox 可完整导入； Chrome / Edge
-            若已启用应用级加密（ABE），只能导入旧版 Cookie。Cookie
-            导入不保证所有站点保持登录（部分站点还依赖 localStorage）。导入前请关闭源浏览器， 否则
-            Cookie 数据库被占用会失败。
+            仅用于下方检测出的浏览器，写入默认工作区。请先关闭源浏览器；加密方式不兼容的 Cookie
+            会跳过，导入后不保证保持登录。
           </span>
         </span>
       </label>

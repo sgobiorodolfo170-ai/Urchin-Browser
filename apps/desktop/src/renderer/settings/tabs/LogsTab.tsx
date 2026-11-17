@@ -111,14 +111,14 @@ export function LogsTab() {
   const summary = useMemo(() => {
     if (error) return '读取失败';
     if (loading && entries.length === 0) return '读取中…';
-    return `共 ${total} 条命中，显示 ${entries.length} 条`;
+    return `本次匹配 ${total} 条，显示 ${entries.length} 条`;
   }, [error, loading, entries.length, total]);
 
   return (
     <section>
       <h1 className="mb-1 text-2xl font-semibold">运行日志</h1>
       <p className="mb-6 text-xs text-text-secondary">
-        汇总应用运行期全部结构化日志与报错记录；保存位置跟随数据目录，无需单独设置。
+        显示最近最多 500 条应用日志，可按级别和关键词筛选；保存位置随数据目录变化。
       </p>
 
       {/* 保存位置 */}
@@ -129,9 +129,7 @@ export function LogsTab() {
         </div>
         <div className="mt-1 text-xs text-text-secondary">
           当前文件：{info?.currentFile ?? '—'}
-          {info && info.files.length > 0
-            ? `（历史文件 ${info.files.length} 个，保留最近 7 天）`
-            : ''}
+          {info && info.files.length > 0 ? `（共 ${info.files.length} 个文件，最多保留 7 个）` : ''}
         </div>
       </div>
 

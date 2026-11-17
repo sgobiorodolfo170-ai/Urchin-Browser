@@ -67,7 +67,7 @@ export function AboutTab() {
         <div className="rounded-md border border-border bg-surface-secondary px-4 py-4">
           <div className="text-lg font-semibold">{displayNameForLocale(navigator.language)}</div>
           <div className="mt-3 text-xs text-text-secondary">
-            一款基于 Electron + Chromium 的 AI 浏览器，集成多 Provider AI 助手与隐私保护。
+            集成网页浏览、pi、DeepSeek Harness、速记、邮箱与本地文档工具。
           </div>
         </div>
 

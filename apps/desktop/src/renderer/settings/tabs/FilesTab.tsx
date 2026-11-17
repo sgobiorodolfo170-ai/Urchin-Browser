@@ -3,7 +3,7 @@
  *
  * 交互：
  * - 每张卡片显示该组扩展名与三态登记状态（未关联 / 部分关联 / 已登记）
- * - 「设为默认打开方式」→ file-association.register → 主进程写 HKCU 注册表
+ * - 「登记打开方式」→ file-association.register → 主进程写 HKCU 注册表
  *   （只登记能力 + OpenWithProgids，**不改写 .ext 默认值**）→ 刷新状态 + toast
  * - 「清除关联」→ ConfirmDialog → file-association.unregister（幂等清理本应用项）
  * - 「打开系统默认应用」→ file-association.openSettings（只唤起设置页，不写注册表）
@@ -125,8 +125,8 @@ export function FilesTab({ onToast }: { readonly onToast: (msg: string) => void 
       };
       onToast(
         res.openedSettings
-          ? `已登记默认浏览器。请在打开的系统设置中把「Web 浏览器」设为 ${appName}（Windows 不允许程序直接改默认，需要你确认）`
-          : `已登记默认浏览器。请到系统「默认应用」中把「Web 浏览器」设为 ${appName}`,
+          ? `已登记浏览器能力。请在系统「默认应用」中选择 ${appName} 并确认。`
+          : `已登记浏览器能力。请到系统「默认应用」中选择 ${appName}。`,
       );
       await loadStatus();
     } catch (e) {
@@ -195,9 +195,7 @@ export function FilesTab({ onToast }: { readonly onToast: (msg: string) => void 
     <section>
       <h1 className="mb-2 text-2xl font-semibold">默认应用</h1>
       <p className="mb-4 text-sm text-text-secondary">
-        把 {appName} 登记为默认浏览器和音视频、文档、图片的打开方式。Windows 10/11
-        不允许程序直接改写默认，因此这里只把本应用登记为「可选项」，由你在系统「默认应用」里确认一次——
-        <span className="text-text">不会改动你现有的默认设置</span>。
+        将 {appName} 登记为可选的浏览器或文件打开方式；默认应用仍需在 Windows 系统设置中确认。
       </p>
 
       {/* 登记路径状态：dev 实例 / 指向旧位置都需要显式提示，否则「双击没反应」无从判断 */}
@@ -226,7 +224,7 @@ export function FilesTab({ onToast }: { readonly onToast: (msg: string) => void 
             )}
             {!devMode && staleRegistration && (
               <div className="mt-0.5">
-                未检测到本应用的有效登记，或登记指向旧位置。请点下方「设为默认打开方式」重新登记。
+                未检测到本应用的有效登记，或登记指向旧位置。请点下方「登记打开方式」重新登记。
               </div>
             )}
           </div>
@@ -315,7 +313,7 @@ export function FilesTab({ onToast }: { readonly onToast: (msg: string) => void 
                 >
                   {registering === group.id
                     ? '登记中…'
-                    : `设为默认打开方式（${selectedExtensions.length}）`}
+                    : `登记打开方式（${selectedExtensions.length}）`}
                 </Button>
                 {state !== 'none' && (
                   <Button
@@ -335,7 +333,7 @@ export function FilesTab({ onToast }: { readonly onToast: (msg: string) => void 
       <ConfirmDialog
         open={pendingClear !== undefined}
         title={`清除「${pendingClear?.label ?? ''}」的本应用关联？`}
-        message="只会删除本应用写过的登记项（ProgID / OpenWithProgids / 能力声明），不影响其它应用。若系统当前正用本应用打开这些文件，需再到系统「默认应用」里改回其它应用。"
+        message="只删除本应用的打开方式登记，不删除文件。若仍被系统设为默认，请到「默认应用」中选择其他应用。"
         actions={[
           { label: '取消', onClick: () => setConfirmClear(null) },
           {

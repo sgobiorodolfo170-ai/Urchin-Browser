@@ -36,7 +36,7 @@ export function FeedbackTab() {
     <section>
       <h1 className="mb-2 text-2xl font-semibold">建议与反馈</h1>
       <p className="mb-6 text-sm text-text-secondary">
-        欢迎通过 GitHub 提交问题、分享想法或参与讨论。点击下方入口会在本浏览器新标签页打开对应页面。
+        在新标签页打开 GitHub 反馈或讨论页面；提交内容需登录 GitHub。
       </p>
       <div className="space-y-4">
         <div className="rounded-md border border-border bg-surface-secondary px-4 py-4">
@@ -57,9 +57,7 @@ export function FeedbackTab() {
 
         <div className="rounded-md border border-border bg-surface-secondary px-4 py-4">
           <div className="text-lg font-semibold">讨论区（Discussions）</div>
-          <div className="mt-1 text-sm text-text-secondary">
-            想法交流、使用问答、Show &amp; Tell 与经验分享。
-          </div>
+          <div className="mt-1 text-sm text-text-secondary">交流想法、提问或分享使用经验。</div>
           <Button
             variant="secondary"
             size="sm"

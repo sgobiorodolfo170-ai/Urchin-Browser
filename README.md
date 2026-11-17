@@ -142,22 +142,22 @@ pnpm package:win
 
 ## 开发命令
 
-| 命令                      | 说明                                                                    |
-| ------------------------- | ----------------------------------------------------------------------- |
-| `pnpm dev`                | 开发模式（vite dev server）                                             |
-| `pnpm build`              | 构建 main / preload / renderer                                          |
-| `pnpm start`              | 生产模式启动已构建产物                                                  |
-| `pnpm verify`             | 全链质量门禁一键验证（组成真源：根 `package.json` 的 `scripts.verify`） |
-| `pnpm typecheck`          | 全工作区 TypeScript 类型检查                                            |
-| `pnpm lint`               | ESLint 检查                                                             |
-| `pnpm test`               | 全工作区单元测试                                                        |
-| `pnpm test:coverage`      | 单元测试 + 覆盖率报告                                                   |
-| `pnpm e2e`                | Playwright E2E 全量（CI 入口；本地发布前/无法判定时用）                 |
-| `pnpm e2e:select`         | **本地按需选择 E2E**（推荐表 + AI 会话内勾选；`--fallback` 回退全量）   |
-| `pnpm check:e2e-manifest` | E2E manifest 与 spec 文件双向一致（G20）                                |
-| `pnpm genoffice:build`    | 重建 GenOffice 编辑器嵌入产物                                           |
-| `pnpm package:win`        | 打包 Windows 安装包                                                     |
-| `pnpm format`             | Prettier 格式化                                                         |
+| 命令                      | 说明                                                                                      |
+| ------------------------- | ----------------------------------------------------------------------------------------- |
+| `pnpm dev`                | 开发模式（vite dev server）                                                               |
+| `pnpm build`              | 构建 main / preload / renderer                                                            |
+| `pnpm start`              | 生产模式启动已构建产物                                                                    |
+| `pnpm verify`             | 可选全链验证，由模型按风险决定是否运行（组成真源：根 `package.json` 的 `scripts.verify`） |
+| `pnpm typecheck`          | 全工作区 TypeScript 类型检查                                                              |
+| `pnpm lint`               | ESLint 检查                                                                               |
+| `pnpm test`               | 全工作区单元测试                                                                          |
+| `pnpm test:coverage`      | 单元测试 + 覆盖率报告                                                                     |
+| `pnpm e2e`                | Playwright E2E 全量（CI 入口；本地由模型判断是否需要全量）                                |
+| `pnpm e2e:select`         | **本地按需选择 E2E**（可选推荐表 + 模型自主选例；允许跳过）                               |
+| `pnpm check:e2e-manifest` | E2E manifest 与 spec 文件双向一致（G20）                                                  |
+| `pnpm genoffice:build`    | 重建 GenOffice 编辑器嵌入产物                                                             |
+| `pnpm package:win`        | 打包 Windows 安装包                                                                       |
+| `pnpm format`             | Prettier 格式化                                                                           |
 
 ## 性能与质量指标
 

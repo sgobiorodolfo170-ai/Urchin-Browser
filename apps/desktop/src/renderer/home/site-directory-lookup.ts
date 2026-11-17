@@ -6,6 +6,7 @@
  * 供主页（NewTabPage）比对图标与名称。
  */
 import { SITE_DIRECTORY, type BuiltinSite } from './site-directory';
+import { getDomain } from 'tldts';
 
 /** 域名 → 站点索引（去 www 后的裸域名映射到条目） */
 const DOMAIN_INDEX: ReadonlyMap<string, BuiltinSite> = new Map(
@@ -19,16 +20,22 @@ const DOMAIN_INDEX: ReadonlyMap<string, BuiltinSite> = new Map(
 export function bareDomainOf(url: string): string {
   try {
     const withProtocol = url.includes('://') ? url : `https://${url}`;
-    const hostname = new URL(withProtocol).hostname.toLowerCase();
+    const hostname = new URL(withProtocol).hostname.toLowerCase().replace(/\.$/, '');
     return hostname.replace(/^www\./, '');
   } catch {
     return '';
   }
 }
 
-/** 在目录中查找站点（按裸域名比对）；未命中返回 undefined */
+/** 最具体的目录域名优先；仅在可注册域范围内继承，避免公共托管平台租户串站。 */
 export function lookupBuiltinSite(url: string): BuiltinSite | undefined {
-  const bare = bareDomainOf(url);
-  if (!bare) return undefined;
-  return DOMAIN_INDEX.get(bare);
+  let host = bareDomainOf(url);
+  const domain = getDomain(host, { allowPrivateDomains: true });
+  while (host) {
+    const site = DOMAIN_INDEX.get(host);
+    if (site) return site;
+    if (!domain || host === domain) break;
+    host = host.slice(host.indexOf('.') + 1);
+  }
+  return undefined;
 }

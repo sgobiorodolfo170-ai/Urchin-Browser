@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>二丫任务、权限与记忆交互原型</title>
+  </head>
+  <body>
+    <div id="erya-prototype" aria-label="二丫浏览器助手交互原型">
+      <style>
+        #erya-prototype {
+          --er-bg: light-dark(#ffffff, #202325);
+          --er-chrome: light-dark(#f4f5f4, #292d2f);
+          --er-text: light-dark(#202a27, #e7eeea);
+          --er-muted: light-dark(#57645d, #b4c0b9);
+          --er-line: light-dark(#d9dfdb, #444c47);
+          --er-green: light-dark(#1d6248, #99d7b9);
+          --er-soft: light-dark(#eaf4ed, #253c31);
+          --er-alert: light-dark(#8b421b, #f4b78d);
+          color: var(--er-text);
+          font:
+            14px/1.55 'Segoe UI',
+            'Microsoft YaHei',
+            sans-serif;
+          width: 100%;
+        }
+        #erya-prototype * {
+          box-sizing: border-box;
+        }
+        #erya-prototype [hidden] {
+          display: none !important;
+        }
+        #erya-prototype button,
+        #erya-prototype select,
+        #erya-prototype input {
+          font: inherit;
+        }
+        #erya-prototype button {
+          padding: 8px 12px;
+          border: 1px solid var(--er-line);
+          border-radius: 8px;
+          background: var(--er-bg);
+          color: var(--er-text);
+          min-height: 38px;
+        }
+        #erya-prototype button:hover {
+          background: var(--er-chrome);
+        }
+        #erya-prototype button:disabled {
+          opacity: 0.55;
+        }
+        #erya-prototype button.er-primary {
+          background: var(--er-green);
+          color: light-dark(#fff, #15241c);
+          border-color: var(--er-green);
+        }
+        #erya-prototype button:focus-visible,
+        #erya-prototype select:focus-visible,
+        #erya-prototype input:focus-visible {
+          outline: 3px solid var(--er-green);
+          outline-offset: 2px;
+        }
+        #erya-prototype h2,
+        #erya-prototype h3,
+        #erya-prototype p {
+          margin: 0;
+        }
+        #erya-prototype h2 {
+          font-size: 19px;
+          font-weight: 500;
+        }
+        #erya-prototype h3 {
+          font-size: 15px;
+          font-weight: 500;
+        }
+        #erya-prototype .er-window {
+          background: var(--er-bg);
+          border: 1px solid var(--er-line);
+          border-radius: 12px;
+          overflow: hidden;
+        }
+        #erya-prototype .er-chrome {
+          background: var(--er-chrome);
+          padding: 12px 16px;
+          border-bottom: 1px solid var(--er-line);
+          display: flex;
+          gap: 12px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        #erya-prototype .er-url {
+          background: var(--er-bg);
+          border: 1px solid var(--er-line);
+          border-radius: 7px;
+          padding: 5px 10px;
+          flex: 1;
+          min-width: 120px;
+        }
+        #erya-prototype .er-small {
+          color: var(--er-muted);
+          font-size: 12px;
+        }
+        #erya-prototype .er-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(310px, 390px);
+        }
+        #erya-prototype .er-page {
+          padding: 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 18px;
+          min-width: 0;
+        }
+        #erya-prototype .er-eyebrow {
+          color: var(--er-green);
+          font-size: 12px;
+          letter-spacing: 0.05em;
+        }
+        #erya-prototype .er-pages {
+          display: grid;
+          gap: 10px;
+        }
+        #erya-prototype .er-source {
+          border: 1px solid var(--er-line);
+          border-radius: 8px;
+          padding: 12px;
+          display: grid;
+          gap: 4px;
+        }
+        #erya-prototype .er-side {
+          border-left: 1px solid var(--er-line);
+          padding: 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+          min-width: 0;
+        }
+        #erya-prototype .er-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        #erya-prototype .er-status {
+          padding: 3px 8px;
+          border-radius: 30px;
+          background: var(--er-soft);
+          font-size: 12px;
+        }
+        #erya-prototype .er-nav {
+          display: flex;
+          gap: 6px;
+        }
+        #erya-prototype .er-nav button {
+          flex: 1;
+          padding: 6px;
+        }
+        #erya-prototype .er-nav button[aria-pressed='true'] {
+          color: var(--er-green);
+          background: var(--er-soft);
+          border-color: var(--er-green);
+        }
+        #erya-prototype .er-panel {
+          display: flex;
+          flex-direction: column;
+          gap: 13px;
+        }
+        #erya-prototype .er-bubble {
+          background: var(--er-chrome);
+          padding: 12px;
+          border-radius: 9px;
+        }
+        #erya-prototype .er-box {
+          border: 1px solid var(--er-line);
+          padding: 12px;
+          border-radius: 9px;
+          display: grid;
+          gap: 10px;
+        }
+        #erya-prototype .er-stack {
+          display: grid;
+          gap: 10px;
+        }
+        #erya-prototype .er-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+        #erya-prototype .er-check {
+          display: flex;
+          gap: 9px;
+          align-items: flex-start;
+        }
+        #erya-prototype .er-check input {
+          margin-top: 5px;
+          accent-color: var(--er-green);
+          flex: none;
+        }
+        #erya-prototype select {
+          width: 100%;
+          padding: 8px;
+          background: var(--er-bg);
+          color: var(--er-text);
+          border: 1px solid var(--er-line);
+          border-radius: 7px;
+        }
+        #erya-prototype ol,
+        #erya-prototype ul {
+          margin: 0;
+          padding-left: 23px;
+        }
+        #erya-prototype li + li {
+          margin-top: 5px;
+        }
+        #erya-prototype .er-warning {
+          color: var(--er-alert);
+        }
+        #erya-prototype .er-divider {
+          border-top: 1px solid var(--er-line);
+          padding-top: 12px;
+        }
+        #erya-prototype .er-memory {
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+          align-items: flex-start;
+          border-top: 1px solid var(--er-line);
+          padding-top: 12px;
+        }
+        #erya-prototype .er-memory button {
+          white-space: nowrap;
+        }
+        #erya-prototype .er-meter {
+          height: 7px;
+          background: var(--er-chrome);
+          border-radius: 8px;
+          overflow: hidden;
+        }
+        #erya-prototype .er-meter span {
+          display: block;
+          height: 100%;
+          background: var(--er-green);
+          width: 3%;
+        }
+        #erya-prototype .er-footer {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: space-between;
+          gap: 8px;
+          border-top: 1px solid var(--er-line);
+          padding: 10px 16px;
+          background: var(--er-chrome);
+        }
+        #erya-prototype .er-summary {
+          display: grid;
+          gap: 8px;
+        }
+        #erya-prototype .er-live {
+          min-height: 21px;
+        }
+        @media (max-width: 720px) {
+          #erya-prototype .er-grid {
+            grid-template-columns: 1fr;
+          }
+          #erya-prototype .er-page {
+            padding: 16px;
+            gap: 12px;
+          }
+          #erya-prototype .er-pages {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+          }
+          #erya-prototype .er-source {
+            padding: 8px;
+          }
+          #erya-prototype .er-source p {
+            display: none;
+          }
+          #erya-prototype .er-side {
+            border-left: 0;
+            border-top: 1px solid var(--er-line);
+            padding: 16px;
+          }
+        }
+        @media (max-width: 390px) {
+          #erya-prototype .er-pages {
+            grid-template-columns: 1fr;
+          }
+          #erya-prototype .er-chrome {
+            padding: 10px;
+          }
+          #erya-prototype .er-page,
+          #erya-prototype .er-side {
+            padding: 12px;
+          }
+        }
+        @media (pointer: coarse) {
+          #erya-prototype button {
+            min-height: 44px;
+          }
+          #erya-prototype input,
+          #erya-prototype select {
+            font-size: 16px;
+          }
+        }
+      </style>
+      <div class="er-window">
+        <div class="er-chrome">
+          <span>顽童浏览器</span><span class="er-url">学习工作区 · 资料比较</span
+          ><span class="er-small">交互演示</span>
+        </div>
+        <div class="er-grid">
+          <section class="er-page" aria-label="正在浏览的资料">
+            <div class="er-eyebrow">已选 3 个页面 · 示例内容</div>
+            <h2>选择适合自己的学习工具</h2>
+            <p>比较成本、离线能力和使用难度，再把需要核实的事项留下来。</p>
+            <div class="er-pages">
+              <div class="er-source">
+                <h3>A · 在线方案</h3>
+                <p>配置较少，需要联网；具体费用随用量变化。</p>
+                <span class="er-small">来源 1 · 产品说明</span>
+              </div>
+              <div class="er-source">
+                <h3>B · 本地方案</h3>
+                <p>数据可留在电脑；速度与可用模型受硬件影响。</p>
+                <span class="er-small">来源 2 · 安装说明</span>
+              </div>
+              <div class="er-source">
+                <h3>C · 混合方案</h3>
+                <p>按任务选择本地或云端；需要更明确的数据规则。</p>
+                <span class="er-small">来源 3 · 使用指南</span>
+              </div>
+            </div>
+            <div class="er-summary er-divider">
+              <h3>这次由你决定</h3>
+              <p class="er-small">
+                二丫可以准备比较结果和笔记草稿。读取范围、云端发送、写入笔记分别由你控制。
+              </p>
+            </div>
+            <div id="er-page-result" class="er-box" hidden>
+              <h3>学习笔记 · 方案比较</h3>
+              <p>
+                先用配置简单的方案完成学习任务；涉及敏感内容时优先本地处理。预算与硬件信息仍需补充。
+              </p>
+              <span class="er-small">演示结果 · 已核对标题、正文与目标笔记本</span>
+            </div>
+          </section>
+          <aside class="er-side" aria-label="二丫助手侧栏">
+            <div class="er-top">
+              <h2>二丫</h2>
+              <span id="er-status" class="er-status">等待授权</span>
+            </div>
+            <nav class="er-nav" aria-label="二丫功能">
+              <button class="cursor-interaction" type="button" data-tab="task" aria-pressed="true">
+                任务
+              </button>
+              <button
+                class="cursor-interaction"
+                type="button"
+                data-tab="permissions"
+                aria-pressed="false"
+              >
+                权限
+              </button>
+              <button
+                class="cursor-interaction"
+                type="button"
+                data-tab="memory"
+                aria-pressed="false"
+              >
+                记忆
+              </button>
+            </nav>
+            <section class="er-panel" data-panel="task" aria-label="当前任务">
+              <div class="er-bubble">比较这 3 个页面，帮我做选择，再整理到学习笔记。</div>
+              <div id="er-stage-start" class="er-stack">
+                <p>我会先查看你选中的资料，说明依据，再请你确认笔记内容。</p>
+                <div class="er-box">
+                  <h3>本次任务的数据范围</h3>
+                  <label class="er-check"
+                    ><input id="er-read" type="checkbox" /><span
+                      >允许读取已选 3 页的正文</span
+                    ></label
+                  >
+                  <label class="er-check"
+                    ><input id="er-cloud" type="checkbox" /><span
+                      >允许将这些正文交给模拟在线模型<span class="er-small">
+                        · 仅演示，不会发送数据</span
+                      ></span
+                    ></label
+                  >
+                  <p class="er-small">有效期：仅本任务。页面读取与云端处理分别授权。</p>
+                  <button
+                    id="er-start"
+                    class="er-primary cursor-interaction"
+                    type="button"
+                    disabled
+                  >
+                    模拟授权并生成计划
+                  </button>
+                </div>
+              </div>
+              <div id="er-stage-plan" class="er-stack" hidden>
+                <div class="er-box">
+                  <h3>建议与依据</h3>
+                  <p>若你希望尽快上手，优先试用在线方案；涉及敏感内容时改用本地方案。</p>
+                  <p class="er-small">
+                    依据：来源 1 的配置要求、来源 2 的离线能力。未知：你的预算、电脑配置与真实用量。
+                  </p>
+                </div>
+                <ol>
+                  <li>已比较三个页面</li>
+                  <li>拟好笔记，等你检查</li>
+                  <li>创建笔记，再读取核对</li>
+                </ol>
+                <button id="er-review" class="er-primary cursor-interaction" type="button">
+                  查看笔记并确认
+                </button>
+              </div>
+              <div id="er-stage-approval" class="er-stack" hidden>
+                <div class="er-box">
+                  <h3>确认这一次写入</h3>
+                  <p>目标：学习工作区 → 学习笔记</p>
+                  <p>操作：新建《方案比较》</p>
+                  <p class="er-small">
+                    正文：先用配置简单的方案完成学习任务；涉及敏感内容时优先本地处理。预算与硬件信息仍需补充。
+                  </p>
+                  <p class="er-small">只创建这一篇笔记，不覆盖已有内容。</p>
+                </div>
+                <div class="er-actions">
+                  <button id="er-confirm" class="er-primary cursor-interaction" type="button">
+                    同意这次写入（模拟）</button
+                  ><button id="er-cancel-confirm" class="cursor-interaction" type="button">
+                    取消
+                  </button>
+                </div>
+              </div>
+              <div id="er-stage-running" class="er-stack" hidden>
+                <h3>正在模拟执行</h3>
+                <p>创建笔记 → 读取结果 → 核对内容</p>
+                <p class="er-small">此时可用下方“停止任务”打断演示。</p>
+              </div>
+              <div id="er-stage-completed" class="er-stack" hidden>
+                <h3>笔记已创建并核对</h3>
+                <p>标题、正文和目标笔记本均与本次确认一致。</p>
+                <p class="er-small">演示结果显示在资料区域。本任务内容未自动加入长期记忆。</p>
+                <button id="er-again" class="cursor-interaction" type="button">
+                  重新体验此任务
+                </button>
+              </div>
+              <div id="er-stage-stopped" class="er-stack" hidden>
+                <h3>任务已停止</h3>
+                <p>没有执行新的步骤。演示中的笔记尚未创建。</p>
+                <button id="er-restart" class="cursor-interaction" type="button">
+                  重新开始并授权
+                </button>
+              </div>
+            </section>
+            <section class="er-panel" data-panel="permissions" aria-label="权限设置" hidden>
+              <label for="er-level">权限等级草稿</label>
+              <select id="er-level">
+                <option value="0">L0 · 只聊天</option>
+                <option value="1">L1 · 允许查看</option>
+                <option value="2" selected>L2 · 操作前问我</option>
+                <option value="3">L3 · 范围内自动做（后续预览）</option>
+              </select>
+              <p id="er-level-description">具体写入需要逐次确认。</p>
+              <p class="er-small">
+                首版提供 L0 至 L2；L3 是后续方案。选择等级不会直接授权，当前演示固定使用 L2 流程。
+              </p>
+              <div class="er-box">
+                <h3>本次有效授权</h3>
+                <p id="er-grant-state">尚未授权读取和发送</p>
+                <p class="er-small">
+                  范围：学习工作区的 3
+                  个选定页面；写入仅限确认的一篇新笔记。高风险操作仍需逐次确认。
+                </p>
+              </div>
+              <button id="er-revoke" class="cursor-interaction" type="button">
+                撤销本次授权（模拟）
+              </button>
+            </section>
+            <section class="er-panel" data-panel="memory" aria-label="记忆管理" hidden>
+              <label class="er-check"
+                ><input id="er-private" type="checkbox" /><span
+                  >本次无痕 · 不使用或新增长期记忆</span
+                ></label
+              >
+              <div id="er-memory-content" class="er-stack">
+                <div class="er-top">
+                  <h3>长期记忆</h3>
+                  <span id="er-memory-count" class="er-small">3 / 100 条</span>
+                </div>
+                <div
+                  class="er-meter"
+                  role="progressbar"
+                  aria-label="长期记忆条数占比"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow="3"
+                >
+                  <span id="er-memory-fill"></span>
+                </div>
+                <p id="er-memory-size" class="er-small">逻辑内容 0.8 / 80 KiB · 演示容量</p>
+                <p class="er-small">上下文预算 2K tokens（演示），与长期容量分别控制。</p>
+                <div id="er-memories" class="er-stack">
+                  <div class="er-memory" data-memory="short">
+                    <div>
+                      <p>喜欢先看简短结论</p>
+                      <span class="er-small">来源：用户确认 · 偏好</span>
+                    </div>
+                    <button
+                      class="cursor-interaction"
+                      type="button"
+                      data-delete="short"
+                      aria-label="删除喜欢先看简短结论的记忆"
+                    >
+                      删除
+                    </button>
+                  </div>
+                  <div class="er-memory" data-memory="study">
+                    <div>
+                      <p>正在学习浏览器开发</p>
+                      <span class="er-small">来源：用户输入 · 任务背景</span>
+                    </div>
+                    <button
+                      class="cursor-interaction"
+                      type="button"
+                      data-delete="study"
+                      aria-label="删除正在学习浏览器开发的记忆"
+                    >
+                      删除
+                    </button>
+                  </div>
+                  <div class="er-memory" data-memory="cost">
+                    <div>
+                      <p>可能更在意使用成本</p>
+                      <span class="er-small">推测 · 待确认 · 不作为授权依据</span>
+                    </div>
+                    <button
+                      class="cursor-interaction"
+                      type="button"
+                      data-delete="cost"
+                      aria-label="删除可能更在意使用成本的记忆"
+                    >
+                      删除
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <p id="er-private-state" hidden>无痕任务中不检索现有长期记忆，也不保存新记忆。</p>
+            </section>
+            <p id="er-notice" class="er-small er-live" role="status" aria-live="polite">
+              所有操作仅在演示内生效。
+            </p>
+            <div class="er-actions er-divider">
+              <button id="er-stop" class="cursor-interaction" type="button" disabled>
+                停止任务</button
+              ><span id="er-auth-badge" class="er-small">当前无资源授权</span>
+            </div>
+          </aside>
+        </div>
+        <div class="er-footer">
+          <span class="er-small">设计草案 v0.1 · 不读取、不发送、不写入真实数据</span
+          ><span class="er-small">用户保留最终决定权</span>
+        </div>
+      </div>
+      <script>
+        (function () {
+          const root = document.getElementById('erya-prototype');
+          const q = (selector) => root.querySelector(selector);
+          const state = {
+            tab: 'task',
+            stage: 'start',
+            grant: false,
+            deleted: [],
+            privateMode: false,
+          };
+          let timer = null;
+          const stages = ['start', 'plan', 'approval', 'running', 'completed', 'stopped'];
+          const stageLabels = {
+            start: '等待授权',
+            plan: '计划已准备',
+            approval: '等待确认',
+            running: '正在执行',
+            completed: '已核对完成',
+            stopped: '已停止',
+          };
+          function notice(text) {
+            q('#er-notice').textContent = text;
+          }
+          function render() {
+            root.querySelectorAll('[data-panel]').forEach((el) => {
+              el.hidden = el.dataset.panel !== state.tab;
+            });
+            root.querySelectorAll('[data-tab]').forEach((el) => {
+              el.setAttribute('aria-pressed', String(el.dataset.tab === state.tab));
+            });
+            stages.forEach((s) => {
+              q('#er-stage-' + s).hidden = s !== state.stage;
+            });
+            q('#er-status').textContent = stageLabels[state.stage];
+            q('#er-stop').disabled = !['plan', 'approval', 'running'].includes(state.stage);
+            q('#er-start').disabled = !q('#er-read').checked || !q('#er-cloud').checked;
+            q('#er-grant-state').textContent = state.grant
+              ? '已授权：读取选定正文，并模拟在线处理；仅本任务'
+              : '尚未授权读取和发送';
+            q('#er-auth-badge').textContent = state.grant ? 'L2 · 仅本任务' : '当前无资源授权';
+            q('#er-page-result').hidden = state.stage !== 'completed';
+            q('#er-memory-content').hidden = state.privateMode;
+            q('#er-private-state').hidden = !state.privateMode;
+            const count = 3 - state.deleted.length;
+            q('#er-memory-count').textContent = count + ' / 100 条';
+            q('#er-memory-size').textContent =
+              '逻辑内容 ' + ((count * 0.8) / 3).toFixed(1) + ' / 80 KiB · 演示容量';
+            q('#er-memory-fill').style.width = count + '%';
+            q('.er-meter').setAttribute('aria-valuenow', String(count));
+            root.querySelectorAll('[data-memory]').forEach((el) => {
+              el.hidden = state.deleted.includes(el.dataset.memory);
+            });
+          }
+          function clearTimer() {
+            if (timer !== null) {
+              clearTimeout(timer);
+              timer = null;
+            }
+          }
+          function reset() {
+            clearTimer();
+            state.stage = 'start';
+            state.grant = false;
+            state.tab = 'task';
+            q('#er-read').checked = false;
+            q('#er-cloud').checked = false;
+            notice('需要重新确认读取与模拟在线处理范围。');
+            render();
+          }
+          root.querySelectorAll('[data-tab]').forEach((el) =>
+            el.addEventListener('click', () => {
+              state.tab = el.dataset.tab;
+              render();
+            }),
+          );
+          q('#er-read').addEventListener('change', render);
+          q('#er-cloud').addEventListener('change', render);
+          q('#er-start').addEventListener('click', () => {
+            if (!q('#er-read').checked || !q('#er-cloud').checked) return;
+            state.grant = true;
+            state.stage = 'plan';
+            notice('已模拟读取。写入仍需查看内容并确认。');
+            render();
+          });
+          q('#er-review').addEventListener('click', () => {
+            state.stage = 'approval';
+            notice('请核对目标与正文，再决定是否写入。');
+            render();
+          });
+          q('#er-cancel-confirm').addEventListener('click', () => {
+            state.stage = 'plan';
+            notice('已取消这次写入，没有创建笔记。');
+            render();
+          });
+          q('#er-confirm').addEventListener('click', () => {
+            if (!state.grant || state.stage !== 'approval') return;
+            state.stage = 'running';
+            notice('正在模拟创建与核对，可随时停止。');
+            render();
+            timer = setTimeout(() => {
+              timer = null;
+              if (state.stage !== 'running' || !state.grant) return;
+              state.stage = 'completed';
+              state.grant = false;
+              notice('演示笔记已核对。本次授权已随任务完成而到期。');
+              render();
+            }, 2200);
+          });
+          q('#er-stop').addEventListener('click', () => {
+            if (!['plan', 'approval', 'running'].includes(state.stage)) return;
+            clearTimer();
+            state.stage = 'stopped';
+            state.grant = false;
+            state.tab = 'task';
+            notice('已停止后续步骤；本次演示授权已结束。');
+            render();
+          });
+          q('#er-revoke').addEventListener('click', () => {
+            clearTimer();
+            const wasActive = ['plan', 'approval', 'running'].includes(state.stage);
+            state.grant = false;
+            if (wasActive) state.stage = 'stopped';
+            q('#er-read').checked = false;
+            q('#er-cloud').checked = false;
+            notice(
+              state.stage === 'completed'
+                ? '已无有效授权。已完成的演示笔记不会因撤销授权而消失。'
+                : '已撤销本次授权，后续步骤不能继续。',
+            );
+            render();
+          });
+          q('#er-again').addEventListener('click', reset);
+          q('#er-restart').addEventListener('click', reset);
+          q('#er-level').addEventListener('change', (e) => {
+            const descriptions = [
+              '只处理主动输入的内容。',
+              '只查看被授权资源，不修改内容。',
+              '具体写入需要逐次确认。',
+              '只在限定范围与时限内自动执行低风险操作。',
+            ];
+            q('#er-level-description').textContent = descriptions[Number(e.target.value)];
+            notice('已调整等级草稿，尚未授予任何新权限。');
+          });
+          q('#er-private').addEventListener('change', (e) => {
+            state.privateMode = e.target.checked;
+            notice(
+              state.privateMode
+                ? '已启用演示无痕模式，长期记忆不参与当前任务。'
+                : '已退出演示无痕模式，原有记忆仍可管理。',
+            );
+            render();
+          });
+          root.querySelectorAll('[data-delete]').forEach((el) =>
+            el.addEventListener('click', () => {
+              const id = el.dataset.delete;
+              if (!state.deleted.includes(id)) state.deleted.push(id);
+              notice('这条演示记忆已移除，不再用于本原型。');
+              render();
+            }),
+          );
+          render();
+          if (globalThis.Tweak) {
+            const design = { panelWidth: 390 };
+            const tweak = new Tweak({
+              container: root,
+              onChange: () => {
+                if (root.clientWidth > 720)
+                  q('.er-grid').style.gridTemplateColumns =
+                    'minmax(0,1fr) minmax(310px,' + design.panelWidth + 'px)';
+              },
+            });
+            tweak.addSlider(design, 'panelWidth', {
+              label: '桌面侧栏宽度',
+              min: 330,
+              max: 440,
+              step: 10,
+              unit: 'px',
+            });
+          }
+        })();
+      </script>
+    </div>
+  </body>
+</html>

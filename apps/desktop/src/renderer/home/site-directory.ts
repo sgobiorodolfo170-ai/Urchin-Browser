@@ -1,4 +1,4 @@
-/** 内置站点名称目录，仅用于网站名称匹配；图标由用户访问时采集并持久缓存。 */
+/** 内置站点目录，用于名称匹配和跨域归集；图标由用户访问时采集并持久缓存。 */
 
 /** 内置站点条目 */
 export interface BuiltinSite {
@@ -12,6 +12,7 @@ export interface BuiltinSite {
 
 /** 内置常见网站目录（按 key 排序） */
 export const SITE_DIRECTORY: readonly BuiltinSite[] = [
+  { key: 'agnes-ai', domains: ['agnes-ai.com', 'agnes-ai.cn'], name: 'Agnes AI' },
   { key: 'baidu', domains: ['baidu.com', 'www.baidu.com'], name: '百度' },
   { key: 'bing', domains: ['bing.com', 'www.bing.com', 'cn.bing.com'], name: '必应' },
   { key: 'google', domains: ['google.com', 'www.google.com', 'google.com.hk'], name: 'Google' },

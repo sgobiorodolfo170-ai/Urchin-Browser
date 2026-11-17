@@ -88,6 +88,25 @@ describe('NotebookView', () => {
     expect((title as HTMLInputElement).value).toBe('新的想法');
   });
 
+  it('should preserve and persist the current note when creating another from the editor', async () => {
+    renderView();
+    await screen.findByText('我的笔记本');
+    fireEvent.click(screen.getAllByText('欢迎使用笔记')[0]!);
+    fireEvent.change(screen.getByLabelText('笔记标题'), { target: { value: '保留的笔记' } });
+    fireEvent.change(screen.getByLabelText('笔记正文'), { target: { value: '新建前的最后修改' } });
+    expect(screen.queryByLabelText('删除当前笔记')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('新建笔记'));
+    expect(screen.getByLabelText('笔记正文')).toHaveValue('');
+    await waitFor(() => {
+      const saves = invoke.mock.calls.filter(([channel]) => channel === 'settings.set');
+      expect(saves.length).toBeGreaterThan(0);
+      expect(JSON.stringify(saves.at(-1))).toContain('新建前的最后修改');
+    });
+    fireEvent.click(screen.getByLabelText('返回笔记列表'));
+    fireEvent.click(screen.getAllByText('保留的笔记')[0]!);
+    expect(screen.getByLabelText('笔记正文')).toHaveValue('新建前的最后修改');
+  });
+
   it('should increase and decrease sticky font size', async () => {
     renderView();
 

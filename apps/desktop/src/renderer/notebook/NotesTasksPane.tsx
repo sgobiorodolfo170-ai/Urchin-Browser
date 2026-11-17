@@ -7,7 +7,6 @@
  */
 import { useState } from 'react';
 import { ArrowLeft, Check, ListTodo, NotebookPen, Plus, Trash2 } from 'lucide-react';
-import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { cn } from '../lib/utils';
 import { makeNotebookId } from './normalize';
 import { NoteEditor } from './NoteEditor';
@@ -45,7 +44,6 @@ function previewOf(note: NotePage): string {
 export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps) {
   const [selectingTask, setSelectingTask] = useState<string | null>(null);
   const [taskDraft, setTaskDraft] = useState('');
-  const [pendingDeleteNote, setPendingDeleteNote] = useState<NotePage | null>(null);
 
   const notes = notesOf(state, notebook.id);
   const tasks = tasksOf(state, notebook.id);
@@ -80,14 +78,6 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
       notes: prev.notes.map((note) =>
         note.id === noteId ? { ...note, ...patch, updatedAt: Date.now() } : note,
       ),
-    }));
-  };
-
-  const deleteNote = (noteId: string) => {
-    update((prev) => ({
-      ...prev,
-      notes: prev.notes.filter((note) => note.id !== noteId),
-      activeNoteId: prev.activeNoteId === noteId ? null : prev.activeNoteId,
     }));
   };
 
@@ -227,7 +217,7 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
             </button>
           </div>
 
-          {mode === 'notes' && !activeNote && (
+          {mode === 'notes' && (
             <button
               type="button"
               className={ICON_BUTTON}
@@ -236,17 +226,6 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
               title="新建笔记"
             >
               <Plus className="h-4 w-4" />
-            </button>
-          )}
-          {mode === 'notes' && activeNote && (
-            <button
-              type="button"
-              className={cn(ICON_BUTTON, 'text-error/70 hover:text-error')}
-              onClick={() => setPendingDeleteNote(activeNote)}
-              aria-label="删除当前笔记"
-              title="删除当前笔记"
-            >
-              <Trash2 className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -400,28 +379,6 @@ export function NotesTasksPane({ state, notebook, update }: NotesTasksPaneProps)
           </div>
         </div>
       )}
-
-      <ConfirmDialog
-        open={pendingDeleteNote !== null}
-        title="删除笔记？"
-        message={
-          pendingDeleteNote
-            ? `「${pendingDeleteNote.title || '无标题笔记'}」将被删除，此操作不可撤销。`
-            : undefined
-        }
-        onDismiss={() => setPendingDeleteNote(null)}
-        actions={[
-          { label: '取消', onClick: () => setPendingDeleteNote(null), variant: 'secondary' },
-          {
-            label: '删除',
-            variant: 'danger',
-            onClick: () => {
-              if (pendingDeleteNote) deleteNote(pendingDeleteNote.id);
-              setPendingDeleteNote(null);
-            },
-          },
-        ]}
-      />
     </section>
   );
 }

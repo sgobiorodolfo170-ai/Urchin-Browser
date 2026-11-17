@@ -172,7 +172,7 @@ export function NoteEditor({
         }
       }}
     >
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-secondary/30 px-3 py-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-surface-secondary/30 px-3 py-2">
         <div
           className="flex items-center gap-1 rounded-lg bg-surface-secondary p-1"
           role="group"
@@ -203,7 +203,24 @@ export function NoteEditor({
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-1" role="group" aria-label="正文字号">
+        {!reading && (
+          <div className="flex flex-wrap items-center gap-1" role="group" aria-label="笔记格式">
+            {FORMATS.map(({ format, label, Icon, ...tool }) => (
+              <button
+                key={format}
+                type="button"
+                className={TOOL_BUTTON}
+                aria-label={label}
+                title={'shortcut' in tool ? `${label}（${tool.shortcut}）` : label}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => applyFormat(format)}
+              >
+                <Icon className="h-4 w-4" />
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="ml-auto flex items-center gap-1" role="group" aria-label="正文字号">
           <button
             type="button"
             className={TOOL_BUTTON}
@@ -232,27 +249,6 @@ export function NoteEditor({
           </button>
         </div>
       </div>
-      {!reading && (
-        <div
-          className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-3 py-1.5"
-          role="group"
-          aria-label="笔记格式"
-        >
-          {FORMATS.map(({ format, label, Icon, ...tool }) => (
-            <button
-              key={format}
-              type="button"
-              className={TOOL_BUTTON}
-              aria-label={label}
-              title={'shortcut' in tool ? `${label}（${tool.shortcut}）` : label}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => applyFormat(format)}
-            >
-              <Icon className="h-4 w-4" />
-            </button>
-          ))}
-        </div>
-      )}
       {/* 切换模式时保留 textarea，维持原生撤销栈、选区与滚动位置。 */}
       <div
         hidden={reading}

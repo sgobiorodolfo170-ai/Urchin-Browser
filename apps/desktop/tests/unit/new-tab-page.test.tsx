@@ -439,3 +439,44 @@ it('常用图标同步同站最新采集缓存，不同页面及www归集，缺�
   fireEvent.click(cached);
   expect(navigate).toHaveBeenCalledWith('https://www.cache.test/saved');
 });
+
+it('Agnes AI 官网与平台在收藏和最近浏览各归集为一个图标，弹窗保留原地址', async () => {
+  const urls = ['https://agnes-ai.com/', 'https://platform.agnes-ai.cn/login'];
+  Object.defineProperty(window, 'urchin', {
+    configurable: true,
+    value: {
+      invoke: vi.fn((channel: string) =>
+        Promise.resolve(
+          channel === 'bookmark.list'
+            ? {
+                bookmarks: urls.map((url, i) => ({
+                  type: 'bookmark',
+                  url,
+                  title: `页面${i}`,
+                  createdAt: i,
+                })),
+              }
+            : channel === 'history.list'
+              ? {
+                  entries: urls.map((url, i) => ({ url, title: `页面${i}`, visitedAt: i })),
+                  total: 2,
+                }
+              : { value: [] },
+        ),
+      ),
+      on: () => vi.fn(),
+    },
+  });
+  const navigate = vi.fn();
+  render(<NewTabPage onNavigate={navigate} />);
+  const frequent = await screen.findByTestId('frequent-sites');
+  await waitFor(() => expect(within(frequent).getAllByRole('button')).toHaveLength(1));
+  expect(
+    within(screen.getByRole('region', { name: '最近浏览' })).getAllByRole('button'),
+  ).toHaveLength(1);
+  fireEvent.click(within(frequent).getByRole('button'));
+  const dialog = screen.getByRole('dialog');
+  expect(within(dialog).getAllByRole('listitem')).toHaveLength(2);
+  fireEvent.click(within(dialog).getByText('页面1'));
+  expect(navigate).toHaveBeenCalledWith(urls[1]);
+});

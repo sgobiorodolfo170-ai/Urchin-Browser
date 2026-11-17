@@ -8,7 +8,7 @@
 
 export const LEFT_EXPANDED = 220;
 export const LEFT_COLLAPSED = 44;
-export const RIGHT_EXPANDED = 360;
+export const RIGHT_EXPANDED = 120;
 export const RIGHT_COLLAPSED = 44;
 export const BOTTOM_HEIGHT = 48;
 

@@ -1147,7 +1147,8 @@ export function TopBar({
 					const classics = themes.filter((th) => th.group === "classic");
 					const builtins = themes.filter((th) => th.group !== "classic");
 					const themeLabel = (th: (typeof themes)[number]) => {
-						const base = isZhLocale(locale) ? th.name : (th.nameEn ?? th.name);
+						const name = isZhLocale(locale) ? th.name : (th.nameEn ?? th.name);
+						const base = th.id === "geist" ? `${name}${isZhLocale(locale) ? "（默认）" : " (default)"}` : name;
 						const scheme = th.scheme === "light" ? t("themeLight") : th.scheme === "dark" ? t("themeDark") : "";
 						if (!scheme) return base;
 						return isZhLocale(locale) ? `${base}（${scheme}）` : `${base} (${scheme})`;

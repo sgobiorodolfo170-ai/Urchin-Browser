@@ -70,11 +70,11 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   ['ui.rightSidebarAutoExpand', false],
   // 左侧边栏悬停自动展开（默认关闭；双击切换始终可用，悬停展开仅在折叠态生效）
   ['ui.leftSidebarAutoExpand', false],
-  // 右侧边栏展开宽度（拖拽调节后落盘，重启恢复）。默认 360 =
+  // 右侧边栏展开宽度（拖拽调节后落盘，重启恢复）。默认 120 =
   // renderer/lib/layout-constants.ts 的 RIGHT_EXPANDED，两处必须同步修改。
   // 该键必须登记（原因见下方 session.lastTabs），否则宽度每次重启被重置。
-  ['ui.leftSidebarWidth', 220],
-  ['ui.rightSidebarWidth', 360],
+  ['ui.leftSidebarWidth', 120],
+  ['ui.rightSidebarWidth', 120],
   // 底部悬浮球灵敏度（上下/左右，范围 0.1-5，设置页调试页可调）。
   // 该键必须登记，否则每次重启被重置为 1（main/index.ts sendBallConfig 回退值）。
   ['ui.statusBall.sensitivityVertical', 1],
@@ -103,7 +103,7 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   // 可填 Azure OpenAI、Ollama、vLLM、LM Studio 等兼容端点）
   ['pi.baseUrl', ''],
   // 调试选项：右侧边栏折叠态下鼠标停留后延迟展开的时长（毫秒，默认 300ms）
-  ['debug.sidebarHoverDelay', 300],
+  ['debug.sidebarHoverDelay', 60],
   // 网页翻译（M24，dev.79）：目标语言（2026-08-30 评审确认 zh-CN 默认必含；
   // 全集见 ipc-schema TRANSLATE_TARGET_LANGS）。
   ['translate.targetLang', 'zh-CN'],

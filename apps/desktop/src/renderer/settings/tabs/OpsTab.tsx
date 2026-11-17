@@ -33,7 +33,7 @@ const OPS_FIELDS: readonly SettingField[] = [
     type: 'number',
     min: 0,
     max: 3000,
-    step: 50,
+    step: 10,
     unit: 'ms',
   },
   {
@@ -141,6 +141,7 @@ export function OpsTab({
       <h1 className="mb-4 text-2xl font-semibold">操作</h1>
       <SettingsSection
         title="标题栏"
+        headingBelowDivider
         fields={[
           {
             key: 'ui.titlebarBookmarksToggle',
@@ -154,6 +155,7 @@ export function OpsTab({
       />
       <SettingsSection
         title="侧栏与工作区"
+        headingBelowDivider
         fields={OPS_FIELDS}
         entries={entries}
         onChange={onChange}

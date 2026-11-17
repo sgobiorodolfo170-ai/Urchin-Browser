@@ -99,6 +99,7 @@ export function toStr(v: unknown): string {
 
 export interface SettingsSectionProps {
   readonly title: string;
+  readonly headingBelowDivider?: boolean;
   readonly fields: readonly SettingField[];
   readonly entries: Record<string, unknown>;
   readonly onChange: (key: string, value: unknown) => void;
@@ -107,6 +108,7 @@ export interface SettingsSectionProps {
 
 export function SettingsSection({
   title,
+  headingBelowDivider = false,
   fields,
   entries,
   onChange,
@@ -114,7 +116,11 @@ export function SettingsSection({
 }: SettingsSectionProps) {
   return (
     <section className="ui-settings-section">
-      <h1 className="mb-6 text-2xl font-semibold">{title}</h1>
+      {headingBelowDivider ? (
+        <h2 className="mt-6 border-t border-border pt-4 pb-2 text-sm font-semibold">{title}</h2>
+      ) : (
+        <h1 className="mb-6 text-2xl font-semibold">{title}</h1>
+      )}
       <div>
         {fields.map((field) =>
           field.type === 'textarea' ? (

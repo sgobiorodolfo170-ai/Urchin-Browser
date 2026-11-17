@@ -13,7 +13,8 @@ export interface ThemeInfo {
 }
 
 const STORAGE_KEY = "pi-web-ui:theme";
-const DEFAULT_THEME_ID = "dark";
+const BASE_THEME_ID = "dark";
+const DEFAULT_THEME_ID = "geist";
 const LINK_ID = "theme-stylesheet";
 const THEME_ASSET_REV = Date.now().toString(36);
 let assetReload = 0;
@@ -24,15 +25,15 @@ export const THEME_CHANGE_EVENT = "pi-web-ui:theme-change";
 export function loadTheme(): string | null {
 	try {
 		const saved = localStorage.getItem(STORAGE_KEY);
-		if (saved && saved !== DEFAULT_THEME_ID) return saved;
+		if (saved) return saved === BASE_THEME_ID ? null : saved;
 	} catch {}
-	return null;
+	return DEFAULT_THEME_ID;
 }
 
 function saveTheme(id: string | null): void {
 	try {
 		if (id) localStorage.setItem(STORAGE_KEY, id);
-		else localStorage.removeItem(STORAGE_KEY);
+		else localStorage.setItem(STORAGE_KEY, BASE_THEME_ID);
 	} catch {}
 }
 function setThemeHref(link: HTMLLinkElement, id: string): void {
@@ -122,7 +123,7 @@ export function useTheme() {
 		saveTheme(theme);
 	}, [theme, connected]);
 
-	const switchTheme = (id: string | null) => setTheme(id === DEFAULT_THEME_ID ? null : id);
+	const switchTheme = (id: string | null) => setTheme(id === BASE_THEME_ID ? null : id);
 
 	return { themes, theme, switchTheme, reloadThemes };
 }

@@ -31,7 +31,7 @@ const DEFAULTS: Record<string, unknown> = {
   'ui.rightSidebarAutoExpand': false,
   'ui.leftSidebarAutoExpand': false,
   'ui.workspaceSwitcherMode': 'cards',
-  'debug.sidebarHoverDelay': 300,
+  'debug.sidebarHoverDelay': 60,
   'ui.statusBall.sensitivityVertical': 1,
   'ui.statusBall.sensitivityHorizontal': 1,
   'translate.targetLang': 'zh-CN',

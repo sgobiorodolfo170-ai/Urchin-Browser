@@ -36,6 +36,7 @@ export interface LeftSidebarProps {
   readonly onResizeEnd: () => void;
   readonly asideRef: React.RefObject<HTMLElement>;
   readonly piServiceState: PiServiceState;
+  readonly dshServiceState: PiServiceState;
   readonly onToggle: () => void;
   readonly onMouseEnter: () => void;
   readonly onMouseLeave: () => void;
@@ -60,6 +61,7 @@ export function LeftSidebar({
   onResizeEnd,
   asideRef,
   piServiceState,
+  dshServiceState,
   onToggle,
   onMouseEnter,
   onMouseLeave,
@@ -155,17 +157,31 @@ export function LeftSidebar({
         <button
           className={cn(
             effectiveExpanded && 'order-2',
-            'flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text',
+            'relative flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text',
           )}
           onClick={onOpenDeepSeekHarness}
           aria-label="DeepSeek Harness"
-          title="DeepSeek Harness"
+          title={`DeepSeek Harness（${dshServiceState === 'running' ? '运行中' : dshServiceState === 'starting' ? '启动中…' : dshServiceState === 'error' ? '故障' : '未启动'}）`}
         >
           <img
             src="./dsh-icon.svg"
             alt=""
             draggable={false}
             className="h-5 w-5 rounded object-contain"
+          />
+          <span
+            aria-hidden
+            data-service-state={dshServiceState}
+            className={cn(
+              'absolute right-1 top-1 h-2 w-2 rounded-full border border-surface',
+              dshServiceState === 'running'
+                ? 'bg-green-500'
+                : dshServiceState === 'starting'
+                  ? 'bg-amber-500'
+                  : dshServiceState === 'error'
+                    ? 'bg-red-500'
+                    : 'bg-transparent',
+            )}
           />
         </button>
         {/* pi 入口（ADR-014：点击确保服务运行并直接打开 pi 聊天页；服务常驻） */}

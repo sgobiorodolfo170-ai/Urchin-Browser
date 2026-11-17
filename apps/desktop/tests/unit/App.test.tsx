@@ -1051,7 +1051,7 @@ describe('App (Browser Shell)', () => {
       if (channel === 'bookmark.search') return Promise.resolve({ bookmarks: [] });
       if (channel === 'settings.get') {
         const req = reqOf<{ key?: string }>();
-        if (req?.key === 'ui.rightSidebarWidth') return Promise.resolve({ value: null }); // 无持久化宽度 → 默认 360
+        if (req?.key === 'ui.rightSidebarWidth') return Promise.resolve({ value: null }); // 无持久化宽度 → 默认 120
         return Promise.resolve({ value: 300 });
       }
       if (channel === 'settings.set') return Promise.resolve({ ok: true });
@@ -1072,20 +1072,20 @@ describe('App (Browser Shell)', () => {
     fireEvent.pointerMove(handle, { pointerId: 1, clientX: 420 });
     fireEvent.pointerUp(handle, { pointerId: 1, clientX: 420 });
 
-    // 释放时持久化宽度（默认 360 + 拖拽量）
+    // 释放时持久化宽度（默认 120 + 拖拽量）
     const setCalls = mockInvoke.mock.calls.filter((c) => c[0] === 'settings.set');
     expect(setCalls.length).toBeGreaterThan(0);
     const persisted = setCalls[setCalls.length - 1]?.[1] as { key: string; value: number };
     expect(persisted.key).toBe('ui.rightSidebarWidth');
-    expect(persisted.value).toBe(440); // 默认 360 + 向左拖 80
+    expect(persisted.value).toBe(200); // 默认 120 + 向左拖 80
     // 拖拽过程通知主进程布局
     const layoutCalls = mockInvoke.mock.calls.filter((c) => c[0] === 'ui.layout.setState');
-    expect(layoutCalls.some((c) => (c[1] as { rightWidth?: number }).rightWidth === 440)).toBe(
+    expect(layoutCalls.some((c) => (c[1] as { rightWidth?: number }).rightWidth === 200)).toBe(
       true,
     );
 
-    // 回归（2026-08-14）：折叠后再次展开，布局宽度必须用拖拽后的实际宽度（440）
-    // 而非固定 RIGHT_EXPANDED（360）——否则主进程 BrowserView 布局与栏显示不一致，
+    // 回归（2026-08-14）：折叠后再次展开，布局宽度必须用拖拽后的实际宽度（200）
+    // 而非固定 RIGHT_EXPANDED（120）——否则主进程 BrowserView 布局与栏显示不一致，
     // 网页滚动条与分割线间出现空白。
     mockInvoke.mockClear();
     fireEvent.doubleClick(screen.getByLabelText('右侧边栏')); // 折叠
@@ -1100,7 +1100,7 @@ describe('App (Browser Shell)', () => {
     await waitFor(() =>
       expect(mockInvoke).toHaveBeenCalledWith(
         'ui.layout.setState',
-        expect.objectContaining({ rightWidth: 440 }),
+        expect.objectContaining({ rightWidth: 200 }),
       ),
     );
   });
@@ -1370,4 +1370,26 @@ describe('App window drag via sidebars', () => {
     fireEvent.pointerUp(sidebar, { pointerId: 1, bubbles: true });
     expect(mockInvoke).toHaveBeenCalledWith('ui.window.dragBy', { dx: 50, dy: 20 });
   });
+});
+
+describe('DSH sidebar service light', () => {
+  it.each(['stopped', 'starting', 'running', 'error'] as const)(
+    'shows %s from the service status',
+    async (state) => {
+      mockInvoke.mockImplementation((channel: string) => {
+        if (channel === 'dsh.status') return Promise.resolve({ state });
+        if (channel === 'tab.list') return Promise.resolve({ tabs: [] });
+        return Promise.resolve({});
+      });
+      renderApp();
+      await waitFor(() =>
+        expect(
+          screen
+            .getByLabelText('DeepSeek Harness')
+            .querySelector('[data-service-state]')
+            ?.getAttribute('data-service-state'),
+        ).toBe(state),
+      );
+    },
+  );
 });

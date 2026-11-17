@@ -46,7 +46,7 @@ import { CalendarReminderToast } from './calendar/CalendarReminderToast';
 import type { Workspace } from './workspaces/types';
 import { DEFAULT_WORKSPACE_ID } from './workspaces/types';
 import type { TabEventPayload, TabSnapshot } from './tabs/types';
-import { LeftSidebar } from './sidebar/LeftSidebar';
+import { LeftSidebar, type PiServiceState } from './sidebar/LeftSidebar';
 import { RightSidebar } from './sidebar/RightSidebar';
 import { useWindowDrag } from './lib/use-window-drag';
 import {
@@ -102,7 +102,7 @@ export function App() {
   const [suggestions, setSuggestions] = useState<readonly Suggestion[]>([]);
   // 启动默认折叠：左右侧边栏初始为折叠态，用户可手动展开
   const [leftExpanded, setLeftExpanded] = useState(false);
-  const [leftExpandedWidth, setLeftExpandedWidth] = useState(LEFT_EXPANDED);
+  const [leftExpandedWidth, setLeftExpandedWidth] = useState(LEFT_MIN);
   const [resizingLeft, setResizingLeft] = useState(false);
   const [rightExpanded, setRightExpanded] = useState(false);
   // 右侧栏折叠时的悬停预览展开：鼠标移入自动展开，移出回弹收起
@@ -121,6 +121,7 @@ export function App() {
   // DeepSeek Harness 启动中标记：用于显示启动过程中的持久提示，
   // 启动完成（成功/失败）后再消失。
   const [dshStarting, setDshStarting] = useState(false);
+  const [dshServiceState, setDshServiceState] = useState<PiServiceState>('stopped');
   // pi 托管服务状态（ADR-014：常驻服务，侧栏 π 按钮状态灯依据）
   // stopped=熄灭 / starting=黄 / running=绿 / error=红
   const [piServiceState, setPiServiceState] = useState<
@@ -250,8 +251,8 @@ export function App() {
     }
   }, [activeTabId]);
 
-  // 右侧边栏悬停展开延迟（ms，从设置读取，默认 300）
-  const [sidebarHoverDelay, setSidebarHoverDelay] = useState<number>(300);
+  // 右侧边栏悬停展开延迟（ms，从设置读取，默认 60）
+  const [sidebarHoverDelay, setSidebarHoverDelay] = useState<number>(60);
   /** 右侧边栏悬停自动展开开关（设置 ui.rightSidebarAutoExpand，默认 false=双击展开） */
   const [rightSidebarAutoExpand, setRightSidebarAutoExpand] = useState<boolean>(false);
   /** 左侧边栏悬停自动展开开关（设置 ui.leftSidebarAutoExpand，默认关闭） */
@@ -337,35 +338,36 @@ export function App() {
     };
   }, []);
 
-  // ADR-014：轮询 pi 托管服务状态（2s），驱动侧栏 π 按钮状态灯。
-  // 服务状态变化不频繁，但需捕获崩溃/外部退出；IPC 本地调用开销可忽略。
+  // 两项服务独立查询，捕获外部退出与故障；查询失败不影响另一项状态。
   useEffect(() => {
     let alive = true;
-    const tick = async (): Promise<void> => {
+    const refresh = async (
+      channel: 'pihost.status' | 'dsh.status',
+      setState: (state: PiServiceState) => void,
+    ): Promise<void> => {
       try {
-        const s = (await window.urchin.invoke('pihost.status', {})) as {
-          state?: string;
-        };
-        if (alive) {
-          setPiServiceState(
-            s.state === 'running'
-              ? 'running'
-              : s.state === 'starting'
-                ? 'starting'
-                : s.state === 'error'
-                  ? 'error'
-                  : 'stopped',
+        const result = (await window.urchin.invoke(channel, {})) as { state?: string };
+        if (alive)
+          setState(
+            result.state === 'running' || result.state === 'starting' || result.state === 'error'
+              ? result.state
+              : 'stopped',
           );
-        }
       } catch {
-        if (alive) setPiServiceState('error');
+        if (alive) setState('error');
       }
     };
-    void tick();
-    const t = setInterval(() => void tick(), 2000);
+    const tick = () => {
+      void Promise.all([
+        refresh('pihost.status', setPiServiceState),
+        refresh('dsh.status', setDshServiceState),
+      ]);
+    };
+    tick();
+    const timer = setInterval(tick, 2000);
     return () => {
       alive = false;
-      clearInterval(t);
+      clearInterval(timer);
     };
   }, []);
 
@@ -1429,6 +1431,7 @@ export function App() {
             onResizeEnd={handleLeftResizeEnd}
             asideRef={leftAsideRef}
             piServiceState={piServiceState}
+            dshServiceState={dshStarting ? 'starting' : dshServiceState}
             onToggle={handleToggleLeft}
             onMouseEnter={handleLeftMouseEnter}
             onMouseLeave={handleLeftMouseLeave}

@@ -89,7 +89,7 @@ describe('SettingsManager', () => {
 
     // 默认项（language/searchEngine/downloadsPath/data.directory/blockTrackers/doNotTrack/blockAds/links.openInNewTab/
     //   pi.model/pi.apiKey/pi.providerId/pi.baseUrl/
-    //   debug.sidebarHoverDelay/ui.rightSidebarAutoExpand/ui.rightSidebarWidth 侧栏宽度/
+    //   debug.sidebarHoverDelay/ui.rightSidebarAutoExpand/ui.rightSidebarWidth/ui.leftSidebarWidth 侧栏宽度/
     //   ui.statusBall.sensitivityVertical/ui.statusBall.sensitivityHorizontal 悬浮球灵敏度/
     //   theme 悬浮球主题/home.frequentSites/home.frequentSiteOrder/home.recentSiteOrder/
     //   window.bounds 窗口几何记忆，主进程内部状态/
@@ -102,7 +102,7 @@ describe('SettingsManager', () => {
     //   mail.state 邮箱页三区栏宽 2026-11-10/
     //   transit.items 中转区项目索引/
     //   ui.minimizeToTray 关闭窗口驻留托盘默认关闭 2026-11-10） + 自定义 1 项
-    expect(entries).toHaveLength(45);
+    expect(entries).toHaveLength(46);
     expect(mgr.get('home.frequentSiteOrder')).toEqual([]);
     expect(mgr.get('home.recentSiteOrder')).toEqual([]);
 
@@ -182,7 +182,9 @@ describe('SettingsManager', () => {
 
     expect(mgr.get('session.lastTabs')).toEqual([]);
     expect(mgr.get('workspaces.registry')).toBeNull();
-    expect(mgr.get('ui.rightSidebarWidth')).toBe(360);
+    expect(mgr.get('ui.rightSidebarWidth')).toBe(120);
+    expect(mgr.get('ui.leftSidebarWidth')).toBe(120);
+    expect(mgr.get('debug.sidebarHoverDelay')).toBe(60);
     expect(mgr.get('ui.statusBall.sensitivityVertical')).toBe(1);
     expect(mgr.get('ui.statusBall.sensitivityHorizontal')).toBe(1);
     expect(mgr.get('theme')).toBe('light');

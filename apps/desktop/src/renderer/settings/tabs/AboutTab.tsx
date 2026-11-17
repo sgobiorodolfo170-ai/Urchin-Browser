@@ -9,26 +9,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { RuntimePortableNodeRes } from '@urchin/ipc-contract';
 import { getCurrentWindowId } from '../../lib/current-window';
 import { displayNameForLocale } from '../../../shared/brand';
-import { UpdateSection, type UpdateStateView } from './OpsTab';
+import { UpdateSection } from './OpsTab';
 import { REPO_URL } from './FeedbackTab';
 
 export function AboutTab() {
-  // 应用版本经 update.getState 取主进程 app.getVersion()（打包时由
-  // package-win.mjs 从 CHANGELOG 盖章 0.1.0-dev.NNN；开发态为 package.json 的 0.1.0）
-  const [appVersion, setAppVersion] = useState<string>('—');
-  useEffect(() => {
-    let alive = true;
-    void window.urchin
-      .invoke('update.getState', {})
-      .then((s) => {
-        if (alive) setAppVersion((s as UpdateStateView).currentVersion);
-      })
-      .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
-  }, []);
-
   // 便携 Node（X4）：dsh 打包态的独立纯 Node 运行时（Electron 内置 Node 会被
   // dsh 指纹校验拒绝）。经主进程探测「是否随包装上 + 能否运行」，用户可在此
   // 自助确认；探测含一次 --version spawn（5s 超时），失败静默显示为待定态。
@@ -82,7 +66,6 @@ export function AboutTab() {
       <div className="space-y-4">
         <div className="rounded-md border border-border bg-surface-secondary px-4 py-4">
           <div className="text-lg font-semibold">{displayNameForLocale(navigator.language)}</div>
-          <div className="mt-1 text-sm text-text-secondary">版本 {appVersion}</div>
           <div className="mt-3 text-xs text-text-secondary">
             一款基于 Electron + Chromium 的 AI 浏览器，集成多 Provider AI 助手与隐私保护。
           </div>

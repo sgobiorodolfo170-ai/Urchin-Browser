@@ -53,6 +53,8 @@ import {
   BOTTOM_HEIGHT,
   LEFT_COLLAPSED,
   LEFT_EXPANDED,
+  LEFT_MIN,
+  LEFT_SIDEBAR_WIDTH_KEY,
   RIGHT_COLLAPSED,
   RIGHT_EXPANDED,
   RIGHT_MAX,
@@ -100,6 +102,8 @@ export function App() {
   const [suggestions, setSuggestions] = useState<readonly Suggestion[]>([]);
   // 启动默认折叠：左右侧边栏初始为折叠态，用户可手动展开
   const [leftExpanded, setLeftExpanded] = useState(false);
+  const [leftExpandedWidth, setLeftExpandedWidth] = useState(LEFT_EXPANDED);
+  const [resizingLeft, setResizingLeft] = useState(false);
   const [rightExpanded, setRightExpanded] = useState(false);
   // 右侧栏折叠时的悬停预览展开：鼠标移入自动展开，移出回弹收起
   const [rightHovered, setRightHovered] = useState(false);
@@ -363,6 +367,18 @@ export function App() {
       alive = false;
       clearInterval(t);
     };
+  }, []);
+
+  useEffect(() => {
+    void window.urchin
+      .invoke('settings.get', { key: LEFT_SIDEBAR_WIDTH_KEY })
+      .then((res) => {
+        const value = (res as { value: unknown }).value;
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          setLeftExpandedWidth(Math.min(LEFT_EXPANDED, Math.max(LEFT_MIN, value)));
+        }
+      })
+      .catch((error: unknown) => log.error('Failed to load left sidebar width:', error));
   }, []);
 
   // 加载持久化的右侧边栏宽度（拖拽调节后记录，重启恢复）
@@ -793,10 +809,10 @@ export function App() {
     setLeftHovered(false);
     setLeftRetracting(false);
     void notifyLayout(
-      next ? LEFT_EXPANDED : LEFT_COLLAPSED,
+      next ? leftExpandedWidth : LEFT_COLLAPSED,
       rightExpanded ? rightExpandedWidth : RIGHT_COLLAPSED,
     );
-  }, [leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout]);
+  }, [leftExpandedWidth, leftExpanded, rightExpanded, rightExpandedWidth, notifyLayout]);
 
   const handleToggleRight = useCallback(() => {
     const next = !rightExpanded;
@@ -805,10 +821,17 @@ export function App() {
     setRightHovered(false);
     setRightRetracting(false);
     void notifyLayout(
-      leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED,
+      leftExpanded || leftHovered ? leftExpandedWidth : LEFT_COLLAPSED,
       next ? rightExpandedWidth : RIGHT_COLLAPSED,
     );
-  }, [leftExpanded, leftHovered, rightExpanded, rightExpandedWidth, notifyLayout]);
+  }, [
+    leftExpandedWidth,
+    leftExpanded,
+    leftHovered,
+    rightExpanded,
+    rightExpandedWidth,
+    notifyLayout,
+  ]);
 
   // 双击右侧边栏空白处：展开/折叠切换（替代已移除的底部折叠/展开按钮）
   // 与悬停自动展开/自动折叠互斥（右侧栏自动展开开关控制后者）
@@ -840,7 +863,7 @@ export function App() {
       // 用拖拽后的实际宽度（而非固定 RIGHT_EXPANDED），否则主进程 BrowserView
       // 布局宽度与栏显示宽度不一致 → 网页滚动条与分割线间出现空白
       void notifyLayout(
-        leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED,
+        leftExpanded || leftHovered ? leftExpandedWidth : LEFT_COLLAPSED,
         rightExpandedWidth,
       );
     };
@@ -855,6 +878,7 @@ export function App() {
   }, [
     rightExpanded,
     rightSidebarAutoExpand,
+    leftExpandedWidth,
     leftExpanded,
     leftHovered,
     rightExpandedWidth,
@@ -874,12 +898,12 @@ export function App() {
     setRightRetracting(true);
     setRightHovered(false);
     void notifyLayout(
-      leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED,
+      leftExpanded || leftHovered ? leftExpandedWidth : LEFT_COLLAPSED,
       RIGHT_COLLAPSED,
     );
     // 回弹动画结束后清除标记（300ms 对应回弹时长）
     window.setTimeout(() => setRightRetracting(false), 320);
-  }, [rightExpanded, rightHovered, leftExpanded, leftHovered, notifyLayout]);
+  }, [leftExpandedWidth, rightExpanded, rightHovered, leftExpanded, leftHovered, notifyLayout]);
 
   const handleLeftDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -902,7 +926,7 @@ export function App() {
       setLeftHovered(true);
       setLeftRetracting(false);
       void notifyLayout(
-        LEFT_EXPANDED,
+        leftExpandedWidth,
         rightExpanded || rightHovered ? rightExpandedWidth : RIGHT_COLLAPSED,
       );
     };
@@ -915,6 +939,7 @@ export function App() {
       }, sidebarHoverDelay);
     }
   }, [
+    leftExpandedWidth,
     leftExpanded,
     leftSidebarAutoExpand,
     rightExpanded,
@@ -938,6 +963,41 @@ export function App() {
     );
     window.setTimeout(() => setLeftRetracting(false), 320);
   }, [leftExpanded, leftHovered, rightExpanded, rightHovered, rightExpandedWidth, notifyLayout]);
+
+  const leftDragRef = useRef<{ startX: number; startWidth: number; width: number } | null>(null);
+  const handleLeftResizeStart = useCallback(
+    (event: React.PointerEvent) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      leftDragRef.current = {
+        startX: event.clientX,
+        startWidth: leftExpandedWidth,
+        width: leftExpandedWidth,
+      };
+      setResizingLeft(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    },
+    [leftExpandedWidth],
+  );
+  const handleLeftResizeMove = useCallback((event: React.PointerEvent) => {
+    const drag = leftDragRef.current;
+    if (!drag) return;
+    drag.width = Math.min(
+      LEFT_EXPANDED,
+      Math.max(LEFT_MIN, drag.startWidth + event.clientX - drag.startX),
+    );
+    setLeftExpandedWidth(drag.width);
+  }, []);
+  const handleLeftResizeEnd = useCallback(() => {
+    const drag = leftDragRef.current;
+    if (!drag) return;
+    leftDragRef.current = null;
+    setResizingLeft(false);
+    void window.urchin
+      .invoke('settings.set', { key: LEFT_SIDEBAR_WIDTH_KEY, value: drag.width })
+      .catch((error: unknown) => log.error('Failed to persist left sidebar width:', error));
+  }, []);
 
   // 右侧边栏宽度拖拽调节：鼠标在网页与右侧边栏的边界线上按住拖动，实时调宽。
   // 展开态下于栏左缘内侧渲染拖拽手柄（避免与 BrowserView 重叠导致无法 hover/点击）。
@@ -966,9 +1026,9 @@ export function App() {
         Math.max(RIGHT_MIN, drag.startWidth + (drag.startX - e.clientX)),
       );
       setRightExpandedWidth(next);
-      void notifyLayout(leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED, next);
+      void notifyLayout(leftExpanded || leftHovered ? leftExpandedWidth : LEFT_COLLAPSED, next);
     },
-    [leftExpanded, leftHovered, notifyLayout],
+    [leftExpandedWidth, leftExpanded, leftHovered, notifyLayout],
   );
 
   const handleRightResizeEnd = useCallback(() => {
@@ -991,7 +1051,7 @@ export function App() {
   // statusBarState 消费 bookmarkSaved/bookmarkToast，动作分发消费 handleSaveBookmark）
   const { bookmarkSaved, bookmarkToast, handleSaveBookmark } = useBookmark(activeTab?.url);
 
-  const leftWidth = leftExpanded || leftHovered ? LEFT_EXPANDED : LEFT_COLLAPSED;
+  const leftWidth = leftExpanded || leftHovered ? leftExpandedWidth : LEFT_COLLAPSED;
   // 右侧栏有效展开：固定展开 OR 折叠态下的悬停预览
   const effectiveRightExpanded = rightExpanded || rightHovered;
   const rightWidth = effectiveRightExpanded ? rightExpandedWidth : RIGHT_COLLAPSED;
@@ -1143,7 +1203,7 @@ export function App() {
       const left = leftEl
         ? Math.round(leftEl.offsetWidth)
         : leftExpanded
-          ? LEFT_EXPANDED
+          ? leftExpandedWidth
           : LEFT_COLLAPSED;
       const right = rightEl
         ? Math.round(rightEl.offsetWidth)
@@ -1170,6 +1230,7 @@ export function App() {
       window.clearTimeout(stop);
     };
   }, [
+    leftExpandedWidth,
     leftExpanded,
     leftHovered,
     leftRetracting,
@@ -1362,6 +1423,10 @@ export function App() {
             hovered={leftHovered}
             retracting={leftRetracting}
             width={leftWidth}
+            resizing={resizingLeft}
+            onResizeStart={handleLeftResizeStart}
+            onResizeMove={handleLeftResizeMove}
+            onResizeEnd={handleLeftResizeEnd}
             asideRef={leftAsideRef}
             piServiceState={piServiceState}
             onToggle={handleToggleLeft}

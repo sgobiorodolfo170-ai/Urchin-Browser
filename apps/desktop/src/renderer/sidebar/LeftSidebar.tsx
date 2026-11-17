@@ -30,6 +30,10 @@ export interface LeftSidebarProps {
   readonly hovered: boolean;
   readonly retracting: boolean;
   readonly width: number;
+  readonly resizing: boolean;
+  readonly onResizeStart: (event: React.PointerEvent) => void;
+  readonly onResizeMove: (event: React.PointerEvent) => void;
+  readonly onResizeEnd: () => void;
   readonly asideRef: React.RefObject<HTMLElement>;
   readonly piServiceState: PiServiceState;
   readonly onToggle: () => void;
@@ -50,6 +54,10 @@ export function LeftSidebar({
   hovered,
   retracting,
   width,
+  resizing,
+  onResizeStart,
+  onResizeMove,
+  onResizeEnd,
   asideRef,
   piServiceState,
   onToggle,
@@ -69,6 +77,8 @@ export function LeftSidebar({
   const { theme } = themeContext;
   const windowDrag = useWindowDrag();
 
+  const effectiveExpanded = expanded || hovered;
+
   return (
     /* === 左侧栏 ===
      *  背景透明，透出窗口级统一渐变（顶部与 OS 原生标题栏同色）；
@@ -77,10 +87,12 @@ export function LeftSidebar({
     <aside
       ref={asideRef}
       className={cn(
-        'flex shrink-0 flex-col border-r border-border bg-transparent',
-        retracting
-          ? 'transition-[width] duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)]'
-          : 'transition-[width] duration-150 ease-out',
+        'relative flex min-h-0 shrink-0 flex-col border-r border-border bg-transparent',
+        resizing
+          ? ''
+          : retracting
+            ? 'transition-[width] duration-300 [transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)]'
+            : 'transition-[width] duration-150 ease-out',
       )}
       style={{ width }}
       onMouseEnter={onMouseEnter}
@@ -92,13 +104,36 @@ export function LeftSidebar({
       onPointerCancel={windowDrag.endDrag}
       aria-label="左侧边栏"
     >
+      {effectiveExpanded && (
+        <div
+          className="absolute inset-y-0 right-0 z-10 w-1.5 touch-none cursor-col-resize hover:bg-primary/20"
+          role="separator"
+          aria-label="调节左侧栏宽度"
+          aria-orientation="vertical"
+          onPointerDown={onResizeStart}
+          onPointerMove={onResizeMove}
+          onPointerUp={onResizeEnd}
+          onPointerCancel={onResizeEnd}
+          onLostPointerCapture={onResizeEnd}
+        />
+      )}
       {/* 顶部：折叠/展开按钮 */}
       <button
-        className="ui-icon-button flex h-11 w-full items-center justify-center text-text-secondary hover:bg-surface-secondary hover:text-text"
+        className="ui-icon-button flex shrink-0 w-full items-center justify-center text-text-secondary hover:bg-surface-secondary hover:text-text"
+        style={{ height: effectiveExpanded ? width * 0.3 : 44 }}
         onClick={onToggle}
         aria-label={expanded ? '折叠左侧栏' : '展开左侧栏'}
       >
-        {expanded ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+        {expanded ? (
+          <PanelLeftClose style={{ width: width * 0.14, height: width * 0.14 }} />
+        ) : (
+          <PanelLeftOpen
+            style={{
+              width: effectiveExpanded ? width * 0.14 : 16,
+              height: effectiveExpanded ? width * 0.14 : 16,
+            }}
+          />
+        )}
       </button>
 
       {/* 中转区：折叠按钮下方、功能区上方。展开态列表 / 折叠态迷你图标 */}
@@ -106,10 +141,22 @@ export function LeftSidebar({
 
       {/* 底部：DeepSeek Harness / pi / GenOffice 文档 / 邮箱 / 主页 / 主题切换 / 设置入口
        *（GenOffice 入口打开模块主页：打开文件 / 格式说明 / 原生 AI 设置） */}
-      <div className="mt-auto flex flex-col items-center gap-1 border-t border-border p-2">
+      <div
+        aria-label="功能入口"
+        className={cn(
+          'mt-auto shrink-0 border-t border-border',
+          effectiveExpanded
+            ? 'grid grid-cols-2 [&>button]:h-auto [&>button]:w-full [&>button]:aspect-square [&>button]:rounded-none [&>button>svg]:h-[var(--entry-icon)] [&>button>svg]:w-[var(--entry-icon)] [&>button>img]:h-[var(--entry-icon)] [&>button>img]:w-[var(--entry-icon)]'
+            : 'flex flex-col items-center gap-1 p-1',
+        )}
+        style={{ '--entry-icon': `${width * 0.16}px` } as React.CSSProperties}
+      >
         {/* DeepSeek Harness 入口（用户指令：pi 按钮上方新增） */}
         <button
-          className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className={cn(
+            effectiveExpanded && 'order-2',
+            'flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text',
+          )}
           onClick={onOpenDeepSeekHarness}
           aria-label="DeepSeek Harness"
           title="DeepSeek Harness"
@@ -123,7 +170,10 @@ export function LeftSidebar({
         </button>
         {/* pi 入口（ADR-014：点击确保服务运行并直接打开 pi 聊天页；服务常驻） */}
         <button
-          className="relative flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className={cn(
+            effectiveExpanded && 'order-1',
+            'relative flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text',
+          )}
           onClick={onOpenPi}
           aria-label="pi"
           title={
@@ -161,7 +211,10 @@ export function LeftSidebar({
         {/* 笔记 / 便利贴入口（M27）：位于 pi 与 GenOffice 之间，
          *  打开 urchin://notebook 内部页（三区：导航 / 笔记任务 / 无限画布） */}
         <button
-          className="ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className={cn(
+            effectiveExpanded && 'order-4',
+            'ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text',
+          )}
           onClick={onOpenNotebook}
           aria-label="速记"
           title="速记"
@@ -171,7 +224,10 @@ export function LeftSidebar({
         {/* GenOffice 文档入口（阶段 4.5，用户指令：由「打开文件」按钮改为
          *  嵌入的 GenOffice 前端入口；打开文件动作收敛到主页/Ctrl+O/拖放） */}
         <button
-          className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className={cn(
+            effectiveExpanded && 'order-3',
+            'flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text',
+          )}
           onClick={onOpenGenOfficeHome}
           aria-label="GenOffice 文档"
           title="GenOffice 文档（Word / PDF / Markdown / HTML）"
@@ -179,7 +235,10 @@ export function LeftSidebar({
           <FileText className="h-4 w-4" />
         </button>
         <button
-          className="ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className={cn(
+            effectiveExpanded && 'order-5',
+            'ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text',
+          )}
           onClick={onOpenMail}
           aria-label="邮箱"
           title="邮箱"
@@ -188,7 +247,10 @@ export function LeftSidebar({
         </button>
         {/* 主页按钮（从地址栏移入，位于邮箱与主题之间，倒数第三） */}
         <button
-          className="ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className={cn(
+            effectiveExpanded && 'order-6',
+            'ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text',
+          )}
           onClick={onGoHome}
           aria-label="主页"
           title="主页"
@@ -196,7 +258,10 @@ export function LeftSidebar({
           <Home className="h-4 w-4" />
         </button>
         <button
-          className="ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className={cn(
+            effectiveExpanded && 'order-7',
+            'ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text',
+          )}
           onClick={() => themeContext.toggleTheme()}
           aria-label="切换主题"
           title="切换主题"
@@ -204,7 +269,10 @@ export function LeftSidebar({
           {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
         </button>
         <button
-          className="ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className={cn(
+            effectiveExpanded && 'order-8',
+            'ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text',
+          )}
           onClick={onOpenSettings}
           aria-label="设置"
           title="设置"

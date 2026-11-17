@@ -23,3 +23,7 @@ export const RIGHT_MAX = 600;
 
 /** 右侧边栏宽度持久化 settings key（拖拽调节后记录位置，重启恢复） */
 export const RIGHT_SIDEBAR_WIDTH_KEY = 'ui.rightSidebarWidth';
+
+/** 左侧展开宽度：最小值与右栏一致，最大值保持原展开宽度。 */
+export const LEFT_MIN = RIGHT_MIN;
+export const LEFT_SIDEBAR_WIDTH_KEY = 'ui.leftSidebarWidth';

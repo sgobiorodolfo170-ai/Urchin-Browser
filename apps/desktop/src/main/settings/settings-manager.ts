@@ -73,6 +73,7 @@ const DEFAULT_SETTINGS: readonly (readonly [string, unknown])[] = [
   // 右侧边栏展开宽度（拖拽调节后落盘，重启恢复）。默认 360 =
   // renderer/lib/layout-constants.ts 的 RIGHT_EXPANDED，两处必须同步修改。
   // 该键必须登记（原因见下方 session.lastTabs），否则宽度每次重启被重置。
+  ['ui.leftSidebarWidth', 220],
   ['ui.rightSidebarWidth', 360],
   // 底部悬浮球灵敏度（上下/左右，范围 0.1-5，设置页调试页可调）。
   // 该键必须登记，否则每次重启被重置为 1（main/index.ts sendBallConfig 回退值）。

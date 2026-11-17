@@ -34,12 +34,43 @@ async function input(app: ElectronApplication, id: number, nativeTool = false): 
       .then((consumed) => expect(consumed).toBe(true));
     return;
   }
-  await app.evaluate(({ webContents }, wcId) => webContents.fromId(wcId)!.focus(), id);
-  await expect
-    .poll(() =>
-      app.evaluate(({ webContents }, wcId) => webContents.fromId(wcId)?.isFocused() ?? false, id),
-    )
-    .toBe(true);
+  await app.evaluate(({ app, BrowserWindow, webContents }, wcId) => {
+    // Windows 前台锁会拒绝普通 focus（前一实例被 taskkill 后尤其明显）；
+    // steal 是 Electron 为“必须拿到前台”的测试/自动化场景提供的显式通道。
+    app.focus({ steal: true });
+    const wc = webContents.fromId(wcId);
+    const win = wc ? BrowserWindow.fromWebContents(wc) : null;
+    win?.show();
+    win?.focus();
+    wc?.focus();
+  }, id);
+  const focusDeadline = Date.now() + 10_000;
+  let focused = false;
+  while (Date.now() < focusDeadline) {
+    focused = await app.evaluate(
+      ({ webContents }, wcId) => webContents.fromId(wcId)?.isFocused() ?? false,
+      id,
+    );
+    if (focused) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (!focused) {
+    const diagnostic = await app.evaluate(
+      ({ BrowserWindow, webContents }, wcId) => ({
+        target: wcId,
+        focusedWindow: BrowserWindow.getFocusedWindow()?.webContents.id ?? null,
+        windows: BrowserWindow.getAllWindows().map((win) => ({
+          id: win.webContents.id,
+          focused: win.isFocused(),
+          visible: win.isVisible(),
+          minimized: win.isMinimized(),
+        })),
+        targetExists: Boolean(webContents.fromId(wcId)),
+      }),
+      id,
+    );
+    throw new Error(`focus timeout: ${JSON.stringify(diagnostic)}`);
+  }
   await app.evaluate(({ webContents }, wcId) => {
     webContents.fromId(wcId)!.sendInputEvent({ type: 'keyDown', keyCode: 'F12' });
   }, id);

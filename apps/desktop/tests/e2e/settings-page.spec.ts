@@ -49,7 +49,7 @@ test.describe('设置页', () => {
     await expect(window.getByRole('heading', { name: '通用' })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(window.getByText('界面语言')).toBeVisible();
+    await expect(window.getByText('界面语言', { exact: true })).toBeVisible();
 
     // 选项卡切换：剪藏（含固定保存位置说明）/ 数据（含浏览器导入与 Cookie 开关）/ 隐私与安全
     await window.getByRole('button', { name: '剪藏', exact: true }).click();

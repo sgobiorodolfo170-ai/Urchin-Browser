@@ -118,15 +118,21 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
   return (
     <div className="flex h-full bg-surface text-text">
       {/* 左侧选项卡导航 */}
-      <nav className="flex w-48 shrink-0 flex-col border-r border-border bg-surface-secondary py-4">
+      <nav
+        aria-label="设置分类"
+        className="flex w-48 shrink-0 flex-col border-r border-border bg-surface-secondary py-4"
+      >
         {TABS.map((tab) => (
           <button
+            type="button"
             key={tab.key}
+            aria-pressed={activeTab === tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'flex items-center px-4 py-2.5 text-sm text-left transition-colors',
+              'flex items-center px-4 py-2.5 text-sm text-left transition-colors motion-reduce:transition-none',
+              'focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-primary',
               activeTab === tab.key
-                ? 'border-l-2 border-primary bg-surface font-medium text-text'
+                ? 'border-l-2 border-primary bg-[color-mix(in_srgb,var(--color-primary)_8%,var(--color-surface))] font-medium text-primary'
                 : 'border-l-2 border-transparent text-text-secondary hover:bg-surface hover:text-text',
             )}
           >

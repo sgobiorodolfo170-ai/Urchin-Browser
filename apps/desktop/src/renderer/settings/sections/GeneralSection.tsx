@@ -20,7 +20,7 @@ const GENERAL_FIELDS: readonly SettingField[] = [
   {
     key: 'searchEngine',
     label: '搜索引擎',
-    desc: '地址栏输入普通文字时使用此搜索引擎，默认百度。',
+    desc: '地址栏输入普通文字时使用此搜索引擎。',
     type: 'select',
     options: [
       { value: 'google', label: 'Google' },

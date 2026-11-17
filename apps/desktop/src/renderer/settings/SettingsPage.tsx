@@ -9,6 +9,7 @@
  * 通过主窗口已有的 window.urchin.invoke('settings.*') 读写设置。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { cn } from '../lib/utils';
 import { useSettings } from './use-settings';
@@ -102,21 +103,29 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
   const { entries, loading, error, saving, updateField, handleReset } = useSettings({
     onToast: showToast,
   });
+  const toastText =
+    toast && /^(保存|重置)失败：/.test(toast) ? `${toast.split('：')[0]}，请稍后重试。` : toast;
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-text-secondary">加载中…</div>
+      <div className="ui-state" role="status">
+        <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+        加载中…
+      </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center text-error">加载失败：{error}</div>
+      <div className="ui-state" role="alert">
+        <AlertCircle aria-hidden="true" className="h-5 w-5 shrink-0 text-error" />
+        <p>加载失败，请关闭后重新打开设置页。</p>
+      </div>
     );
   }
 
   return (
-    <div className="flex h-full bg-surface text-text">
+    <div className="ui-settings-page flex h-full min-w-0 bg-surface text-text">
       {/* 左侧选项卡导航 */}
       <nav
         aria-label="设置分类"
@@ -154,8 +163,8 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
       </nav>
 
       {/* 右侧内容区 */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-8 py-6 pb-16">
+      <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className="ui-settings-inner mx-auto max-w-3xl px-8 py-6 pb-16">
           {activeTab === 'general' && <GeneralSection entries={entries} onChange={updateField} />}
           {activeTab === 'clipper' && <ClipperSection entries={entries} onChange={updateField} />}
           {activeTab === 'ops' && <OpsTab entries={entries} onChange={updateField} />}
@@ -174,8 +183,17 @@ export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
 
       {/* Toast */}
       {toast && (
-        <div className="pointer-events-none fixed bottom-16 left-1/2 z-50 -translate-x-1/2 rounded-md bg-success px-4 py-2 text-sm text-white shadow-md">
-          {toast}
+        <div
+          role={toast.includes('失败') ? 'alert' : 'status'}
+          data-tone={toast.includes('失败') ? 'error' : 'success'}
+          className="ui-toast pointer-events-none fixed bottom-16 left-1/2 z-50 -translate-x-1/2"
+        >
+          {toast.includes('失败') ? (
+            <AlertCircle aria-hidden="true" className="h-4 w-4 shrink-0" />
+          ) : (
+            <CheckCircle2 aria-hidden="true" className="h-4 w-4 shrink-0" />
+          )}
+          {toastText}
         </div>
       )}
     </div>

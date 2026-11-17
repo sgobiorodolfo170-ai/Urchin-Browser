@@ -20,7 +20,7 @@ const GENERAL_FIELDS: readonly SettingField[] = [
   {
     key: 'searchEngine',
     label: '搜索引擎',
-    desc: '地址栏搜索使用的引擎（与 parse-input 的 SEARCH_ENGINE_TEMPLATES 表对应）',
+    desc: '输入非网址内容时，使用此搜索引擎查找。',
     type: 'select',
     options: [
       { value: 'google', label: 'Google' },

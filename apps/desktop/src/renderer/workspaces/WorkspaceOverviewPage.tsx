@@ -327,22 +327,29 @@ function WorkspaceCard({
     el.style.setProperty('--glow-opacity', '0');
   }, []);
 
-  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLButtonElement>): void => {
-    const el = cardRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const offsetX = (event.clientX - rect.left) / Math.max(1, rect.width) - 0.5;
-    const offsetY = (event.clientY - rect.top) / Math.max(1, rect.height) - 0.5;
-    // 倾斜幅度 ±10°/±15°、抬升 16px、放大 5%：比上一版更明显的 3D 悬浮，
-    // 但仍控制整窗截图的透视拉伸，避免文字与网页缩略图失真。
-    el.style.setProperty('--tilt-x', `${(-offsetY * 10).toFixed(2)}deg`);
-    el.style.setProperty('--tilt-y', `${(offsetX * 15).toFixed(2)}deg`);
-    el.style.setProperty('--lift', '-16px');
-    el.style.setProperty('--scale', '1.05');
-    el.style.setProperty('--glow-x', `${((offsetX + 0.5) * 100).toFixed(1)}%`);
-    el.style.setProperty('--glow-y', `${((offsetY + 0.5) * 100).toFixed(1)}%`);
-    el.style.setProperty('--glow-opacity', '1');
-  }, []);
+  const handlePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>): void => {
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        resetTilt();
+        return;
+      }
+      const el = cardRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const offsetX = (event.clientX - rect.left) / Math.max(1, rect.width) - 0.5;
+      const offsetY = (event.clientY - rect.top) / Math.max(1, rect.height) - 0.5;
+      // 倾斜幅度 ±10°/±15°、抬升 16px、放大 5%：比上一版更明显的 3D 悬浮，
+      // 但仍控制整窗截图的透视拉伸，避免文字与网页缩略图失真。
+      el.style.setProperty('--tilt-x', `${(-offsetY * 10).toFixed(2)}deg`);
+      el.style.setProperty('--tilt-y', `${(offsetX * 15).toFixed(2)}deg`);
+      el.style.setProperty('--lift', '-16px');
+      el.style.setProperty('--scale', '1.05');
+      el.style.setProperty('--glow-x', `${((offsetX + 0.5) * 100).toFixed(1)}%`);
+      el.style.setProperty('--glow-y', `${((offsetY + 0.5) * 100).toFixed(1)}%`);
+      el.style.setProperty('--glow-opacity', '1');
+    },
+    [resetTilt],
+  );
 
   return (
     <button
@@ -350,6 +357,7 @@ function WorkspaceCard({
       type="button"
       title={`切换到工作区 ${item.workspace.name}`}
       data-workspace-card-id={item.workspace.id}
+      aria-pressed={active}
       data-workspace-card-dragging={dragging || undefined}
       onClick={() => onSwitch(item.workspace.id)}
       onPointerDown={onCardPointerDown}
@@ -362,7 +370,7 @@ function WorkspaceCard({
       onPointerLeave={resetTilt}
       onBlur={resetTilt}
       className={cn(
-        'relative block h-full w-full rounded-xl text-left outline-none hover:z-10 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2',
+        'ui-workspace-card relative block h-full w-full rounded-xl text-left outline-none hover:z-10 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2',
         // 可拖卡给抓取光标提示；拖拽中握紧；固定卡（默认工作区）常规光标
         onCardPointerDown ? (dragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default',
       )}

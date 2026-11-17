@@ -26,6 +26,10 @@
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-info: #3b82f6;
+  --color-hover: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface));
+  --color-selected: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+  --color-selected-border: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
+  --color-danger-strong: color-mix(in srgb, var(--color-error) 85%, #000000);
 
   /* 间距 */
   --spacing-1: 4px;

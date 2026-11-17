@@ -111,6 +111,7 @@ export function WorkspaceBar({
               ref={active ? activeBtnRef : undefined}
               type="button"
               aria-label={ws.name}
+              aria-pressed={active}
               title={`${ws.name}${active ? '（当前工作区）' : ''} — 右键管理 / 滚轮切换`}
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -118,7 +119,7 @@ export function WorkspaceBar({
               }}
               onClick={() => onSelect(ws.id)}
               className={cn(
-                'flex shrink-0 items-center justify-center rounded-none transition-all',
+                'ui-workspace-button ui-interactive flex shrink-0 items-center justify-center rounded-none transition-all motion-reduce:transition-none',
                 active ? 'h-9 w-9 z-10 shadow-lg' : 'h-7 w-7 opacity-70 hover:opacity-100',
                 colorInfo.avatar,
               )}
@@ -143,7 +144,7 @@ export function WorkspaceBar({
         aria-label="新建工作区"
         title="新建工作区"
         onClick={() => setCreating((v) => !v)}
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+        className="ui-icon-button flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
       >
         <Plus className="h-4 w-4" />
       </button>
@@ -162,8 +163,9 @@ export function WorkspaceBar({
                 if (e.key === 'Escape') setCreating(false);
               }}
               placeholder="工作区名称"
+              aria-label="工作区名称"
               maxLength={32}
-              className="w-full rounded-md border border-border bg-surface-secondary px-2 py-1.5 text-sm text-text outline-none focus:border-primary/50"
+              className="ui-interactive w-full rounded-md border border-border bg-surface-secondary px-2 py-1.5 text-sm text-text outline-none focus:border-primary/50"
             />
             <div className="mt-2 flex items-center gap-1.5">
               {WORKSPACE_COLOR_KEYS.map((c) => (
@@ -171,9 +173,10 @@ export function WorkspaceBar({
                   key={c}
                   type="button"
                   aria-label={`颜色 ${c}`}
+                  aria-pressed={color === c}
                   onClick={() => setColor(c)}
                   className={cn(
-                    'flex h-5 w-5 items-center justify-center rounded-md transition-transform',
+                    'ui-interactive flex h-5 w-5 items-center justify-center rounded-md transition-transform',
                     WORKSPACE_COLORS[c].avatar,
                     color === c
                       ? 'scale-110 ring-2 ring-primary/60'
@@ -188,7 +191,7 @@ export function WorkspaceBar({
               <button
                 type="button"
                 onClick={() => setCreating(false)}
-                className="flex-1 rounded-md border border-border py-1.5 text-sm text-text hover:bg-surface-secondary"
+                className="ui-interactive flex-1 rounded-md border border-border py-1.5 text-sm text-text hover:bg-surface-secondary"
               >
                 取消
               </button>
@@ -196,7 +199,7 @@ export function WorkspaceBar({
                 type="button"
                 onClick={submitCreate}
                 disabled={!name.trim()}
-                className="flex-1 rounded-md bg-primary py-1.5 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                className="ui-interactive flex-1 rounded-md bg-primary py-1.5 text-sm text-white transition-opacity hover:opacity-90 disabled:opacity-40"
               >
                 创建工作区
               </button>

@@ -26,6 +26,17 @@ if (!rootEl) {
 /** folder-menu 模式：收藏栏文件夹菜单子窗口（与收藏夹面板同入口、不同模式）。 */
 const isFolderMenu = new URLSearchParams(location.search).get('mode') === 'folder-menu';
 
+// nativeTheme 由主界面主题切换同步；独立面板据此复用同一套颜色令牌。
+const themeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+const syncTheme = (): void => {
+  document.documentElement.dataset.theme = themeMedia.matches ? 'dark' : 'light';
+};
+syncTheme();
+themeMedia.addEventListener('change', syncTheme);
+window.addEventListener('pagehide', () => themeMedia.removeEventListener('change', syncTheme), {
+  once: true,
+});
+
 createRoot(rootEl).render(
   <StrictMode>{isFolderMenu ? <FolderMenuApp /> : <BookmarkPanelApp />}</StrictMode>,
 );

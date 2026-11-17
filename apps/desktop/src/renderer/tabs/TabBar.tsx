@@ -60,7 +60,7 @@ export function TabBar({
                 // 未激活标签使用平面背景。
                 // 卡片高度 ≈48px（2026-11-13 用户指令较原 54px 收窄约 10%：
                 // py-2 → py-[5px]，图标 36px 不变仍铺满标签高度）
-                'group relative mb-1.5 flex cursor-default items-center gap-2 rounded-lg border px-2.5 py-[5px] text-sm',
+                'ui-tab-card group relative mb-1.5 flex cursor-default items-center gap-2 rounded-lg border px-2.5 py-[5px] text-sm',
                 'border-transparent',
 
                 tab.id === activeTabId
@@ -73,7 +73,18 @@ export function TabBar({
               {/* 图标铺满标签高度：36px 与折叠态一致，items-center 垂直居中，
                *  object-contain 保持比例不变形 */}
               <TabFavicon tab={tab} className="h-9 w-9" />
-              <span className="flex-1 truncate">{tab.title || tab.url || '新标签页'}</span>
+              <button
+                type="button"
+                className="ui-interactive min-w-0 flex-1 truncate rounded text-left"
+                title={tab.title || tab.url || '新标签页'}
+                aria-label={`切换到标签 ${tab.title || tab.url || '新标签页'}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectTab(tab.id);
+                }}
+              >
+                {tab.title || tab.url || '新标签页'}
+              </button>
               {/* GenOffice 编辑器未保存修改标记（阶段 2） */}
               {tab.dirty && (
                 <span
@@ -83,7 +94,8 @@ export function TabBar({
                 />
               )}
               <button
-                className="shrink-0 rounded p-0.5 opacity-0 hover:bg-error/10 group-hover:opacity-100"
+                type="button"
+                className="ui-interactive flex h-5 w-5 shrink-0 items-center justify-center rounded opacity-0 hover:bg-error/10 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
                 onClick={(e) => {
                   e.stopPropagation();
                   onCloseTab(tab.id);
@@ -115,7 +127,7 @@ export function TabBar({
           className={cn(
             // 折叠态图标：方形小圆角（区别于展开态卡片的圆角更大），激活态带主色描边。
             // 尺寸 40px = 折叠栏宽 44px - 左右各留 2px 边界空隙
-            'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-transparent',
+            'ui-tab-icon ui-interactive relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-transparent',
 
             tab.id === activeTabId
               ? 'bg-surface before:pointer-events-none before:absolute before:inset-x-1 before:top-0 before:h-px before:bg-white/70 border-primary/50 text-text shadow-[0_2px_6px_-1px_rgba(37,99,235,0.4)]'

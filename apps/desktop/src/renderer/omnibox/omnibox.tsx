@@ -340,7 +340,7 @@ export function Omnibox({
 
       {/* 补全建议面板（向上弹出：地址栏位于窗口底部，向下会被 overflow-hidden 裁剪） */}
       {isFocused && suggestions.length > 0 && (
-        <div className="absolute bottom-full left-0 right-0 z-50 mb-1 max-h-80 overflow-y-auto rounded-md border border-border bg-surface shadow-dropdown">
+        <div className="ui-omnibox-suggestions absolute bottom-full left-0 right-0 z-50 mb-1 max-h-80 overflow-y-auto rounded-md border border-border bg-surface shadow-dropdown">
           {suggestions.map((sug, idx) => (
             <button
               key={`${sug.type}-${idx}`}

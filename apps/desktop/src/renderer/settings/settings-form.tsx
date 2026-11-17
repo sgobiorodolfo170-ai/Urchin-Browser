@@ -113,14 +113,18 @@ export function SettingsSection({
   profileApi,
 }: SettingsSectionProps) {
   return (
-    <section>
+    <section className="ui-settings-section">
       <h1 className="mb-6 text-2xl font-semibold">{title}</h1>
-      <div className="space-y-1">
+      <div>
         {fields.map((field) =>
           field.type === 'textarea' ? (
-            <div key={field.key} className="py-3">
+            <div key={field.key} className="ui-setting-row ui-setting-row--stacked py-3">
               <div className="font-medium">{field.label}</div>
-              {field.desc && <div className="mt-0.5 text-xs text-text-secondary">{field.desc}</div>}
+              {field.desc && (
+                <div className="ui-setting-description mt-0.5 text-xs text-text-secondary">
+                  {field.desc}
+                </div>
+              )}
               <div className="mt-2">
                 <FieldControl
                   field={field}
@@ -131,14 +135,19 @@ export function SettingsSection({
               </div>
             </div>
           ) : (
-            <div key={field.key} className="flex items-center justify-between gap-4 py-3">
-              <div className="flex-1">
+            <div
+              key={field.key}
+              className="ui-setting-row flex items-center justify-between gap-4 py-3"
+            >
+              <div className="min-w-0 flex-1">
                 <div className="font-medium">{field.label}</div>
                 {field.desc && (
-                  <div className="mt-0.5 text-xs text-text-secondary">{field.desc}</div>
+                  <div className="ui-setting-description mt-0.5 text-xs text-text-secondary">
+                    {field.desc}
+                  </div>
                 )}
               </div>
-              <div className="shrink-0" style={{ minWidth: 240 }}>
+              <div className="ui-setting-control shrink-0">
                 <FieldControl
                   field={field}
                   value={entries[field.key]}
@@ -248,6 +257,7 @@ export function FieldControl({ field, value, onChange, profileApi }: FieldContro
     return (
       <div className="flex items-center gap-1.5">
         <Input
+          aria-label={field.label}
           type="text"
           className="h-8 min-w-0 flex-1"
           value={toStr(value)}
@@ -288,6 +298,7 @@ export function FieldControl({ field, value, onChange, profileApi }: FieldContro
       <div className="flex items-center gap-2">
         <input
           type="number"
+          aria-label={field.label}
           min={field.min}
           max={field.max}
           step={field.step}
@@ -309,6 +320,7 @@ export function FieldControl({ field, value, onChange, profileApi }: FieldContro
   if (field.type === 'textarea') {
     return (
       <textarea
+        aria-label={field.label}
         className="w-full resize-y rounded-md border border-border bg-surface px-3 py-2 font-mono text-xs leading-5 text-text outline-none focus:border-primary"
         rows={field.rows ?? 4}
         value={toStr(value)}
@@ -322,6 +334,7 @@ export function FieldControl({ field, value, onChange, profileApi }: FieldContro
   return (
     <Input
       type={field.type === 'password' ? 'password' : 'text'}
+      aria-label={field.label}
       className="h-8"
       value={toStr(value)}
       onChange={(e) => onChange(e.target.value)}

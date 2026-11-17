@@ -94,7 +94,7 @@ export function LeftSidebar({
     >
       {/* 顶部：折叠/展开按钮 */}
       <button
-        className="flex h-11 w-full items-center justify-center text-text-secondary hover:bg-surface-secondary hover:text-text"
+        className="ui-icon-button flex h-11 w-full items-center justify-center text-text-secondary hover:bg-surface-secondary hover:text-text"
         onClick={onToggle}
         aria-label={expanded ? '折叠左侧栏' : '展开左侧栏'}
       >
@@ -161,7 +161,7 @@ export function LeftSidebar({
         {/* 笔记 / 便利贴入口（M27）：位于 pi 与 GenOffice 之间，
          *  打开 urchin://notebook 内部页（三区：导航 / 笔记任务 / 无限画布） */}
         <button
-          className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className="ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
           onClick={onOpenNotebook}
           aria-label="速记"
           title="速记"
@@ -179,7 +179,7 @@ export function LeftSidebar({
           <FileText className="h-4 w-4" />
         </button>
         <button
-          className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className="ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
           onClick={onOpenMail}
           aria-label="邮箱"
           title="邮箱"
@@ -188,7 +188,7 @@ export function LeftSidebar({
         </button>
         {/* 主页按钮（从地址栏移入，位于邮箱与主题之间，倒数第三） */}
         <button
-          className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className="ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
           onClick={onGoHome}
           aria-label="主页"
           title="主页"
@@ -196,7 +196,7 @@ export function LeftSidebar({
           <Home className="h-4 w-4" />
         </button>
         <button
-          className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className="ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
           onClick={() => themeContext.toggleTheme()}
           aria-label="切换主题"
           title="切换主题"
@@ -204,7 +204,7 @@ export function LeftSidebar({
           {theme === 'light' ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
         </button>
         <button
-          className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
+          className="ui-icon-button flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-surface-secondary hover:text-text"
           onClick={onOpenSettings}
           aria-label="设置"
           title="设置"

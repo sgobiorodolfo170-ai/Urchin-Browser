@@ -70,9 +70,10 @@ test('新建标签后旧标签保持原状态且置顶新标签', async () => {
       window.locator('[aria-label="右侧边栏"]').getByText('新标签页').first(),
     ).toBeVisible({ timeout: 10_000 });
 
-    // 4. 断言：两个标签的显示文本（标签标题 span：flex-1 truncate）
+    // 4. 通过可访问按钮名称读取标签标题，避免依赖标题的展示标签类型。
     const tabTitles = await window
-      .locator('[aria-label="右侧边栏"] span.flex-1.truncate')
+      .locator('[aria-label="右侧边栏"]')
+      .getByRole('button', { name: /^切换到标签 / })
       .allTextContents();
     console.log('=== 右侧栏标签文本 ===', JSON.stringify(tabTitles));
 

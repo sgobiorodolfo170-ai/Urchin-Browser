@@ -59,7 +59,7 @@ export function WorkspaceSwitcher({
       ref={btnRef}
       type="button"
       className={cn(
-        'group relative flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-md border shadow-sm',
+        'ui-interactive group relative flex h-10 w-10 shrink-0 select-none items-center justify-center rounded-md border shadow-sm',
         'border-border/60 bg-surface hover:border-primary/40',
       )}
       title={

@@ -146,7 +146,8 @@ export function RightSidebar({
           {/* 新建标签（2026-11-13 用户指令）：从底部移到顶部，紧贴工作区图标条下方 */}
           <div className="shrink-0 px-2 pb-1 pt-1.5">
             <button
-              className="flex w-full items-center justify-center gap-1.5 rounded-md py-1.5 text-sm text-text-secondary hover:bg-surface hover:text-text"
+              type="button"
+              className="ui-icon-button flex w-full items-center justify-center gap-1.5 rounded-md py-1.5 text-sm text-text-secondary hover:bg-surface hover:text-text"
               onClick={onNewTab}
               aria-label="新建标签"
             >
@@ -184,7 +185,8 @@ export function RightSidebar({
           {/* 新建标签「+」（2026-11-13 用户指令）：置于工作区图标下方、标签图标列上方，
            *  功能与展开态「+ 新建标签」完全一致。虚线边框区别于实底标签图标。 */}
           <button
-            className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-dashed border-border/70 text-text-secondary hover:bg-surface-secondary hover:text-text"
+            type="button"
+            className="ui-icon-button mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-dashed border-border/70 text-text-secondary hover:bg-surface-secondary hover:text-text"
             onClick={onNewTab}
             aria-label="新建标签"
             title="新建标签"

@@ -121,17 +121,22 @@ export function BookmarkListPanel({
           <h2 className="truncate text-sm font-medium">{currentHeading}</h2>
         </div>
         {showClose && (
-          <button onClick={onClose} aria-label="关闭列表">
+          <button
+            type="button"
+            className="ui-icon-button rounded-md px-2 py-1 text-xs text-text-secondary"
+            onClick={onClose}
+            aria-label="关闭列表"
+          >
             关闭
           </button>
         )}
       </div>
       {deleteError && (
-        <p role="alert" className="mb-2 shrink-0 text-sm text-red-500">
+        <p role="alert" data-tone="error" className="ui-feedback mb-2 shrink-0">
           {deleteError}
         </p>
       )}
-      <ul className="min-h-0 flex-1 overflow-y-auto">
+      <ul className="ui-bookmark-list min-h-0 flex-1 overflow-y-auto">
         {rows.map((entry) => (
           <li key={entry.id} className="flex items-center gap-2">
             {entry.type === 'folder' ? (
@@ -149,7 +154,8 @@ export function BookmarkListPanel({
               ) : (
                 <button
                   type="button"
-                  className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-3 text-left hover:bg-surface-secondary"
+                  className="ui-interactive flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-3 text-left hover:bg-surface-secondary"
+                  title={entry.title}
                   onClick={() => openEntry(entry)}
                 >
                   <Folder
@@ -166,7 +172,8 @@ export function BookmarkListPanel({
               <>
                 <button
                   type="button"
-                  className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-3 text-left hover:bg-surface-secondary"
+                  className="ui-interactive flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-3 text-left hover:bg-surface-secondary"
+                  title={entry.title || entry.url}
                   onClick={() => openEntry(entry)}
                 >
                   <SiteFavicon
@@ -188,7 +195,7 @@ export function BookmarkListPanel({
                     onClick={() => {
                       void remove(entry);
                     }}
-                    className="shrink-0 rounded-lg p-2 text-text-secondary hover:bg-surface-secondary hover:text-red-500 disabled:opacity-40"
+                    className="ui-interactive shrink-0 rounded-lg p-2 text-text-secondary hover:bg-surface-secondary hover:text-error disabled:opacity-40"
                   >
                     <Trash2 aria-hidden="true" className="h-4 w-4" />
                   </button>
@@ -198,7 +205,7 @@ export function BookmarkListPanel({
           </li>
         ))}
         {rows.length === 0 && (
-          <li aria-disabled="true" className="select-none px-3 py-3 text-text-secondary">
+          <li aria-disabled="true" className="ui-empty select-none">
             此文件夹为空
           </li>
         )}

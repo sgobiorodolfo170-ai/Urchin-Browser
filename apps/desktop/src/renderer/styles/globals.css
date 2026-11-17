@@ -13,6 +13,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html[data-theme='light'] {
+  color-scheme: light;
+}
+html[data-theme='dark'] {
+  color-scheme: dark;
+}
+
 /* ===== 自绘窗口 chrome（Windows frameless） =====
  * 结构：.app-window-frame（8px #F6F2F0 外框）→ .app-window-shell（圆角悬浮层）→ 标题栏 + 内容。
  * 外框固定为 #F6F2F0，亮/暗主题共用；shell 的投影/内侧高光营造 3D 悬浮层次。
@@ -286,4 +293,159 @@ html[data-window='statusbar'] body {
 .bookmarks-bar .text-text-secondary {
   color: inherit;
   opacity: 0.75;
+}
+
+/* 浏览器原生界面的共享交互样式；仅显式使用这些类的界面参与。 */
+.ui-interactive:focus-visible,
+.ui-icon-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.ui-icon-button {
+  transition:
+    background-color var(--duration-fast),
+    color var(--duration-fast);
+}
+.ui-icon-button:hover {
+  background: var(--color-hover);
+  color: var(--color-primary);
+}
+.ui-empty {
+  padding: 24px 16px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+  text-align: center;
+}
+.ui-feedback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-secondary);
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.ui-feedback[data-tone='error'] {
+  border-color: color-mix(in srgb, var(--color-error) 35%, var(--color-border));
+  color: var(--color-text);
+}
+.ui-feedback[data-tone='error'] > svg {
+  color: var(--color-error);
+}
+.ui-state {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+.ui-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-success);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  padding: 10px 14px;
+  color: var(--color-text);
+  font-size: 13px;
+  box-shadow: var(--shadow-dropdown);
+}
+.ui-toast[data-tone='error'] {
+  border-left-color: var(--color-error);
+}
+.ui-toast > svg {
+  color: var(--color-success);
+}
+.ui-toast[data-tone='error'] > svg {
+  color: var(--color-error);
+}
+.ui-tab-card[aria-current='page'],
+.ui-tab-icon[aria-current='page'] {
+  border-color: var(--color-selected-border);
+  background: var(--color-selected);
+}
+.ui-tab-card:not([aria-current]):hover,
+.ui-tab-icon:not([aria-current]):hover {
+  background: var(--color-hover);
+}
+.ui-workspace-button[aria-pressed='true'] {
+  box-shadow:
+    0 0 0 2px var(--color-surface),
+    0 0 0 3px var(--color-selected-border);
+}
+.ui-workspace-card[aria-pressed='true'] [data-workspace-card-visual] {
+  border-color: var(--color-selected-border);
+  outline-color: var(--color-primary);
+}
+.ui-bookmark-list > li + li {
+  border-top: 1px solid var(--color-border);
+}
+.ui-bookmark-list button:hover {
+  background: var(--color-hover);
+}
+.ui-settings-page {
+  container-type: inline-size;
+}
+.ui-settings-section {
+  container-type: inline-size;
+}
+.ui-settings-section > h1 {
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 12px;
+}
+.ui-setting-row {
+  border-bottom: 1px solid var(--color-border);
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+.ui-setting-row:last-child {
+  border-bottom: 0;
+}
+.ui-setting-description {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.ui-setting-control {
+  width: 240px;
+  min-width: 0;
+  max-width: 100%;
+}
+.ui-settings-page :is(input, select, textarea, button):focus-visible {
+  --tw-ring-offset-color: var(--color-surface);
+}
+@container (max-width: 560px) {
+  .ui-setting-row:not(.ui-setting-row--stacked) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .ui-setting-control {
+    width: 100%;
+  }
+}
+@container (max-width: 720px) {
+  .ui-settings-inner {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+}
+.ui-omnibox-suggestions {
+  border-color: var(--color-selected-border);
+}
+.ui-omnibox-suggestions button:hover,
+.ui-omnibox-suggestions button:focus-visible {
+  background: var(--color-hover);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-icon-button {
+    transition: none;
+  }
 }

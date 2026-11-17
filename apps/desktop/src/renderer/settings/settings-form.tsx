@@ -165,7 +165,8 @@ export function FieldControl({ field, value, onChange, profileApi }: FieldContro
   if (field.type === 'select' && field.options) {
     return (
       <select
-        className="h-8 w-full rounded-md border border-border bg-surface px-2 text-sm text-text outline-none focus:border-primary"
+        aria-label={field.label}
+        className="h-8 w-full rounded-md border border-border bg-surface px-2 text-sm text-text outline-none focus:border-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         value={toStr(value)}
         onChange={(e) => onChange(e.target.value)}
       >
@@ -223,16 +224,18 @@ export function FieldControl({ field, value, onChange, profileApi }: FieldContro
       <button
         type="button"
         role="switch"
+        aria-label={field.label}
         aria-checked={on}
         onClick={() => onChange(!on)}
         className={cn(
-          'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+          'relative h-5 w-9 shrink-0 rounded-full transition-colors motion-reduce:transition-none',
+          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
           on ? 'bg-primary' : 'bg-border',
         )}
       >
         <span
           className={cn(
-            'absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform',
+            'absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform motion-reduce:transition-none',
             on && 'translate-x-4',
           )}
         />

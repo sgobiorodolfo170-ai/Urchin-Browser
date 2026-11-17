@@ -210,7 +210,9 @@ export function DownloadsTab({ active }: { active: boolean }) {
             >
               <span className="icon">{ICON_DOWNLOAD}</span>
               <div className="main">
-                <div className="title">{d.filename}</div>
+                <div className="title" title={d.filename}>
+                  {d.filename}
+                </div>
                 <div className="url dl-meta">{downloadMetaText(d, snapshot.speeds[d.id])}</div>
                 {(d.state === 'progressing' || d.state === 'paused') && (
                   <div className="progress-bar">

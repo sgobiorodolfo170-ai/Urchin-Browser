@@ -361,7 +361,15 @@ body {
   padding-left: 22px;
 }
 /* ── 下载进度条 ── */
+.item.dl-item {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: start;
+  row-gap: 6px;
+  cursor: default;
+}
 .dl-item .main {
+  grid-column: 2;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -393,9 +401,14 @@ body {
   }
 }
 .dl-actions {
+  grid-column: 2;
   display: flex;
+  justify-content: flex-end;
   gap: 6px;
   flex-shrink: 0;
+}
+.dl-actions:empty {
+  display: none;
 }
 .dl-actions button {
   border: 1px solid var(--border);
@@ -408,6 +421,11 @@ body {
 }
 .dl-actions button:hover {
   background: var(--bg-secondary);
+}
+.dl-actions button:focus-visible,
+.clear-row button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 .dl-state {
   font-size: 11px;

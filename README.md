@@ -81,7 +81,7 @@ Windows x64 安装包（NSIS，支持覆盖升级）：
 
 - 最新稳定版：[GitHub v0.3.0](https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases/tag/v0.3.0) / [AtomGit v0.3.0](https://atomgit.com/daichuanmu/Urchin-Browser/releases/tag/v0.3.0)
 - 稳定版与开发版（`vX.Y.Z-dev.NNN`）均双库发布；开发版在 GitHub 标记为 Pre-release。
-- 代码、Issue、Pull Request 以 GitHub 为唯一真源；AtomGit 为**只读代码镜像**（由平台 Pull 镜像自动同步），不提 Issue / PR。
+- 代码、Issue、Pull Request 以 GitHub 为唯一真源；AtomGit 为**只读代码镜像**（由平台 Pull 镜像同步，发布时显式触发一次并核对引用），不提 Issue / PR。
 - 应用内自动更新只查询 GitHub Releases，不依赖 AtomGit。
 
 ## v0.1 功能概览

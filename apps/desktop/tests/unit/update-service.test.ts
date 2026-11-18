@@ -20,6 +20,7 @@ import {
   type UpdaterHandle,
   type UpdateServiceOptions,
 } from '../../src/main/update/update-service';
+import type { AtomGitRelease } from '../../src/main/update/update-source';
 import { IpcError } from '@urchin/ipc-contract';
 import type { UpdateState } from '@urchin/ipc-contract';
 
@@ -381,5 +382,148 @@ describe('createUpdateService', () => {
     expect(updater.quitAndInstall).not.toHaveBeenCalled(); // setImmediate 前不退出
     await flushImmediate();
     expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
+  });
+});
+
+describe('createUpdateService · 国内优先更新源', () => {
+  const stableRelease: AtomGitRelease = {
+    tag_name: 'v0.3.1',
+    prerelease: false,
+    created_at: '2026-11-18T10:00:00+08:00',
+    assets: [{ name: 'latest.yml' }, { name: 'Urchin-Browser-0.3.1-x64.exe' }],
+  };
+  const devRelease: AtomGitRelease = {
+    tag_name: 'v0.3.1-dev.2',
+    prerelease: true,
+    created_at: '2026-11-18T12:00:00+08:00',
+    assets: [{ name: 'dev.yml' }, { name: 'Urchin-Browser-0.3.1-dev.2-x64.exe' }],
+  };
+
+  it('should use the domestic feed first when it has an update', async () => {
+    const setFeedURL = vi.fn();
+    const resetFeedURL = vi.fn();
+    const { updater } = createMockUpdater({
+      setFeedURL,
+      resetFeedURL,
+      checkForUpdates: sequenceCheck(updateAvailable('0.3.1')),
+    });
+    const fetchDomesticReleases = vi.fn(() => Promise.resolve([stableRelease]));
+    const { service, createUpdater } = setup({
+      currentVersion: '0.3.0',
+      preferDomestic: true,
+      fetchDomesticReleases,
+    });
+    createUpdater.mockResolvedValue(updater);
+
+    const state = await service.check();
+
+    expect(state.status).toBe('available');
+    expect(state.latestVersion).toBe('0.3.1');
+    expect(setFeedURL).toHaveBeenCalledWith(
+      'https://atomgit.com/daichuanmu/Urchin-Browser/releases/download/v0.3.1',
+    );
+    expect(resetFeedURL).not.toHaveBeenCalled();
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it('should fall back to GitHub when the domestic mirror has no update', async () => {
+    const setFeedURL = vi.fn();
+    const resetFeedURL = vi.fn();
+    const { updater } = createMockUpdater({
+      setFeedURL,
+      resetFeedURL,
+      checkForUpdates: sequenceCheck(noUpdate('0.3.0'), updateAvailable('0.3.2')),
+    });
+    const fetchDomesticReleases = vi.fn(() => Promise.resolve([stableRelease]));
+    const { service, createUpdater } = setup({
+      currentVersion: '0.3.0',
+      preferDomestic: true,
+      fetchDomesticReleases,
+    });
+    createUpdater.mockResolvedValue(updater);
+
+    const state = await service.check();
+
+    expect(state.status).toBe('available');
+    expect(state.latestVersion).toBe('0.3.2');
+    expect(setFeedURL).toHaveBeenCalledTimes(1);
+    expect(resetFeedURL).toHaveBeenCalledTimes(1);
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(2);
+  });
+
+  it('should fall back to GitHub when the domestic feed check fails', async () => {
+    const resetFeedURL = vi.fn();
+    const { updater } = createMockUpdater({
+      setFeedURL: vi.fn(),
+      resetFeedURL,
+      checkForUpdates: sequenceCheck(new Error('AtomGit 502'), updateAvailable('0.3.2')),
+    });
+    const { service, createUpdater } = setup({
+      currentVersion: '0.3.0',
+      preferDomestic: true,
+      fetchDomesticReleases: () => Promise.resolve([stableRelease]),
+    });
+    createUpdater.mockResolvedValue(updater);
+
+    const state = await service.check();
+
+    expect(state.status).toBe('available');
+    expect(resetFeedURL).toHaveBeenCalledTimes(1);
+  });
+
+  it('should use GitHub directly when the domestic release lookup fails', async () => {
+    const setFeedURL = vi.fn();
+    const { updater } = createMockUpdater({ setFeedURL });
+    const { service, createUpdater } = setup({
+      currentVersion: '0.3.0',
+      preferDomestic: true,
+      fetchDomesticReleases: () => Promise.reject(new Error('timeout')),
+    });
+    createUpdater.mockResolvedValue(updater);
+
+    const state = await service.check();
+
+    expect(state.status).toBe('up-to-date');
+    expect(setFeedURL).not.toHaveBeenCalled();
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it('should keep the GitHub-only path when domestic preference is off', async () => {
+    const fetchDomesticReleases = vi.fn(() => Promise.resolve([stableRelease]));
+    const setFeedURL = vi.fn();
+    const { updater } = createMockUpdater({ setFeedURL });
+    const { service, createUpdater } = setup({
+      currentVersion: '0.3.0',
+      preferDomestic: false,
+      fetchDomesticReleases,
+    });
+    createUpdater.mockResolvedValue(updater);
+
+    await service.check();
+
+    expect(fetchDomesticReleases).not.toHaveBeenCalled();
+    expect(setFeedURL).not.toHaveBeenCalled();
+  });
+
+  it('should pick the domestic prerelease feed for dev builds', async () => {
+    const setFeedURL = vi.fn();
+    const { updater } = createMockUpdater({
+      setFeedURL,
+      resetFeedURL: vi.fn(),
+      checkForUpdates: sequenceCheck(updateAvailable('0.3.1-dev.2')),
+    });
+    const { service, createUpdater } = setup({
+      currentVersion: '0.3.1-dev.1',
+      preferDomestic: true,
+      fetchDomesticReleases: () => Promise.resolve([devRelease, stableRelease]),
+    });
+    createUpdater.mockResolvedValue(updater);
+
+    const state = await service.check();
+
+    expect(state.status).toBe('available');
+    expect(setFeedURL).toHaveBeenCalledWith(
+      'https://atomgit.com/daichuanmu/Urchin-Browser/releases/download/v0.3.1-dev.2',
+    );
   });
 });

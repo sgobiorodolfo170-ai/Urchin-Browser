@@ -20,4 +20,6 @@ export type {
   UpdaterHandle,
   UpdaterUpdateInfo,
 } from './update-service';
+export { isDomesticLocale } from './update-source';
+export type { AtomGitRelease, DomesticFeed } from './update-source';
 export { registerUpdateHandlers } from './register-handlers';

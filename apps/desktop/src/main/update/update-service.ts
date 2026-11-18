@@ -33,6 +33,12 @@ import { createLogger } from '@urchin/logger';
 import { IpcError, IpcErrorCode } from '@urchin/ipc-contract';
 import type { UpdateProgress, UpdateState, UpdateStatus } from '@urchin/ipc-contract';
 import { precleanLongPaths } from './long-path-guard';
+import {
+  fetchAtomGitReleases,
+  pickDomesticFeed,
+  type AtomGitRelease,
+  type DomesticFeed,
+} from './update-source';
 
 const log = createLogger('update-service');
 
@@ -97,6 +103,18 @@ export interface UpdaterHandle {
   downloadUpdate(): Promise<unknown>;
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
   on(event: string, listener: (...args: unknown[]) => void): unknown;
+  /**
+   * 切换 generic 更新源（国内 AtomGit 的 release 下载目录）。
+   * electron-updater 6.x 的 AppUpdater.setFeedURL(string) 即 generic provider；
+   * 测试注入的 mock 可不实现（此时跳过国内源，只用默认 GitHub）。
+   */
+  setFeedURL?: (url: string) => void;
+  /**
+   * 恢复打包内 app-update.yml 的默认源（GitHub）。
+   * 实现为把 electron-updater 的 clientPromise 置空，下次检查按配置重建；
+   * 仅真实更新器工厂会附加该方法。
+   */
+  resetFeedURL?: () => void;
 }
 
 export interface UpdateServiceOptions {
@@ -114,6 +132,14 @@ export interface UpdateServiceOptions {
    * dev.175 更新失败事故）：缺省不执行自卫，保持旧路径行为可测。
    */
   installDir?: string;
+  /**
+   * 是否国内优先（locale / 时区判定，见 isDomesticLocale）。
+   * true：先查 AtomGit 国内 Release，无更新或失败再回退 GitHub；
+   * false/缺省：保持原有 GitHub 单源行为（测试默认不触网）。
+   */
+  preferDomestic?: boolean;
+  /** 国内 Release 列表拉取器（测试注入；缺省匿名请求 AtomGit API）。 */
+  fetchDomesticReleases?: () => Promise<AtomGitRelease[]>;
 }
 
 export interface UpdateService {
@@ -136,6 +162,15 @@ async function defaultCreateUpdater(): Promise<UpdaterHandle> {
   const updater = mod.autoUpdater ?? mod.default?.autoUpdater;
   if (!updater) {
     throw new Error('electron-updater autoUpdater 导出缺失（模块 interop 失败）');
+  }
+  // 国内源回退：setFeedURL 会把 clientPromise 固定为 generic provider；
+  // 置空后 electron-updater 下次检查会按包内 app-update.yml 重建 GitHub 源。
+  // clientPromise 是 AppUpdater 的实例字段（6.8.x 公开可写），这里只在
+  // 真实更新器上附加，测试 mock 不需要知道内部结构。
+  if (typeof updater.setFeedURL === 'function') {
+    updater.resetFeedURL = () => {
+      (updater as UpdaterHandle & { clientPromise?: unknown }).clientPromise = null;
+    };
   }
   return updater;
 }
@@ -206,6 +241,64 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
     target.allowPrerelease = info.allowPrerelease;
     target.channel = info.channel;
     target.allowDowngrade = false;
+  }
+
+  /**
+   * 在「当前 feed」上查一次更新：先查本通道，dev 无更新再降级查 stable。
+   * 与原有两段检查语义一致，抽出来供「国内源 / GitHub 源」各执行一次。
+   */
+  async function checkOnCurrentFeed(
+    target: UpdaterHandle,
+    channelInfo: UpdateChannelInfo,
+  ): Promise<UpdaterCheckResult | null> {
+    applyChannel(target, channelInfo);
+    log.info('check channel', {
+      channel: channelInfo.channel,
+      allowPrerelease: channelInfo.allowPrerelease,
+    });
+    let result = await target.checkForUpdates();
+
+    if (!result?.isUpdateAvailable && channelInfo.allowPrerelease) {
+      // dev 已确认无更新：再查 stable。允许 dev 用户迁移到正式版；
+      // 首个 stable 发布前 /releases/latest 404，静默视为「暂无 stable」。
+      log.info('no dev update; fallback to stable channel');
+      applyChannel(target, { channel: STABLE_CHANNEL, allowPrerelease: false });
+      try {
+        result = await target.checkForUpdates();
+      } catch (stableError) {
+        log.info('stable channel unavailable; treat as up-to-date', {
+          error: toMessage(stableError),
+        });
+        result = null;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * 解析国内 feed（AtomGit Release 下载目录）。
+   * 拉取失败只看日志并返回 null，由调用方回退 GitHub——更新检查不能因为
+   * 镜像接口抖动而失败。
+   */
+  async function resolveDomesticFeed(channel: string): Promise<DomesticFeed | null> {
+    try {
+      const releases = await (options.fetchDomesticReleases ?? (() => fetchAtomGitReleases()))();
+      const feed = pickDomesticFeed(releases, channel);
+      if (feed) {
+        log.info('domestic update feed selected', {
+          tag: feed.tag,
+          channelFile: feed.channelFile,
+        });
+      } else {
+        log.info('no usable domestic update feed; fallback to github', { channel });
+      }
+      return feed;
+    } catch (e) {
+      log.info('domestic update feed lookup failed; fallback to github', {
+        error: toMessage(e),
+      });
+      return null;
+    }
   }
 
   /** 懒初始化更新器：配置手动确认制 + 事件桥（只执行一次）。 */
@@ -285,26 +378,28 @@ export function createUpdateService(options: UpdateServiceOptions): UpdateServic
         // download 等后续操作不受影响（此时 suppressErrorEvent 已复位）。
         suppressErrorEvent = true;
         try {
-          applyChannel(u, currentChannel);
-          log.info('check channel', {
-            channel: currentChannel.channel,
-            allowPrerelease: currentChannel.allowPrerelease,
-          });
-          result = await u.checkForUpdates();
-
-          if (!result?.isUpdateAvailable && currentChannel.allowPrerelease) {
-            // dev 已确认无更新：再查 stable。允许 dev 用户迁移到正式版；
-            // 首个 stable 发布前 /releases/latest 404，静默视为「暂无 stable」。
-            log.info('no dev update; fallback to stable channel');
-            applyChannel(u, { channel: STABLE_CHANNEL, allowPrerelease: false });
-            try {
-              result = await u.checkForUpdates();
-            } catch (stableError) {
-              log.info('stable channel unavailable; treat as up-to-date', {
-                error: toMessage(stableError),
-              });
-              result = null;
+          // 国内优先：先查 AtomGit 国内 Release；镜像落后/接口失败/无更新
+          // 都回退 GitHub，保证更新检查不会被国内源拖死。
+          if (options.preferDomestic && u.setFeedURL && u.resetFeedURL) {
+            const domestic = await resolveDomesticFeed(currentChannel.channel);
+            if (domestic) {
+              u.setFeedURL(domestic.feedUrl);
+              try {
+                result = await checkOnCurrentFeed(u, currentChannel);
+              } catch (domesticError) {
+                log.info('domestic update check failed; fallback to github', {
+                  error: toMessage(domesticError),
+                });
+                result = null;
+              }
             }
+          }
+
+          if (!result?.isUpdateAvailable) {
+            // 恢复包内 app-update.yml 的 GitHub 源；国内无更新（可能镜像落后）
+            // 时 GitHub 仍可能已有新版本，必须再查一次。
+            u.resetFeedURL?.();
+            result = await checkOnCurrentFeed(u, currentChannel);
           }
         } finally {
           suppressErrorEvent = false;

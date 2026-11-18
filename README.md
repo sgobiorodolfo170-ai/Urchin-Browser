@@ -74,15 +74,15 @@
 
 Windows x64 安装包（NSIS，支持覆盖升级）：
 
-| 渠道                  | 地址                                                             | 用途                             |
-| --------------------- | ---------------------------------------------------------------- | -------------------------------- |
-| GitHub Releases（主） | <https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases> | 主发布源、应用内自动更新源       |
-| AtomGit 国内镜像      | <https://atomgit.com/daichuanmu/Urchin-Browser/releases>         | 国内手动下载，资产与 GitHub 相同 |
+| 渠道                  | 地址                                                             | 用途                     |
+| --------------------- | ---------------------------------------------------------------- | ------------------------ |
+| GitHub Releases（主） | <https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases> | 主发布源、自动更新兜底源 |
+| AtomGit 国内镜像      | <https://atomgit.com/daichuanmu/Urchin-Browser/releases>         | 国内下载与自动更新优先源 |
 
 - 最新稳定版：[GitHub v0.3.0](https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases/tag/v0.3.0) / [AtomGit v0.3.0](https://atomgit.com/daichuanmu/Urchin-Browser/releases/tag/v0.3.0)
 - 稳定版与开发版（`vX.Y.Z-dev.NNN`）均双库发布；开发版在 GitHub 标记为 Pre-release。
 - 代码、Issue、Pull Request 以 GitHub 为唯一真源；AtomGit 为**只读代码镜像**（由平台 Pull 镜像同步，发布时显式触发一次并核对引用），不提 Issue / PR。
-- 应用内自动更新只查询 GitHub Releases，不依赖 AtomGit。
+- 应用内自动更新：国内网络优先查 AtomGit 国内 Release，失败或无更新时自动回退 GitHub Releases；GitHub 始终是兜底源。
 
 ## v0.1 功能概览
 

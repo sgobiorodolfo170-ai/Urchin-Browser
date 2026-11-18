@@ -78,7 +78,12 @@ import { createMicrosoftEngine } from '../translate/engines/microsoft';
 import { createGoogleEngine } from '../translate/engines/google';
 import { createMyMemoryEngine } from '../translate/engines/mymemory';
 import type { HttpTransport } from '../translate/engines/types';
-import { createUpdateService, registerUpdateHandlers, UPDATE_EVENT_CHANNEL } from '../update';
+import {
+  createUpdateService,
+  isDomesticLocale,
+  registerUpdateHandlers,
+  UPDATE_EVENT_CHANNEL,
+} from '../update';
 import { registerRuntimeHandlers, resolvePortableNodeExePath } from '../runtime';
 import { registerLogHandlers } from '../logs';
 import type { AppContext } from './app-context';
@@ -460,6 +465,12 @@ export function registerIpcHandlers(ctx: AppContext): void {
     notify: (state) => sendToMainWindow(UPDATE_EVENT_CHANNEL, state),
     // 超长路径自卫（long-path-guard）：打包态安装目录 = exe 所在目录
     installDir: app.isPackaged ? dirname(app.getPath('exe')) : undefined,
+    // 国内优先：语言 zh* 或时区在中国大陆时先查 AtomGit，GitHub 兜底
+    // （ADR-024；时区兜底覆盖「英文系统但在国内」的用户）。
+    preferDomestic: isDomesticLocale(
+      app.getLocale(),
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    ),
   });
   registerUpdateHandlers(ipcMain, updateService);
 

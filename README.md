@@ -2,7 +2,7 @@
 
 > AI 原生 + 开发者友好的桌面浏览器，基于 Electron / 完整 Chromium 内核。
 
-**当前阶段**：v0.1.0 里程碑（2026-07-29，MVP 最小闭环 + per-provider 强隔离架构）后持续迭代；代码版本以 [CHANGELOG.md](./CHANGELOG.md) 表尾为准（本行更新于 2026-11-11，时点 v0.3.0-dev.184），v0.2.0 dev 线推进中，首个 GitHub stable 计划 v0.2.0。已交付 GenOffice 六编辑器融合、pi-web、网页翻译（M24）、网页剪藏（M26）、笔记/便利贴（M27）、本地文件查看/编辑、应用内自动更新、M15 DevTools 检视面板、M25 邮箱、多工作区（TP7）等能力，逐条记录见 [CHANGELOG.md](./CHANGELOG.md)。安装包见 [GitHub Releases](https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases)。
+**当前阶段**：v0.1.0 里程碑（2026-07-29，MVP 最小闭环 + per-provider 强隔离架构）后持续迭代；代码版本以 [CHANGELOG.md](./CHANGELOG.md) 表尾为准（本行更新于 2026-11-18，当前稳定版 v0.3.0）。已交付 GenOffice 六编辑器融合、pi-web、网页翻译（M24）、网页剪藏（M26）、笔记/便利贴（M27）、本地文件查看/编辑、应用内自动更新、M15 DevTools 检视面板、M25 邮箱、多工作区（TP7）等能力，逐条记录见 [CHANGELOG.md](./CHANGELOG.md)。安装包见 [GitHub Releases](https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases)（主发布源与自动更新）或 [AtomGit 国内镜像](https://atomgit.com/daichuanmu/Urchin-Browser/releases)（手动下载）。
 
 ## 界面预览
 
@@ -69,6 +69,20 @@
   - AI 原生——Side Panel 始终在侧，理解当前页面上下文，无需复制粘贴到外部 LLM
   - 开发者友好——F12 打开完整原生 DevTools 独立窗口，本机 Win11 P0 已验收；Win10 延期候补；见[验收报告](./docs/开发者工具P0验收-Win11-2026-11-16.md)，路线见 [ADR-022](./docs/decisions/ADR-022-原生DevTools与专属调试增强.md)
 - **Provider 中立**：用户自带 API key 或本地 LLM，浏览器不绑定任何提供方
+
+## 下载与安装
+
+Windows x64 安装包（NSIS，支持覆盖升级）：
+
+| 渠道                  | 地址                                                             | 用途                             |
+| --------------------- | ---------------------------------------------------------------- | -------------------------------- |
+| GitHub Releases（主） | <https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases> | 主发布源、应用内自动更新源       |
+| AtomGit 国内镜像      | <https://atomgit.com/daichuanmu/Urchin-Browser/releases>         | 国内手动下载，资产与 GitHub 相同 |
+
+- 最新稳定版：[GitHub v0.3.0](https://github.com/sgobiorodolfo170-ai/Urchin-Browser/releases/tag/v0.3.0) / [AtomGit v0.3.0](https://atomgit.com/daichuanmu/Urchin-Browser/releases/tag/v0.3.0)
+- 稳定版与开发版（`vX.Y.Z-dev.NNN`）均双库发布；开发版在 GitHub 标记为 Pre-release。
+- 代码、Issue、Pull Request 以 GitHub 为唯一真源；AtomGit 为**只读代码镜像**（由平台 Pull 镜像自动同步），不提 Issue / PR。
+- 应用内自动更新只查询 GitHub Releases，不依赖 AtomGit。
 
 ## v0.1 功能概览
 
